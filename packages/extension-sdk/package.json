@@ -1,0 +1,38 @@
+{
+  "name": "@excalibur/extension-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for building Excalibur programmatic extensions: defineExtension, ExtensionContext and the contribution interfaces",
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --sourcemap --clean",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@excalibur/agent-runtime": "workspace:*",
+    "@excalibur/extension-runtime": "workspace:*",
+    "@excalibur/model-gateway": "workspace:*",
+    "@excalibur/shared": "workspace:*",
+    "@excalibur/work-items": "workspace:*",
+    "@excalibur/workflow-schema": "workspace:*",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^5.8.3",
+    "vitest": "^3.0.5"
+  }
+}

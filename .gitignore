@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Environment — API keys must live in env vars, never in the repo
+.env
+.env.*
+!.env.example
+
+# Local Excalibur state generated while testing against the demo repo
+examples/demo-repo/.excalibur/

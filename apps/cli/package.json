@@ -1,0 +1,41 @@
+{
+  "name": "@excalibur/cli",
+  "version": "0.1.0",
+  "description": "Excalibur CLI — local-first AI-assisted and agentic development from the terminal",
+  "license": "Apache-2.0",
+  "bin": {
+    "excalibur": "./dist/main.js"
+  },
+  "main": "./dist/main.js",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@excalibur/agent-runtime": "workspace:*",
+    "@excalibur/built-in-extensions": "workspace:*",
+    "@excalibur/context-engine": "workspace:*",
+    "@excalibur/core": "workspace:*",
+    "@excalibur/declarative-schemas": "workspace:*",
+    "@excalibur/enterprise-sync": "workspace:*",
+    "@excalibur/extension-runtime": "workspace:*",
+    "@excalibur/extension-sdk": "workspace:*",
+    "@excalibur/model-gateway": "workspace:*",
+    "@excalibur/shared": "workspace:*",
+    "@excalibur/work-items": "workspace:*",
+    "@excalibur/workflow-schema": "workspace:*",
+    "commander": "^13.0.0",
+    "picocolors": "^1.1.1",
+    "yaml": "^2.6.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3",
+    "vitest": "^3.0.5"
+  }
+}
