@@ -85,18 +85,39 @@ export function timestampId(prefix: string, date: Date = new Date()): string {
 }
 
 /**
- * Returns a timestamp id whose directory under `parentDir` does not exist
- * yet, advancing the clock by whole seconds on collision (ids stay sortable
- * and tests creating several artifacts in the same second stay unique).
+ * Atomically reserves a fresh `<prefix>_YYYYMMDD_HHMMSS` directory under
+ * `parentDir`, returning its id and path. Uses an exclusive (non-recursive)
+ * `mkdirSync`, which throws `EEXIST` if the directory already exists — so two
+ * processes (or two same-second calls within one process) can never reserve
+ * the same id, closing the check-then-write race that `existsSync` left open.
+ * On collision the clock advances by whole seconds, so ids stay sortable.
+ *
+ * The leaf directory is created as a side effect of the reservation; callers
+ * write their files straight into the returned `dir` (no extra `ensureDir`).
  */
-export function uniqueTimestampId(parentDir: string, prefix: string, date: Date = new Date()): string {
+export function reserveTimestampDir(
+  parentDir: string,
+  prefix: string,
+  date: Date = new Date(),
+): { id: string; dir: string } {
+  ensureDir(parentDir);
   let candidateDate = date;
-  let id = timestampId(prefix, candidateDate);
-  while (existsSync(join(parentDir, id))) {
-    candidateDate = new Date(candidateDate.getTime() + 1000);
-    id = timestampId(prefix, candidateDate);
+  for (;;) {
+    const id = timestampId(prefix, candidateDate);
+    const dir = join(parentDir, id);
+    try {
+      // Non-recursive mkdir is exclusive: it throws EEXIST atomically instead
+      // of succeeding silently, which is what makes the reservation race-free.
+      mkdirSync(dir);
+      return { id, dir };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        candidateDate = new Date(candidateDate.getTime() + 1000);
+        continue;
+      }
+      throw error;
+    }
   }
-  return id;
 }
 
 /** Type guard for plain objects (not arrays, not null). */

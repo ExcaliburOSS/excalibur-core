@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  generateRunId,
   parseEventsJsonl,
   RunNotFoundError,
   runRecordSchema,
@@ -16,9 +15,9 @@ import { EXCALIBUR_DIR } from '../config/load-config';
 import { ArtifactRecordError } from '../errors';
 import {
   appendLineEnsured,
-  ensureDir,
   listSubdirectories,
   readTextIfExists,
+  reserveTimestampDir,
   writeFileEnsured,
 } from '../internal/fs-utils';
 
@@ -62,13 +61,10 @@ export class RunManager {
 
   createRun(input: CreateRunInput): LocalRun {
     const startedAt = new Date();
-    // Collision-safe within a second: advance the id clock until free.
-    let idDate = startedAt;
-    let id = generateRunId(idDate);
-    while (existsSync(join(this.runsDir, id))) {
-      idDate = new Date(idDate.getTime() + 1000);
-      id = generateRunId(idDate);
-    }
+    // Reserve the run directory atomically so two instances starting a run in
+    // the same repo and second can never collide (closes the check-then-write
+    // race); the second is bumped on EEXIST, keeping ids chronologically sorted.
+    const { id, dir } = reserveTimestampDir(this.runsDir, 'run', startedAt);
 
     const record: RunRecord = {
       id,
@@ -83,8 +79,6 @@ export class RunManager {
       completedAt: null,
     };
 
-    const dir = join(this.runsDir, id);
-    ensureDir(dir);
     this.writeRecord(dir, record);
     return { id, dir, record };
   }

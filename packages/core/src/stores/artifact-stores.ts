@@ -9,10 +9,9 @@ import {
   PatchNotFoundError,
 } from '../errors';
 import {
-  ensureDir,
   listSubdirectories,
   readTextIfExists,
-  uniqueTimestampId,
+  reserveTimestampDir,
   writeFileEnsured,
 } from '../internal/fs-utils';
 
@@ -143,9 +142,9 @@ abstract class LocalArtifactStore<TMetadata extends { id: string }> {
     return readTextIfExists(join(dir, fileName));
   }
 
-  protected newId(): string {
-    ensureDir(this.baseDir);
-    return uniqueTimestampId(this.baseDir, this.idPrefix);
+  /** Atomically reserves a fresh artifact directory (race-safe across processes). */
+  protected reserveDir(): { id: string; dir: string } {
+    return reserveTimestampDir(this.baseDir, this.idPrefix);
   }
 
   protected writeMetadata(dir: string, metadata: TMetadata): void {
@@ -195,9 +194,7 @@ export class PatchStore extends LocalArtifactStore<PatchMetadata> {
   }
 
   create(input: CreatePatchInput): LocalPatch {
-    const id = this.newId();
-    const dir = join(this.baseDir, id);
-    ensureDir(dir);
+    const { id, dir } = this.reserveDir();
 
     const metadata: PatchMetadata = {
       id,
@@ -241,9 +238,7 @@ export class InteractionStore extends LocalArtifactStore<InteractionMetadata> {
   }
 
   create(input: CreateInteractionInput): LocalInteraction {
-    const id = this.newId();
-    const dir = join(this.baseDir, id);
-    ensureDir(dir);
+    const { id, dir } = this.reserveDir();
 
     const metadata: InteractionMetadata = {
       id,

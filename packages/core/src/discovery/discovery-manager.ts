@@ -19,10 +19,9 @@ import { EXCALIBUR_DIR } from '../config/load-config';
 import { ArtifactRecordError, DiscoverySessionNotFoundError } from '../errors';
 import {
   appendLineEnsured,
-  ensureDir,
   listSubdirectories,
   readTextIfExists,
-  uniqueTimestampId,
+  reserveTimestampDir,
   writeFileEnsured,
 } from '../internal/fs-utils';
 import { EffectiveInstructionBuilder } from '../instructions/effective-instructions';
@@ -111,10 +110,8 @@ export class DiscoveryManager {
   }
 
   createSession(input: CreateDiscoverySessionInput): LocalDiscoverySession {
-    ensureDir(this.discoveryDir);
-    const id = uniqueTimestampId(this.discoveryDir, 'disc');
-    const dir = join(this.discoveryDir, id);
-    ensureDir(dir);
+    // Atomic reservation: race-safe across parallel instances in the same repo.
+    const { id, dir } = reserveTimestampDir(this.discoveryDir, 'disc');
 
     const record: DiscoveryRecord = {
       id,
