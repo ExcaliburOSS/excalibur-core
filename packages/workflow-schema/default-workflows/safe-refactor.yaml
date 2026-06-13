@@ -1,0 +1,36 @@
+id: safe-refactor
+name: Safe Refactor
+mode: structured
+supportedAutonomyLevels: [2, 3, 4]
+description: >
+  Refactor with no intended behavior change: capture scope and invariants,
+  establish a test baseline, refactor in isolation and review the diff.
+phases:
+  - id: scope
+    name: Scope
+    type: agent_output
+    role: planner
+    output: scope.md
+  - id: invariants
+    name: Invariants
+    type: agent_output
+    role: architect
+    output: invariants.md
+  - id: baseline
+    name: Baseline Tests
+    type: command_group
+    commandsFromConfig: true
+  - id: refactor
+    name: Refactor
+    type: agent_work
+    role: implementer
+    worktree: true
+  - id: verify
+    name: Verify
+    type: command_group
+    commandsFromConfig: true
+  - id: diff_review
+    name: Diff Review
+    type: agent_review
+    role: reviewer
+    output: review.md

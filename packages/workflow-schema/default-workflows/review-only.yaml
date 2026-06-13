@@ -1,0 +1,13 @@
+id: review-only
+name: Review Only
+mode: review
+supportedAutonomyLevels: [0]
+description: >
+  Review code or a diff and report findings. Read-only: never modifies files.
+phases:
+  - id: review
+    name: Review
+    type: agent_review
+    role: reviewer
+    modifiesFiles: false
+    output: review.md

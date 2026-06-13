@@ -1,0 +1,61 @@
+id: discovery
+name: Discovery
+category: pre_work
+description: >
+  A lightweight methodology to clarify ideas, tickets, feedback or technical initiatives before implementation.
+recommendedAutonomyLevels: [0, 1]
+useWhen:
+  - The idea is ambiguous
+  - The target user or problem is unclear
+  - A ticket lacks acceptance criteria
+  - Customer feedback needs synthesis
+  - A technical initiative needs framing
+  - The team is unsure whether an agent should implement it
+  - The work may need validation before build
+avoidWhen:
+  - The task is a clear bugfix
+  - The change is mechanical
+  - The ticket is already implementation-ready
+  - The work is urgent and well scoped
+defaultWorkflow: discovery
+phases:
+  - intake
+  - questions
+  - synthesis
+  - readiness
+  - recommendation
+outputs:
+  - discovery-summary.md
+  - refined-ticket.md
+  - acceptance-criteria.md
+  - mvp-scope.md
+  - readiness-assessment.md
+  - recommendation.md
+modes:
+  - product_idea
+  - existing_work_item
+  - customer_feedback
+  - technical_initiative
+  - incident
+  - agent_readiness
+  - mvp_scope
+questions:
+  - id: problem
+    text: What problem are we trying to solve?
+  - id: user
+    text: Who has this problem?
+  - id: current_workaround
+    text: What do they do today?
+  - id: urgency
+    text: Why does it matter now?
+  - id: mvp
+    text: What is the smallest useful version?
+  - id: out_of_scope
+    text: What is explicitly out of scope?
+  - id: success
+    text: How will we know it worked?
+  - id: evidence
+    text: What evidence do we have?
+  - id: readiness
+    text: Is this ready for implementation by a human or an agent?
+riskProfile: low

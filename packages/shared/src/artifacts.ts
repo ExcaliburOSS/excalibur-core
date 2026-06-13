@@ -1,0 +1,61 @@
+import { z } from 'zod';
+import { autonomyLevelSchema } from './autonomy';
+import { executionStyleSchema, runStatusSchema } from './enums';
+
+/**
+ * Local run artifact contract (OSS spec §11, Build Contract §4.1/§6).
+ *
+ * `run.json` inside `.excalibur/runs/<run-id>/` is a `RunRecord`. The record is
+ * a superset of the OSS spec §11 example: the extra fields (`model`,
+ * `executionStyle`, `methodology`, `completedAt`) are nullable so older or
+ * minimal producers stay compatible.
+ */
+export const runRecordSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  autonomyLevel: autonomyLevelSchema,
+  workflow: z.string().min(1),
+  methodology: z.string().nullable(),
+  status: runStatusSchema,
+  model: z.string().nullable(),
+  executionStyle: executionStyleSchema.nullable(),
+  /** ISO-8601 timestamp (UTC offset or `Z`). */
+  startedAt: z.string().datetime({ offset: true }),
+  completedAt: z.string().datetime({ offset: true }).nullable(),
+});
+export type RunRecord = z.infer<typeof runRecordSchema>;
+
+/** A run as stored on disk: its id, directory and parsed `run.json`. */
+export interface LocalRun {
+  id: string;
+  dir: string;
+  record: RunRecord;
+}
+
+/** Zod schema companion for `LocalRun` (useful for sync payload validation). */
+export const localRunSchema = z.object({
+  id: z.string().min(1),
+  dir: z.string().min(1),
+  record: runRecordSchema,
+});
+
+/**
+ * Canonical artifact file names a local run may produce inside its run
+ * directory (OSS spec §11). Not every workflow writes every file.
+ */
+export const RUN_ARTIFACT_FILES = [
+  'run.json',
+  'workflow.yaml',
+  'methodology.yaml',
+  'events.jsonl',
+  'model-calls.jsonl',
+  'input.md',
+  'context.md',
+  'diff.patch',
+  'summary.md',
+  'review.md',
+  'test-results.json',
+  'tests.log',
+  'pr-summary.md',
+] as const;
+export type RunArtifactFile = (typeof RUN_ARTIFACT_FILES)[number];

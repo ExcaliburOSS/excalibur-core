@@ -1,0 +1,13 @@
+id: ask-repo
+name: Ask Repo
+mode: fast
+supportedAutonomyLevels: [1]
+description: >
+  Answer a question about the repository. Read-only: never modifies files.
+phases:
+  - id: answer
+    name: Answer
+    type: assistant_interaction
+    role: planner
+    modifiesFiles: false
+    output: answer.md

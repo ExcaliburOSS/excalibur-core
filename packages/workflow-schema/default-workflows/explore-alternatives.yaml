@@ -1,0 +1,32 @@
+id: explore-alternatives
+name: Explore Alternatives
+mode: explore
+supportedAutonomyLevels: [3, 4]
+phases:
+  - id: understand
+    name: Understand Task
+    type: agent_output
+    role: planner
+    output: context.md
+  - id: alternatives
+    name: Generate Alternatives
+    type: agent_output
+    role: architect
+    output: alternatives.md
+  - id: choose
+    name: Choose Approach
+    type: human_approval
+    optional: true
+  - id: implement
+    name: Implement Selected Approach
+    type: agent_work
+    role: implementer
+    worktree: true
+  - id: verify
+    name: Verify
+    type: command_group
+    commandsFromConfig: true
+  - id: summarize
+    name: Summarize
+    type: agent_output
+    output: summary.md

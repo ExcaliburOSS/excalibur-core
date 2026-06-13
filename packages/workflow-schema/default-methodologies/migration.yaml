@@ -1,0 +1,36 @@
+id: migration
+name: Migration Workflow
+category: delivery
+description: >
+  Plan and execute schema or infrastructure migrations with a backward
+  compatibility check, rollback notes and verification.
+recommendedAutonomyLevels: [3, 4]
+useWhen:
+  - A database schema or data migration is required
+  - Infrastructure or dependency migrations need care
+  - Backward compatibility must be preserved
+avoidWhen:
+  - The change does not alter persisted state or infrastructure
+  - A simple code-only fix is enough
+defaultWorkflow: migration
+phases:
+  - migration_plan
+  - compatibility_check
+  - implement
+  - rollback_notes
+  - verify
+artifacts:
+  - migration-plan.md
+  - compatibility.md
+  - rollback-notes.md
+  - test-results.json
+agentRoles:
+  - planner
+  - architect
+  - implementer
+  - tester
+  - reviewer
+approval:
+  migrationPlan: recommended
+  beforePr: required
+riskProfile: high

@@ -1,0 +1,20 @@
+id: declarative-discovery-pack
+name: Team Discovery Pack (example)
+version: 0.1.0
+kind: declarative
+description: >
+  Example declarative extension pack that customizes the Excalibur Discovery
+  flow for a product team: two question packs, two team-specific roles, a
+  refined-ticket artifact template that overrides the built-in one, and a
+  discovery kick-off prompt.
+contributes:
+  questionPacks:
+    - ./question-packs/product-discovery.yaml
+    - ./question-packs/agent-readiness.yaml
+  roleDefinitions:
+    - ./roles/product-strategist.yaml
+    - ./roles/scope-guardian.yaml
+  artifactTemplates:
+    - ./artifacts/refined-ticket.md
+  promptTemplates:
+    - ./prompts/discovery-kickoff.md

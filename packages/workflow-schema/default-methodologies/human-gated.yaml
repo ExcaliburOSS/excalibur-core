@@ -1,0 +1,35 @@
+id: human-gated
+name: Human-Gated Agentic Workflow
+category: delivery
+description: >
+  Full agentic implementation with mandatory human approvals: the plan is
+  approved before implementation and the result is approved before the PR.
+recommendedAutonomyLevels: [3, 4]
+useWhen:
+  - High-stakes changes need explicit human checkpoints
+  - Compliance or team policy requires approvals
+  - You are building trust in agentic execution
+avoidWhen:
+  - The change is small and low risk
+  - Approval latency would block urgent work
+defaultWorkflow: human-gated
+phases:
+  - plan
+  - approve_plan
+  - implement
+  - verify
+  - approve_changes
+  - pr
+artifacts:
+  - plan.md
+  - review.md
+  - pr-summary.md
+agentRoles:
+  - planner
+  - implementer
+  - reviewer
+  - release
+approval:
+  plan: required
+  beforePr: required
+riskProfile: high

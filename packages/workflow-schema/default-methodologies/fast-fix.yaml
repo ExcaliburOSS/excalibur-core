@@ -1,0 +1,32 @@
+id: fast-fix
+name: Fast Fix
+category: delivery
+description: >
+  Small, well-scoped fixes: analyze, generate a patch in an isolated branch
+  or worktree, verify with tests and summarize.
+recommendedAutonomyLevels: [2, 3]
+useWhen:
+  - The bug is small and well scoped
+  - The fix is unlikely to affect other modules
+  - You want a fast loop with a verifiable diff
+avoidWhen:
+  - Requirements are ambiguous
+  - The change touches sensitive paths
+  - The fix requires design decisions
+defaultWorkflow: fast-fix
+phases:
+  - analyze
+  - patch
+  - verify
+  - summarize
+artifacts:
+  - diff.patch
+  - summary.md
+  - test-results.json
+agentRoles:
+  - reviewer
+  - implementer
+  - tester
+approval:
+  apply: required
+riskProfile: low

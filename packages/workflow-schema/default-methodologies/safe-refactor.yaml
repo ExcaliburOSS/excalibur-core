@@ -1,0 +1,37 @@
+id: safe-refactor
+name: Safe Refactor
+category: delivery
+description: >
+  Refactor with no intended behavior change: define scope and invariants,
+  capture a baseline with tests, refactor and review the diff against the
+  invariants.
+recommendedAutonomyLevels: [2, 3, 4]
+useWhen:
+  - No behavior change is intended
+  - The code needs structural cleanup before new work
+  - Test coverage exists or can be established first
+avoidWhen:
+  - Behavior changes are expected
+  - There is no way to verify invariants
+defaultWorkflow: safe-refactor
+phases:
+  - scope
+  - invariants
+  - baseline_tests
+  - refactor
+  - verify
+  - diff_review
+artifacts:
+  - scope.md
+  - invariants.md
+  - review.md
+  - test-results.json
+agentRoles:
+  - planner
+  - architect
+  - implementer
+  - reviewer
+  - tester
+approval:
+  beforePr: recommended
+riskProfile: medium

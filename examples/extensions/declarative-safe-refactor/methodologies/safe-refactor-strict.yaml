@@ -1,0 +1,51 @@
+id: safe-refactor-strict
+type: methodology
+name: Safe Refactor (Strict)
+category: delivery
+description: >
+  Refactor with no intended behavior change, gated by humans at both ends:
+  the plan (scope + invariants) must be approved before any code moves, and
+  the reviewed diff must be approved before it can be applied. Use it for
+  refactors in code you cannot afford to break.
+recommendedAutonomyLevels: [2, 3]
+useWhen:
+  - No behavior change is intended
+  - The code is load-bearing and weakly tested
+  - The team wants an explicit checkpoint before an agent touches files
+avoidWhen:
+  - Behavior changes are expected
+  - The refactor is mechanical and fully covered by tests
+  - Nobody is available to approve the plan and the diff
+defaultWorkflow: safe-refactor-strict
+workflows:
+  - safe-refactor-strict
+phases:
+  - scope
+  - invariants
+  - plan_approval
+  - baseline_tests
+  - refactor
+  - verify
+  - diff_review
+  - diff_approval
+artifacts:
+  - scope.md
+  - invariants.md
+  - review.md
+  - test-results.json
+questions:
+  - id: invariants
+    text: Which observable behaviors must remain identical after the refactor?
+  - id: baseline
+    text: Which tests prove those behaviors today, and do they pass?
+  - id: rollback
+    text: How do we roll back if an invariant breaks in production?
+agentRoles:
+  - planner
+  - architect
+  - implementer
+  - reviewer
+approval:
+  beforeRefactor: required
+  beforeApply: required
+riskProfile: medium

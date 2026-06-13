@@ -1,0 +1,24 @@
+# CMUX integration
+
+> **Arrives in milestone OSS-10.** `excalibur cmux` currently prints an honest notice. CMUX is an *interface*, never a hard dependency — every workflow works in a single terminal without it.
+
+[CMUX](https://github.com/wandb/cmux) is a terminal multiplexer for agentic coding sessions. The planned integration:
+
+```bash
+excalibur cmux run "Refactor billing service" --agents 3
+```
+
+- Detect whether CMUX is installed (`excalibur cmux` already does this).
+- Generate workspace/session configuration where possible.
+- Open one pane per concern: planner, implementer, reviewer, tests, logs.
+- Keep all artifacts in `.excalibur/runs/` — the same format as single-terminal runs.
+
+If CMUX is not installed, Excalibur shows instructions instead of failing.
+
+## Until then
+
+```bash
+excalibur run "Refactor billing service" --structured
+excalibur logs            # the event stream the panes would show
+excalibur status
+```

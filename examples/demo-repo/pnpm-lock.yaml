@@ -1,0 +1,8 @@
+# Demo fixture lockfile — intentionally empty of resolved packages.
+# Its presence lets Excalibur's repository analysis detect pnpm as the
+# package manager of quickcontract-api. Dependencies are never installed.
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false

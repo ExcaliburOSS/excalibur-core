@@ -1,0 +1,36 @@
+id: fast-fix-verified
+type: workflow
+name: Fast Fix (Verified)
+mode: fast
+supportedAutonomyLevels: [2, 3]
+description: >
+  Like the built-in fast-fix, but verification is mandatory: the run aborts
+  when the configured commands fail, and the patch is only applied after an
+  explicit human confirmation. Use it for hotfixes on branches where "it
+  probably works" is not good enough.
+phases:
+  - id: analyze
+    name: Analyze
+    type: assistant_interaction
+    role: reviewer
+    modifiesFiles: false
+  - id: patch
+    name: Patch
+    type: patch_generation
+    role: implementer
+    modifiesFiles: false
+    output: diff.patch
+  - id: verify
+    name: Verify
+    type: command_group
+    commandsFromConfig: true
+    onFailure: abort
+  - id: apply
+    name: Apply Patch
+    type: apply_patch
+    requiresHumanConfirmation: true
+  - id: summarize
+    name: Summarize
+    type: agent_output
+    role: implementer
+    output: summary.md

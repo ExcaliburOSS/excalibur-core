@@ -1,0 +1,23 @@
+id: propose-patch
+name: Propose Patch
+mode: standard
+supportedAutonomyLevels: [2]
+description: >
+  Generate a reviewable patch for a task. The patch is never applied
+  automatically; the developer decides to apply, branch or reject it.
+phases:
+  - id: analyze
+    name: Analyze
+    type: assistant_interaction
+    role: reviewer
+    modifiesFiles: false
+  - id: patch
+    name: Patch
+    type: patch_generation
+    role: implementer
+    modifiesFiles: false
+    output: diff.patch
+  - id: summarize
+    name: Summarize
+    type: agent_output
+    output: summary.md

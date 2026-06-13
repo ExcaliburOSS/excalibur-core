@@ -1,0 +1,26 @@
+id: lightweight
+name: Lightweight Assistant
+category: delivery
+description: >
+  Ask questions, get explanations and review suggestions. The AI responds;
+  the developer decides what to do with it.
+recommendedAutonomyLevels: [0, 1]
+useWhen:
+  - You need a quick answer about the codebase
+  - You want unfamiliar code explained
+  - You want suggestions without any code changes
+avoidWhen:
+  - You already know the change and want a patch
+  - The task needs a structured multi-phase workflow
+defaultWorkflow: assist
+phases:
+  - question
+  - response
+  - decide
+artifacts:
+  - answer.md
+agentRoles:
+  - planner
+approval:
+  beforePr: none
+riskProfile: low

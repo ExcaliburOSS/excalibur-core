@@ -1,0 +1,14 @@
+id: assist
+name: Assist
+mode: fast
+supportedAutonomyLevels: [1]
+description: >
+  Explain code, answer questions and suggest improvements without producing
+  automatic diffs.
+phases:
+  - id: assist
+    name: Assist
+    type: assistant_interaction
+    role: planner
+    modifiesFiles: false
+    output: answer.md

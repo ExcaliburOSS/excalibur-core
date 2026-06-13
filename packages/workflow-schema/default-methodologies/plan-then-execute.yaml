@@ -1,0 +1,32 @@
+id: plan-then-execute
+name: Plan-Then-Execute
+category: delivery
+description: >
+  Produce a short plan before implementation, then implement, run tests and
+  review the result.
+recommendedAutonomyLevels: [3, 4]
+useWhen:
+  - The task benefits from a brief upfront plan
+  - You want a checkpoint before code changes
+  - The implementation has a few coordinated steps
+avoidWhen:
+  - The change is trivial
+  - The task needs a full spec and traceability
+defaultWorkflow: standard-feature
+phases:
+  - plan
+  - implement
+  - verify
+  - review
+artifacts:
+  - plan.md
+  - review.md
+agentRoles:
+  - planner
+  - implementer
+  - reviewer
+  - tester
+approval:
+  plan: optional
+  beforePr: recommended
+riskProfile: medium

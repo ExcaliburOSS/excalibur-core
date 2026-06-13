@@ -1,0 +1,29 @@
+id: fast-fix
+name: Fast Fix
+mode: fast
+supportedAutonomyLevels: [2, 3]
+phases:
+  - id: analyze
+    name: Analyze
+    type: assistant_interaction
+    role: reviewer
+    modifiesFiles: false
+  - id: patch
+    name: Patch
+    type: patch_generation
+    role: implementer
+    modifiesFiles: false
+    output: diff.patch
+  - id: optional_apply
+    name: Optional Apply
+    type: apply_patch
+    requiresHumanConfirmation: true
+  - id: verify
+    name: Verify
+    type: command_group
+    optional: true
+    commandsFromConfig: true
+  - id: summarize
+    name: Summarize
+    type: agent_output
+    output: summary.md

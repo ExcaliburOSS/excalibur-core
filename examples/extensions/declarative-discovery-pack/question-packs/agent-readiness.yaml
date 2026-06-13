@@ -1,0 +1,25 @@
+# Team-flavored agent-readiness check, asked before handing work to an agent.
+# Contribution id `agent-readiness` is distinct from the built-in
+# `discovery-agent-readiness` pack, so both stay available side by side.
+id: agent-readiness
+type: question_pack
+name: Agent Readiness Check
+description: >
+  Pre-flight questions before delegating a ticket to an agent: goal clarity,
+  acceptance criteria, test coverage and the autonomy level the team is
+  comfortable with.
+questions:
+  - id: problem
+    text: Is the goal stated clearly enough that an agent cannot misread it?
+  - id: acceptance
+    text: Are acceptance criteria written down in the ticket?
+  - id: repo
+    text: Is the target repository (and module) named explicitly?
+  - id: tests
+    text: Do tests exist around the affected code, and do they pass today?
+  - id: risks
+    text: Does the change touch auth, billing, migrations or other sensitive areas?
+  - id: mode
+    text: Should the agent only plan, propose a patch, or implement end to end?
+  - id: approval
+    text: Who must approve the diff before it can be applied?

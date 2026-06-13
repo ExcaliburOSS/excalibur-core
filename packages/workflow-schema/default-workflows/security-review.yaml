@@ -1,0 +1,40 @@
+id: security-review
+name: Security Review
+mode: structured
+supportedAutonomyLevels: [0, 1, 2, 3, 4]
+description: >
+  Security-first flow for sensitive changes: risk analysis and plan first,
+  optional isolated implementation, then a dedicated security review, tests
+  and a mandatory human approval.
+phases:
+  - id: risk_analysis
+    name: Risk Analysis
+    type: agent_output
+    role: security
+    output: risk-analysis.md
+  - id: plan
+    name: Plan
+    type: agent_output
+    role: planner
+    output: plan.md
+    approval: optional
+  - id: implement
+    name: Implement
+    type: agent_work
+    role: implementer
+    worktree: true
+    optional: true
+  - id: security_review
+    name: Security Review
+    type: agent_review
+    role: security
+    output: review.md
+  - id: verify
+    name: Verify
+    type: command_group
+    optional: true
+    commandsFromConfig: true
+  - id: approve
+    name: Human Approval
+    type: human_approval
+    approval: required

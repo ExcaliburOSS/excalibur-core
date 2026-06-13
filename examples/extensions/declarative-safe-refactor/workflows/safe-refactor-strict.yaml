@@ -1,0 +1,49 @@
+id: safe-refactor-strict
+type: workflow
+name: Safe Refactor (Strict)
+mode: structured
+supportedAutonomyLevels: [2, 3]
+description: >
+  Stricter variant of the built-in safe-refactor workflow: a required human
+  approval gates the refactor after the plan, and a second required approval
+  gates the end of the run after the diff review.
+phases:
+  - id: scope
+    name: Scope
+    type: agent_output
+    role: planner
+    modifiesFiles: false
+    output: scope.md
+  - id: invariants
+    name: Invariants
+    type: agent_output
+    role: architect
+    modifiesFiles: false
+    output: invariants.md
+  - id: plan_approval
+    name: Approve Plan
+    type: human_approval
+    approval: required
+  - id: baseline
+    name: Baseline Tests
+    type: command_group
+    commandsFromConfig: true
+  - id: refactor
+    name: Refactor
+    type: agent_work
+    role: implementer
+    worktree: true
+  - id: verify
+    name: Verify
+    type: command_group
+    commandsFromConfig: true
+    onFailure: abort
+  - id: diff_review
+    name: Diff Review
+    type: agent_review
+    role: reviewer
+    output: review.md
+  - id: diff_approval
+    name: Approve Diff
+    type: human_approval
+    approval: required

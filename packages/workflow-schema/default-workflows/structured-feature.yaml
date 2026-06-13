@@ -1,0 +1,42 @@
+id: structured-feature
+name: Structured Feature
+mode: structured
+supportedAutonomyLevels: [3, 4]
+phases:
+  - id: context
+    name: Context Discovery
+    type: agent_output
+    role: planner
+    output: context.md
+  - id: spec
+    name: Spec
+    type: agent_output
+    role: planner
+    output: spec.md
+    approval: optional
+  - id: plan
+    name: Plan
+    type: agent_output
+    role: planner
+    output: plan.md
+    approval: optional
+  - id: implement
+    name: Implement
+    type: agent_work
+    role: implementer
+    worktree: true
+    agents: 1
+  - id: verify
+    name: Verify
+    type: command_group
+    commandsFromConfig: true
+  - id: review
+    name: Review
+    type: agent_review
+    role: reviewer
+    output: review.md
+  - id: pr_summary
+    name: PR Summary
+    type: agent_output
+    role: release
+    output: pr-summary.md

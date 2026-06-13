@@ -1,0 +1,33 @@
+id: standard-feature
+name: Standard Feature
+mode: standard
+supportedAutonomyLevels: [3, 4]
+description: >
+  Plan, implement and verify a feature in an isolated branch or worktree,
+  ending with a review and a PR summary.
+phases:
+  - id: plan
+    name: Plan
+    type: agent_output
+    role: planner
+    output: plan.md
+  - id: implement
+    name: Implement
+    type: agent_work
+    role: implementer
+    worktree: true
+    agents: 1
+  - id: verify
+    name: Verify
+    type: command_group
+    commandsFromConfig: true
+  - id: review
+    name: Review
+    type: agent_review
+    role: reviewer
+    output: review.md
+  - id: pr_summary
+    name: PR Summary
+    type: agent_output
+    role: release
+    output: pr-summary.md

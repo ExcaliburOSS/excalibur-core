@@ -1,0 +1,30 @@
+id: programmatic-custom-command-agent
+name: Custom Command Agent (example)
+version: 0.1.0
+kind: programmatic
+description: >
+  Example programmatic extension that registers an agent adapter wrapping an
+  external CLI agent, plus a run.completed hook. Documentation example: build
+  it yourself before installing (the loader requires compiled JS in M1).
+entrypoint: dist/index.js
+contributes:
+  agentAdapters:
+    - acme-agent
+capabilities:
+  - agents.run
+configSchema:
+  command:
+    type: string
+    required: false
+  extraArgs:
+    type: string
+    required: false
+permissions:
+  process:
+    allowedCommands:
+      - acme-agent
+  filesystem:
+    read:
+      - .excalibur/**
+    write:
+      - .excalibur/runs/**

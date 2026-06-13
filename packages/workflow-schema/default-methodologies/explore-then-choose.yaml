@@ -1,0 +1,35 @@
+id: explore-then-choose
+name: Explore Alternatives
+category: delivery
+description: >
+  Generate and compare engineering approaches before committing: understand
+  the task, present alternatives with trade-offs, choose one and implement
+  it. Present results as approach exploration, never as model comparison.
+recommendedAutonomyLevels: [3, 4]
+useWhen:
+  - The decision is complex with several viable designs
+  - Trade-offs need to be explicit before implementation
+  - The team disagrees on the approach
+avoidWhen:
+  - One approach is clearly correct
+  - The change is small or mechanical
+defaultWorkflow: explore-alternatives
+phases:
+  - understand
+  - alternatives
+  - compare
+  - choose
+  - implement
+  - verify
+artifacts:
+  - context.md
+  - alternatives.md
+  - summary.md
+agentRoles:
+  - planner
+  - architect
+  - implementer
+  - reviewer
+approval:
+  choose: recommended
+riskProfile: medium

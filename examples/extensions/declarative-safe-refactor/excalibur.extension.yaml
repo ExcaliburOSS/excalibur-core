@@ -1,0 +1,13 @@
+id: declarative-safe-refactor
+name: Safe Refactor — Strict (example)
+version: 0.1.0
+kind: declarative
+description: >
+  Example declarative extension that ships a methodology together with the
+  workflow it prescribes: a stricter variant of the built-in safe-refactor
+  flow with mandatory human approval before and after the refactor.
+contributes:
+  methodologies:
+    - ./methodologies/safe-refactor-strict.yaml
+  workflows:
+    - ./workflows/safe-refactor-strict.yaml

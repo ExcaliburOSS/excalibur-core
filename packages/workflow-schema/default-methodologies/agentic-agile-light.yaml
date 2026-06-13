@@ -1,0 +1,27 @@
+id: agentic-agile-light
+name: Agentic Agile (Light)
+category: delivery
+description: >
+  Lightweight async agile rituals for agentic development: local daily
+  summaries and weekly plans generated from runs, patches and git activity.
+  A facilitation layer — it never imposes a specific agile process.
+recommendedAutonomyLevels: [0, 1]
+useWhen:
+  - The team wants async visibility without extra meetings
+  - You want daily summaries of local AI-assisted work
+  - You want a lightweight weekly plan from recent activity
+avoidWhen:
+  - You need enterprise planning, scheduling or governance
+  - The team is happy with its existing agile tooling
+defaultWorkflow: ask-repo
+phases:
+  - daily_summary
+  - weekly_planning
+outputs:
+  - reports/daily-YYYY-MM-DD.md
+  - reports/weekly-plan-YYYY-Www.md
+agentRoles:
+  - planner
+approval:
+  beforePr: none
+riskProfile: low

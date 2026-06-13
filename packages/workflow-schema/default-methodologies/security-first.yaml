@@ -1,0 +1,35 @@
+id: security-first
+name: Security-First Workflow
+category: delivery
+description: >
+  For security-sensitive changes: analyze risk, plan, implement carefully,
+  run a dedicated security review and tests, and require human approval.
+recommendedAutonomyLevels: [0, 1, 2, 3, 4]
+useWhen:
+  - The change touches auth, payments, contracts or permissions
+  - PII or secrets are involved
+  - A vulnerability or hardening task is being addressed
+avoidWhen:
+  - The change has no security surface
+  - Speed matters more than depth and the area is not sensitive
+defaultWorkflow: security-review
+phases:
+  - risk_analysis
+  - plan
+  - implement
+  - security_review
+  - verify
+  - approval
+artifacts:
+  - risk-analysis.md
+  - plan.md
+  - review.md
+agentRoles:
+  - security
+  - planner
+  - implementer
+  - reviewer
+approval:
+  plan: optional
+  beforePr: required
+riskProfile: high

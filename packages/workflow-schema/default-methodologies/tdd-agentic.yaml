@@ -1,0 +1,33 @@
+id: tdd-agentic
+name: Test-Driven Agentic Development
+category: delivery
+description: >
+  Reproduce the problem with a failing test first, implement until tests
+  pass, then review. Strong regression protection for critical logic.
+recommendedAutonomyLevels: [2, 3, 4]
+useWhen:
+  - You are fixing a bug and want regression protection
+  - The change touches critical business logic
+  - The expected behavior can be captured in a test
+avoidWhen:
+  - The behavior is hard to test automatically
+  - The change is purely cosmetic or documentation
+defaultWorkflow: standard-feature
+phases:
+  - reproduce
+  - failing_test
+  - implement
+  - verify
+  - review
+artifacts:
+  - diff.patch
+  - test-results.json
+  - tests.log
+  - review.md
+agentRoles:
+  - tester
+  - implementer
+  - reviewer
+approval:
+  beforePr: recommended
+riskProfile: medium

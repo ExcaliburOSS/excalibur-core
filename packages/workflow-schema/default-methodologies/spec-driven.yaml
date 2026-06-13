@@ -1,0 +1,38 @@
+id: spec-driven
+name: Spec-Driven Development
+description: >
+  A structured workflow for turning ambiguous tasks into specs, plans, tasks and
+  verified implementation.
+recommendedAutonomyLevels: [3, 4]
+useWhen:
+  - Requirements are ambiguous
+  - Multiple modules are involved
+  - Customer-facing behavior changes
+  - The team wants traceability
+avoidWhen:
+  - Tiny bugfixes
+  - Mechanical edits
+  - Urgent hotfixes
+defaultWorkflow: structured-feature
+phases:
+  - understand
+  - specify
+  - plan
+  - implement
+  - verify
+  - review
+artifacts:
+  - spec.md
+  - plan.md
+  - tasks.md
+  - verification.md
+agentRoles:
+  - planner
+  - implementer
+  - reviewer
+  - tester
+approval:
+  spec: optional
+  plan: optional
+  beforePr: recommended
+riskProfile: medium

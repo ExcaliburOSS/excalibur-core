@@ -1,0 +1,11 @@
+id: declarative-pr-summary-template
+name: PR Summary Template (example)
+version: 0.1.0
+kind: declarative
+description: >
+  Example declarative extension that overrides the built-in pr-summary prompt
+  template with a team-specific pull request format (Markdown file with YAML
+  front matter).
+contributes:
+  promptTemplates:
+    - ./prompts/pr-summary.md

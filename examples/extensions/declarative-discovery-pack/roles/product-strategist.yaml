@@ -1,0 +1,11 @@
+# Team-specific strategist role. The id `product-strategist` (dash) is
+# distinct from the built-in `product_strategist` role definition, so this
+# adds a role rather than overriding the built-in one.
+id: product-strategist
+type: role_definition
+name: Product Strategist (B2B SaaS)
+description: >
+  Frames every Discovery conversation around a named customer segment and a
+  measurable business outcome. Pushes back on feature requests that arrive
+  without evidence, and reframes solutions as problems before any scoping
+  starts.

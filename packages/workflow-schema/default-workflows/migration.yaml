@@ -1,0 +1,38 @@
+id: migration
+name: Migration
+mode: structured
+supportedAutonomyLevels: [3, 4]
+description: >
+  Plan and execute a migration with a backward-compatibility check,
+  rollback notes, tests and review.
+phases:
+  - id: migration_plan
+    name: Migration Plan
+    type: agent_output
+    role: planner
+    output: migration-plan.md
+    approval: optional
+  - id: compatibility
+    name: Backward Compatibility Check
+    type: agent_output
+    role: architect
+    output: compatibility.md
+  - id: implement
+    name: Implement
+    type: agent_work
+    role: implementer
+    worktree: true
+  - id: rollback_notes
+    name: Rollback Notes
+    type: agent_output
+    role: implementer
+    output: rollback-notes.md
+  - id: verify
+    name: Verify
+    type: command_group
+    commandsFromConfig: true
+  - id: review
+    name: Review
+    type: agent_review
+    role: reviewer
+    output: review.md

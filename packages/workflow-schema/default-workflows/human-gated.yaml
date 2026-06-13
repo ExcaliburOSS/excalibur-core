@@ -1,0 +1,35 @@
+id: human-gated
+name: Human-Gated Agentic Workflow
+mode: structured
+supportedAutonomyLevels: [3, 4]
+description: >
+  Full agentic workflow with mandatory human approval gates before
+  implementation and before the pull request.
+phases:
+  - id: plan
+    name: Plan
+    type: agent_output
+    role: planner
+    output: plan.md
+  - id: approve_plan
+    name: Approve Plan
+    type: human_approval
+    approval: required
+  - id: implement
+    name: Implement
+    type: agent_work
+    role: implementer
+    worktree: true
+  - id: verify
+    name: Verify
+    type: command_group
+    commandsFromConfig: true
+  - id: approve_changes
+    name: Approve Changes
+    type: human_approval
+    approval: required
+  - id: pull_request
+    name: Pull Request
+    type: pull_request
+    role: release
+    output: pr-summary.md

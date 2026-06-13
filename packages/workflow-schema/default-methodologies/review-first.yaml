@@ -1,0 +1,27 @@
+id: review-first
+name: Review-First Development
+category: delivery
+description: >
+  The developer writes the code; the AI reviews diffs and files and the
+  developer applies fixes before opening a PR.
+recommendedAutonomyLevels: [0, 1, 2]
+useWhen:
+  - You want a second pair of eyes on your changes
+  - Code review capacity is limited
+  - You are changing unfamiliar or critical code
+avoidWhen:
+  - You want the AI to implement the change itself
+  - The change is trivial and already covered by tests
+defaultWorkflow: review-only
+phases:
+  - write
+  - review
+  - fix
+  - pr
+artifacts:
+  - review.md
+agentRoles:
+  - reviewer
+approval:
+  beforePr: recommended
+riskProfile: low

@@ -1,0 +1,273 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { NativeAgentAdapter } from '@excalibur/agent-runtime';
+import { DEFAULT_PROVIDERS_CONFIG, ModelGateway } from '@excalibur/model-gateway';
+import type { ExcaliburEvent, ExcaliburEventType, ExcaliburConfig } from '@excalibur/shared';
+import { getDefaultWorkflow } from '@excalibur/workflow-schema';
+import { RunManager } from '../runs/run-manager';
+import { makeTempDir, removeDir } from '../test-utils';
+import { executeLocalRun } from './execute-local-run';
+
+describe('executeLocalRun', () => {
+  let repoRoot: string;
+  let runManager: RunManager;
+  let gateway: ModelGateway;
+  let adapter: NativeAgentAdapter;
+  const config: ExcaliburConfig = {
+    commands: { test: 'pnpm test', typecheck: 'pnpm typecheck' },
+    models: { default: 'mock' },
+  };
+
+  beforeEach(() => {
+    repoRoot = makeTempDir();
+    runManager = new RunManager(repoRoot);
+    gateway = new ModelGateway(DEFAULT_PROVIDERS_CONFIG);
+    adapter = new NativeAgentAdapter();
+  });
+
+  afterEach(() => {
+    removeDir(repoRoot);
+  });
+
+  function typesOf(events: ExcaliburEvent[]): ExcaliburEventType[] {
+    return events.map((event) => event.type);
+  }
+
+  it('runs fast-fix end-to-end: artifacts, simulated commands, lifecycle events', async () => {
+    const definition = getDefaultWorkflow('fast-fix');
+    expect(definition).toBeDefined();
+    const run = runManager.createRun({
+      title: 'Fix duplicated webhook handling in src/escrow/escrow.service.ts',
+      autonomyLevel: 3,
+      workflow: 'fast-fix',
+      methodology: 'fast-fix',
+      executionStyle: 'fast',
+    });
+
+    const streamed: ExcaliburEvent[] = [];
+    const record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      definition: definition!,
+      gateway,
+      adapter,
+      config,
+      onEvent: (event) => streamed.push(event),
+    });
+
+    expect(record.status).toBe('completed');
+    expect(record.completedAt).not.toBeNull();
+    expect(runManager.getRun(run.id).record.status).toBe('completed');
+
+    const events = runManager.readEvents(run.id);
+    const types = typesOf(events);
+
+    // Lifecycle bookends (Build Contract §4.6).
+    expect(types[0]).toBe('run_started');
+    expect(types[1]).toBe('workflow_selected');
+    expect(types[2]).toBe('methodology_selected');
+    expect(types[types.length - 1]).toBe('run_completed');
+    expect(events[events.length - 1]?.payload['status']).toBe('completed');
+
+    // The ISD log event with sources/warnings.
+    const log = events.find(
+      (event) => event.type === 'policy_decision' && event.payload['kind'] === 'log',
+    );
+    expect(log).toBeDefined();
+    expect(Array.isArray(log?.payload['instructionSources'])).toBe(true);
+    expect(Array.isArray(log?.payload['instructionWarnings'])).toBe(true);
+
+    // Every phase has bookends.
+    for (const phase of definition!.phases) {
+      expect(events.some((e) => e.type === 'phase_started' && e.phaseId === phase.id)).toBe(true);
+      expect(events.some((e) => e.type === 'phase_completed' && e.phaseId === phase.id)).toBe(true);
+    }
+
+    // patch_generation produced a diff artifact and event.
+    const patchEvent = events.find((event) => event.type === 'patch_generated');
+    expect(patchEvent).toBeDefined();
+    expect(String(patchEvent?.payload['diff'])).toContain('+++');
+    expect(readFileSync(join(run.dir, 'diff.patch'), 'utf8')).toContain(
+      'src/escrow/escrow.service.ts',
+    );
+
+    // apply_patch auto-approved (no confirm fn) → simulated patch_applied.
+    const applied = events.find((event) => event.type === 'patch_applied');
+    expect(applied?.payload['simulated']).toBe(true);
+    const autoApproval = events.find((event) => event.type === 'approval_approved');
+    expect(autoApproval?.payload['auto']).toBe(true);
+
+    // command_group simulated the configured commands and wrote test-results.json.
+    const commandEvents = events.filter((event) => event.type === 'command_completed');
+    expect(commandEvents.map((event) => event.payload['command'])).toEqual([
+      'pnpm test',
+      'pnpm typecheck',
+    ]);
+    for (const event of commandEvents) {
+      expect(event.payload['simulated']).toBe(true);
+      expect(event.payload['exitCode']).toBe(0);
+    }
+    const testResult = events.find((event) => event.type === 'test_result');
+    expect(testResult?.payload['status']).toBe('passed');
+    expect(testResult?.payload['simulated']).toBe(true);
+    const testResults = JSON.parse(readFileSync(join(run.dir, 'test-results.json'), 'utf8')) as {
+      status: string;
+      simulated: boolean;
+    };
+    expect(testResults).toMatchObject({ status: 'passed', simulated: true });
+
+    // Static + phase artifacts.
+    expect(existsSync(join(run.dir, 'workflow.yaml'))).toBe(true);
+    expect(existsSync(join(run.dir, 'methodology.yaml'))).toBe(true);
+    expect(existsSync(join(run.dir, 'input.md'))).toBe(true);
+    expect(readFileSync(join(run.dir, 'summary.md'), 'utf8')).toContain('Mock provider (M1)');
+
+    // model-calls.jsonl has one line per gateway call.
+    const modelCalls = readFileSync(join(run.dir, 'model-calls.jsonl'), 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(modelCalls.length).toBeGreaterThanOrEqual(2);
+    for (const call of modelCalls) {
+      expect(call['provider']).toBe('mock');
+      expect(typeof call['inputTokens']).toBe('number');
+    }
+
+    // onEvent saw exactly what was persisted.
+    expect(streamed.map((event) => event.id)).toEqual(events.map((event) => event.id));
+  });
+
+  it('runs structured-feature end-to-end with agent work and review artifacts', async () => {
+    const definition = getDefaultWorkflow('structured-feature');
+    const run = runManager.createRun({
+      title: 'Implement contract renewal reminders',
+      autonomyLevel: 4,
+      workflow: 'structured-feature',
+      methodology: 'spec-driven',
+      executionStyle: 'structured',
+    });
+
+    const record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      definition: definition!,
+      gateway,
+      adapter,
+      config,
+    });
+
+    expect(record.status).toBe('completed');
+    const events = runManager.readEvents(run.id);
+    const types = typesOf(events);
+
+    // agent_work forwarded the native adapter's scripted stream.
+    expect(types).toContain('tool_call');
+    expect(types).toContain('file_read');
+    expect(types).toContain('file_write');
+    expect(types).toContain('patch_generated');
+    const agentEvents = events.filter((event) => event.sessionId !== null);
+    expect(agentEvents.length).toBeGreaterThan(0);
+
+    // The diff travelled via patch_generated payload and was collected.
+    expect(existsSync(join(run.dir, 'diff.patch'))).toBe(true);
+
+    // Phase output artifacts.
+    for (const artifact of ['context.md', 'spec.md', 'plan.md', 'review.md', 'pr-summary.md']) {
+      expect(existsSync(join(run.dir, artifact))).toBe(true);
+    }
+    expect(readFileSync(join(run.dir, 'review.md'), 'utf8')).toContain('Mock provider (M1)');
+
+    // The user's repository files were never touched (only .excalibur/).
+    expect(existsSync(join(repoRoot, 'src'))).toBe(false);
+  });
+
+  it('cancels the run when a required human approval is denied', async () => {
+    const definition = getDefaultWorkflow('human-gated');
+    expect(definition).toBeDefined();
+    const run = runManager.createRun({
+      title: 'Carefully gated change',
+      autonomyLevel: 4,
+      workflow: 'human-gated',
+      executionStyle: 'careful',
+    });
+
+    const record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      definition: definition!,
+      gateway,
+      adapter,
+      config,
+      confirm: () => Promise.resolve(false),
+    });
+
+    expect(record.status).toBe('cancelled');
+    const events = runManager.readEvents(run.id);
+    expect(events.some((event) => event.type === 'approval_requested')).toBe(true);
+    expect(events.some((event) => event.type === 'approval_rejected')).toBe(true);
+    expect(events.some((event) => event.type === 'approval_approved')).toBe(false);
+    expect(events[events.length - 1]?.type).toBe('run_completed');
+    expect(events[events.length - 1]?.payload['status']).toBe('cancelled');
+  });
+
+  it('skips a denied optional apply_patch without failing the run', async () => {
+    const definition = getDefaultWorkflow('fast-fix');
+    const run = runManager.createRun({
+      title: 'Fix small bug',
+      autonomyLevel: 3,
+      workflow: 'fast-fix',
+      executionStyle: 'fast',
+    });
+
+    const record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      definition: definition!,
+      gateway,
+      adapter,
+      config,
+      confirm: () => Promise.resolve(false),
+    });
+
+    expect(record.status).toBe('completed');
+    const events = runManager.readEvents(run.id);
+    expect(events.some((event) => event.type === 'patch_applied')).toBe(false);
+    expect(events.some((event) => event.type === 'approval_rejected')).toBe(true);
+  });
+
+  it('marks the run failed and emits an error event when a phase throws', async () => {
+    const definition = getDefaultWorkflow('review-only');
+    const run = runManager.createRun({
+      title: 'Review something',
+      autonomyLevel: 0,
+      workflow: 'review-only',
+    });
+
+    const brokenGateway = {
+      chat: () => Promise.reject(new Error('gateway exploded')),
+      stream: gateway.stream.bind(gateway),
+    } as unknown as ModelGateway;
+
+    const record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      definition: definition!,
+      gateway: brokenGateway,
+      adapter,
+      config,
+    });
+
+    expect(record.status).toBe('failed');
+    const events = runManager.readEvents(run.id);
+    const errorEvent = events.find((event) => event.type === 'error');
+    expect(errorEvent?.payload['message']).toContain('gateway exploded');
+    expect(events[events.length - 1]?.type).toBe('run_completed');
+    expect(events[events.length - 1]?.payload['status']).toBe('failed');
+  });
+});

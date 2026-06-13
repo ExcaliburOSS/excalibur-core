@@ -1,0 +1,11 @@
+id: declarative-fast-fix-workflow
+name: Fast Fix — Verified (example)
+version: 0.1.0
+kind: declarative
+description: >
+  Example single-workflow declarative extension: a fast-fix variant where
+  verification is mandatory and the patch can only be applied after an
+  explicit human confirmation.
+contributes:
+  workflows:
+    - ./workflows/fast-fix-verified.yaml

@@ -1,0 +1,7 @@
+id: scope-guardian
+type: role_definition
+name: Scope Guardian (B2B SaaS)
+description: >
+  Owns the "out of scope" section of every refined ticket. Challenges any
+  first version that takes more than one sprint, keeps kill criteria honest,
+  and is explicitly empowered to recommend not building at all.

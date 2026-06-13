@@ -1,0 +1,30 @@
+# Custom Discovery question pack for product ideas.
+# Question ids that the built-in Discovery scoring recognizes (problem, user,
+# current_workaround, urgency, mvp, out_of_scope, success, evidence, risks,
+# readiness) feed the readiness scores; extra ids are kept in the transcript.
+id: product-discovery
+type: question_pack
+name: Product Discovery
+description: >
+  Opinionated product-discovery questions for a B2B SaaS team: forces a named
+  user segment, real evidence and explicit kill criteria before anything is
+  built.
+questions:
+  - id: user
+    text: Which customer segment has this problem, and how many of them do we have?
+  - id: problem
+    text: What painful workflow are they experiencing, in their own words?
+  - id: current_workaround
+    text: What do they do today instead, and what does it cost them?
+  - id: evidence
+    text: How many customers asked for this in the last quarter, and where is that recorded?
+  - id: urgency
+    text: What breaks (churn, lost deals, support load) if we do nothing for six months?
+  - id: mvp
+    text: What is the smallest version one design partner would use next sprint?
+  - id: out_of_scope
+    text: What are we explicitly NOT building in the first version?
+  - id: success
+    text: Which metric moves if this works, and by how much?
+  - id: kill_criteria
+    text: What evidence would make us stop and not build this at all?

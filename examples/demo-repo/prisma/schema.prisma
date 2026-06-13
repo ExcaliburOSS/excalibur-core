@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ContractStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum EscrowStatus {
+  PENDING_FUNDING
+  FUNDED
+  RELEASED
+  REFUNDED
+}
+
+model Contract {
+  id           String         @id @default(cuid())
+  title        String
+  status       ContractStatus @default(DRAFT)
+  clientId     String
+  freelancerId String
+  escrow       EscrowAccount?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([clientId])
+  @@index([freelancerId])
+}
+
+model EscrowAccount {
+  id                  String               @id @default(cuid())
+  contract            Contract             @relation(fields: [contractId], references: [id])
+  contractId          String               @unique
+  status              EscrowStatus         @default(PENDING_FUNDING)
+  amountCents         Int
+  releasedAmountCents Int                  @default(0)
+  currency            String               @default("EUR")
+  releases            ReleaseTransaction[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model ReleaseTransaction {
+  id                String        @id @default(cuid())
+  escrowAccount     EscrowAccount @relation(fields: [escrowAccountId], references: [id])
+  escrowAccountId   String
+  amountCents       Int
+  providerReference String
+  createdAt         DateTime      @default(now())
+
+  @@index([escrowAccountId])
+}

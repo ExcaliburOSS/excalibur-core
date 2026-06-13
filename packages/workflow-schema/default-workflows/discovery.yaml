@@ -1,0 +1,37 @@
+id: discovery
+name: Discovery
+mode: discovery
+supportedAutonomyLevels: [0, 1]
+description: >
+  Lightweight conversational pre-work flow to clarify ideas, tickets, feedback or technical initiatives before implementation.
+phases:
+  - id: intake
+    name: Intake
+    type: assistant_interaction
+    role: product_strategist
+    modifiesFiles: false
+    output: intake.md
+  - id: questions
+    name: Guided Questions
+    type: discovery_questions
+    role: product_strategist
+    modifiesFiles: false
+    output: transcript.md
+  - id: synthesis
+    name: Synthesis
+    type: agent_output
+    role: discovery_reviewer
+    modifiesFiles: false
+    output: discovery-summary.md
+  - id: readiness
+    name: Readiness Assessment
+    type: agent_output
+    role: scope_guardian
+    modifiesFiles: false
+    output: readiness-assessment.md
+  - id: recommendation
+    name: Recommendation
+    type: agent_output
+    role: scope_guardian
+    modifiesFiles: false
+    output: recommendation.md

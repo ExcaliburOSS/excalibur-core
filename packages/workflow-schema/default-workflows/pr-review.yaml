@@ -1,0 +1,20 @@
+id: pr-review
+name: PR Review
+mode: review
+supportedAutonomyLevels: [0, 1]
+description: >
+  Review a pull request or local diff and produce structured findings.
+  Read-only: never modifies files.
+phases:
+  - id: context
+    name: Context
+    type: agent_output
+    role: planner
+    modifiesFiles: false
+    output: context.md
+  - id: review
+    name: Review Diff
+    type: agent_review
+    role: reviewer
+    modifiesFiles: false
+    output: review.md

@@ -1,0 +1,75 @@
+import { Command } from 'commander';
+import { defaultDeps, type CliDeps } from './deps';
+import { registerApplyCommand } from './commands/apply';
+import { registerAskCommand } from './commands/ask';
+import { registerBranchCommand } from './commands/branch';
+import { registerCmuxCommand } from './commands/cmux';
+import { registerDailyCommand } from './commands/daily';
+import { registerDiscoveryCommand } from './commands/discovery';
+import { registerDoctorCommand } from './commands/doctor';
+import { registerExplainCommand } from './commands/explain';
+import { registerExtensionsCommand } from './commands/extensions';
+import { registerInitCommand } from './commands/init';
+import { registerInstructionsCommand } from './commands/instructions';
+import { registerLoginCommands } from './commands/login';
+import { registerLogsCommand } from './commands/logs';
+import { registerMethodologiesCommand } from './commands/methodologies';
+import { registerModelsCommand } from './commands/models';
+import { registerPatchCommand } from './commands/patch';
+import { registerPrCommands } from './commands/pr';
+import { registerRejectCommand } from './commands/reject';
+import { registerReviewCommand } from './commands/review';
+import { registerRunCommand } from './commands/run';
+import { registerSkillsCommand } from './commands/skills';
+import { registerStatusCommand } from './commands/status';
+import { registerWeeklyPlanCommand } from './commands/weekly-plan';
+import { registerWorkflowsCommand } from './commands/workflows';
+
+export const CLI_VERSION = '0.1.0';
+
+/**
+ * Builds the `excalibur` commander program (Build Contract §4.9). Commander
+ * never exits the process itself (`exitOverride`); `main.ts` maps every
+ * thrown error onto the contract exit codes (0/1/2).
+ */
+export function buildProgram(overrides: Partial<CliDeps> = {}): Command {
+  const deps = defaultDeps(overrides);
+  const program = new Command();
+
+  program
+    .name('excalibur')
+    .description('Excalibur Core — local-first AI-assisted and agentic development')
+    .version(CLI_VERSION)
+    .exitOverride()
+    .configureOutput({
+      writeOut: (text: string): void => deps.ui.writeRaw(text),
+      writeErr: (text: string): void => deps.ui.writeRaw(text),
+    });
+
+  registerInitCommand(program, deps);
+  registerAskCommand(program, deps);
+  registerExplainCommand(program, deps);
+  registerReviewCommand(program, deps);
+  registerPatchCommand(program, deps);
+  registerRunCommand(program, deps);
+  registerStatusCommand(program, deps);
+  registerLogsCommand(program, deps);
+  registerApplyCommand(program, deps);
+  registerBranchCommand(program, deps);
+  registerRejectCommand(program, deps);
+  registerPrCommands(program, deps);
+  registerCmuxCommand(program, deps);
+  registerDoctorCommand(program, deps);
+  registerWorkflowsCommand(program, deps);
+  registerMethodologiesCommand(program, deps);
+  registerModelsCommand(program, deps);
+  registerDailyCommand(program, deps);
+  registerWeeklyPlanCommand(program, deps);
+  registerDiscoveryCommand(program, deps);
+  registerLoginCommands(program, deps);
+  registerExtensionsCommand(program, deps);
+  registerInstructionsCommand(program, deps);
+  registerSkillsCommand(program, deps);
+
+  return program;
+}
