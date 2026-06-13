@@ -2,6 +2,8 @@
 import { render, useApp } from 'ink';
 import { useEffect, useReducer, type ReactElement } from 'react';
 import { PhaseTimeline, type Phase, type ApprovalPrompt } from './components/PhaseTimeline.js';
+import { ThemeProvider } from './ThemeContext.js';
+import { getColors, resolveThemeMode } from './theme.js';
 
 /**
  * Animated demo of <PhaseTimeline> with mock data — the M-Shell visual seed.
@@ -208,4 +210,11 @@ function App(): ReactElement {
   );
 }
 
-render(<App />);
+// Detect the terminal background BEFORE Ink takes over stdin, then render with
+// the matching palette so the demo is readable on light and dark terminals.
+const mode = await resolveThemeMode();
+render(
+  <ThemeProvider colors={getColors(mode)}>
+    <App />
+  </ThemeProvider>,
+);
