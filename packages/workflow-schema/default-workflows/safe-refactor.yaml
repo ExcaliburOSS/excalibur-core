@@ -29,6 +29,12 @@ phases:
     name: Verify
     type: command_group
     commandsFromConfig: true
+  - id: document
+    name: Document
+    type: agent_work
+    role: architect
+    optional: true
+    output: documentation.md
   - id: diff_review
     name: Diff Review
     type: agent_review

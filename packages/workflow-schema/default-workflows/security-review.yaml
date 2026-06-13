@@ -34,6 +34,11 @@ phases:
     type: command_group
     optional: true
     commandsFromConfig: true
+  - id: document
+    name: Document
+    type: agent_work
+    role: architect
+    output: documentation.md
   - id: approve
     name: Human Approval
     type: human_approval

@@ -148,6 +148,18 @@ describe('DEFAULT_WORKFLOWS', () => {
     const approvals = humanGated?.phases.filter((phase) => phase.type === 'human_approval');
     expect(approvals?.every((phase) => phase.approval === 'required')).toBe(true);
   });
+
+  it('adds a Document phase after Verify to the code-shipping workflows', () => {
+    for (const id of ['standard-feature', 'safe-refactor', 'migration', 'security-review']) {
+      const phases = getDefaultWorkflow(id)?.phases ?? [];
+      const ids = phases.map((phase) => phase.id);
+      expect(ids, `${id} must include a document phase`).toContain('document');
+      const document = phases.find((phase) => phase.id === 'document');
+      expect(document?.type).toBe('agent_work');
+      // Documentation comes after the change is verified so docs reflect reality.
+      expect(ids.indexOf('document')).toBeGreaterThan(ids.indexOf('verify'));
+    }
+  });
 });
 
 describe('getDefaultWorkflow', () => {

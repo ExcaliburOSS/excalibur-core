@@ -125,7 +125,7 @@ mode: standard
 supportedAutonomyLevels: [3, 4]
 description: >
   Plan, implement and verify a feature in an isolated branch or worktree,
-  ending with a review and a PR summary.
+  then document the change, review it and end with a PR summary.
 phases:
   - id: plan
     name: Plan
@@ -142,6 +142,11 @@ phases:
     name: Verify
     type: command_group
     commandsFromConfig: true
+  - id: document
+    name: Document
+    type: agent_work
+    role: architect
+    output: documentation.md
   - id: review
     name: Review
     type: agent_review
@@ -231,6 +236,12 @@ phases:
     name: Verify
     type: command_group
     commandsFromConfig: true
+  - id: document
+    name: Document
+    type: agent_work
+    role: architect
+    optional: true
+    output: documentation.md
   - id: diff_review
     name: Diff Review
     type: agent_review
@@ -298,6 +309,11 @@ phases:
     type: command_group
     optional: true
     commandsFromConfig: true
+  - id: document
+    name: Document
+    type: agent_work
+    role: architect
+    output: documentation.md
   - id: approve
     name: Human Approval
     type: human_approval
@@ -311,7 +327,7 @@ mode: structured
 supportedAutonomyLevels: [3, 4]
 description: >
   Plan and execute a migration with a backward-compatibility check,
-  rollback notes, tests and review.
+  rollback notes, tests, documentation and review.
 phases:
   - id: migration_plan
     name: Migration Plan
@@ -338,6 +354,11 @@ phases:
     name: Verify
     type: command_group
     commandsFromConfig: true
+  - id: document
+    name: Document
+    type: agent_work
+    role: architect
+    output: documentation.md
   - id: review
     name: Review
     type: agent_review

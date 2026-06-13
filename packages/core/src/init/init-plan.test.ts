@@ -103,6 +103,7 @@ describe('generateInitPlan (examples/demo-repo)', () => {
     const paths = plan.files.map((file) => file.relPath);
     expect(paths).toContain('.excalibur/instructions/architecture.md');
     expect(paths).toContain('.excalibur/instructions/testing.md');
+    expect(paths).toContain('.excalibur/instructions/documentation.md');
     expect(paths).toContain('.excalibur/instructions/security.md');
     expect(paths).toContain('.excalibur/policies/standard-safe.yaml');
     expect(paths).toContain('.excalibur/policies/sensitive-paths.yaml');
@@ -237,6 +238,8 @@ describe('generateInitPlan — root AGENTS.md generation', () => {
     expect(agents?.content).toContain('cross-tool standard');
     expect(agents?.content).toContain('## Commands');
     expect(agents?.content).toContain('pnpm test');
+    // Documentation is a default convention, on par with testing.
+    expect(agents?.content).toContain('Update the relevant documentation');
     expect(agents?.content).toContain('## Sensitive areas');
     expect(plan.summaryLines.some((line) => line.includes('Bootstrapping AGENTS.md'))).toBe(true);
   });

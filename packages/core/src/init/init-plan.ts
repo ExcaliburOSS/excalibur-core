@@ -19,7 +19,7 @@ import { readTextIfExists, writeFileEnsured } from '../internal/fs-utils';
  * - minimal (default): ONLY `config.yaml` + `instructions/general.md` +
  *   `extensions.yaml` (plus `models/providers.yaml` when provider setup was
  *   completed). Built-in catalogs work without local files.
- * - team: + instructions/{architecture,testing,security}.md +
+ * - team: + instructions/{architecture,testing,documentation,security}.md +
  *   policies/{standard-safe,sensitive-paths}.yaml + models/{providers,routing}.yaml.
  * - full: exports every built-in catalog for inspection/customization.
  *
@@ -184,6 +184,7 @@ function buildGeneralInstructions(analysis: RepoAnalysis): string {
     '- Keep changes small and reviewable.',
     '- Never commit secrets; use environment variables.',
     '- Run the detected test and typecheck commands before declaring work done.',
+    '- Update the relevant documentation (ADRs, design/module docs, API reference, CHANGELOG) before declaring work done.',
     '',
   ].join('\n');
 }
@@ -213,6 +214,21 @@ function buildTestingInstructions(analysis: RepoAnalysis): string {
       : '- No test command detected — add one before relying on agent verification.',
     '',
     'Describe the testing strategy (unit/integration/e2e) and coverage expectations here.',
+    '',
+  ].join('\n');
+}
+
+function buildDocumentationInstructions(analysis: RepoAnalysis): string {
+  const modules = analysis.patterns.domainDirs;
+  return [
+    '# Documentation instructions',
+    '',
+    '- Treat documentation as part of "done" — like passing tests, not an afterthought.',
+    '- Record notable technical decisions as ADRs (e.g. `docs/adr/NNNN-title.md`).',
+    `- Keep module and public API docs current with the change${modules.length > 0 ? ` (modules: ${modules.join(', ')})` : ''}.`,
+    '- Add a `CHANGELOG.md` entry for any user-facing or behavioural change.',
+    '',
+    'Describe where documentation lives (docs site, ADR directory, API reference) and the conventions to follow here.',
     '',
   ].join('\n');
 }
@@ -306,6 +322,7 @@ function buildAgentsMd(analysis: RepoAnalysis): string {
     '',
     '- Keep changes small, focused and reviewable.',
     verifyLine,
+    '- Update the relevant documentation (ADRs, module/API docs, CHANGELOG) as part of any change — not just code.',
     '- Never commit secrets; use environment variables.',
     '',
     '## Sensitive areas',
@@ -412,6 +429,10 @@ function teamFiles(analysis: RepoAnalysis, opts: GenerateInitPlanOptions): Plann
     {
       relPath: `${EXCALIBUR_DIR}/instructions/testing.md`,
       content: buildTestingInstructions(analysis),
+    },
+    {
+      relPath: `${EXCALIBUR_DIR}/instructions/documentation.md`,
+      content: buildDocumentationInstructions(analysis),
     },
     {
       relPath: `${EXCALIBUR_DIR}/instructions/security.md`,

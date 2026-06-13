@@ -4,7 +4,7 @@ mode: structured
 supportedAutonomyLevels: [3, 4]
 description: >
   Plan and execute a migration with a backward-compatibility check,
-  rollback notes, tests and review.
+  rollback notes, tests, documentation and review.
 phases:
   - id: migration_plan
     name: Migration Plan
@@ -31,6 +31,11 @@ phases:
     name: Verify
     type: command_group
     commandsFromConfig: true
+  - id: document
+    name: Document
+    type: agent_work
+    role: architect
+    output: documentation.md
   - id: review
     name: Review
     type: agent_review
