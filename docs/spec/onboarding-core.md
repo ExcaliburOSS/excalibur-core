@@ -24,7 +24,10 @@ Detection additions beyond context-engine's existing pins: monorepo markers (pnp
 .excalibur/instructions/general.md
 .excalibur/extensions.yaml          # implementation decision: keeps registry explicit
 [.excalibur/models/providers.yaml]  # only if model setup completed
+[AGENTS.md]                         # repo root — bootstrapped ONLY when absent (see below)
 ```
+
+**Root `AGENTS.md` (cross-tool standard, OpenCode-style).** All init modes also bootstrap an `AGENTS.md` at the **repository root** when one does NOT already exist, generated deterministically from the analysis (stack, commands, layout, sensitive areas). It is the standard read by Excalibur, Cursor, Copilot, OpenCode et al., so it benefits the whole toolchain. An existing AGENTS.md is **never overwritten** — ISD detects and references it instead (existence is detected via `instructionSources`, so even `--force` leaves it untouched). AI enrichment of the generated prose arrives in M2.
 
 Built-in workflows/methodologies/policies work WITHOUT local files (registered via built-in extensions). Never overwrite existing files without confirmation; if `.excalibur/` exists, run in update mode showing a diff-style "would change" list before applying.
 

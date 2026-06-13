@@ -229,6 +229,94 @@ function buildSecurityInstructions(analysis: RepoAnalysis): string {
   ].join('\n');
 }
 
+const COMMAND_LABELS: Record<string, string> = {
+  test: 'Test',
+  lint: 'Lint',
+  typecheck: 'Typecheck',
+  build: 'Build',
+};
+
+/** True when the repository already has a root `AGENTS.md` (detected by ISD). */
+function hasRootAgentsMd(analysis: RepoAnalysis): boolean {
+  return analysis.instructionSources.some(
+    (source) => source.format === 'agents_md' && source.path === 'AGENTS.md',
+  );
+}
+
+/**
+ * Generates the cross-tool `AGENTS.md` standard (read by Excalibur, Cursor,
+ * Copilot, OpenCode and others) from the repository analysis. Deterministic in
+ * M1 (template filled from detected facts); AI enrichment of the prose arrives
+ * in M2. Only ever generated when the repo has no AGENTS.md — an existing one is
+ * respected (ISD), never overwritten.
+ */
+function buildAgentsMd(analysis: RepoAnalysis): string {
+  const name = projectName(analysis);
+  const commands = detectedCommands(analysis);
+  const pm = analysis.packageManager;
+  const patterns = analysis.patterns;
+
+  const commandLines: string[] = [];
+  if (pm !== null) {
+    commandLines.push(`- Install: \`${pm} install\``);
+  }
+  for (const key of ['test', 'lint', 'typecheck', 'build'] as const) {
+    const command = commands[key];
+    if (command !== undefined) {
+      commandLines.push(`- ${COMMAND_LABELS[key]}: \`${command}\``);
+    }
+  }
+
+  const layout: string[] = [
+    `- Backend: ${patterns.hasBackend ? 'yes' : 'no'} · Frontend: ${patterns.hasFrontend ? 'yes' : 'no'}`,
+  ];
+  if (patterns.apiDirs.length > 0) layout.push(`- API: ${patterns.apiDirs.join(', ')}`);
+  if (patterns.domainDirs.length > 0) layout.push(`- Domain modules: ${patterns.domainDirs.join(', ')}`);
+  if (patterns.testDirs.length > 0) layout.push(`- Tests: ${patterns.testDirs.join(', ')}`);
+  if (patterns.migrationDirs.length > 0) layout.push(`- Migrations: ${patterns.migrationDirs.join(', ')}`);
+
+  const verifyLine =
+    commands.test !== undefined
+      ? `- Run \`${commands.test}\`${commands.typecheck !== undefined ? ` and \`${commands.typecheck}\`` : ''} before considering a change done.`
+      : '- Add a test command so changes can be verified before they are considered done.';
+
+  return [
+    `# ${name}`,
+    '',
+    '> Guidance for AI coding agents working in this repository. `AGENTS.md` is the',
+    '> cross-tool standard read by Excalibur, Cursor, GitHub Copilot, OpenCode and others.',
+    '> Excalibur generated this from the repository on first `init` — edit it freely and',
+    '> keep it in Git. Excalibur-specific configuration lives in `.excalibur/`.',
+    '',
+    '## Stack',
+    '',
+    `- Languages: ${analysis.languages.join(', ') || 'unknown'}`,
+    `- Frameworks: ${analysis.frameworks.join(', ') || 'none detected'}`,
+    `- Package manager: ${pm ?? 'unknown'}`,
+    '',
+    '## Commands',
+    '',
+    commandLines.length > 0 ? commandLines.join('\n') : '_No commands detected — add them here._',
+    '',
+    '## Project layout',
+    '',
+    layout.join('\n'),
+    '',
+    '## Conventions',
+    '',
+    '- Keep changes small, focused and reviewable.',
+    verifyLine,
+    '- Never commit secrets; use environment variables.',
+    '',
+    '## Sensitive areas',
+    '',
+    patterns.sensitivePaths.length > 0
+      ? `Take extra care and expect human review for: ${patterns.sensitivePaths.join(', ')}.`
+      : 'Treat authentication, billing, payments and secret-handling code as sensitive (human review).',
+    '',
+  ].join('\n');
+}
+
 function sensitivePathGlobs(analysis: RepoAnalysis): string[] {
   const globs: string[] = [];
   for (const sensitivePath of analysis.patterns.sensitivePaths) {
@@ -433,6 +521,10 @@ function detectionSummary(analysis: RepoAnalysis, mode: InitMode, files: InitPla
     }
   }
 
+  if (files.some((file) => file.relPath === 'AGENTS.md' && !file.exists)) {
+    lines.push('Bootstrapping AGENTS.md (cross-tool agent standard) at the project root.');
+  }
+
   lines.push('Safety: standard-safe — No files will be modified without approval.');
 
   const updates = files.filter((file) => file.exists);
@@ -466,6 +558,13 @@ export function generateInitPlan(
   }
   if (opts.mode === 'full') {
     planned.push(...fullCatalogFiles());
+  }
+
+  // Bootstrap the cross-tool AGENTS.md standard at the repo root when absent
+  // (all modes). An existing AGENTS.md is respected (ISD references it) and
+  // never overwritten.
+  if (!hasRootAgentsMd(analysis)) {
+    planned.push({ relPath: 'AGENTS.md', content: buildAgentsMd(analysis) });
   }
 
   const files: InitPlanFile[] = planned.map((file) => ({

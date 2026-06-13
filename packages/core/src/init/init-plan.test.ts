@@ -6,8 +6,9 @@ import { analyzeRepository, type RepoAnalysis } from '@excalibur/context-engine'
 import { BUILT_IN_EXTENSIONS } from '@excalibur/built-in-extensions';
 import { excaliburConfigSchema } from '@excalibur/shared';
 import { DEFAULT_METHODOLOGIES, DEFAULT_WORKFLOWS } from '@excalibur/workflow-schema';
-import { demoRepoDir, makeTempDir, removeDir } from '../test-utils';
+import { demoRepoDir, fakeAnalysis, makeTempDir, removeDir } from '../test-utils';
 import { applyInitPlan, generateInitPlan } from './init-plan';
+import type { InstructionSource } from '@excalibur/shared';
 
 const DEMO_REPO = demoRepoDir();
 
@@ -206,5 +207,51 @@ describe('applyInitPlan', () => {
 
     const applied = applyInitPlan(repoRoot, updated, { overwrite: false });
     expect(applied.skipped.length).toBe(updated.files.length);
+  });
+});
+
+describe('generateInitPlan — root AGENTS.md generation', () => {
+  function agentsMdSource(): InstructionSource {
+    return {
+      id: 'agents-project',
+      scope: 'project',
+      format: 'agents_md',
+      kind: 'instruction',
+      path: 'AGENTS.md',
+      title: null,
+      contentHash: 'deadbeef',
+      trustLevel: 'trusted',
+      enabled: true,
+      importedAs: 'instruction',
+      metadata: {},
+    };
+  }
+
+  it('generates a root AGENTS.md when the repo has none', () => {
+    const plan = generateInitPlan(fakeAnalysis(), { mode: 'minimal' });
+    const agents = plan.files.find((file) => file.relPath === 'AGENTS.md');
+    expect(agents).toBeDefined();
+    expect(agents?.exists).toBe(false);
+    // Cross-tool standard content, filled from the analysis.
+    expect(agents?.content).toContain('# fake-repo');
+    expect(agents?.content).toContain('cross-tool standard');
+    expect(agents?.content).toContain('## Commands');
+    expect(agents?.content).toContain('pnpm test');
+    expect(agents?.content).toContain('## Sensitive areas');
+    expect(plan.summaryLines.some((line) => line.includes('Bootstrapping AGENTS.md'))).toBe(true);
+  });
+
+  it('never generates AGENTS.md when one already exists (respects ISD)', () => {
+    const analysis = fakeAnalysis({ instructionSources: [agentsMdSource()] });
+    const plan = generateInitPlan(analysis, { mode: 'minimal' });
+    expect(plan.files.some((file) => file.relPath === 'AGENTS.md')).toBe(false);
+    expect(plan.summaryLines.some((line) => line.includes('Bootstrapping AGENTS.md'))).toBe(false);
+  });
+
+  it('generates AGENTS.md in team and full modes too when absent', () => {
+    for (const mode of ['team', 'full'] as const) {
+      const plan = generateInitPlan(fakeAnalysis(), { mode });
+      expect(plan.files.some((file) => file.relPath === 'AGENTS.md')).toBe(true);
+    }
   });
 });
