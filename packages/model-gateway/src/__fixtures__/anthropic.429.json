@@ -1,0 +1,7 @@
+{
+  "type": "error",
+  "error": {
+    "type": "rate_limit_error",
+    "message": "Number of requests has exceeded your rate limit. (key sk-ant-api03-EXAMPLEKEY1234567890abcdEXAMPLE echoed by upstream)"
+  }
+}

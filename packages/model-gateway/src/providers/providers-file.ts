@@ -28,6 +28,16 @@ export const providerConfigSchema = z.object({
   model: z.string().min(1).optional(),
   inputCostPerMillionTokensCents: z.number().finite().nonnegative().optional(),
   outputCostPerMillionTokensCents: z.number().finite().nonnegative().optional(),
+  /** Per-request timeout in ms for real provider adapters (OSS-4, M2). */
+  timeoutMs: z.number().int().positive().optional(),
+  /** Retries after the first attempt for retryable failures (OSS-4, M2). */
+  maxRetries: z.number().int().nonnegative().optional(),
+  /** Advertised context-window size (tokens); informational for clients. */
+  contextWindow: z.number().int().positive().optional(),
+  /** Anthropic `anthropic-version` header override (e.g. `2023-06-01`). */
+  apiVersion: z.string().min(1).optional(),
+  /** OpenAI-compatible `openai-organization` header value. */
+  organization: z.string().min(1).optional(),
 });
 export type ProviderConfig = z.infer<typeof providerConfigSchema>;
 

@@ -1,6 +1,6 @@
 import { ProviderError } from '@excalibur/shared';
 import { computeCostCents } from '../cost/cost';
-import { createProvider } from '../providers/create-provider';
+import { createProvider, type CreateProviderDeps } from '../providers/create-provider';
 import type { ProviderConfig, ProvidersFileConfig } from '../providers/providers-file';
 import type { ChatDelta, ChatInput, ChatOutput, ModelProviderAdapter } from '../types';
 
@@ -8,16 +8,25 @@ import type { ChatDelta, ChatInput, ChatOutput, ModelProviderAdapter } from '../
  * Model gateway (Build Contract §4.3): resolves the provider by explicit name
  * or configured default, delegates chat/stream to the adapter and computes
  * `costCents` from the provider's cost metadata via `computeCostCents`.
+ *
+ * An optional second constructor argument injects real provider adapters
+ * (OSS-4, M2). Without it, `new ModelGateway(cfg)` behaves exactly as in M1
+ * (mock executes; real types throw `provider_not_implemented`).
  */
 
 export type GatewayChatInput = ChatInput & { provider?: string };
 
+/** Optional dependencies enabling real provider adapters (OSS-4, M2). */
+export type ModelGatewayDeps = CreateProviderDeps;
+
 export class ModelGateway {
   private readonly config: ProvidersFileConfig;
+  private readonly deps: ModelGatewayDeps | undefined;
   private readonly adapters = new Map<string, ModelProviderAdapter>();
 
-  constructor(cfg: ProvidersFileConfig) {
+  constructor(cfg: ProvidersFileConfig, deps?: ModelGatewayDeps) {
     this.config = cfg;
+    this.deps = deps;
   }
 
   /** Named provider entries (the `default` pointer is not a provider). */
@@ -77,7 +86,7 @@ export class ModelGateway {
     if (cached !== undefined) {
       return cached;
     }
-    const adapter = createProvider(name, cfg);
+    const adapter = createProvider(name, cfg, this.deps);
     this.adapters.set(name, adapter);
     return adapter;
   }

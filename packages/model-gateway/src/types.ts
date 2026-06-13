@@ -16,6 +16,18 @@ export interface ChatInput {
   temperature?: number;
   maxTokens?: number;
   metadata?: Record<string, unknown>;
+  /**
+   * Per-request timeout in milliseconds for real provider adapters (OSS-4, M2).
+   * Overrides the provider's configured `timeoutMs`. Ignored by the mock
+   * provider. Optional and additive — existing callers are unaffected.
+   */
+  timeoutMs?: number;
+  /**
+   * Caller-supplied abort signal for real provider adapters (OSS-4, M2).
+   * Aborting cancels the in-flight HTTP request. Ignored by the mock provider.
+   * Optional and additive — existing callers are unaffected.
+   */
+  signal?: AbortSignal;
 }
 
 export interface ChatUsage {

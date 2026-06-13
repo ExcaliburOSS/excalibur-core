@@ -1,0 +1,13 @@
+{
+  "id": "msg_01ABC",
+  "type": "message",
+  "role": "assistant",
+  "model": "test-anthropic-model",
+  "content": [
+    { "type": "text", "text": "Hello from " },
+    { "type": "text", "text": "the model." }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": { "input_tokens": 42, "output_tokens": 7 }
+}

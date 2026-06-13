@@ -10,12 +10,14 @@ import {
   type LoadedExcaliburConfig,
 } from '@excalibur/core';
 import {
+  CORE_PROVIDER_FACTORIES,
   DEFAULT_PROVIDERS_CONFIG,
   ModelGateway,
   loadProvidersFile,
   redactSecrets,
   type ChatInput,
   type ChatOutput,
+  type ModelGatewayDeps,
   type ProvidersFileConfig,
 } from '@excalibur/model-gateway';
 import { ProviderError, type ExcaliburConfig, type InstructionSource } from '@excalibur/shared';
@@ -50,6 +52,15 @@ export function defaultProviderName(config: ProvidersFileConfig): string {
 }
 
 /**
+ * Real-provider wiring (OSS-4, M2): a configured `providers.yaml` gets real
+ * adapters (anthropic / openai-compatible / vllm / custom / ollama) via the
+ * Core factory map and the default fetch transport. The built-in mock stays
+ * the zero-config default, and a real provider that fails to construct (e.g. a
+ * missing key) falls back to mock through `chatWithGuidance`.
+ */
+const GATEWAY_DEPS: ModelGatewayDeps = { factories: CORE_PROVIDER_FACTORIES };
+
+/**
  * Loads the model gateway for a repository: `providers.yaml` when present,
  * the built-in mock default otherwise (every command works without init).
  */
@@ -58,14 +69,14 @@ export function loadGatewayContext(repoRoot: string): GatewayContext {
   if (existsSync(filePath)) {
     const providers = loadProvidersFile(filePath);
     return {
-      gateway: new ModelGateway(providers),
+      gateway: new ModelGateway(providers, GATEWAY_DEPS),
       providers,
       providersPath: filePath,
       providerName: defaultProviderName(providers),
     };
   }
   return {
-    gateway: new ModelGateway(DEFAULT_PROVIDERS_CONFIG),
+    gateway: new ModelGateway(DEFAULT_PROVIDERS_CONFIG, GATEWAY_DEPS),
     providers: DEFAULT_PROVIDERS_CONFIG,
     providersPath: null,
     providerName: defaultProviderName(DEFAULT_PROVIDERS_CONFIG),
@@ -94,9 +105,21 @@ export interface GuidedChatResult {
 }
 
 /**
- * Gateway chat with friendly guidance (onboarding §4): a configured real
- * provider (M2) or a broken provider setup never surfaces a low-level error —
- * the CLI explains the situation and falls back to the built-in mock.
+ * Provider-error codes that mean "no usable provider is wired up", for which
+ * the CLI silently falls back to the built-in mock. A real provider that is
+ * wired up but *rejects* the call (bad key, bad request) is NOT in this set —
+ * those errors are surfaced so the user can fix their configuration.
+ */
+const FALLBACK_CODES = new Set(['provider_not_found', 'provider_not_implemented']);
+
+/**
+ * Gateway chat with friendly guidance (onboarding §4).
+ *
+ * A *missing or not-yet-executable* provider never surfaces a low-level error:
+ * the CLI explains the situation and falls back to the built-in mock. A
+ * *configured real provider that fails* (M2) — e.g. `auth_failed` from a bad
+ * key, or `invalid_request` — is surfaced unchanged so the user can fix it,
+ * rather than silently masked behind the mock.
  */
 export async function chatWithGuidance(
   deps: CliDeps,
@@ -107,12 +130,15 @@ export async function chatWithGuidance(
     const output = await context.gateway.chat(input);
     return { output, provider: context.providerName };
   } catch (error) {
-    if (!(error instanceof ProviderError)) {
+    if (!(error instanceof ProviderError) || !FALLBACK_CODES.has(error.code)) {
+      // Real provider failures (auth_failed, invalid_request, rate_limited,
+      // server_error, timeout, network_error) and non-provider errors are
+      // surfaced, not masked behind the mock.
       throw error;
     }
     if (error.code === 'provider_not_implemented') {
       deps.ui.warn(
-        `Provider "${context.providerName}" is configured, but real model providers arrive in M2. ` +
+        `Provider "${context.providerName}" is configured, but its adapter is not available in this build. ` +
           'Using the built-in mock provider for this command.',
       );
     } else {

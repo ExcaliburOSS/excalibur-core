@@ -10,3 +10,17 @@ export * from './providers/create-provider';
 export * from './cost/cost';
 export * from './redaction/redaction';
 export * from './routing/gateway';
+
+// Real provider adapters and supporting infrastructure (OSS-4, M2).
+export * from './transport/transport';
+export * from './transport/fetch-transport';
+export * from './transport/sse';
+export * from './transport/retry';
+export * from './transport/timeout';
+export * from './errors/provider-errors';
+export * from './cost/token-accounting';
+export * from './providers/base-http-provider';
+export * from './providers/anthropic-provider';
+export * from './providers/openai-compatible-provider';
+export * from './providers/ollama-provider';
+export * from './providers/core-factories';
