@@ -3,19 +3,48 @@
   "version": "0.1.0",
   "description": "Excalibur CLI — local-first AI-assisted and agentic development from the terminal",
   "license": "Apache-2.0",
+  "author": "ExcaliburOSS",
+  "homepage": "https://github.com/ExcaliburOSS/excalibur-core#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ExcaliburOSS/excalibur-core.git",
+    "directory": "apps/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/ExcaliburOSS/excalibur-core/issues"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "agentic",
+    "cli",
+    "coding-assistant",
+    "developer-tools",
+    "llm",
+    "local-first",
+    "excalibur"
+  ],
+  "type": "commonjs",
   "bin": {
     "excalibur": "./dist/main.js"
   },
   "main": "./dist/main.js",
-  "files": ["dist"],
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsup",
     "dev": "tsx src/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "prepublishOnly": "pnpm run build"
   },
-  "dependencies": {
+  "devDependencies": {
     "@excalibur/agent-runtime": "workspace:*",
     "@excalibur/built-in-extensions": "workspace:*",
     "@excalibur/context-engine": "workspace:*",
@@ -30,12 +59,11 @@
     "@excalibur/workflow-schema": "workspace:*",
     "commander": "^13.0.0",
     "picocolors": "^1.1.1",
-    "yaml": "^2.6.0",
-    "zod": "^3.24.0"
-  },
-  "devDependencies": {
+    "tsup": "^8.3.5",
     "tsx": "^4.19.2",
     "typescript": "^5.8.3",
-    "vitest": "^3.0.5"
+    "vitest": "^3.0.5",
+    "yaml": "^2.6.0",
+    "zod": "^3.24.0"
   }
 }
