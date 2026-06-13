@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { interactionMetadataSchema, patchMetadataSchema } from '@excalibur/core';
 import { parseEventsJsonl } from '@excalibur/shared';
@@ -114,38 +114,95 @@ describe('patch lifecycle (OSS spec §3.2)', () => {
     expect(readFileSync(join(dir, 'diff.patch'), 'utf8')).toContain('+++ b/');
   });
 
-  it('apply marks the patch applied with a simulated event', async () => {
-    const cli = createTestCli({ cwd: repo });
+  it('apply really applies the diff to the working tree (no simulated flag)', async () => {
+    const root = makeTempRepo();
+    const cli = createTestCli({ cwd: root });
+    await cli.run('patch', 'Fix duplicated release in src/escrow/escrow.service.ts', '--yes');
     await cli.run('apply', '--yes');
-    const dir = latestDir(join(repo, '.excalibur', 'patches'));
+
+    // The new-file diff actually created the target file on disk.
+    const created = join(root, 'src', 'escrow', 'escrow.service.ts');
+    expect(existsSync(created)).toBe(true);
+    expect(readFileSync(created, 'utf8')).toContain('class EscrowService');
+
+    const dir = latestDir(join(root, '.excalibur', 'patches'));
     const metadata = patchMetadataSchema.parse(
       JSON.parse(readFileSync(join(dir, 'metadata.json'), 'utf8')),
     );
     expect(metadata.status).toBe('applied');
+
     const events = parseEventsJsonl(readFileSync(join(dir, 'events.jsonl'), 'utf8'));
     const applied = events.find((event) => event.type === 'patch_applied');
     expect(applied).toBeDefined();
-    expect(applied?.payload['simulated']).toBe(true);
+    // No longer simulated — it really modified the working tree.
+    expect(applied?.payload['simulated']).toBeUndefined();
+    expect(applied?.payload['filesAffected']).toEqual(['src/escrow/escrow.service.ts']);
+    removeDir(root);
+  });
+
+  it('apply errors and leaves status unchanged when the stored diff does not apply', async () => {
+    const root = makeTempRepo();
+    const cli = createTestCli({ cwd: root });
+    await cli.run('patch', 'Fix duplicated release in src/escrow/escrow.service.ts', '--yes');
+
+    // Replace the stored diff with one that cannot apply (modifies a missing file).
+    const dir = latestDir(join(root, '.excalibur', 'patches'));
+    writeFileSync(
+      join(dir, 'diff.patch'),
+      [
+        '--- a/does/not/exist.ts',
+        '+++ b/does/not/exist.ts',
+        '@@ -1,1 +1,1 @@',
+        '-old',
+        '+new',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    await expect(cli.run('apply', '--yes')).rejects.toThrow(/did not apply/);
+    const metadata = patchMetadataSchema.parse(
+      JSON.parse(readFileSync(join(dir, 'metadata.json'), 'utf8')),
+    );
+    expect(metadata.status).toBe('proposed');
+    expect(existsSync(join(root, 'does'))).toBe(false);
+    removeDir(root);
   });
 
   it('reject marks the patch rejected', async () => {
-    const cli = createTestCli({ cwd: repo });
+    const root = makeTempRepo();
+    const cli = createTestCli({ cwd: root });
+    await cli.run('patch', 'Fix duplicated release in src/escrow/escrow.service.ts', '--yes');
     await cli.run('reject');
-    const dir = latestDir(join(repo, '.excalibur', 'patches'));
+    const dir = latestDir(join(root, '.excalibur', 'patches'));
     const metadata = patchMetadataSchema.parse(
       JSON.parse(readFileSync(join(dir, 'metadata.json'), 'utf8')),
     );
     expect(metadata.status).toBe('rejected');
+    removeDir(root);
   });
 
-  it('branch creates a real git branch named excalibur/<id>', async () => {
-    const cli = createTestCli({ cwd: repo });
+  it('branch creates excalibur/<id> and applies the patch onto it', async () => {
+    const root = makeTempRepo();
+    const cli = createTestCli({ cwd: root });
+    await cli.run('patch', 'Fix duplicated release in src/escrow/escrow.service.ts', '--yes');
     await cli.run('branch', '--yes');
-    const branches = execFileSync('git', ['branch', '--list', 'excalibur/*'], {
-      cwd: repo,
+
+    const current = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+      cwd: root,
       encoding: 'utf8',
-    });
-    expect(branches).toMatch(/excalibur\/patch_\d{8}_\d{6}/);
+    }).trim();
+    expect(current).toMatch(/^excalibur\/patch_\d{8}_\d{6}$/);
+
+    // The file exists on the branch (the diff was applied onto it).
+    expect(existsSync(join(root, 'src', 'escrow', 'escrow.service.ts'))).toBe(true);
+
+    const dir = latestDir(join(root, '.excalibur', 'patches'));
+    const metadata = patchMetadataSchema.parse(
+      JSON.parse(readFileSync(join(dir, 'metadata.json'), 'utf8')),
+    );
+    expect(metadata.status).toBe('branch_created');
+    removeDir(root);
   });
 
   it('apply without any patches is a usage error', async () => {
@@ -153,6 +210,50 @@ describe('patch lifecycle (OSS spec §3.2)', () => {
     const cli = createTestCli({ cwd: empty });
     await expect(cli.run('apply', '--yes')).rejects.toThrow(/No local patches/);
     removeDir(empty);
+  });
+
+  it('apply outside a git repository is a usage error', async () => {
+    const root = makeTempRepo();
+    const cli = createTestCli({ cwd: root });
+    await cli.run('patch', 'Fix duplicated release in src/escrow/escrow.service.ts', '--yes');
+    // Remove the git dir so the repo check fails but the patch still resolves.
+    rmSync(join(root, '.git'), { recursive: true, force: true });
+    await expect(cli.run('apply', '--yes')).rejects.toThrow(/not a git repository/);
+    removeDir(root);
+  });
+
+  it('patch records diffApplies and warns when the diff does not validate', async () => {
+    // A repo where the mock's task-derived path ALREADY exists → the new-file
+    // diff cannot apply, so validation fails and a warning is surfaced.
+    const root = makeTempRepo();
+    writeRepoFile(root, 'src/escrow/escrow.service.ts', 'export class EscrowService {}\n');
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'add', '-A'], { cwd: root });
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'add'], {
+      cwd: root,
+    });
+
+    const cli = createTestCli({ cwd: root });
+    await cli.run('patch', 'Fix duplicated release in src/escrow/escrow.service.ts', '--yes');
+
+    expect(cli.stdout()).toContain('did not validate with `git apply --check`');
+    const dir = latestDir(join(root, '.excalibur', 'patches'));
+    const metadata = patchMetadataSchema.parse(
+      JSON.parse(readFileSync(join(dir, 'metadata.json'), 'utf8')),
+    );
+    expect(metadata.diffApplies).toBe(false);
+    removeDir(root);
+  });
+
+  it('patch records diffApplies=true when the proposed diff validates', async () => {
+    const root = makeTempRepo();
+    const cli = createTestCli({ cwd: root });
+    await cli.run('patch', 'Fix duplicated release in src/escrow/escrow.service.ts', '--yes');
+    const dir = latestDir(join(root, '.excalibur', 'patches'));
+    const metadata = patchMetadataSchema.parse(
+      JSON.parse(readFileSync(join(dir, 'metadata.json'), 'utf8')),
+    );
+    expect(metadata.diffApplies).toBe(true);
+    removeDir(root);
   });
 });
 

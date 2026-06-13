@@ -47,7 +47,17 @@ const baseMetadataShape = {
   completedAt: z.string().datetime({ offset: true }).nullable(),
 };
 
-export const patchMetadataSchema = z.object({ ...baseMetadataShape, status: patchStatusSchema });
+export const patchMetadataSchema = z.object({
+  ...baseMetadataShape,
+  status: patchStatusSchema,
+  /**
+   * Result of validating `diff.patch` with `git apply --check` at proposal
+   * time: `true` (applies), `false` (does not), or `null` (not validated —
+   * e.g. an empty diff or a pre-Slice-3 artifact). Additive/optional so older
+   * artifacts and hand-written fixtures parse unchanged.
+   */
+  diffApplies: z.boolean().nullable().optional(),
+});
 export type PatchMetadata = z.infer<typeof patchMetadataSchema>;
 
 export const interactionMetadataSchema = z.object({
@@ -87,6 +97,8 @@ export interface CreatePatchInput extends CommonCreateInput {
   diff: string;
   /** Content of `summary.md`. */
   summary: string;
+  /** `git apply --check` result for `diff` at proposal time (null = not validated). */
+  diffApplies?: boolean | null;
 }
 
 export interface CreateInteractionInput extends CommonCreateInput {
@@ -207,6 +219,7 @@ export class PatchStore extends LocalArtifactStore<PatchMetadata> {
       warnings: input.warnings ?? [],
       costCents: input.costCents ?? null,
       status: 'proposed',
+      diffApplies: input.diffApplies ?? null,
       createdAt: new Date().toISOString(),
       completedAt: null,
     };

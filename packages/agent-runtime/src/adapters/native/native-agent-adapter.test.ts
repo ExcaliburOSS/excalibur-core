@@ -50,19 +50,20 @@ async function collect(iterable: AsyncIterable<ExcaliburEvent>): Promise<Excalib
 }
 
 /**
- * Structural unified-diff validator: file sections (`--- a/` + `+++ b/`),
- * hunk headers with consistent old/new line counts, and hunk body lines
- * prefixed with ' ', '+' or '-'.
+ * Structural unified-diff validator: file sections (`--- a/` or `--- /dev/null`
+ * for new files, plus `+++ b/`), hunk headers with consistent old/new line
+ * counts, and hunk body lines prefixed with ' ', '+' or '-'.
  */
 function expectParseableUnifiedDiff(diff: string): void {
   const lines = diff.split('\n');
-  expect(lines[0]).toMatch(/^--- a\//);
+  // The mock emits new-file diffs: `--- /dev/null` / `+++ b/<path>`.
+  expect(lines[0]).toMatch(/^--- (?:a\/.+|\/dev\/null)$/);
 
   let index = 0;
   let fileSections = 0;
   let hunks = 0;
   while (index < lines.length) {
-    expect(lines[index]).toMatch(/^--- a\/.+$/);
+    expect(lines[index]).toMatch(/^--- (?:a\/.+|\/dev\/null)$/);
     expect(lines[index + 1]).toMatch(/^\+\+\+ b\/.+$/);
     fileSections += 1;
     index += 2;

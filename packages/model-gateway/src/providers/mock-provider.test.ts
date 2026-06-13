@@ -23,8 +23,9 @@ function assertValidUnifiedDiff(diff: string): { added: number; removed: number 
   let removed = 0;
   let index = 0;
   expect(lines.length).toBeGreaterThan(0);
+  // The mock now emits new-file diffs: `--- /dev/null` / `+++ b/<path>`.
   while (index < lines.length) {
-    expect(lines[index]).toMatch(/^--- a\/.+$/);
+    expect(lines[index]).toMatch(/^--- (?:a\/.+|\/dev\/null)$/);
     expect(lines[index + 1]).toMatch(/^\+\+\+ b\/.+$/);
     index += 2;
     const header = lines[index];
@@ -36,7 +37,7 @@ function assertValidUnifiedDiff(diff: string): { added: number; removed: number 
     index += 1;
     let oldSeen = 0;
     let newSeen = 0;
-    while (index < lines.length && !lines[index]?.startsWith('--- a/')) {
+    while (index < lines.length && !lines[index]?.startsWith('--- ')) {
       const line = lines[index] ?? '';
       expect(line).toMatch(/^[ +-]/);
       if (line.startsWith('+')) {
@@ -151,14 +152,15 @@ describe('MockProvider patch kind', () => {
       input('Fix the double release in src/escrow/escrow.service.ts please.', 'patch'),
     );
     const diff = extractDiff(output.content);
-    expect(diff).toContain('--- a/src/escrow/escrow.service.ts');
+    // New-file diff (creates the path), so the source header is /dev/null.
+    expect(diff).toContain('--- /dev/null');
     expect(diff).toContain('+++ b/src/escrow/escrow.service.ts');
   });
 
   it('falls back to src/example.service.ts when no path is mentioned', async () => {
     const output = await provider.chat(input('Fix the duplicate billing run.', 'patch'));
     const diff = extractDiff(output.content);
-    expect(diff).toContain('--- a/src/example.service.ts');
+    expect(diff).toContain('+++ b/src/example.service.ts');
   });
 
   it('emits a syntactically valid unified diff with 3-10 changed lines per file', async () => {
@@ -181,16 +183,16 @@ describe('MockProvider patch kind', () => {
     );
     const diff = extractDiff(output.content);
     assertValidUnifiedDiff(diff);
-    expect(diff).toContain('--- a/src/a/alpha.service.ts');
-    expect(diff).toContain('--- a/src/b/beta.controller.ts');
+    expect(diff).toContain('+++ b/src/a/alpha.service.ts');
+    expect(diff).toContain('+++ b/src/b/beta.controller.ts');
     // Deduplicated: alpha appears once as a file header.
-    expect(diff.match(/--- a\/src\/a\/alpha\.service\.ts/g)?.length).toBe(1);
+    expect(diff.match(/\+\+\+ b\/src\/a\/alpha\.service\.ts/g)?.length).toBe(1);
   });
 
   it('does not truncate .tsx paths to .ts', async () => {
     const output = await provider.chat(input('Update src/app/page.tsx accordingly.', 'patch'));
     const diff = extractDiff(output.content);
-    expect(diff).toContain('--- a/src/app/page.tsx');
+    expect(diff).toContain('+++ b/src/app/page.tsx');
   });
 });
 

@@ -2,10 +2,14 @@ import { execFileSync } from 'node:child_process';
 import { GitOperationError } from '../errors';
 
 /**
- * Real git helpers via child_process (Build Contract §4.6). These are the
- * only places in M1 where Excalibur touches a real external tool; everything
- * is read-only except `createBranch`, which the CLI gates behind explicit
- * user intent (`excalibur branch <id>`).
+ * Real git helpers via child_process (Build Contract §4.6). Read-only by
+ * default; the mutating helpers (`createBranch`, `applyPatch`) are gated by
+ * the CLI behind explicit user intent (`excalibur branch <id>` / `apply`).
+ *
+ * Patch validation/application (`checkPatchApplies`, `applyPatch`) stream the
+ * diff to git over STDIN and rely on git's own path safety: `git apply`
+ * refuses paths that escape the work tree (`..` traversal, absolute paths)
+ * unless `--unsafe-paths` is passed — which we never pass.
  */
 
 export interface GitInfo {
@@ -85,6 +89,88 @@ export function createBranch(repoRoot: string, name: string): void {
       repoRoot,
       branch: name,
     });
+  }
+}
+
+/** Ensures a unified diff ends with exactly one trailing newline (git apply requires it). */
+function withTrailingNewline(diff: string): string {
+  return diff.endsWith('\n') ? diff : `${diff}\n`;
+}
+
+/** Trims a child-process stderr Buffer/string to a single useful reason line. */
+function stderrReason(error: unknown): string {
+  const stderr = (error as { stderr?: Buffer | string } | undefined)?.stderr;
+  const text =
+    stderr !== undefined && stderr !== null
+      ? stderr.toString()
+      : error instanceof Error
+        ? error.message
+        : String(error);
+  return text.trim();
+}
+
+/**
+ * Validates a unified diff against the working tree with `git apply --check`
+ * (no files are modified). An invalid or non-applying diff is a normal
+ * outcome, so this NEVER throws — it returns the failure as data.
+ *
+ * Security: we never pass `--unsafe-paths`, so git refuses diffs touching
+ * paths outside the repository (`..` traversal, absolute paths).
+ */
+export function checkPatchApplies(
+  repoRoot: string,
+  diff: string,
+): { applies: boolean; reason: string | null } {
+  if (diff.trim().length === 0) {
+    return { applies: false, reason: 'empty diff' };
+  }
+  try {
+    execFileSync('git', ['apply', '--check', '-'], {
+      cwd: repoRoot,
+      input: withTrailingNewline(diff),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    return { applies: true, reason: null };
+  } catch (error) {
+    const reason = stderrReason(error);
+    return { applies: false, reason: reason.length > 0 ? reason : 'git apply --check failed' };
+  }
+}
+
+/**
+ * Applies a unified diff to the working tree via `git apply` (reading the diff
+ * from STDIN). With `opts.threeway` it falls back to a 3-way merge using blob
+ * info recorded in the diff.
+ *
+ * Security: we never pass `--unsafe-paths`, so git refuses diffs touching
+ * paths outside the repository (`..` traversal, absolute paths).
+ *
+ * @throws GitOperationError on an empty diff or when git refuses the patch.
+ */
+export function applyPatch(repoRoot: string, diff: string, opts?: { threeway?: boolean }): void {
+  if (diff.trim().length === 0) {
+    throw new GitOperationError(`Cannot apply an empty diff in ${repoRoot}.`, {
+      repoRoot,
+      reason: 'empty diff',
+    });
+  }
+  const args = ['apply'];
+  if (opts?.threeway === true) {
+    args.push('--3way');
+  }
+  args.push('-');
+  try {
+    execFileSync('git', args, {
+      cwd: repoRoot,
+      input: withTrailingNewline(diff),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    const reason = stderrReason(error);
+    throw new GitOperationError(
+      `git apply failed in ${repoRoot}: ${reason.length > 0 ? reason : 'patch did not apply'}`,
+      { repoRoot, reason },
+    );
   }
 }
 

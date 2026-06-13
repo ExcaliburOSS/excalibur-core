@@ -115,29 +115,32 @@ function classNameFromPath(filePath: string): string {
 }
 
 /**
- * Builds a syntactically valid unified diff with a plausible idempotency
- * guard-clause fix (5 added lines per file, within the contract's 3–10
- * changed-line window).
+ * Builds a syntactically valid, APPLIABLE unified diff that CREATES each
+ * task-derived path as a new file (`--- /dev/null` → `+++ b/<path>`), with a
+ * plausible idempotency guard-clause helper (5 added lines per file, within
+ * the contract's 3–10 changed-line window).
+ *
+ * A new-file diff applies cleanly with `git apply` against any repository
+ * where the path does not yet exist — including the empty/temp repos used by
+ * the offline propose→validate→apply/branch tests — so the mock provider can
+ * demonstrate the full loop zero-config with no real model.
  */
 function buildUnifiedDiff(paths: string[]): string {
   const targets = paths.length > 0 ? paths : [DEFAULT_PATCH_TARGET];
   const sections = targets.map((filePath) => {
     const className = classNameFromPath(filePath);
+    const body = [
+      `export class ${className} {`,
+      '  // Idempotency guard: a repeated release request must be a no-op.',
+      "  released(status: string): boolean {",
+      "    return status === 'released';",
+      '  }',
+    ];
     return [
-      `--- a/${filePath}`,
+      '--- /dev/null',
       `+++ b/${filePath}`,
-      '@@ -12,6 +12,11 @@',
-      ` export class ${className} {`,
-      '   async release(id: string): Promise<void> {',
-      '     const record = await this.repository.findById(id);',
-      "+    if (record.status === 'released') {",
-      '+      // Idempotency guard: a repeated release request must be a no-op.',
-      '+      return;',
-      '+    }',
-      '+',
-      "     record.status = 'released';",
-      '     await this.repository.save(record);',
-      '   }',
+      `@@ -0,0 +1,${body.length} @@`,
+      ...body.map((line) => `+${line}`),
     ].join('\n');
   });
   return sections.join('\n');

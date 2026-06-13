@@ -78,6 +78,8 @@ export { executeLocalRun, type ExecuteLocalRunInput } from './engine/execute-loc
 
 // Git helpers
 export {
+  applyPatch,
+  checkPatchApplies,
   createBranch,
   getGitInfo,
   getLocalDiff,

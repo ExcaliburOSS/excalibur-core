@@ -2,6 +2,7 @@ import {
   COMMAND_DEFAULTS,
   InteractionStore,
   PatchStore,
+  checkPatchApplies,
   type AdditionalContextSource,
   type LocalPatch,
 } from '@excalibur/core';
@@ -186,6 +187,19 @@ export async function generatePatch(deps: CliDeps, task: string): Promise<LocalP
   });
 
   const diff = extractUnifiedDiff(output.content) ?? '';
+
+  // Validate the proposed diff against the working tree (read-only, ISD-5).
+  // `null` when there is no diff to validate; otherwise true/false is recorded
+  // on the artifact and a non-applying diff surfaces a non-blocking warning.
+  const validation = diff.length > 0 ? checkPatchApplies(repoRoot, diff) : null;
+  const diffApplies = validation === null ? null : validation.applies;
+  const validationWarnings =
+    validation !== null && !validation.applies
+      ? [
+          `The proposed diff did not validate with \`git apply --check\`: ${validation.reason ?? 'unknown reason'}. Review it before applying.`,
+        ]
+      : [];
+
   const store = new PatchStore(repoRoot);
   const patch = store.create({
     command: 'patch',
@@ -196,11 +210,16 @@ export async function generatePatch(deps: CliDeps, task: string): Promise<LocalP
     input: task,
     effectiveInstructions: effective.instructionsMarkdown,
     diff,
+    diffApplies,
     summary: output.content,
     instructionSources: effective.sourcePaths,
-    warnings: effective.warnings,
+    warnings: [...effective.warnings, ...validationWarnings],
     costCents: output.costCents,
   });
+
+  for (const warning of validationWarnings) {
+    deps.ui.warn(warning);
+  }
 
   const files = filesAffectedFromDiff(diff);
   deps.ui.write();
