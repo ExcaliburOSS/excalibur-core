@@ -1,8 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { Command } from 'commander';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
+import { readUserSuppliedFile } from '../lib/context';
 import { runInteractionCommand } from '../lib/interactions';
 
 /**
@@ -17,7 +16,7 @@ export function registerAskCommand(program: Command, deps: CliDeps): void {
     .argument('<question...>', 'the question to ask')
     .option('--file <path>', 'include a file as additional context')
     .option('-y, --yes', 'skip prompts and accept safe defaults')
-    .action(async (questionWords: string[], options: { file?: string }) => {
+    .action(async (questionWords: string[], options: { file?: string; yes?: boolean }) => {
       const question = questionWords.join(' ').trim();
       if (question.length === 0) {
         throw new CliUsageError('The question must not be empty.');
@@ -26,11 +25,11 @@ export function registerAskCommand(program: Command, deps: CliDeps): void {
       let prompt = question;
       let input = question;
       if (options.file !== undefined) {
-        const filePath = join(deps.cwd(), options.file);
-        if (!existsSync(filePath)) {
-          throw new CliUsageError(`File not found: ${options.file}`);
-        }
-        const content = readFileSync(filePath, 'utf8');
+        // Blocked-path enforcement + secret redaction (Build Contract §4.4):
+        // `excalibur ask "..." --file .env` is refused, not slurped.
+        const content = await readUserSuppliedFile(deps, deps.cwd(), options.file, {
+          yes: options.yes,
+        });
         prompt = `${question}\n\nFile \`${options.file}\`:\n\n\`\`\`\n${content}\n\`\`\``;
         input = `${question}\n\n(Context file: ${options.file})`;
       }

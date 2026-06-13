@@ -1,8 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { Command } from 'commander';
-import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
+import { readUserSuppliedFile } from '../lib/context';
 import { runInteractionCommand } from '../lib/interactions';
 
 /**
@@ -15,12 +13,10 @@ export function registerExplainCommand(program: Command, deps: CliDeps): void {
     .description('explain a source file (Level 1 — Assist)')
     .argument('<path>', 'file to explain')
     .option('-y, --yes', 'skip prompts and accept safe defaults')
-    .action(async (relPath: string) => {
-      const filePath = join(deps.cwd(), relPath);
-      if (!existsSync(filePath)) {
-        throw new CliUsageError(`File not found: ${relPath}`);
-      }
-      const content = readFileSync(filePath, 'utf8');
+    .action(async (relPath: string, options: { yes?: boolean }) => {
+      // Blocked-path enforcement + secret redaction (Build Contract §4.4):
+      // `excalibur explain .env` is refused, not slurped into the prompt.
+      const content = await readUserSuppliedFile(deps, deps.cwd(), relPath, { yes: options.yes });
       const prompt = `Explain the file \`${relPath}\`:\n\n\`\`\`\n${content}\n\`\`\``;
       await runInteractionCommand(deps, {
         command: 'explain',

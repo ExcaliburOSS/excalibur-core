@@ -317,8 +317,16 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
       }
 
       const gatewayContext = loadGatewayContext(repoRoot);
+      // Resolve the methodology deliberately, not by id collision (§4.6 treats
+      // methodology as an independent input). Each methodology declares the
+      // workflow it drives via `defaultWorkflow`, which is the correct linkage
+      // (e.g. spec-driven → structured-feature, review-first → review-only).
+      // Prefer that reverse lookup, fall back to a same-id match (covers the
+      // ids that coincide, e.g. fast-fix), then null.
+      const methodologies = registry.contributions.methodologies();
       const methodology =
-        registry.contributions.methodologies().find((entry) => entry.id === choice.workflowId)?.id ??
+        methodologies.find((entry) => entry.defaultWorkflow === choice.workflowId)?.id ??
+        methodologies.find((entry) => entry.id === choice.workflowId)?.id ??
         null;
 
       const runManager = new RunManager(repoRoot);

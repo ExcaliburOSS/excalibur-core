@@ -1,5 +1,6 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { PermissionEngine } from '@excalibur/agent-runtime';
 import {
   DEFAULT_SAFETY_PRESET_ID,
   EXCALIBUR_DIR,
@@ -12,11 +13,13 @@ import {
   DEFAULT_PROVIDERS_CONFIG,
   ModelGateway,
   loadProvidersFile,
+  redactSecrets,
   type ChatInput,
   type ChatOutput,
   type ProvidersFileConfig,
 } from '@excalibur/model-gateway';
 import { ProviderError, type ExcaliburConfig, type InstructionSource } from '@excalibur/shared';
+import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
 
 /** Resolved model setup for a repository. */
@@ -150,6 +153,67 @@ export async function buildEffectiveContext(
     warnings: built.warnings,
     sourcePaths: built.sources.map((source) => source.path),
   };
+}
+
+/**
+ * Reads a user-supplied file for inclusion in a model prompt, enforcing the
+ * Core security guarantees (Build Contract §4.4):
+ *
+ * 1. The repository-relative path is checked against the configured
+ *    blocked-path patterns (`.env`, `**` + `/*.pem`, `**` + `/*.key`,
+ *    `**` + `/secrets/**`, …) via `PermissionEngine.checkPath(relPath,
+ *    'read')`. A blocked path is refused outright; an `'ask'` decision asks
+ *    for explicit confirmation before reading. This prevents
+ *    `excalibur explain .env` from slurping a secret file into a prompt.
+ * 2. The file content is passed through `redactSecrets` before it is placed
+ *    in the prompt (and, downstream, before it is persisted to the
+ *    interaction artifact), so any secrets that do live in an allowed file
+ *    never reach the model endpoint or the on-disk transcript.
+ *
+ * Returns the redacted content. Throws `CliUsageError` (exit 2) when the file
+ * is missing, blocked by policy, or the user declines an `'ask'` confirmation.
+ */
+export async function readUserSuppliedFile(
+  deps: CliDeps,
+  repoRoot: string,
+  relPath: string,
+  options: { yes?: boolean } = {},
+): Promise<string> {
+  const { config } = loadConfigContext(repoRoot);
+  const engine = new PermissionEngine(config.permissions);
+  const decision = engine.checkPath(relPath, 'read');
+
+  if (!decision.allowed) {
+    throw new CliUsageError(
+      `Refusing to read "${relPath}": ${decision.reason} ` +
+        'Blocked paths (secrets, keys, .env) are never read into model prompts.',
+    );
+  }
+  if (decision.requiresConfirmation) {
+    const proceed = await deps.ui.confirm(`Read "${relPath}" into the prompt? (${decision.reason})`, {
+      yes: options.yes,
+      defaultYes: false,
+    });
+    if (!proceed) {
+      throw new CliUsageError(`Declined to read "${relPath}".`);
+    }
+  }
+
+  const filePath = join(repoRoot, relPath);
+  if (!existsSync(filePath)) {
+    throw new CliUsageError(`File not found: ${relPath}`);
+  }
+  // Always redact: an allowed file can still contain an embedded credential.
+  return redactSecrets(readFileSync(filePath, 'utf8'));
+}
+
+/**
+ * Redacts secrets from a local working-tree diff before it is embedded in a
+ * model prompt or persisted (Build Contract §4.4: secret redaction applies to
+ * diff content too — staged changes routinely include leaked credentials).
+ */
+export function redactDiff(diff: string): string {
+  return redactSecrets(diff);
 }
 
 /** System prompt = effective instructions (when any) + the role line. */

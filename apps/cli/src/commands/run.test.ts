@@ -60,6 +60,27 @@ describe('run (local mock loop, Build Contract §4.9)', () => {
     expect(cli.stdout()).toContain('explore-alternatives');
   });
 
+  it('records a methodology via defaultWorkflow reverse-lookup for a standard-feature run', async () => {
+    // standard-feature shares no id with any methodology; the run must still
+    // attach a methodology (spec-driven/plan-then-execute → structured/standard)
+    // resolved by `defaultWorkflow`, and emit `methodology_selected` + write
+    // `methodology.yaml` (regression for the namespace-conflation finding).
+    const cli = createTestCli({ cwd: repo });
+    await cli.run('run', 'Add a new pricing tier feature with full tests', '--structured', '--yes');
+
+    const dirs = runDirs();
+    const latest = join(repo, '.excalibur', 'runs', dirs[dirs.length - 1] as string);
+    const record = runRecordSchema.parse(JSON.parse(readFileSync(join(latest, 'run.json'), 'utf8')));
+
+    expect(record.workflow).toBe('structured-feature');
+    // spec-driven declares defaultWorkflow: structured-feature.
+    expect(record.methodology).toBe('spec-driven');
+
+    const events = parseEventsJsonl(readFileSync(join(latest, 'events.jsonl'), 'utf8'));
+    expect(events.some((event) => event.type === 'methodology_selected')).toBe(true);
+    expect(existsSync(join(latest, 'methodology.yaml'))).toBe(true);
+  });
+
   it('rejects an invalid --level (usage error)', async () => {
     const cli = createTestCli({ cwd: repo });
     await expect(cli.run('run', 'Fix bug', '--level', '9')).rejects.toThrow(/--level must be 0\.\.4/);
