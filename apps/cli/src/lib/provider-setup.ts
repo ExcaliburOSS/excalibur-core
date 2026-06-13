@@ -9,9 +9,10 @@ import { providersFilePath } from './context';
 /**
  * One-question model provider setup (onboarding spec §4), shared by
  * `excalibur init` and `excalibur models setup`. Hosted providers store the
- * NAME of an API key environment variable — never a key value. M1 honesty:
- * real providers are written to providers.yaml but execution stays on the
- * built-in mock until M2.
+ * NAME of an API key environment variable — never a key value. Real providers
+ * execute end-to-end (M2): with the relevant API key set, commands call the
+ * configured provider; with no key set, Excalibur falls back to the built-in
+ * mock so every command keeps working out of the box.
  */
 
 const ENV_VAR_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
@@ -41,6 +42,17 @@ async function askEnvVarName(deps: CliDeps, defaultName: string, yes: boolean): 
   }
 }
 
+/**
+ * Accurate post-save guidance (M2): the provider executes once its API key env
+ * var is set; with no key, commands fall back to the built-in mock.
+ */
+function announceSaved(deps: CliDeps, apiKeyEnv: string): void {
+  deps.ui.info(
+    `Saved. Set the ${apiKeyEnv} environment variable to your API key and Excalibur will use ` +
+      'this provider; with no key set it falls back to the built-in mock.',
+  );
+}
+
 function withMock(name: string, config: ProviderConfig): ProvidersFileConfig {
   return {
     providers: {
@@ -66,14 +78,14 @@ export async function promptProviderSetup(
   const index = await deps.ui.select(
     'How should Excalibur call models?',
     [
-      { label: 'OpenAI-compatible API', hint: 'any OpenAI-style endpoint (M2)' },
-      { label: 'Anthropic', hint: 'Claude models (M2)' },
-      { label: 'OpenRouter', hint: 'openai-compatible, https://openrouter.ai/api/v1 (M2)' },
+      { label: 'OpenAI-compatible API', hint: 'any OpenAI-style endpoint' },
+      { label: 'Anthropic', hint: 'Claude models' },
+      { label: 'OpenRouter', hint: 'openai-compatible, https://openrouter.ai/api/v1' },
       {
         label: 'Ollama (local)',
-        hint: ollamaDetected ? 'detected on this machine! (M2)' : 'http://localhost:11434 (M2)',
+        hint: ollamaDetected ? 'detected on this machine!' : 'http://localhost:11434',
       },
-      { label: 'Mock (built-in)', hint: 'deterministic, no network — the M1 default' },
+      { label: 'Mock (built-in)', hint: 'deterministic, no network — the zero-config default' },
       { label: 'Configure later' },
     ],
     { yes: options.yes, defaultIndex: mockIndex },
@@ -86,26 +98,17 @@ export async function promptProviderSetup(
         defaultAnswer: 'https://api.openai.com/v1',
       });
       const apiKeyEnv = await askEnvVarName(deps, 'OPENAI_API_KEY', options.yes);
-      deps.ui.warn(
-        'Honest M1 note: this provider is saved, but real model calls arrive in M2 — ' +
-          'commands keep using the built-in mock until then.',
-      );
+      announceSaved(deps, apiKeyEnv);
       return withMock('openai', { type: 'openai-compatible', baseUrl, apiKeyEnv });
     }
     case 1: {
       const apiKeyEnv = await askEnvVarName(deps, 'ANTHROPIC_API_KEY', options.yes);
-      deps.ui.warn(
-        'Honest M1 note: this provider is saved, but real model calls arrive in M2 — ' +
-          'commands keep using the built-in mock until then.',
-      );
+      announceSaved(deps, apiKeyEnv);
       return withMock('anthropic', { type: 'anthropic', apiKeyEnv });
     }
     case 2: {
       const apiKeyEnv = await askEnvVarName(deps, 'OPENROUTER_API_KEY', options.yes);
-      deps.ui.warn(
-        'Honest M1 note: this provider is saved, but real model calls arrive in M2 — ' +
-          'commands keep using the built-in mock until then.',
-      );
+      announceSaved(deps, apiKeyEnv);
       return withMock('openrouter', {
         type: 'openai-compatible',
         baseUrl: 'https://openrouter.ai/api/v1',
@@ -117,9 +120,9 @@ export async function promptProviderSetup(
         yes: options.yes,
         defaultAnswer: 'llama3',
       });
-      deps.ui.warn(
-        'Honest M1 note: this provider is saved, but real model calls arrive in M2 — ' +
-          'commands keep using the built-in mock until then.',
+      deps.ui.info(
+        'Saved. Excalibur will use your local Ollama server at http://localhost:11434 ' +
+          '(no API key needed); if it is unreachable, commands fall back to the built-in mock.',
       );
       return withMock('ollama', { type: 'ollama', baseUrl: 'http://localhost:11434', model });
     }

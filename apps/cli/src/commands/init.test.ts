@@ -171,7 +171,7 @@ describe('models (onboarding §4)', () => {
     expect(providers.providers.mock?.type).toBe('mock');
   });
 
-  it('flags configured real providers as available in M2', async () => {
+  it('flags a configured real provider as ready and names its key env var', async () => {
     const repo = tempRepo();
     const providersDir = join(repo, '.excalibur', 'models');
     const { mkdirSync } = await import('node:fs');
@@ -183,7 +183,9 @@ describe('models (onboarding §4)', () => {
     );
     const cli = createTestCli({ cwd: repo });
     await cli.run('models', 'list');
-    expect(cli.stdout()).toContain('available in M2');
+    // Real providers execute in M2: ready once the key env var is set.
+    expect(cli.stdout()).toContain('ready · set QWEN_API_KEY');
+    expect(cli.stdout()).not.toContain('available in M2');
     // The key VALUE never appears — only the env var NAME.
     expect(cli.stdout()).toContain('QWEN_API_KEY');
   });

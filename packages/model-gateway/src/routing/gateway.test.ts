@@ -6,7 +6,7 @@ import {
   type ProvidersFileConfig,
   type ProvidersSection,
 } from '../providers/providers-file';
-import type { ChatMessage } from '../types';
+import type { ChatMessage, ChatOutput as ChatOutputType } from '../types';
 import { ModelGateway } from './gateway';
 
 const messages: ChatMessage[] = [
@@ -137,5 +137,60 @@ describe('ModelGateway.stream', () => {
       }
     };
     await expect(iterate()).rejects.toMatchObject({ code: 'provider_not_implemented' });
+  });
+});
+
+describe('ModelGateway.streamWithUsage', () => {
+  /** Drains a streamWithUsage generator, collecting deltas and the return. */
+  async function drain(
+    gen: AsyncGenerator<{ content: string; done: boolean }, ChatOutputType>,
+  ): Promise<{ deltas: { content: string; done: boolean }[]; output: ChatOutputType }> {
+    const deltas: { content: string; done: boolean }[] = [];
+    let result = await gen.next();
+    while (!result.done) {
+      deltas.push(result.value);
+      result = await gen.next();
+    }
+    return { deltas, output: result.value };
+  }
+
+  it('concatenated deltas equal chat().content and report matching usage', async () => {
+    const gateway = new ModelGateway(DEFAULT_PROVIDERS_CONFIG);
+    const chatOutput = await gateway.chat({ messages, metadata: { kind: 'plan' } });
+    const { deltas, output } = await drain(
+      gateway.streamWithUsage({ messages, metadata: { kind: 'plan' } }),
+    );
+    expect(deltas[deltas.length - 1]).toEqual({ content: '', done: true });
+    expect(output.content).toBe(chatOutput.content);
+    expect(output.usage).toEqual(chatOutput.usage);
+    expect(output.finishReason).toBe('stop');
+  });
+
+  it('computes costCents for a cost-configured provider', async () => {
+    const providerCfg = {
+      type: 'mock' as const,
+      inputCostPerMillionTokensCents: 300,
+      outputCostPerMillionTokensCents: 1500,
+    };
+    const gateway = new ModelGateway(config({ default: 'mock', mock: providerCfg }));
+    const { output } = await drain(gateway.streamWithUsage({ messages }));
+    const expected = computeCostCents(output.usage, providerCfg);
+    expect(output.costCents).toBe(expected);
+    expect(output.costCents ?? 0).toBeGreaterThan(0);
+  });
+
+  it('keeps costCents null when the provider has no cost metadata', async () => {
+    const gateway = new ModelGateway(DEFAULT_PROVIDERS_CONFIG);
+    const { output } = await drain(gateway.streamWithUsage({ messages }));
+    expect(output.costCents).toBeNull();
+  });
+
+  it('surfaces provider_not_implemented before any delta for a real provider', async () => {
+    const gateway = new ModelGateway(
+      config({ default: 'anthropic', anthropic: { type: 'anthropic' } }),
+    );
+    await expect(drain(gateway.streamWithUsage({ messages }))).rejects.toMatchObject({
+      code: 'provider_not_implemented',
+    });
   });
 });

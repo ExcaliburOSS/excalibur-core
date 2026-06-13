@@ -164,6 +164,94 @@ describe('EffectiveInstructionBuilder', () => {
     expect(result.sources.length).toBeLessThan(7);
   });
 
+  it('injects additionalSources at precedence 6 (after CLAUDE.md, before skills)', async () => {
+    write('CLAUDE.md', '# Claude guidance\nKeep services small.');
+    write(
+      '.claude/skills/testing/SKILL.md',
+      ['---', 'name: testing', 'description: Test helper skill', '---', '# Testing skill'].join('\n'),
+    );
+    write(
+      '.excalibur/config.yaml',
+      [
+        'skills:',
+        '  sources:',
+        "    - path: './.claude/skills/testing/SKILL.md'",
+        '      scope: project',
+        '      enabled: true',
+        '      trustLevel: trusted',
+      ].join('\n'),
+    );
+
+    const result = await builder().build({
+      repositoryPath: repoRoot,
+      enabledSkills: ['skill-testing'],
+      additionalSources: [
+        { path: 'repo-context: src/auth/login.ts', content: 'export function login() {}' },
+      ],
+    });
+
+    const ids = result.sources.map((source) => source.id);
+    const claudeIndex = ids.indexOf('claude-project');
+    const contextIndex = ids.indexOf('repo-context-0');
+    const skillIndex = result.sources.findIndex((source) => source.kind === 'skill');
+
+    expect(claudeIndex).toBeGreaterThanOrEqual(0);
+    expect(contextIndex).toBeGreaterThan(claudeIndex);
+    expect(skillIndex).toBeGreaterThan(contextIndex);
+    expect(result.instructionsMarkdown).toContain('[Source: repo-context: src/auth/login.ts]');
+  });
+
+  it('renders the snapshot ordering for instructions + injected repo-context', async () => {
+    write('CLAUDE.md', '# Project rules');
+    const result = await builder().build({
+      repositoryPath: repoRoot,
+      additionalSources: [
+        { path: 'repo-context: src/a.ts', content: 'export const a = 1;' },
+        { path: 'repo-context: src/b.ts', content: 'export const b = 2;' },
+      ],
+    });
+    const headers = result.instructionsMarkdown
+      .split('\n')
+      .filter((line) => line.startsWith('[Source:'));
+    expect(headers).toEqual([
+      '[Source: CLAUDE.md]',
+      '[Source: repo-context: src/a.ts]',
+      '[Source: repo-context: src/b.ts]',
+    ]);
+  });
+
+  it('redacts secrets that arrive via additionalSources', async () => {
+    const fakeKey = 'AKIA' + 'IOSFODNN7EXAMPLE';
+    const result = await builder().build({
+      repositoryPath: repoRoot,
+      additionalSources: [
+        { path: 'repo-context: config.ts', content: `const key = "${fakeKey}";` },
+      ],
+    });
+    expect(result.instructionsMarkdown).not.toContain(fakeKey);
+    expect(result.instructionsMarkdown).toContain('[REDACTED]');
+  });
+
+  it('caps oversized additionalSources content with the per-source cap', async () => {
+    const result = await builder().build({
+      repositoryPath: repoRoot,
+      additionalSources: [
+        { path: 'repo-context: big.ts', content: `// big\n${'x'.repeat(8000)}` },
+      ],
+    });
+    expect(result.instructionsMarkdown).toContain(SUMMARIZED_MARKER);
+    expect(result.warnings.some((warning) => warning.includes('per-source cap'))).toBe(true);
+  });
+
+  it('ignores empty additionalSources content', async () => {
+    write('CLAUDE.md', '# Rules');
+    const result = await builder().build({
+      repositoryPath: repoRoot,
+      additionalSources: [{ path: 'repo-context: empty.ts', content: '   \n  ' }],
+    });
+    expect(result.sources.some((source) => source.id.startsWith('repo-context'))).toBe(false);
+  });
+
   it('includes workflow-specific instruction files only for the matching workflow', async () => {
     write('.excalibur/instructions/general.md', '# General');
     write('.excalibur/instructions/fast-fix.md', '# Fast fix specifics');

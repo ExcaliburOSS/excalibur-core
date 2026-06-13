@@ -1,4 +1,10 @@
-import { COMMAND_DEFAULTS, InteractionStore, PatchStore, type LocalPatch } from '@excalibur/core';
+import {
+  COMMAND_DEFAULTS,
+  InteractionStore,
+  PatchStore,
+  type AdditionalContextSource,
+  type LocalPatch,
+} from '@excalibur/core';
 import type { ChatMessage } from '@excalibur/model-gateway';
 import { AUTONOMY_LEVEL_LABELS, type AutonomyLevel } from '@excalibur/shared';
 import pc from 'picocolors';
@@ -9,6 +15,7 @@ import {
   loadConfigContext,
   loadGatewayContext,
   safetyLine,
+  streamWithGuidance,
 } from './context';
 
 /**
@@ -27,6 +34,10 @@ export interface InteractionCommandInput {
   input: string;
   /** The user prompt sent to the model. */
   prompt: string;
+  /** Retrieved repo-context injected at precedence 6 (M2 retrieval). */
+  additionalSources?: AdditionalContextSource[];
+  /** Disable live streaming (the `--no-stream` flag). */
+  noStream?: boolean;
 }
 
 const ROLE_LINES: Record<string, string> = {
@@ -57,6 +68,9 @@ export async function runInteractionCommand(
   const effective = await buildEffectiveContext(deps, repoRoot, {
     workflowId: workflow,
     autonomyLevel,
+    ...(input.additionalSources !== undefined
+      ? { additionalSources: input.additionalSources }
+      : {}),
   });
   for (const warning of effective.warnings) {
     deps.ui.warn(warning);
@@ -73,14 +87,31 @@ export async function runInteractionCommand(
     },
     { role: 'user', content: input.prompt },
   ];
-  const { output, provider } = await chatWithGuidance(deps, gatewayContext, {
-    messages,
-    metadata: { kind: input.kind },
-  });
+  const chatInput = { messages, metadata: { kind: input.kind } };
 
-  deps.ui.write();
-  deps.ui.write(output.content);
-  deps.ui.write();
+  // Stream live in an interactive TTY (unless --no-stream); otherwise assemble
+  // once. Either way the persisted artifact uses the assembled `output.content`,
+  // so the transcript is byte-identical streamed vs. not.
+  const streaming = deps.ui.isInteractive() && input.noStream !== true;
+  let output;
+  let provider: string;
+  if (streaming) {
+    deps.ui.write();
+    const result = await streamWithGuidance(deps, gatewayContext, chatInput, (chunk) => {
+      deps.ui.streamChunk(chunk);
+    });
+    deps.ui.write();
+    deps.ui.write();
+    output = result.output;
+    provider = result.provider;
+  } else {
+    const result = await chatWithGuidance(deps, gatewayContext, chatInput);
+    output = result.output;
+    provider = result.provider;
+    deps.ui.write();
+    deps.ui.write(output.content);
+    deps.ui.write();
+  }
 
   const store = new InteractionStore(repoRoot);
   const interaction = store.create({

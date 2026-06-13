@@ -22,12 +22,33 @@ export const SUMMARIZED_MARKER = '…summarized';
 
 const HEADER_LINE = 'Effective project instructions:';
 
+/**
+ * Caller-supplied context injected alongside the discovered instruction
+ * sources (M2 repo-context retrieval). Each becomes a candidate source at
+ * precedence 6 (below instruction files, above skills), so it flows through
+ * the exact same dedupe + render path: secret redaction and the per-source /
+ * total caps apply automatically. Purely additive — existing callers pass
+ * nothing and get byte-identical behavior.
+ */
+export interface AdditionalContextSource {
+  /** Display path / label for the source header. */
+  path: string;
+  /** Raw content (pre-redaction); redaction happens in render(). */
+  content: string;
+  /** Precedence bucket; defaults to 6 (repo-context level). */
+  precedence?: number;
+  /** Optional human title recorded on the InstructionSource. */
+  title?: string;
+}
+
 export interface EffectiveInstructionsInput {
   repositoryPath: string;
   workflowId?: string;
   autonomyLevel?: number;
   includeUserGlobal?: boolean;
   enabledSkills?: string[];
+  /** Retrieved repo-context sources injected at precedence 6 (M2). */
+  additionalSources?: AdditionalContextSource[];
 }
 
 export interface EffectiveInstructions {
@@ -146,6 +167,10 @@ export class EffectiveInstructionBuilder {
       }
     }
 
+    // Level 6 — caller-supplied repo-context (M2 retrieval), below instruction
+    // files (2–5) and above skills (7). Flows through the same render path.
+    candidates.push(...this.additionalContextSources(input.additionalSources));
+
     candidates.sort((a, b) => a.precedence - b.precedence);
 
     // Dedupe overlapping files by content hash — highest precedence wins.
@@ -207,6 +232,47 @@ export class EffectiveInstructionBuilder {
           enabled: true,
           importedAs: 'instruction',
           metadata: { absolutePath: join(dir, fileName) },
+        },
+      });
+    }
+    return candidates;
+  }
+
+  /**
+   * Maps caller-supplied repo-context into precedence-6 candidate sources.
+   * Empty/whitespace content is dropped. The stable `id` keeps dedupe and
+   * snapshot ordering deterministic; the `contentHash` lets identical injected
+   * content dedupe against an instruction file with the same body.
+   */
+  private additionalContextSources(
+    additional: AdditionalContextSource[] | undefined,
+  ): CandidateSource[] {
+    if (additional === undefined || additional.length === 0) {
+      return [];
+    }
+    const candidates: CandidateSource[] = [];
+    let index = 0;
+    for (const entry of additional) {
+      if (entry.content.trim().length === 0) {
+        continue;
+      }
+      const id = `repo-context-${index}`;
+      index += 1;
+      candidates.push({
+        precedence: entry.precedence ?? 6,
+        content: entry.content,
+        source: {
+          id,
+          scope: 'project',
+          format: 'custom',
+          kind: 'context',
+          path: entry.path,
+          title: entry.title ?? null,
+          contentHash: sha256Hex(entry.content),
+          trustLevel: 'trusted',
+          enabled: true,
+          importedAs: 'context',
+          metadata: { repoContext: true },
         },
       });
     }

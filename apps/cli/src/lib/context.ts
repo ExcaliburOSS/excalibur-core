@@ -6,9 +6,12 @@ import {
   EXCALIBUR_DIR,
   EffectiveInstructionBuilder,
   SAFETY_PRESETS,
+  formatHitsAsSources,
   loadExcaliburConfig,
+  type AdditionalContextSource,
   type LoadedExcaliburConfig,
 } from '@excalibur/core';
+import { searchRepoCode } from '@excalibur/context-engine';
 import {
   CORE_PROVIDER_FACTORIES,
   DEFAULT_PROVIDERS_CONFIG,
@@ -153,6 +156,76 @@ export async function chatWithGuidance(
   }
 }
 
+export interface StreamedChatResult {
+  output: ChatOutput;
+  /** Provider that actually answered (mock when a real provider fell back). */
+  provider: string;
+  /** True when the output was streamed delta-by-delta (vs. assembled at once). */
+  streamed: boolean;
+}
+
+/**
+ * Streaming counterpart of {@link chatWithGuidance} (M2, Slice 2).
+ *
+ * Mirrors the fallback contract EXACTLY: a *missing/not-yet-executable*
+ * provider whose error has a {@link FALLBACK_CODES} code AND is raised BEFORE
+ * the first delta falls back to the built-in mock and streams from it
+ * (`provider: 'mock'`). A *configured real provider that fails* — or any error
+ * raised mid-stream after at least one delta — is surfaced unchanged so the
+ * user can fix their configuration (mid-stream output is never silently
+ * replaced by mock content).
+ */
+export async function streamWithGuidance(
+  deps: CliDeps,
+  context: GatewayContext,
+  input: ChatInput,
+  onDelta: (text: string) => void,
+): Promise<StreamedChatResult> {
+  let sawDelta = false;
+  try {
+    const gen = context.gateway.streamWithUsage(input);
+    let result = await gen.next();
+    while (!result.done) {
+      const chunk = result.value.content;
+      if (chunk.length > 0) {
+        sawDelta = true;
+        onDelta(chunk);
+      }
+      result = await gen.next();
+    }
+    return { output: result.value, provider: context.providerName, streamed: true };
+  } catch (error) {
+    const fallbackEligible =
+      error instanceof ProviderError && FALLBACK_CODES.has(error.code);
+    // Only a fallback-code error raised before any delta may fall back; a real
+    // failure, or any error mid-stream, is surfaced unchanged.
+    if (!fallbackEligible || sawDelta) {
+      throw error;
+    }
+    if (error.code === 'provider_not_implemented') {
+      deps.ui.warn(
+        `Provider "${context.providerName}" is configured, but its adapter is not available in this build. ` +
+          'Using the built-in mock provider for this command.',
+      );
+    } else {
+      deps.ui.warn(
+        'No usable model provider is configured. Run `excalibur models setup` to pick one — ' +
+          'using the built-in mock provider for now (the M1 default).',
+      );
+    }
+    const fallback = new ModelGateway(DEFAULT_PROVIDERS_CONFIG);
+    const gen = fallback.streamWithUsage(input);
+    let result = await gen.next();
+    while (!result.done) {
+      if (result.value.content.length > 0) {
+        onDelta(result.value.content);
+      }
+      result = await gen.next();
+    }
+    return { output: result.value, provider: 'mock', streamed: true };
+  }
+}
+
 export interface EffectiveContext {
   instructionsMarkdown: string;
   sources: InstructionSource[];
@@ -164,7 +237,12 @@ export interface EffectiveContext {
 export async function buildEffectiveContext(
   deps: CliDeps,
   repoRoot: string,
-  options: { workflowId?: string; autonomyLevel?: number } = {},
+  options: {
+    workflowId?: string;
+    autonomyLevel?: number;
+    /** Retrieved repo-context sources injected at precedence 6 (M2). */
+    additionalSources?: AdditionalContextSource[];
+  } = {},
 ): Promise<EffectiveContext> {
   const builder = new EffectiveInstructionBuilder({ repoRoot });
   const built = await builder.build({
@@ -172,6 +250,9 @@ export async function buildEffectiveContext(
     includeUserGlobal: deps.includeUserGlobal,
     ...(options.workflowId !== undefined ? { workflowId: options.workflowId } : {}),
     ...(options.autonomyLevel !== undefined ? { autonomyLevel: options.autonomyLevel } : {}),
+    ...(options.additionalSources !== undefined
+      ? { additionalSources: options.additionalSources }
+      : {}),
   });
   return {
     instructionsMarkdown: built.instructionsMarkdown,
@@ -248,4 +329,81 @@ export function systemPrompt(effective: EffectiveContext, roleLine: string): str
     return roleLine;
   }
   return `${effective.instructionsMarkdown}\n\n${roleLine}`;
+}
+
+/** Path's basename without its final extension: `src/auth/login.ts` → `login`. */
+function pathStem(relPath: string): string {
+  const base = relPath.split('/').pop() ?? relPath;
+  const dot = base.lastIndexOf('.');
+  return dot > 0 ? base.slice(0, dot) : base;
+}
+
+/**
+ * Derives a retrieval query from a source file's exported identifiers and its
+ * path stem (M2). Pulls `export … <name>`, Python `def`/`class`, Go `func`,
+ * Rust `pub fn` names — a deterministic, language-agnostic best effort.
+ */
+export function deriveNeighborQuery(relPath: string, content: string): string {
+  const identifiers = new Set<string>();
+  const declRe =
+    /\b(?:export\s+(?:async\s+)?(?:function|class|const|interface|type|enum)|def|class|func|pub\s+fn)\s+([A-Za-z_]\w*)/g;
+  let match: RegExpExecArray | null;
+  while ((match = declRe.exec(content)) !== null) {
+    const name = match[1];
+    if (name !== undefined) {
+      identifiers.add(name);
+    }
+  }
+  // Also pull imported identifiers so the query overlaps with neighbor files.
+  const importRe = /import\s+(?:type\s+)?\{([^}]+)\}/g;
+  while ((match = importRe.exec(content)) !== null) {
+    for (const part of (match[1] ?? '').split(',')) {
+      const name = part.trim().split(/\s+as\s+/)[0]?.trim();
+      if (name !== undefined && name.length > 0) {
+        identifiers.add(name);
+      }
+    }
+  }
+  const stem = pathStem(relPath);
+  return [stem, ...identifiers].join(' ');
+}
+
+/**
+ * Retrieves permission-gated neighbor context for a target file (M2,
+ * `explain`/`review`). Runs deterministic retrieval anchored on `relPath`
+ * (same-dir + imported neighbors), then DROPS any hit whose path is not
+ * readable per the existing `PermissionEngine.checkPath(path, 'read')` — so a
+ * blocked neighbor (`.env`, `secrets/…`) never enters the prompt. The
+ * surviving hits are formatted via `formatHitsAsSources` (one retrieval pass),
+ * whose content is redacted at the source and again by the builder's render()
+ * (redaction + caps).
+ */
+export async function buildNeighborContext(
+  deps: CliDeps,
+  repoRoot: string,
+  anchorPath: string,
+  query: string,
+  options: { maxFiles?: number } = {},
+): Promise<AdditionalContextSource[]> {
+  const { config } = loadConfigContext(repoRoot);
+  const engine = new PermissionEngine(config.permissions);
+
+  const result = await searchRepoCode(repoRoot, {
+    query,
+    anchorPath,
+    ...(options.maxFiles !== undefined ? { maxFiles: options.maxFiles } : {}),
+  });
+
+  // Permission-gate every neighbor by EXACT path; drop anything not outright
+  // allowed (a blocked path, or one that would merely require confirmation).
+  // Retrieval runs once and we format only the surviving hits — no substring
+  // matching, no second retrieval pass.
+  const allowedHits = result.hits.filter((hit) => {
+    const decision = engine.checkPath(hit.path, 'read');
+    return decision.allowed && !decision.requiresConfirmation;
+  });
+  if (allowedHits.length === 0) {
+    return [];
+  }
+  return formatHitsAsSources(allowedHits, result.terms);
 }

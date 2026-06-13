@@ -103,9 +103,15 @@ export {
   INSTRUCTION_SOURCE_CHAR_CAP,
   INSTRUCTION_TOTAL_CHAR_CAP,
   SUMMARIZED_MARKER,
+  type AdditionalContextSource,
   type EffectiveInstructions,
   type EffectiveInstructionsInput,
 } from './instructions/effective-instructions';
+export {
+  buildRepoContextSources,
+  formatHitsAsSources,
+  type BuildRepoContextInput,
+} from './instructions/repo-context';
 
 // Discovery (D-7)
 export {

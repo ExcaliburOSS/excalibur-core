@@ -5,8 +5,9 @@ import { promptProviderSetup, writeProvidersFile } from '../lib/provider-setup';
 
 /**
  * `excalibur models list|setup` — provider configuration. API keys are
- * referenced by environment variable NAME only; real providers are flagged
- * "available in M2" (the M1 gateway only executes the built-in mock).
+ * referenced by environment variable NAME only. Real providers execute (M2):
+ * a configured provider is `ready` once its API key env var is set; the
+ * built-in mock is the zero-config default.
  */
 export function registerModelsCommand(program: Command, deps: CliDeps): void {
   const models = program.command('models').description('inspect and configure model providers');
@@ -20,7 +21,12 @@ export function registerModelsCommand(program: Command, deps: CliDeps): void {
       const names = providerNames(context.providers);
       const rows = names.map((name) => {
         const config = context.providers.providers[name];
-        const status = config?.type === 'mock' ? 'ready (built-in)' : 'available in M2';
+        const status =
+          config?.type === 'mock'
+            ? 'ready (built-in)'
+            : config?.apiKeyEnv !== undefined && config.apiKeyEnv.length > 0
+              ? `ready · set ${config.apiKeyEnv}`
+              : 'ready';
         return {
           name,
           type: config?.type ?? 'unknown',

@@ -79,6 +79,11 @@ export class Ui {
     this.stdout.write(text);
   }
 
+  /** Streams a model output chunk verbatim (no added newline). */
+  streamChunk(text: string): void {
+    this.writeRaw(text);
+  }
+
   heading(text: string): void {
     this.write(pc.bold(text));
   }

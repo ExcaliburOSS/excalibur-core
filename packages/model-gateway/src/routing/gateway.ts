@@ -1,8 +1,14 @@
 import { ProviderError } from '@excalibur/shared';
-import { computeCostCents } from '../cost/cost';
+import { computeCostCents, estimateTokens } from '../cost/cost';
 import { createProvider, type CreateProviderDeps } from '../providers/create-provider';
 import type { ProviderConfig, ProvidersFileConfig } from '../providers/providers-file';
-import type { ChatDelta, ChatInput, ChatOutput, ModelProviderAdapter } from '../types';
+import type {
+  ChatDelta,
+  ChatInput,
+  ChatOutput,
+  ChatUsage,
+  ModelProviderAdapter,
+} from '../types';
 
 /**
  * Model gateway (Build Contract §4.3): resolves the provider by explicit name
@@ -114,5 +120,43 @@ export class ModelGateway {
   async *stream(input: GatewayChatInput): AsyncIterable<ChatDelta> {
     const { adapter, chatInput } = this.prepare(input);
     yield* adapter.stream(chatInput);
+  }
+
+  /**
+   * Streams deltas and RETURNS the assembled `ChatOutput` (M2, Slice 2).
+   *
+   * Yields each `ChatDelta` from the resolved provider, then returns the final
+   * output with `costCents` computed via the exact same path as {@link chat}.
+   * The public delta stream carries no usage, so usage is estimated from the
+   * concatenated content + the input messages using `estimateTokens` — the
+   * same estimation `MockProvider.chat()` uses, so the mock's streamed and
+   * non-streamed outputs report identical usage and cost.
+   *
+   * The existing {@link stream} is left untouched for callers that only need
+   * deltas.
+   */
+  async *streamWithUsage(input: GatewayChatInput): AsyncGenerator<ChatDelta, ChatOutput> {
+    const { cfg, adapter, chatInput } = this.prepare(input);
+    const chunks: string[] = [];
+    for await (const delta of adapter.stream(chatInput)) {
+      if (delta.content.length > 0) {
+        chunks.push(delta.content);
+      }
+      yield delta;
+    }
+
+    const content = chunks.join('');
+    const usage: ChatUsage = {
+      inputTokens: estimateTokens(chatInput.messages.map((message) => message.content).join('\n')),
+      outputTokens: estimateTokens(content),
+    };
+    const computed = computeCostCents(usage, cfg);
+    return {
+      content,
+      model: chatInput.model ?? cfg.model ?? 'unknown',
+      usage,
+      costCents: computed,
+      finishReason: 'stop',
+    };
   }
 }

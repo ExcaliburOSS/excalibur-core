@@ -129,6 +129,36 @@ describe('redactSecrets', () => {
     expect(redacted.match(/\[REDACTED\]/g)?.length).toBe(3);
   });
 
+  it('redacts npm automation tokens (npm_…)', () => {
+    const npmTok = token('npm_', 'aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789ab');
+    const redacted = redactSecrets(`//registry.npmjs.org/:_authToken=${npmTok}`);
+    expect(redacted).not.toContain(npmTok);
+    expect(redacted).toContain('[REDACTED]');
+  });
+
+  it('redacts .npmrc _auth/_authToken/_password assignments (often base64)', () => {
+    const b64 = 'YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXowMTIzNDU2Nzg5';
+    const redacted = redactSecrets(
+      [
+        `_auth=${b64}`,
+        '//registry.example.com/:_authToken=opaque-registry-token-value',
+        `_password=${b64}`,
+      ].join('\n'),
+    );
+    expect(redacted).not.toContain(b64);
+    expect(redacted).not.toContain('opaque-registry-token-value');
+    expect(redacted).toContain('_auth=[REDACTED]');
+    expect(redacted).toContain('_authToken=[REDACTED]');
+    expect(redacted).toContain('_password=[REDACTED]');
+  });
+
+  it('redacts standalone Google OAuth ya29.* tokens', () => {
+    const ya = token('ya29.', 'a0AfH6SMBxAbCdEfGhIjKlMnOpQrStUvWxYz');
+    const redacted = redactSecrets(`Cached token ${ya} in memory.`);
+    expect(redacted).not.toContain(ya);
+    expect(redacted).toContain('Cached token [REDACTED] in memory.');
+  });
+
   it('does not mask the NAME of an env var, only secret values', () => {
     const redacted = redactSecrets('Set QWEN_API_KEY in your shell before running.');
     expect(redacted).toBe('Set QWEN_API_KEY in your shell before running.');

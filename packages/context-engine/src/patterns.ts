@@ -4,7 +4,14 @@ import type { RepoPatterns } from './types';
 
 const TEST_DIR_NAMES: ReadonlySet<string> = new Set(['test', 'tests', '__tests__', 'spec']);
 const API_DIR_NAMES: ReadonlySet<string> = new Set(['api', 'routes', 'controllers']);
-const SENSITIVE_DIR_NAMES: ReadonlySet<string> = new Set([
+
+/**
+ * Domain directories that often hold security-relevant logic. Detected as
+ * `sensitivePaths` for reporting. NOTE: these are still legitimate, searchable
+ * application code (auth/billing handlers); the *secret-bearing* subset that
+ * retrieval must never surface is {@link SECRET_DIR_NAMES} in `secret-paths.ts`.
+ */
+export const SENSITIVE_DIR_NAMES: ReadonlySet<string> = new Set([
   'auth',
   'authentication',
   'billing',

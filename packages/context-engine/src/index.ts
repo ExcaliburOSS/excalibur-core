@@ -15,6 +15,16 @@ export { suggestWorkflows } from './workflows';
 export { scanInstructionSources } from './isd/scan';
 export { detectSkills, parseSkillMd, skillsFromSources } from './isd/skills';
 export { RepoAnalysisError } from './errors';
+export {
+  searchRepoCode,
+  tokenizeQuery,
+  type CodeSearchOptions,
+  type CodeSearchHit,
+  type CodeSnippet,
+  type CodeSearchResult,
+} from './search/code-search';
+export { isSecretPath, SECRET_DIR_NAMES } from './search/secret-paths';
+export { SENSITIVE_DIR_NAMES } from './patterns';
 export type {
   DetectedCommands,
   DetectedInstructionFile,
