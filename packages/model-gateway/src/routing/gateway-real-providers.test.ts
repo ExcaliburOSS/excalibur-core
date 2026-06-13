@@ -79,6 +79,30 @@ describe('ModelGateway with injected real providers (offline)', () => {
     );
   });
 
+  it('threads an injected keyResolver through to the real adapter', async () => {
+    const injectedKey = 'sk-proj-GATEWAYINJECTED1234567890abcdef';
+    const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);
+    const gateway = new ModelGateway(
+      config({
+        default: 'qwen',
+        qwen: {
+          type: 'openai-compatible',
+          baseUrl: 'https://api.example.test/v1',
+          model: 'test-openai-model',
+        },
+      }),
+      {
+        transport,
+        factories: CORE_PROVIDER_FACTORIES,
+        keyResolver: (name) => (name === 'qwen' ? injectedKey : null),
+      },
+    );
+    await gateway.chat({ messages });
+    expect(transport.requests[0]?.request.headers?.['authorization']).toBe(
+      `Bearer ${injectedKey}`,
+    );
+  });
+
   it('without injected deps, a real provider still throws provider_not_implemented', async () => {
     const gateway = new ModelGateway(
       config({ default: 'qwen', qwen: { type: 'openai-compatible', baseUrl: 'https://x/v1' } }),

@@ -24,6 +24,13 @@ export interface CreateProviderDeps {
   transport?: HttpTransport;
   /** Map of provider type → factory; when absent, real types stay unimplemented. */
   factories?: ProviderFactoryMap;
+  /**
+   * Optional resolver supplying a pre-decrypted API key per provider (OSS-4, M2).
+   * Hosts that keep keys outside `process.env` (e.g. encrypted in a database)
+   * return the in-memory key here; returning `null`/omitting the resolver falls
+   * back to env-var resolution. The returned key is never logged or persisted.
+   */
+  keyResolver?: (name: string, cfg: ProviderConfig) => string | null;
 }
 
 class NotImplementedProvider implements ModelProviderAdapter {
@@ -82,7 +89,9 @@ export function createProvider(
   const factory = deps?.factories?.[cfg.type];
   if (factory !== undefined) {
     const transport = deps?.transport ?? defaultTransport();
-    return factory(name, cfg, { transport });
+    const resolved = deps?.keyResolver?.(name, cfg);
+    const apiKey = resolved !== null && resolved !== undefined ? resolved : undefined;
+    return factory(name, cfg, apiKey !== undefined ? { transport, apiKey } : { transport });
   }
 
   return new NotImplementedProvider(name, cfg.type);

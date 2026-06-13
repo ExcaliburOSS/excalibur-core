@@ -62,6 +62,15 @@ export interface BaseHttpProviderOptions {
   transport: HttpTransport;
   /** Whether an API key is mandatory (anthropic / openai-compatible) or not (ollama). */
   requiresApiKey: boolean;
+  /**
+   * Pre-resolved API key injected by the caller (OSS-4, M2). When provided it
+   * wins over env-var resolution — enabling hosts that keep keys outside the
+   * process environment (e.g. encrypted in a database) to supply the decrypted
+   * key in-memory. When omitted, the key is resolved from `cfg.apiKeyEnv` via
+   * `resolveApiKey` exactly as before. Like the env-resolved key, an injected
+   * key is never persisted, logged, or placed in any error `details`.
+   */
+  apiKey?: string;
   hooks?: BaseProviderHooks;
 }
 
@@ -82,7 +91,13 @@ export abstract class BaseHttpProvider implements ModelProviderAdapter {
     this.timeoutMs = options.cfg.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.maxRetries = options.cfg.maxRetries ?? DEFAULT_MAX_RETRIES;
 
-    this.apiKey = resolveApiKey(options.cfg);
+    // An explicitly injected key wins; otherwise fall back to the env var named
+    // in `apiKeyEnv` (the OSS default). An empty injected string is treated as
+    // "not provided" so the env fallback and the requiresApiKey guard still apply.
+    this.apiKey =
+      options.apiKey !== undefined && options.apiKey.length > 0
+        ? options.apiKey
+        : resolveApiKey(options.cfg);
     if (options.requiresApiKey && this.apiKey === null) {
       const envHint =
         options.cfg.apiKeyEnv !== undefined && options.cfg.apiKeyEnv.length > 0

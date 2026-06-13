@@ -22,7 +22,13 @@ import type {
 
 export type GatewayChatInput = ChatInput & { provider?: string };
 
-/** Optional dependencies enabling real provider adapters (OSS-4, M2). */
+/**
+ * Optional dependencies enabling real provider adapters (OSS-4, M2). Besides
+ * the transport + factory map, an optional `keyResolver` supplies a pre-decrypted
+ * API key per provider (for hosts that keep keys outside `process.env`); it is
+ * threaded straight through to {@link createProvider}. Without deps — or without
+ * a `keyResolver` — behavior is byte-identical to env-based resolution.
+ */
 export type ModelGatewayDeps = CreateProviderDeps;
 
 export class ModelGateway {
