@@ -1,4 +1,4 @@
-import { Writable } from 'node:stream';
+import { PassThrough, Writable } from 'node:stream';
 import { Readable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { Ui } from './ui';
@@ -87,5 +87,57 @@ describe('Ui output', () => {
     const { ui, out } = makeUi();
     ui.json({ ok: true, items: [1, 2] });
     expect(JSON.parse(out.data)).toEqual({ ok: true, items: [1, 2] });
+  });
+});
+
+describe('Ui.openLineEditor (M-Shell Slice A)', () => {
+  it('reads successive lines from a single persistent interface', async () => {
+    const out = new Sink();
+    const stdin = new PassThrough();
+    const ui = new Ui({ stdout: out, stderr: new Sink(), stdin, interactive: true });
+    const editor = ui.openLineEditor();
+
+    const first = editor.question('> ');
+    stdin.write('hello world\n');
+    expect(await first).toBe('hello world');
+
+    const second = editor.question('> ');
+    stdin.write('second line\n');
+    expect(await second).toBe('second line');
+
+    editor.close();
+  });
+
+  it('resolves null on EOF (Ctrl-D / stream end)', async () => {
+    const stdin = new PassThrough();
+    const ui = new Ui({ stdout: new Sink(), stderr: new Sink(), stdin, interactive: true });
+    const editor = ui.openLineEditor();
+    const pending = editor.question('> ');
+    stdin.end();
+    expect(await pending).toBeNull();
+  });
+
+  it('seeds the history without breaking line reads', async () => {
+    // The seeded prompt history is consumed by readline at construction time
+    // (UP/DOWN native); seeding must not disturb normal line reading.
+    const stdin = new PassThrough();
+    const ui = new Ui({ stdout: new Sink(), stderr: new Sink(), stdin, interactive: true });
+    const editor = ui.openLineEditor({ history: ['newest prompt', 'older prompt'] });
+    const pending = editor.question('> ');
+    stdin.write('typed now\n');
+    expect(await pending).toBe('typed now');
+    editor.close();
+  });
+
+  it('exposes a SIGINT subscription that can be unsubscribed', () => {
+    // Real Ctrl-C only fires on a raw TTY; here we just assert the wiring
+    // contract — `onSigint` registers a handler and returns an unsubscribe fn.
+    const stdin = new PassThrough();
+    const ui = new Ui({ stdout: new Sink(), stderr: new Sink(), stdin, interactive: true });
+    const editor = ui.openLineEditor();
+    const off = editor.onSigint(() => undefined);
+    expect(typeof off).toBe('function');
+    expect(() => off()).not.toThrow();
+    editor.close();
   });
 });

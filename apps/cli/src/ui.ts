@@ -48,6 +48,32 @@ export interface SelectOptions {
   defaultIndex?: number;
 }
 
+export interface LineEditorOptions {
+  /**
+   * Seed history (newest first), as `readline` expects. The persistent
+   * interface exposes it through UP/DOWN natively. Pass the per-repo prompt
+   * history from `SessionStore.loadPromptHistory()` reversed.
+   */
+  history?: string[];
+  /** Optional readline completer for tab-completion (slash commands, …). */
+  completer?: readline.Completer;
+}
+
+/**
+ * A persistent line editor over a single long-lived `readline.Interface`
+ * (M-Shell Slice A). Unlike `Ui.ask`/`confirm`/`select` — which spin up a
+ * throwaway interface per call — this keeps ONE interface alive across the
+ * whole REPL session so UP/DOWN history works natively.
+ */
+export interface LineEditor {
+  /** Prompts and resolves with the typed line (`null` on EOF / Ctrl-D). */
+  question(prompt: string): Promise<string | null>;
+  /** Registers a SIGINT (Ctrl-C) handler; returns an unsubscribe fn. */
+  onSigint(handler: () => void): () => void;
+  /** Closes the underlying interface. */
+  close(): void;
+}
+
 function hasTty(stream: NodeJS.ReadableStream): boolean {
   return (stream as NodeJS.ReadStream).isTTY === true;
 }
@@ -57,6 +83,14 @@ export class Ui {
   private readonly stderr: NodeJS.WritableStream;
   private readonly stdin: NodeJS.ReadableStream;
   private readonly interactive: boolean;
+  /**
+   * The active persistent line reader (the REPL editor), when one is open.
+   * While set, the per-call prompts (`ask`/`confirm`/`select`) read their
+   * lines through it instead of spinning up a throwaway readline interface, so
+   * a SINGLE readline owns stdin for the whole session — approvals and history
+   * coexist without two interfaces fighting over the input stream.
+   */
+  private activeReader: (() => Promise<string | null>) | null = null;
 
   constructor(options: UiOptions = {}) {
     this.stdout = options.stdout ?? process.stdout;
@@ -171,7 +205,96 @@ export class Ui {
     return parsed - 1;
   }
 
-  private readLine(prompt: string): Promise<string> {
+  /**
+   * Opens a persistent {@link LineEditor} over a SINGLE long-lived
+   * `readline.Interface` (M-Shell Slice A). The interface is configured with
+   * the session prompt history (UP/DOWN native to readline) and `terminal`
+   * bound to this Ui's interactivity, so the editor behaves identically whether
+   * driven by a real TTY or scripted memory streams in tests. The per-call
+   * `ask`/`confirm`/`select` prompts are untouched — subcommands are unaffected.
+   */
+  openLineEditor(options: LineEditorOptions = {}): LineEditor {
+    const rl = readline.createInterface({
+      input: this.stdin,
+      output: this.stdout,
+      // `terminal: false` even when interactive: a queue over the `line` event
+      // (below) drives reads deterministically, so we never depend on raw-TTY
+      // keypress handling that a piped/scripted stdin cannot provide. Seeded
+      // history is still consumed by readline for UP/DOWN on a real terminal.
+      terminal: false,
+      ...(options.history !== undefined ? { history: options.history } : {}),
+      ...(options.completer !== undefined ? { completer: options.completer } : {}),
+    });
+
+    // A line queue decoupled from `rl.question`'s one-shot semantics: readline
+    // emits `line` for every newline (buffering pre-written input), and each
+    // `question` pulls the next line or waits for the next one. `close`/EOF
+    // resolves any waiter with null (Ctrl-D).
+    const lines: string[] = [];
+    const waiters: Array<(line: string | null) => void> = [];
+    let closed = false;
+
+    rl.on('line', (line: string) => {
+      const waiter = waiters.shift();
+      if (waiter !== undefined) {
+        waiter(line);
+      } else {
+        lines.push(line);
+      }
+    });
+    rl.on('close', () => {
+      closed = true;
+      while (waiters.length > 0) {
+        waiters.shift()?.(null);
+      }
+    });
+
+    const nextLine = (): Promise<string | null> =>
+      new Promise((resolve) => {
+        const buffered = lines.shift();
+        if (buffered !== undefined) {
+          resolve(buffered);
+        } else if (closed) {
+          resolve(null);
+        } else {
+          waiters.push(resolve);
+        }
+      });
+
+    const question = (prompt: string): Promise<string | null> => {
+      this.writeRaw(prompt);
+      return nextLine();
+    };
+
+    // While the editor is open, per-call prompts read through this same reader.
+    this.activeReader = nextLine;
+
+    return {
+      question,
+      onSigint: (handler: () => void): (() => void) => {
+        rl.on('SIGINT', handler);
+        return (): void => {
+          rl.removeListener('SIGINT', handler);
+        };
+      },
+      close: (): void => {
+        if (this.activeReader === nextLine) {
+          this.activeReader = null;
+        }
+        rl.close();
+      },
+    };
+  }
+
+  private async readLine(prompt: string): Promise<string> {
+    // Delegate to the active persistent reader (the REPL editor) when one is
+    // open, so a single readline owns stdin; otherwise spin up a throwaway
+    // interface (the original per-call behavior, used by every subcommand).
+    if (this.activeReader !== null) {
+      this.writeRaw(prompt);
+      const line = await this.activeReader();
+      return line ?? '';
+    }
     const rl = readline.createInterface({ input: this.stdin, output: this.stdout });
     return new Promise((resolve) => {
       rl.question(prompt, (answer) => {

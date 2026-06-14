@@ -54,6 +54,26 @@ export function getGitInfo(repoRoot: string): GitInfo {
   };
 }
 
+/** Local git identity (`user.name` / `user.email`), `null` when unset. */
+export interface GitIdentity {
+  name: string | null;
+  email: string | null;
+}
+
+/**
+ * Reads the configured git identity (`git config user.name` / `user.email`).
+ * Used cosmetically (e.g. the M-Shell welcome's "Welcome back, …"); both fields
+ * are `null` outside a configured repo.
+ */
+export function getGitIdentity(repoRoot: string): GitIdentity {
+  const name = tryGit(repoRoot, ['config', 'user.name']);
+  const email = tryGit(repoRoot, ['config', 'user.email']);
+  return {
+    name: name !== null && name.length > 0 ? name : null,
+    email: email !== null && email.length > 0 ? email : null,
+  };
+}
+
 /**
  * The local uncommitted diff. Prefers `git diff HEAD` (staged + unstaged);
  * falls back to `git diff` in repositories without commits. Returns an empty

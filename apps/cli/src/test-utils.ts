@@ -2,8 +2,9 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Writable } from 'node:stream';
+import { PassThrough, Writable } from 'node:stream';
 import type { Command } from 'commander';
+import { defaultDeps, type CliDeps } from './deps';
 import { buildProgram } from './program';
 import { Ui } from './ui';
 
@@ -57,6 +58,52 @@ export function createTestCli(options: TestCliOptions): TestCli {
     program,
     run: (...argv: string[]): Promise<void> =>
       program.parseAsync(['node', 'excalibur', ...argv]).then(() => undefined),
+    stdout: (): string => out.text(),
+    stderr: (): string => err.text(),
+    reset: (): void => {
+      out.chunks = [];
+      err.chunks = [];
+    },
+  };
+}
+
+/**
+ * An interactive CLI harness for the M-Shell REPL: an `interactive: true` Ui
+ * bound to a scripted PassThrough stdin + memory stdout, so streaming actually
+ * executes and prompts/approvals resolve against the scripted input.
+ */
+export interface InteractiveTestCli {
+  deps: CliDeps;
+  /** Feeds one line to the REPL's line editor (the trailing `\n` is added). */
+  send(line: string): void;
+  /** Ends stdin (EOF / Ctrl-D), so a pending `question` resolves to null. */
+  end(): void;
+  stdout(): string;
+  stderr(): string;
+  reset(): void;
+}
+
+export function createInteractiveCli(options: TestCliOptions): InteractiveTestCli {
+  const out = new MemoryStream();
+  const err = new MemoryStream();
+  const stdin = new PassThrough();
+  const ui = new Ui({ stdout: out, stderr: err, stdin, interactive: true });
+  const homeDir = options.homeDir ?? makeTempDir('home');
+  const deps = defaultDeps({
+    ui,
+    cwd: () => options.cwd,
+    homeDir: () => homeDir,
+    env: options.env ?? { PATH: process.env.PATH },
+    includeUserGlobal: options.includeUserGlobal ?? false,
+  });
+  return {
+    deps,
+    send: (line: string): void => {
+      stdin.write(`${line}\n`);
+    },
+    end: (): void => {
+      stdin.end();
+    },
     stdout: (): string => out.text(),
     stderr: (): string => err.text(),
     reset: (): void => {

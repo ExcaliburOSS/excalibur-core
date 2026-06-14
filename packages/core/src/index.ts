@@ -81,10 +81,12 @@ export {
   applyPatch,
   checkPatchApplies,
   createBranch,
+  getGitIdentity,
   getGitInfo,
   getLocalDiff,
   listRecentCommits,
   type GitCommit,
+  type GitIdentity,
   type GitInfo,
 } from './git/git';
 
@@ -121,6 +123,32 @@ export {
   type CreateDiscoverySessionInput,
   type LocalDiscoverySession,
 } from './discovery/discovery-manager';
+
+// Sessions (M-Shell Slice A)
+export {
+  SessionStore,
+  PROMPT_HISTORY_CAP,
+  sessionMetadataSchema,
+  sessionTurnSchema,
+  sessionStatusSchema,
+  type LocalSession,
+  type SessionTurn,
+  type SessionMetadata,
+  type SessionStatus,
+  type SessionTurnRole,
+  type SessionTurnKind,
+  type CreateSessionInput,
+  type AppendTurnInput,
+} from './sessions/session-store';
+export {
+  routeInput,
+  buildStatusLineModel,
+  type RouteDecision,
+  type RouteContext,
+  type RouteLane,
+  type StatusLineModel,
+  type BuildStatusLineInput,
+} from './sessions/intent-router';
 
 // Core-local errors
 export {
