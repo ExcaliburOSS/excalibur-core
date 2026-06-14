@@ -1,13 +1,58 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { NativeAgentAdapter } from '@excalibur/agent-runtime';
 import { DEFAULT_PROVIDERS_CONFIG, ModelGateway } from '@excalibur/model-gateway';
+import type { ChatInput, ChatOutput } from '@excalibur/model-gateway';
 import type { ExcaliburEvent, ExcaliburEventType, ExcaliburConfig } from '@excalibur/shared';
 import { getDefaultWorkflow } from '@excalibur/workflow-schema';
 import { RunManager } from '../runs/run-manager';
 import { makeTempDir, removeDir } from '../test-utils';
 import { executeLocalRun } from './execute-local-run';
+
+/**
+ * Wraps the real (mock) gateway: text phases get the mock's markdown, while the
+ * tool-using agent_work turn (which passes `tools`) is scripted to write a real
+ * file and then finish — exercising the engine → native adapter → real tools
+ * path end-to-end, fully offline.
+ */
+class ToolDrivenGateway {
+  private toolTurns = 0;
+  constructor(private readonly inner: ModelGateway) {}
+
+  chat(input: ChatInput): Promise<ChatOutput> {
+    if (input.tools === undefined || input.tools.length === 0) {
+      return this.inner.chat(input);
+    }
+    // Agent loop: first turn writes a file, second turn finishes.
+    const alreadyWrote = input.messages.some((m) => m.role === 'tool');
+    this.toolTurns += 1;
+    if (!alreadyWrote) {
+      return Promise.resolve({
+        content: '',
+        model: 'mock-model',
+        usage: { inputTokens: 8, outputTokens: 4 },
+        costCents: 0,
+        finishReason: 'tool_calls',
+        toolCalls: [
+          {
+            id: 'call_write_1',
+            name: 'write_file',
+            arguments: { path: 'src/feature.ts', content: 'export const feature = true;\n' },
+          },
+        ],
+      });
+    }
+    return Promise.resolve({
+      content: 'Implemented src/feature.ts as requested.',
+      model: 'mock-model',
+      usage: { inputTokens: 12, outputTokens: 6 },
+      costCents: 0,
+      finishReason: 'stop',
+    });
+  }
+}
 
 describe('executeLocalRun', () => {
   let repoRoot: string;
@@ -139,7 +184,12 @@ describe('executeLocalRun', () => {
     expect(streamed.map((event) => event.id)).toEqual(events.map((event) => event.id));
   });
 
-  it('runs structured-feature end-to-end with agent work and review artifacts', async () => {
+  it('runs structured-feature end-to-end with the REAL agent tool loop', async () => {
+    // The repo must be a git repo so the implementer's patch is a real diff.
+    execFileSync('git', ['init', '-q'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.email', 'test@excalibur.local'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.name', 'Excalibur Test'], { cwd: repoRoot });
+
     const definition = getDefaultWorkflow('structured-feature');
     const run = runManager.createRun({
       title: 'Implement contract renewal reminders',
@@ -149,39 +199,49 @@ describe('executeLocalRun', () => {
       executionStyle: 'structured',
     });
 
+    // The agent_work phase drives the real native loop. The MockProvider is a
+    // pure text double (it never requests tools), so for this end-to-end test we
+    // wrap it: text phases (context/spec/plan/review/pr) get the mock's markdown,
+    // and the tool-using agent_work turn (which passes `tools`) is scripted to
+    // really write a file and then finish — exercising engine → adapter → tools.
+    const config4: ExcaliburConfig = {
+      ...config,
+      permissions: { tools: { write_file: true }, allowedCommands: [] },
+    };
+    const toolDrivenGateway = new ToolDrivenGateway(gateway);
+
     const record = await executeLocalRun({
       repoRoot,
       runManager,
       run,
       definition: definition!,
-      gateway,
+      gateway: toolDrivenGateway as unknown as ModelGateway,
       adapter,
-      config,
+      config: config4,
     });
 
     expect(record.status).toBe('completed');
     const events = runManager.readEvents(run.id);
     const types = typesOf(events);
 
-    // agent_work forwarded the native adapter's scripted stream.
+    // agent_work drove the REAL loop: it requested a tool and wrote a real file.
     expect(types).toContain('tool_call');
-    expect(types).toContain('file_read');
     expect(types).toContain('file_write');
     expect(types).toContain('patch_generated');
     const agentEvents = events.filter((event) => event.sessionId !== null);
     expect(agentEvents.length).toBeGreaterThan(0);
 
-    // The diff travelled via patch_generated payload and was collected.
+    // The diff was collected from the real working-tree change.
     expect(existsSync(join(run.dir, 'diff.patch'))).toBe(true);
 
-    // Phase output artifacts.
+    // The agent REALLY created the file in the working tree.
+    expect(existsSync(join(repoRoot, 'src/feature.ts'))).toBe(true);
+
+    // Phase output artifacts (text phases used the mock provider).
     for (const artifact of ['context.md', 'spec.md', 'plan.md', 'review.md', 'pr-summary.md']) {
       expect(existsSync(join(run.dir, artifact))).toBe(true);
     }
     expect(readFileSync(join(run.dir, 'review.md'), 'utf8')).toContain('Mock provider (M1)');
-
-    // The user's repository files were never touched (only .excalibur/).
-    expect(existsSync(join(repoRoot, 'src'))).toBe(false);
   });
 
   it('cancels the run when a required human approval is denied', async () => {

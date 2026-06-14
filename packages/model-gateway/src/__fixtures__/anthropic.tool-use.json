@@ -1,0 +1,18 @@
+{
+  "id": "msg_01TOOL",
+  "type": "message",
+  "role": "assistant",
+  "model": "test-anthropic-model",
+  "content": [
+    { "type": "text", "text": "Let me check the weather." },
+    {
+      "type": "tool_use",
+      "id": "toolu_01ABC",
+      "name": "get_weather",
+      "input": { "city": "Madrid", "unit": "celsius" }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": { "input_tokens": 60, "output_tokens": 25 }
+}

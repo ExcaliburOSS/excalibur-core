@@ -38,6 +38,30 @@ export interface AgentRunInput {
   phase?: AgentRunPhaseRef;
   config: ExcaliburConfig;
   gateway: ModelGateway;
+  /**
+   * Optional approver for tools the permission engine marks
+   * `requiresConfirmation` (mutating actions outside the allowlist, `ask`
+   * tools). Resolving `false` — or omitting the callback entirely — declines
+   * the action: the native loop NEVER auto-executes a mutating tool the engine
+   * says needs confirmation when there is no confirmer (safe default). Additive.
+   */
+  confirm?: (req: ConfirmationRequest) => Promise<boolean>;
+  /**
+   * Optional abort signal. Aborting stops the native tool loop at the next
+   * iteration boundary (and is forwarded to the gateway for in-flight cancel).
+   * Additive — existing callers pass neither `confirm` nor `signal`.
+   */
+  signal?: AbortSignal;
+}
+
+/** A request to a human/approver to confirm a mutating tool invocation. */
+export interface ConfirmationRequest {
+  /** Tool name the model wants to call (e.g. `write_file`, `run_command`). */
+  tool: string;
+  /** Why confirmation is required (the permission engine's reason). */
+  reason: string;
+  /** Optional human-readable detail (e.g. the path or command at stake). */
+  detail?: string;
 }
 
 export interface AgentAdapter {

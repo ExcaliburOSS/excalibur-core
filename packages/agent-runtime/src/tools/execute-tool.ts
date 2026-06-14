@@ -1,0 +1,654 @@
+import { spawn } from 'node:child_process';
+import {
+  closeSync,
+  constants as fsConstants,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+  writeSync,
+} from 'node:fs';
+import path from 'node:path';
+import { minimatch } from 'minimatch';
+import { redactSecrets } from '@excalibur/model-gateway';
+import type { ExcaliburConfig } from '@excalibur/shared';
+import { getNativeTool, type NativeToolName } from './native-tools';
+import type { PermissionEngine } from '../permissions/permission-engine';
+
+/**
+ * Real native-tool executors (OSS-7, M2) — the security-critical core of the
+ * native agent. Every executor enforces defense in depth BEFORE touching the
+ * host:
+ *
+ *  1. zod validation of the model-supplied `args` (malformed → declined).
+ *  2. PATH CONFINEMENT for every path arg: the path is resolved against the
+ *     workdir and rejected unless it stays inside it; absolute paths, `..`
+ *     escapes and symlinks that point out of the tree are refused before any
+ *     fs call. (`assertConfined`).
+ *  3. PERMISSION GATE: `PermissionEngine.checkPath/checkCommand/checkTool` — a
+ *     `deny` returns `{ ok: false }`; a `requiresConfirmation` is handled one
+ *     level up (the adapter's confirm-or-decline gate) so this module never
+ *     prompts.
+ *  4. REDACTION: every result string (file contents, command output, diffs)
+ *     is passed through `redactSecrets` before it leaves this module, so a
+ *     secret read off disk or printed by a command is masked before it can
+ *     re-enter the prompt or an emitted event.
+ *
+ * Executors NEVER throw on a denied/invalid request: the textual result is fed
+ * back to the model so it can adapt. They only let truly unexpected internal
+ * errors surface as `{ ok: false }` with a redacted message.
+ */
+
+/** Execution context threaded into every tool executor. */
+export interface ToolExecutionContext {
+  /** Absolute working directory the agent is confined to. */
+  workdir: string;
+  config: ExcaliburConfig;
+  permissions: PermissionEngine;
+  /** Environment for spawned commands (defaults to a minimal inherited env). */
+  env?: NodeJS.ProcessEnv;
+}
+
+export interface ToolResult {
+  ok: boolean;
+  result: string;
+}
+
+/** Max bytes returned from read_file before truncation. */
+const MAX_READ_BYTES = 256 * 1024;
+/** Max entries returned from list_files. */
+const MAX_LIST_ENTRIES = 1000;
+/** Max matches returned from search_code. */
+const DEFAULT_SEARCH_MAX = 200;
+/** Max bytes of a single file scanned by search_code. */
+const SEARCH_FILE_MAX_BYTES = 1024 * 1024;
+/** Command timeout (ms) for run_command / run_tests / git operations. */
+const COMMAND_TIMEOUT_MS = 120_000;
+/** Max bytes captured from a command's combined stdout+stderr. */
+const COMMAND_OUTPUT_MAX = 256 * 1024;
+/** Directories never walked by search_code / list_files. */
+const SKIP_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage']);
+/** Max recursion depth for directory walks (anti stack-exhaustion). */
+const MAX_WALK_DEPTH = 100;
+/** Max length of a user/model regex source (cheap ReDoS bound, no new deps). */
+const MAX_REGEX_SOURCE = 200;
+/** Lines longer than this are skipped by search_code (anti catastrophic backtracking). */
+const MAX_SEARCH_LINE_LENGTH = 2000;
+
+function ok(result: string): ToolResult {
+  return { ok: true, result: redactSecrets(result) };
+}
+
+function fail(result: string): ToolResult {
+  return { ok: false, result: redactSecrets(result) };
+}
+
+/**
+ * Resolves `relPath` against `workdir` and asserts it stays inside it. Rejects
+ * absolute inputs and `..` escapes. When the resolved target (or an ancestor)
+ * is a symlink, the realpath is re-checked so a symlink can never tunnel out of
+ * the tree. Returns the absolute path on success, or an error string.
+ */
+function assertConfined(workdir: string, relPath: string): { abs: string } | { error: string } {
+  if (typeof relPath !== 'string' || relPath.length === 0) {
+    return { error: 'empty path' };
+  }
+  if (path.isAbsolute(relPath)) {
+    return { error: `absolute paths are not allowed: "${relPath}"` };
+  }
+  const root = path.resolve(workdir);
+  const abs = path.resolve(root, relPath);
+  if (!(abs === root || abs.startsWith(root + path.sep))) {
+    return { error: `path escapes the working directory: "${relPath}"` };
+  }
+  // Symlink safety: if the path (or its nearest existing ancestor) resolves via
+  // a symlink to somewhere outside the tree, refuse. New files (parent exists,
+  // leaf does not) are fine — we realpath the deepest existing ancestor.
+  let probe = abs;
+  while (probe !== root && !existsSync(probe)) {
+    probe = path.dirname(probe);
+  }
+  if (existsSync(probe)) {
+    let real: string;
+    try {
+      real = realpathSync(probe);
+    } catch {
+      return { error: `cannot resolve path: "${relPath}"` };
+    }
+    const realRoot = (() => {
+      try {
+        return realpathSync(root);
+      } catch {
+        return root;
+      }
+    })();
+    if (!(real === realRoot || real.startsWith(realRoot + path.sep))) {
+      return { error: `path resolves outside the working directory via a symlink: "${relPath}"` };
+    }
+  }
+  return { abs };
+}
+
+/** Validates raw args against the tool's zod schema; returns parsed args or an error. */
+function validate(name: NativeToolName, args: unknown): { data: Record<string, unknown> } | { error: string } {
+  const def = getNativeTool(name);
+  if (def === undefined) {
+    return { error: `unknown tool "${name}"` };
+  }
+  const parsed = def.parameters.safeParse(args);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
+      .join('; ');
+    return { error: `invalid arguments: ${issues}` };
+  }
+  return { data: parsed.data as Record<string, unknown> };
+}
+
+/**
+ * Runs a child process (command via shell, or git via argv) confined to `cwd`,
+ * with a hard timeout and bounded output capture. Resolves with the exit code
+ * and combined (capped) output; never rejects.
+ */
+function runProcess(
+  file: string,
+  args: string[],
+  options: { cwd: string; env?: NodeJS.ProcessEnv; shell?: boolean; input?: string },
+): Promise<{ code: number | null; output: string; timedOut: boolean }> {
+  return new Promise((resolve) => {
+    const child = spawn(file, args, {
+      cwd: options.cwd,
+      env: options.env ?? { PATH: process.env['PATH'] ?? '', HOME: process.env['HOME'] ?? '' },
+      shell: options.shell ?? false,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let output = '';
+    let bytes = 0;
+    let timedOut = false;
+    let settled = false;
+
+    const capture = (chunk: Buffer): void => {
+      if (bytes >= COMMAND_OUTPUT_MAX) {
+        return;
+      }
+      const remaining = COMMAND_OUTPUT_MAX - bytes;
+      const text = chunk.toString('utf8');
+      output += text.length > remaining ? `${text.slice(0, remaining)}\n…(output truncated)` : text;
+      bytes += Buffer.byteLength(text);
+    };
+    child.stdout?.on('data', capture);
+    child.stderr?.on('data', capture);
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, COMMAND_TIMEOUT_MS);
+
+    const finish = (code: number | null): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve({ code, output, timedOut });
+    };
+
+    child.on('error', (error) => {
+      output += `\n${error.message}`;
+      finish(null);
+    });
+    child.on('close', (code) => finish(code));
+
+    if (options.input !== undefined) {
+      child.stdin?.write(options.input);
+    }
+    child.stdin?.end();
+  });
+}
+
+// --- individual tool executors ----------------------------------------------
+
+function execReadFile(args: Record<string, unknown>, ctx: ToolExecutionContext): ToolResult {
+  const relPath = args['path'] as string;
+  const confined = assertConfined(ctx.workdir, relPath);
+  if ('error' in confined) {
+    return fail(`rejected: ${confined.error}`);
+  }
+  const decision = ctx.permissions.checkPath(relPath, 'read');
+  if (!decision.allowed) {
+    return fail(`permission denied: ${decision.reason}`);
+  }
+  if (!existsSync(confined.abs)) {
+    return fail(`file not found: "${relPath}"`);
+  }
+  const stat = statSync(confined.abs);
+  if (stat.isDirectory()) {
+    return fail(`"${relPath}" is a directory, not a file`);
+  }
+  let content = readFileSync(confined.abs, 'utf8');
+  let truncated = false;
+  if (Buffer.byteLength(content) > MAX_READ_BYTES) {
+    content = content.slice(0, MAX_READ_BYTES);
+    truncated = true;
+  }
+  return ok(truncated ? `${content}\n…(truncated at ${MAX_READ_BYTES} bytes)` : content);
+}
+
+function execWriteFile(args: Record<string, unknown>, ctx: ToolExecutionContext): ToolResult {
+  const relPath = args['path'] as string;
+  const fileContent = args['content'] as string;
+  const confined = assertConfined(ctx.workdir, relPath);
+  if ('error' in confined) {
+    return fail(`rejected: ${confined.error}`);
+  }
+  const decision = ctx.permissions.checkPath(relPath, 'write');
+  if (!decision.allowed) {
+    return fail(`permission denied: ${decision.reason}`);
+  }
+  const dir = path.dirname(confined.abs);
+  // mkdir -p, but only within the confined tree (dir is already confined).
+  mkdirSync(dir, { recursive: true });
+  // TOCTOU-safe write: open with O_NOFOLLOW so the kernel refuses (ELOOP) if the
+  // FINAL path component is a symlink AT OPEN TIME — closing the race window
+  // between a check-then-write where the leaf could be swapped for a symlink
+  // pointing outside the tree. assertConfined (above) already realpath-checks
+  // the intermediate dirs, so only the leaf needs this atomic guard.
+  let fd: number;
+  try {
+    fd = openSync(
+      confined.abs,
+      fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_TRUNC | fsConstants.O_NOFOLLOW,
+      0o644,
+    );
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (code === 'ELOOP') {
+      return fail(`permission denied: refusing to write through a symlink: "${relPath}"`);
+    }
+    if (code === 'EISDIR') {
+      return fail(`"${relPath}" is a directory, not a file`);
+    }
+    if (code === 'EACCES' || code === 'EPERM') {
+      return fail(`permission denied: cannot write "${relPath}"`);
+    }
+    return fail(`could not write "${relPath}"`);
+  }
+  try {
+    writeSync(fd, fileContent, null, 'utf8');
+  } finally {
+    closeSync(fd);
+  }
+  return ok(`wrote ${Buffer.byteLength(fileContent)} bytes to "${relPath}"`);
+}
+
+function execListFiles(args: Record<string, unknown>, ctx: ToolExecutionContext): ToolResult {
+  const relDir = (args['path'] as string | undefined) ?? '.';
+  const glob = args['glob'] as string | undefined;
+  const confined = assertConfined(ctx.workdir, relDir);
+  if ('error' in confined) {
+    return fail(`rejected: ${confined.error}`);
+  }
+  const decision = ctx.permissions.checkPath(relDir === '.' ? '.' : relDir, 'read');
+  if (!decision.allowed) {
+    return fail(`permission denied: ${decision.reason}`);
+  }
+  if (!existsSync(confined.abs)) {
+    return fail(`directory not found: "${relDir}"`);
+  }
+  const root = path.resolve(ctx.workdir);
+  const entries: string[] = [];
+  const walk = (absDir: string, depth: number): void => {
+    if (entries.length >= MAX_LIST_ENTRIES || depth > MAX_WALK_DEPTH) {
+      return;
+    }
+    let dirents;
+    try {
+      dirents = readdirSync(absDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const dirent of dirents) {
+      if (entries.length >= MAX_LIST_ENTRIES) {
+        return;
+      }
+      if (dirent.isSymbolicLink()) {
+        continue;
+      }
+      const absChild = path.join(absDir, dirent.name);
+      const rel = path.relative(root, absChild).split(path.sep).join('/');
+      if (dirent.isDirectory()) {
+        if (SKIP_DIRS.has(dirent.name)) {
+          continue;
+        }
+        walk(absChild, depth + 1);
+      } else if (dirent.isFile()) {
+        if (glob === undefined || minimatch(rel, glob, { dot: true })) {
+          entries.push(rel);
+        }
+      }
+    }
+  };
+  walk(confined.abs, 0);
+  entries.sort();
+  const header =
+    entries.length >= MAX_LIST_ENTRIES ? `(capped at ${MAX_LIST_ENTRIES})\n` : '';
+  return ok(header + (entries.length > 0 ? entries.join('\n') : '(no files)'));
+}
+
+function execSearchCode(args: Record<string, unknown>, ctx: ToolExecutionContext): ToolResult {
+  const query = args['query'] as string;
+  const glob = args['glob'] as string | undefined;
+  const maxResults = (args['maxResults'] as number | undefined) ?? DEFAULT_SEARCH_MAX;
+
+  let matcher: (line: string) => boolean;
+  const regexMatch = /^\/(.+)\/([a-z]*)$/.exec(query);
+  if (regexMatch !== null) {
+    const source = regexMatch[1] ?? '';
+    // Cheap ReDoS bound: a pathologically long pattern is the classic vector for
+    // catastrophic backtracking — reject it before compiling, with no new deps.
+    if (source.length > MAX_REGEX_SOURCE) {
+      return fail(`invalid arguments: regex too long (max ${MAX_REGEX_SOURCE} chars)`);
+    }
+    try {
+      const regex = new RegExp(source, regexMatch[2] ?? '');
+      matcher = (line) => regex.test(line);
+    } catch {
+      return fail(`invalid regex: "${query}"`);
+    }
+  } else {
+    matcher = (line) => line.includes(query);
+  }
+
+  const root = path.resolve(ctx.workdir);
+  const matches: string[] = [];
+  const walk = (absDir: string, depth: number): void => {
+    if (matches.length >= maxResults || depth > MAX_WALK_DEPTH) {
+      return;
+    }
+    let dirents;
+    try {
+      dirents = readdirSync(absDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const dirent of dirents) {
+      if (matches.length >= maxResults) {
+        return;
+      }
+      if (dirent.isSymbolicLink()) {
+        continue;
+      }
+      const absChild = path.join(absDir, dirent.name);
+      const rel = path.relative(root, absChild).split(path.sep).join('/');
+      if (dirent.isDirectory()) {
+        if (SKIP_DIRS.has(dirent.name)) {
+          continue;
+        }
+        walk(absChild, depth + 1);
+        continue;
+      }
+      if (!dirent.isFile()) {
+        continue;
+      }
+      if (glob !== undefined && !minimatch(rel, glob, { dot: true })) {
+        continue;
+      }
+      // Never read blocked/secret paths into a search result.
+      if (!ctx.permissions.checkPath(rel, 'read').allowed) {
+        continue;
+      }
+      let content: string;
+      try {
+        const stat = statSync(absChild);
+        if (stat.size > SEARCH_FILE_MAX_BYTES) {
+          continue;
+        }
+        content = readFileSync(absChild, 'utf8');
+      } catch {
+        continue;
+      }
+      // Skip files that look binary.
+      if (content.includes('\u0000')) {
+        continue;
+      }
+      const lines = content.split('\n');
+      for (let i = 0; i < lines.length; i += 1) {
+        if (matches.length >= maxResults) {
+          break;
+        }
+        const line = lines[i] ?? '';
+        // Never run the (possibly user/model-supplied) regex on a pathologically
+        // long line — that is the catastrophic-backtracking trigger.
+        if (line.length > MAX_SEARCH_LINE_LENGTH) {
+          continue;
+        }
+        if (matcher(line)) {
+          const snippet = line.trim().slice(0, 200);
+          matches.push(`${rel}:${i + 1}: ${snippet}`);
+        }
+      }
+    }
+  };
+  walk(root, 0);
+
+  if (matches.length === 0) {
+    return ok('(no matches)');
+  }
+  const header = matches.length >= maxResults ? `(capped at ${maxResults})\n` : '';
+  return ok(header + matches.join('\n'));
+}
+
+async function execRunCommand(
+  args: Record<string, unknown>,
+  ctx: ToolExecutionContext,
+): Promise<ToolResult> {
+  const command = args['command'] as string;
+  const relCwd = args['cwd'] as string | undefined;
+  const decision = ctx.permissions.checkCommand(command);
+  if (!decision.allowed) {
+    return fail(`permission denied: ${decision.reason}`);
+  }
+  let cwd = path.resolve(ctx.workdir);
+  if (relCwd !== undefined) {
+    const confined = assertConfined(ctx.workdir, relCwd);
+    if ('error' in confined) {
+      return fail(`rejected: ${confined.error}`);
+    }
+    cwd = confined.abs;
+  }
+  // The command is gated by the allowlist/confirm path before reaching here, so
+  // it runs through the shell as-is. We pin a minimal env (PATH+HOME only) so a
+  // command cannot read arbitrary secrets out of the inherited environment.
+  const { code, output, timedOut } = await runProcess(command, [], {
+    cwd,
+    ...(ctx.env !== undefined ? { env: ctx.env } : {}),
+    shell: true,
+  });
+  return formatCommandResult(command, code, output, timedOut);
+}
+
+async function execRunTests(
+  args: Record<string, unknown>,
+  ctx: ToolExecutionContext,
+): Promise<ToolResult> {
+  const override = args['command'] as string | undefined;
+  const pattern = args['pattern'] as string | undefined;
+  const base = override ?? ctx.config.commands?.test ?? 'npm test';
+  const command = pattern !== undefined ? `${base} ${pattern}` : base;
+  const decision = ctx.permissions.checkCommand(command);
+  if (!decision.allowed) {
+    return fail(`permission denied: ${decision.reason}`);
+  }
+  const { code, output, timedOut } = await runProcess(command, [], {
+    cwd: path.resolve(ctx.workdir),
+    ...(ctx.env !== undefined ? { env: ctx.env } : {}),
+    shell: true,
+  });
+  return formatCommandResult(command, code, output, timedOut);
+}
+
+function formatCommandResult(
+  command: string,
+  code: number | null,
+  output: string,
+  timedOut: boolean,
+): ToolResult {
+  if (timedOut) {
+    return fail(`command "${command}" timed out after ${COMMAND_TIMEOUT_MS}ms\n${output}`);
+  }
+  const exit = code ?? -1;
+  const body = `$ ${command}\nexit code: ${exit}\n${output}`.trimEnd();
+  return code === 0 ? ok(body) : fail(body);
+}
+
+async function execGitDiff(
+  args: Record<string, unknown>,
+  ctx: ToolExecutionContext,
+): Promise<ToolResult> {
+  const staged = args['staged'] === true;
+  const paths = (args['paths'] as string[] | undefined) ?? [];
+  const gitArgs = ['diff'];
+  if (staged) {
+    gitArgs.push('--cached');
+  }
+  if (paths.length > 0) {
+    for (const relPath of paths) {
+      const confined = assertConfined(ctx.workdir, relPath);
+      if ('error' in confined) {
+        return fail(`rejected: ${confined.error}`);
+      }
+    }
+    gitArgs.push('--', ...paths);
+  }
+  const { code, output, timedOut } = await runProcess('git', gitArgs, {
+    cwd: path.resolve(ctx.workdir),
+  });
+  if (timedOut) {
+    return fail('git diff timed out');
+  }
+  if (code !== 0) {
+    return fail(`git diff failed (exit ${code ?? -1}):\n${output}`);
+  }
+  return ok(output.length > 0 ? output : '(no changes)');
+}
+
+async function execApplyPatch(
+  args: Record<string, unknown>,
+  ctx: ToolExecutionContext,
+): Promise<ToolResult> {
+  const diff = args['diff'] as string;
+  // `git apply` (no --unsafe-paths) refuses out-of-tree / absolute paths itself.
+  const { code, output, timedOut } = await runProcess('git', ['apply', '--whitespace=nowarn', '-'], {
+    cwd: path.resolve(ctx.workdir),
+    input: diff.endsWith('\n') ? diff : `${diff}\n`,
+  });
+  if (timedOut) {
+    return fail('git apply timed out');
+  }
+  if (code !== 0) {
+    return fail(`patch did not apply (exit ${code ?? -1}):\n${output}`);
+  }
+  return ok('patch applied');
+}
+
+async function execCreateBranch(
+  args: Record<string, unknown>,
+  ctx: ToolExecutionContext,
+): Promise<ToolResult> {
+  const name = args['name'] as string;
+  const { code, output, timedOut } = await runProcess('git', ['checkout', '-b', name], {
+    cwd: path.resolve(ctx.workdir),
+  });
+  if (timedOut) {
+    return fail('git checkout timed out');
+  }
+  if (code !== 0) {
+    return fail(`could not create branch "${name}" (exit ${code ?? -1}):\n${output}`);
+  }
+  return ok(`created and switched to branch "${name}"`);
+}
+
+/**
+ * Executes a native tool with full defense in depth (validation → path
+ * confinement → permission gate → redaction). NEVER throws: a denied/invalid
+ * request returns `{ ok: false, result }` so the result can be fed back to the
+ * model. `requiresConfirmation` is NOT handled here — the adapter resolves the
+ * confirm-or-decline gate before calling this function.
+ */
+export async function executeNativeTool(
+  name: NativeToolName,
+  rawArgs: unknown,
+  ctx: ToolExecutionContext,
+): Promise<ToolResult> {
+  const validated = validate(name, rawArgs);
+  if ('error' in validated) {
+    return fail(validated.error);
+  }
+  const args = validated.data;
+
+  try {
+    switch (name) {
+      case 'read_file':
+        return execReadFile(args, ctx);
+      case 'write_file':
+        return execWriteFile(args, ctx);
+      case 'list_files':
+        return execListFiles(args, ctx);
+      case 'search_code':
+        return execSearchCode(args, ctx);
+      case 'run_command':
+        return await execRunCommand(args, ctx);
+      case 'run_tests':
+        return await execRunTests(args, ctx);
+      case 'git_diff':
+        return await execGitDiff(args, ctx);
+      case 'apply_patch':
+        return await execApplyPatch(args, ctx);
+      case 'create_branch':
+        return await execCreateBranch(args, ctx);
+      default: {
+        // Exhaustiveness guard: every NativeToolName is handled above.
+        const exhaustive: never = name;
+        return fail(`unhandled tool "${String(exhaustive)}"`);
+      }
+    }
+  } catch (error) {
+    // Never surface the raw message/stack: an fs error message can leak absolute
+    // host paths. Map a known errno code to a generic phrase; redactSecrets is a
+    // second layer (it does not strip ordinary paths).
+    return fail(`tool "${name}" failed: ${genericErrorMessage(error)}`);
+  }
+}
+
+/**
+ * Builds a generic, host-path-free message from a thrown error's errno `code`,
+ * never echoing the raw `error.message` (which can contain absolute paths).
+ */
+function genericErrorMessage(error: unknown): string {
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === 'string') {
+    switch (code) {
+      case 'EACCES':
+      case 'EPERM':
+        return 'access denied';
+      case 'ENOENT':
+        return 'not found';
+      case 'EISDIR':
+        return 'is a directory';
+      case 'ENOTDIR':
+        return 'not a directory';
+      case 'ELOOP':
+        return 'symlink not permitted';
+      case 'EMFILE':
+      case 'ENFILE':
+        return 'too many open files';
+      default:
+        return `tool failed (${code})`;
+    }
+  }
+  return 'tool failed';
+}

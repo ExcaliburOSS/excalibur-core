@@ -10,9 +10,16 @@
  */
 
 import { ProviderError } from '@excalibur/shared';
+import { parseToolArguments } from '../errors/provider-errors';
 import { parseNdjson } from '../transport/sse';
 import type { TransportRequest, TransportResponse } from '../transport/transport';
-import type { ChatFinishReason, ChatInput, ChatUsage } from '../types';
+import type {
+  ChatFinishReason,
+  ChatInput,
+  ChatMessage,
+  ChatUsage,
+  ToolCall,
+} from '../types';
 import {
   BaseHttpProvider,
   type BaseHttpProviderOptions,
@@ -30,6 +37,37 @@ function mapDoneReason(reason: unknown): ChatFinishReason {
   return 'stop';
 }
 
+/**
+ * Serializes one normalized message into Ollama's `/api/chat` message form.
+ * Tool-calling turns map as:
+ *   - assistant with `toolCalls` → `{role:'assistant', content,
+ *     tool_calls:[{function:{name, arguments}}]}` (Ollama takes `arguments` as
+ *     an object, not a JSON string);
+ *   - a `tool` result message → `{role:'tool', content, tool_call_id?}`.
+ */
+function toWireMessage(message: ChatMessage): Record<string, unknown> {
+  if (message.role === 'tool') {
+    const wire: Record<string, unknown> = { role: 'tool', content: message.content };
+    if (message.toolCallId !== undefined && message.toolCallId.length > 0) {
+      wire['tool_call_id'] = message.toolCallId;
+    }
+    return wire;
+  }
+  if (message.role === 'assistant' && (message.toolCalls?.length ?? 0) > 0) {
+    return {
+      role: 'assistant',
+      content: message.content,
+      tool_calls: (message.toolCalls ?? []).map((call) => ({
+        function: {
+          name: call.name,
+          arguments: call.arguments,
+        },
+      })),
+    };
+  }
+  return { role: message.role, content: message.content };
+}
+
 export class OllamaAdapter extends BaseHttpProvider {
   private readonly baseUrl: string;
 
@@ -45,12 +83,19 @@ export class OllamaAdapter extends BaseHttpProvider {
   private body(input: ChatInput, model: string, stream: boolean): string {
     const payload: Record<string, unknown> = {
       model,
-      messages: input.messages.map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
+      messages: input.messages.map(toWireMessage),
       stream,
     };
+    if (input.tools !== undefined && input.tools.length > 0) {
+      payload['tools'] = input.tools.map((tool) => ({
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        },
+      }));
+    }
     const options: Record<string, unknown> = {};
     if (input.temperature !== undefined) {
       options['temperature'] = input.temperature;
@@ -93,13 +138,31 @@ export class OllamaAdapter extends BaseHttpProvider {
       });
     }
     const obj = parsed as {
-      message?: { content?: string };
+      message?: {
+        content?: string;
+        tool_calls?: Array<{
+          id?: string;
+          function?: { name?: string; arguments?: unknown };
+        }>;
+      };
       prompt_eval_count?: number;
       eval_count?: number;
       done_reason?: unknown;
       model?: string;
     };
     const content = typeof obj.message?.content === 'string' ? obj.message.content : '';
+    const toolCalls: ToolCall[] = [];
+    const rawCalls = obj.message?.tool_calls ?? [];
+    rawCalls.forEach((call, index) => {
+      const name = typeof call.function?.name === 'string' ? call.function.name : '';
+      toolCalls.push({
+        // Ollama omits an id; synthesize a stable one from the call's position.
+        id: typeof call.id === 'string' && call.id.length > 0 ? call.id : `call_${index}`,
+        name,
+        // Ollama returns `arguments` as an object already; tolerate a string too.
+        arguments: parseToolArguments(name, call.function?.arguments),
+      });
+    });
     const usage: Partial<ChatUsage> = {};
     if (typeof obj.prompt_eval_count === 'number') {
       usage.inputTokens = obj.prompt_eval_count;
@@ -110,8 +173,11 @@ export class OllamaAdapter extends BaseHttpProvider {
     return {
       content,
       usage,
-      finishReason: mapDoneReason(obj.done_reason),
+      // A tool-call turn overrides the done_reason → 'tool_calls'; Ollama does
+      // not report a distinct done_reason for tool use.
+      finishReason: toolCalls.length > 0 ? 'tool_calls' : mapDoneReason(obj.done_reason),
       model: typeof obj.model === 'string' && obj.model.length > 0 ? obj.model : model,
+      ...(toolCalls.length > 0 ? { toolCalls } : {}),
     };
   }
 

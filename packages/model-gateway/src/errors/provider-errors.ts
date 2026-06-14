@@ -134,3 +134,70 @@ export function networkError(cause: unknown): ProviderError {
 export function isRetryableProviderError(error: unknown): boolean {
   return error instanceof ProviderError && RETRYABLE_CODES.has(error.code);
 }
+
+/**
+ * A non-retryable `ProviderError` for a tool call whose arguments could not be
+ * parsed into a JSON object. Surfaced (rather than crashing) so the agent loop
+ * can decide how to recover. The `reason` is redacted and the tool name and
+ * (truncated, redacted) raw argument string are attached for diagnostics.
+ */
+export function toolArgumentsError(
+  toolName: string,
+  rawArguments: string,
+  reason: unknown,
+): ProviderError {
+  const why = reason instanceof Error ? reason.message : String(reason);
+  return new ProviderError(
+    `Model returned malformed JSON arguments for tool "${toolName}".`,
+    {
+      code: PROVIDER_ERROR_CODES.invalidRequest,
+      details: {
+        tool: toolName,
+        reason: redactSecrets(why),
+        arguments: bodySnippet(rawArguments),
+      },
+    },
+  );
+}
+
+/**
+ * Normalizes a model's tool-call arguments into a parsed object. Tolerates the
+ * two wire forms providers emit:
+ *   - a JSON string (OpenAI / Anthropic) → `JSON.parse`d;
+ *   - an already-parsed object (Ollama, or a provider that pre-parses).
+ * An empty/whitespace string means "no arguments" → `{}`. A non-object JSON
+ * value (string, number, array, null) or invalid JSON throws a typed
+ * {@link toolArgumentsError} so the malformed call never reaches the loop.
+ */
+export function parseToolArguments(
+  toolName: string,
+  raw: unknown,
+): Record<string, unknown> {
+  if (raw === undefined || raw === null) {
+    return {};
+  }
+  if (typeof raw === 'object') {
+    // Arrays are not a valid arguments object.
+    if (Array.isArray(raw)) {
+      throw toolArgumentsError(toolName, JSON.stringify(raw), 'arguments must be a JSON object');
+    }
+    return raw as Record<string, unknown>;
+  }
+  if (typeof raw !== 'string') {
+    throw toolArgumentsError(toolName, String(raw), 'arguments must be a JSON object or string');
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return {};
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (error) {
+    throw toolArgumentsError(toolName, raw, error);
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw toolArgumentsError(toolName, raw, 'arguments must be a JSON object');
+  }
+  return parsed as Record<string, unknown>;
+}

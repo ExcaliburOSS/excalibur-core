@@ -16,9 +16,16 @@
  */
 
 import { ConfigValidationError, ProviderError } from '@excalibur/shared';
+import { parseToolArguments } from '../errors/provider-errors';
 import { parseSSE } from '../transport/sse';
 import type { TransportRequest, TransportResponse } from '../transport/transport';
-import type { ChatFinishReason, ChatInput, ChatUsage } from '../types';
+import type {
+  ChatFinishReason,
+  ChatInput,
+  ChatMessage,
+  ChatUsage,
+  ToolCall,
+} from '../types';
 import {
   BaseHttpProvider,
   type BaseHttpProviderOptions,
@@ -30,8 +37,44 @@ function mapFinishReason(reason: unknown): ChatFinishReason {
   if (reason === 'length') {
     return 'length';
   }
-  // stop, tool_calls, content_filter, null → stop.
+  if (reason === 'tool_calls') {
+    return 'tool_calls';
+  }
+  // stop, content_filter, null → stop.
   return 'stop';
+}
+
+/**
+ * Serializes one normalized message into the OpenAI chat-completions wire form.
+ * Tool-calling turns map as:
+ *   - assistant with `toolCalls` → `{role:'assistant', content,
+ *     tool_calls:[{id, type:'function', function:{name, arguments}}]}`
+ *     (`arguments` is a JSON string, per the wire format);
+ *   - a `tool` result message → `{role:'tool', tool_call_id, content}`.
+ */
+function toWireMessage(message: ChatMessage): Record<string, unknown> {
+  if (message.role === 'tool') {
+    return {
+      role: 'tool',
+      tool_call_id: message.toolCallId ?? '',
+      content: message.content,
+    };
+  }
+  if (message.role === 'assistant' && (message.toolCalls?.length ?? 0) > 0) {
+    return {
+      role: 'assistant',
+      content: message.content,
+      tool_calls: (message.toolCalls ?? []).map((call) => ({
+        id: call.id,
+        type: 'function',
+        function: {
+          name: call.name,
+          arguments: JSON.stringify(call.arguments),
+        },
+      })),
+    };
+  }
+  return { role: message.role, content: message.content };
 }
 
 /** Joins `{baseUrl}` and the chat-completions path without doubling `/v1`. */
@@ -71,10 +114,7 @@ export class OpenAICompatibleAdapter extends BaseHttpProvider {
   private body(input: ChatInput, model: string, stream: boolean): string {
     const payload: Record<string, unknown> = {
       model,
-      messages: input.messages.map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
+      messages: input.messages.map(toWireMessage),
       stream,
     };
     if (input.temperature !== undefined) {
@@ -82,6 +122,16 @@ export class OpenAICompatibleAdapter extends BaseHttpProvider {
     }
     if (input.maxTokens !== undefined) {
       payload['max_tokens'] = input.maxTokens;
+    }
+    if (input.tools !== undefined && input.tools.length > 0) {
+      payload['tools'] = input.tools.map((tool) => ({
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        },
+      }));
     }
     if (stream) {
       payload['stream_options'] = { include_usage: true };
@@ -119,7 +169,13 @@ export class OpenAICompatibleAdapter extends BaseHttpProvider {
     }
     const obj = parsed as {
       choices?: Array<{
-        message?: { content?: string };
+        message?: {
+          content?: string | null;
+          tool_calls?: Array<{
+            id?: string;
+            function?: { name?: string; arguments?: unknown };
+          }>;
+        };
         finish_reason?: unknown;
       }>;
       usage?: { prompt_tokens?: number; completion_tokens?: number };
@@ -127,6 +183,20 @@ export class OpenAICompatibleAdapter extends BaseHttpProvider {
     };
     const choice = obj.choices?.[0];
     const content = typeof choice?.message?.content === 'string' ? choice.message.content : '';
+    const toolCalls: ToolCall[] = [];
+    (choice?.message?.tool_calls ?? []).forEach((call, index) => {
+      const name = typeof call.function?.name === 'string' ? call.function.name : '';
+      toolCalls.push({
+        // OpenAI normally sends an id; synthesize a stable one from the call's
+        // position when it is missing/empty so the result round-trip never
+        // carries an empty tool_call_id.
+        id: typeof call.id === 'string' && call.id.length > 0 ? call.id : `call_${index}`,
+        name,
+        // OpenAI returns `arguments` as a JSON string; malformed JSON surfaces
+        // a typed error rather than crashing the loop downstream.
+        arguments: parseToolArguments(name, call.function?.arguments),
+      });
+    });
     const usage: Partial<ChatUsage> = {};
     if (typeof obj.usage?.prompt_tokens === 'number') {
       usage.inputTokens = obj.usage.prompt_tokens;
@@ -139,6 +209,7 @@ export class OpenAICompatibleAdapter extends BaseHttpProvider {
       usage,
       finishReason: mapFinishReason(choice?.finish_reason),
       model: typeof obj.model === 'string' && obj.model.length > 0 ? obj.model : model,
+      ...(toolCalls.length > 0 ? { toolCalls } : {}),
     };
   }
 

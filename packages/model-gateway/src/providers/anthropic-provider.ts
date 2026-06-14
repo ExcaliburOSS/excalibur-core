@@ -14,9 +14,16 @@
  */
 
 import { ProviderError } from '@excalibur/shared';
+import { parseToolArguments } from '../errors/provider-errors';
 import { parseSSE } from '../transport/sse';
 import type { TransportRequest, TransportResponse } from '../transport/transport';
-import type { ChatFinishReason, ChatInput, ChatMessage, ChatUsage } from '../types';
+import type {
+  ChatFinishReason,
+  ChatInput,
+  ChatMessage,
+  ChatUsage,
+  ToolCall,
+} from '../types';
 import {
   BaseHttpProvider,
   type BaseHttpProviderOptions,
@@ -32,20 +39,69 @@ function mapStopReason(stopReason: unknown): ChatFinishReason {
   if (stopReason === 'max_tokens') {
     return 'length';
   }
-  // end_turn, tool_use, stop_sequence, null → stop.
+  if (stopReason === 'tool_use') {
+    return 'tool_calls';
+  }
+  // end_turn, stop_sequence, null → stop.
   return 'stop';
 }
 
-/** Splits messages into the top-level `system` string and user/assistant turns. */
+/** A single Anthropic message turn (content is text or a content-block array). */
+interface AnthropicTurn {
+  role: 'user' | 'assistant';
+  content: string | Array<Record<string, unknown>>;
+}
+
+/**
+ * Builds the Anthropic content-block array for an assistant turn that requested
+ * tools: an optional leading `text` block then one `tool_use` block per call
+ * (`id`, `name`, `input`).
+ */
+function assistantToolUseContent(message: ChatMessage): Array<Record<string, unknown>> {
+  const blocks: Array<Record<string, unknown>> = [];
+  if (message.content.length > 0) {
+    blocks.push({ type: 'text', text: message.content });
+  }
+  for (const call of message.toolCalls ?? []) {
+    blocks.push({
+      type: 'tool_use',
+      id: call.id,
+      name: call.name,
+      input: call.arguments,
+    });
+  }
+  return blocks;
+}
+
+/**
+ * Splits messages into the top-level `system` string and user/assistant turns.
+ * Tool-calling messages serialize into Anthropic's content-block form:
+ *   - an assistant message with `toolCalls` → `tool_use` blocks;
+ *   - a `tool` result message → a `user` turn carrying a `tool_result` block
+ *     (`tool_use_id` = the message's `toolCallId`).
+ */
 function splitSystem(messages: ChatMessage[]): {
   system: string | undefined;
-  turns: Array<{ role: 'user' | 'assistant'; content: string }>;
+  turns: AnthropicTurn[];
 } {
   const systemParts: string[] = [];
-  const turns: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  const turns: AnthropicTurn[] = [];
   for (const message of messages) {
     if (message.role === 'system') {
       systemParts.push(message.content);
+    } else if (message.role === 'tool') {
+      turns.push({
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: message.toolCallId ?? '',
+            content: message.content,
+          },
+        ],
+      });
+    } else if (message.role === 'assistant' && (message.toolCalls?.length ?? 0) > 0) {
+      turns.push({ role: 'assistant', content: assistantToolUseContent(message) });
     } else {
       turns.push({ role: message.role, content: message.content });
     }
@@ -93,6 +149,13 @@ export class AnthropicAdapter extends BaseHttpProvider {
     if (input.temperature !== undefined) {
       payload['temperature'] = input.temperature;
     }
+    if (input.tools !== undefined && input.tools.length > 0) {
+      payload['tools'] = input.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        input_schema: tool.parameters,
+      }));
+    }
     return JSON.stringify(payload);
   }
 
@@ -125,15 +188,40 @@ export class AnthropicAdapter extends BaseHttpProvider {
       });
     }
     const obj = parsed as {
-      content?: Array<{ type?: string; text?: string }>;
+      content?: Array<{
+        type?: string;
+        text?: string;
+        id?: string;
+        name?: string;
+        input?: unknown;
+      }>;
       usage?: { input_tokens?: number; output_tokens?: number };
       stop_reason?: unknown;
       model?: string;
     };
-    const content = (obj.content ?? [])
+    const blocks = obj.content ?? [];
+    const content = blocks
       .filter((block) => block.type === 'text' && typeof block.text === 'string')
       .map((block) => block.text ?? '')
       .join('');
+    const toolCalls: ToolCall[] = [];
+    let toolIndex = 0;
+    for (const block of blocks) {
+      if (block.type === 'tool_use') {
+        const name = typeof block.name === 'string' ? block.name : '';
+        toolCalls.push({
+          // Anthropic normally sends an id; synthesize a stable one from the
+          // call's position when it is missing/empty so the result round-trip
+          // never carries an empty tool_use_id.
+          id: typeof block.id === 'string' && block.id.length > 0 ? block.id : `call_${toolIndex}`,
+          name,
+          // Anthropic returns `input` as an already-parsed object; tolerate a
+          // string form too. Malformed args surface a typed error.
+          arguments: parseToolArguments(name, block.input),
+        });
+        toolIndex += 1;
+      }
+    }
     const usage: Partial<ChatUsage> = {};
     if (typeof obj.usage?.input_tokens === 'number') {
       usage.inputTokens = obj.usage.input_tokens;
@@ -146,6 +234,7 @@ export class AnthropicAdapter extends BaseHttpProvider {
       usage,
       finishReason: mapStopReason(obj.stop_reason),
       model: typeof obj.model === 'string' && obj.model.length > 0 ? obj.model : model,
+      ...(toolCalls.length > 0 ? { toolCalls } : {}),
     };
   }
 

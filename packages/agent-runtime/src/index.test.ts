@@ -9,6 +9,9 @@ describe('@excalibur/agent-runtime public API (Build Contract §4.4)', () => {
     expect(typeof agentRuntime.PermissionEngine).toBe('function');
     expect(typeof agentRuntime.NativeAgentAdapter).toBe('function');
     expect(typeof agentRuntime.CustomCommandAdapter).toBe('function');
+    expect(typeof agentRuntime.executeNativeTool).toBe('function');
+    expect(typeof agentRuntime.zodToJsonSchema).toBe('function');
+    expect(typeof agentRuntime.MAX_ITERATIONS).toBe('number');
   });
 
   it('NativeAgentAdapter and CustomCommandAdapter satisfy the AgentAdapter interface', () => {

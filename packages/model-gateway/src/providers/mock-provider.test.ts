@@ -64,6 +64,29 @@ function extractDiff(content: string): string {
   return match?.[1] ?? '';
 }
 
+describe('MockProvider ignores tools (test double, not a product path)', () => {
+  it('never emits toolCalls and ignores provided tools', async () => {
+    const withTools: ChatInput = {
+      messages: [{ role: 'user', content: 'What is the weather in Madrid?' }],
+      tools: [
+        {
+          name: 'get_weather',
+          description: 'Get the current weather for a city.',
+          parameters: { type: 'object', properties: { city: { type: 'string' } } },
+        },
+      ],
+    };
+    const withoutTools: ChatInput = {
+      messages: [{ role: 'user', content: 'What is the weather in Madrid?' }],
+    };
+    const output = await provider.chat(withTools);
+    expect(output.toolCalls).toBeUndefined();
+    expect(output.finishReason).toBe('stop');
+    // Output is identical whether or not tools are present (tools ignored).
+    expect(output.content).toBe((await provider.chat(withoutTools)).content);
+  });
+});
+
 describe('MockProvider.chat determinism', () => {
   it('returns byte-identical output for identical input', async () => {
     const ask = input('Why does the escrow release run twice?');

@@ -1,43 +1,111 @@
-import { existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_CONFIG,
   excaliburEventSchema,
+  type ExcaliburConfig,
   type ExcaliburEvent,
-  type ExcaliburEventType,
 } from '@excalibur/shared';
-import { DEFAULT_PROVIDERS_CONFIG, ModelGateway } from '@excalibur/model-gateway';
+import { ProviderError } from '@excalibur/shared';
+import type { ChatInput, ChatOutput, ToolCall } from '@excalibur/model-gateway';
 import type { AgentRunInput } from '../../types';
 import { NATIVE_TOOL_NAMES } from '../../tools/native-tools';
-import { NativeAgentAdapter } from './native-agent-adapter';
+import { MAX_ITERATIONS, NativeAgentAdapter } from './native-agent-adapter';
 
-const PINNED_IMPLEMENTER_ORDER: ExcaliburEventType[] = [
-  'tool_call',
-  'file_read',
-  'model_call',
-  'file_write',
-  'command_started',
-  'command_completed',
-  'test_result',
-  'patch_generated',
-];
+/**
+ * Offline tests for the REAL native agentic loop (OSS-7). The model gateway is
+ * an INJECTED FAKE that returns a scripted sequence of `ChatOutput`s (tool
+ * calls then a final text turn) — no network, no keys. Tools run against a real
+ * temp git repository so file/command/git effects are observed for real.
+ */
 
-/** Non-existent directory: proves the adapter never touches the filesystem. */
-const FAKE_WORKDIR = join(tmpdir(), `excalibur-agent-runtime-test-${process.pid}-nonexistent`);
+let tmpRepo: string;
 
-function makeInput(overrides?: Partial<AgentRunInput>): AgentRunInput {
+beforeEach(() => {
+  tmpRepo = mkdtempSync(join(tmpdir(), 'excalibur-agent-loop-'));
+  execFileSync('git', ['init', '-q'], { cwd: tmpRepo });
+  execFileSync('git', ['config', 'user.email', 'test@excalibur.local'], { cwd: tmpRepo });
+  execFileSync('git', ['config', 'user.name', 'Excalibur Test'], { cwd: tmpRepo });
+});
+
+afterEach(() => {
+  rmSync(tmpRepo, { recursive: true, force: true });
+});
+
+/** A gateway driven by a fixed queue of outputs (one per loop iteration). */
+class FakeGateway {
+  readonly received: ChatInput[] = [];
+  private index = 0;
+  constructor(private readonly outputs: Partial<ChatOutput>[]) {}
+
+  chat(input: ChatInput): Promise<ChatOutput> {
+    this.received.push(input);
+    const scripted = this.outputs[Math.min(this.index, this.outputs.length - 1)] ?? {};
+    this.index += 1;
+    return Promise.resolve({
+      content: scripted.content ?? '',
+      model: scripted.model ?? 'fake-model',
+      usage: scripted.usage ?? { inputTokens: 10, outputTokens: 5 },
+      costCents: scripted.costCents ?? 0,
+      finishReason: scripted.finishReason ?? (scripted.toolCalls ? 'tool_calls' : 'stop'),
+      ...(scripted.toolCalls ? { toolCalls: scripted.toolCalls } : {}),
+    });
+  }
+}
+
+/** A gateway that ALWAYS asks for a tool — used to prove the loop is bounded. */
+class AlwaysToolGateway {
+  calls = 0;
+  chat(): Promise<ChatOutput> {
+    this.calls += 1;
+    return Promise.resolve({
+      content: '',
+      model: 'fake-model',
+      usage: { inputTokens: 1, outputTokens: 1 },
+      costCents: 0,
+      finishReason: 'tool_calls',
+      toolCalls: [toolCall(`c${this.calls}`, 'list_files', { path: '.' })],
+    });
+  }
+}
+
+function toolCall(id: string, name: string, args: Record<string, unknown>): ToolCall {
+  return { id, name, arguments: args };
+}
+
+function makeInput(gateway: unknown, overrides?: Partial<AgentRunInput>): AgentRunInput {
   return {
-    runId: 'run_20260613_101500',
-    sessionId: 'session_test_1',
-    workdir: FAKE_WORKDIR,
-    prompt: 'Fix duplicated escrow release in src/escrow/escrow.service.ts on webhook retry',
+    runId: 'run_20260614_120000',
+    sessionId: 'sess_1',
+    workdir: tmpRepo,
+    prompt: 'Do the task.',
     role: 'implementer',
-    config: DEFAULT_CONFIG,
-    gateway: new ModelGateway(DEFAULT_PROVIDERS_CONFIG),
+    config: permissiveConfig(),
+    gateway: gateway as AgentRunInput['gateway'],
     phase: { id: 'implement', name: 'Implement', type: 'agent_work' },
     ...overrides,
+  };
+}
+
+/** A config that allows mutating tools/commands so the loop runs unattended. */
+function permissiveConfig(): ExcaliburConfig {
+  return {
+    ...DEFAULT_CONFIG,
+    permissions: {
+      ...DEFAULT_CONFIG.permissions,
+      tools: {
+        ...DEFAULT_CONFIG.permissions?.tools,
+        write_file: true,
+        run_command: true,
+        apply_patch: true,
+        create_branch: true,
+        run_tests: true,
+      },
+      allowedCommands: ['*'],
+    },
   };
 }
 
@@ -49,59 +117,6 @@ async function collect(iterable: AsyncIterable<ExcaliburEvent>): Promise<Excalib
   return events;
 }
 
-/**
- * Structural unified-diff validator: file sections (`--- a/` or `--- /dev/null`
- * for new files, plus `+++ b/`), hunk headers with consistent old/new line
- * counts, and hunk body lines prefixed with ' ', '+' or '-'.
- */
-function expectParseableUnifiedDiff(diff: string): void {
-  const lines = diff.split('\n');
-  // The mock emits new-file diffs: `--- /dev/null` / `+++ b/<path>`.
-  expect(lines[0]).toMatch(/^--- (?:a\/.+|\/dev\/null)$/);
-
-  let index = 0;
-  let fileSections = 0;
-  let hunks = 0;
-  while (index < lines.length) {
-    expect(lines[index]).toMatch(/^--- (?:a\/.+|\/dev\/null)$/);
-    expect(lines[index + 1]).toMatch(/^\+\+\+ b\/.+$/);
-    fileSections += 1;
-    index += 2;
-
-    // At least one hunk per file section.
-    expect(lines[index]).toMatch(/^@@ -\d+(,\d+)? \+\d+(,\d+)? @@/);
-    while (index < lines.length && lines[index]?.startsWith('@@')) {
-      const header = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(lines[index] ?? '');
-      expect(header).not.toBeNull();
-      const oldCount = header?.[1] !== undefined ? Number(header[1]) : 1;
-      const newCount = header?.[2] !== undefined ? Number(header[2]) : 1;
-      hunks += 1;
-      index += 1;
-
-      let seenOld = 0;
-      let seenNew = 0;
-      while (seenOld < oldCount || seenNew < newCount) {
-        const line = lines[index];
-        expect(line).toBeDefined();
-        expect(line).toMatch(/^[ +-]/);
-        if (line?.startsWith('+')) {
-          seenNew += 1;
-        } else if (line?.startsWith('-')) {
-          seenOld += 1;
-        } else {
-          seenOld += 1;
-          seenNew += 1;
-        }
-        index += 1;
-      }
-      expect(seenOld).toBe(oldCount);
-      expect(seenNew).toBe(newCount);
-    }
-  }
-  expect(fileSections).toBeGreaterThan(0);
-  expect(hunks).toBeGreaterThan(0);
-}
-
 describe('NativeAgentAdapter identity', () => {
   it('is always detected and exposes the nine tools as capabilities', async () => {
     const adapter = new NativeAgentAdapter();
@@ -110,18 +125,280 @@ describe('NativeAgentAdapter identity', () => {
     expect(adapter.capabilities).toEqual([...NATIVE_TOOL_NAMES]);
     await expect(adapter.detect()).resolves.toBe(true);
   });
+});
 
-  it('stop() resolves (no-op in M1)', async () => {
-    const adapter = new NativeAgentAdapter();
-    await expect(adapter.stop('session_test_1')).resolves.toBeUndefined();
+describe('NativeAgentAdapter — real tool loop', () => {
+  it('runs write_file → run_command → final, really mutating the repo', async () => {
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'write_file', { path: 'src/added.ts', content: 'export const x = 1;\n' })] },
+      { toolCalls: [toolCall('c2', 'run_command', { command: 'echo built' })] },
+      { content: 'Done: added src/added.ts and ran the build.' },
+    ]);
+
+    const events = await collect(new NativeAgentAdapter().run(makeInput(gateway)));
+
+    // The file was REALLY created in the temp repo.
+    expect(existsSync(join(tmpRepo, 'src/added.ts'))).toBe(true);
+    expect(readFileSync(join(tmpRepo, 'src/added.ts'), 'utf8')).toBe('export const x = 1;\n');
+
+    // Three gateway turns (two tool turns + the final), bounded.
+    expect(gateway.received.length).toBe(3);
+
+    const types = events.map((event) => event.type);
+    // Loop order: model_call → tool_call → file_write → model_call → tool_call
+    // → command_completed → model_call → assistant_message → patch_generated.
+    expect(types[0]).toBe('model_call');
+    expect(types).toContain('tool_call');
+    expect(types).toContain('file_write');
+    expect(types).toContain('command_completed');
+    expect(types).toContain('assistant_message');
+    expect(types).toContain('patch_generated');
+
+    // Every event validates against the canonical schema.
+    for (const event of events) {
+      const parsed = excaliburEventSchema.safeParse(event);
+      expect(parsed.success, JSON.stringify(parsed.success ? null : parsed.error.issues)).toBe(true);
+    }
+
+    // The command really ran (exit 0).
+    const command = events.find((e) => e.type === 'command_completed');
+    expect(command?.payload['exitCode']).toBe(0);
+    expect(String(command?.payload['result'])).toContain('built');
+
+    // The final assistant_message carried the model's summary.
+    const final = events.filter((e) => e.type === 'assistant_message').at(-1);
+    expect(String(final?.payload['content'])).toContain('Done');
+
+    // The tools were offered to the model on the first turn.
+    expect(gateway.received[0]?.tools?.map((t) => t.name)).toEqual([...NATIVE_TOOL_NAMES]);
+  });
+
+  it('feeds tool results back as role:tool messages on the next turn', async () => {
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'write_file', { path: 'a.txt', content: 'hi' })] },
+      { content: 'done' },
+    ]);
+    await collect(new NativeAgentAdapter().run(makeInput(gateway)));
+
+    const secondTurn = gateway.received[1];
+    expect(secondTurn).toBeDefined();
+    const toolMsg = secondTurn?.messages.find((m) => m.role === 'tool');
+    expect(toolMsg?.toolCallId).toBe('c1');
+    expect(String(toolMsg?.content)).toContain('wrote');
+    // The assistant turn that requested the tool is preserved with its toolCalls.
+    const assistantMsg = secondTurn?.messages.find(
+      (m) => m.role === 'assistant' && m.toolCalls !== undefined,
+    );
+    expect(assistantMsg?.toolCalls?.[0]?.name).toBe('write_file');
   });
 });
 
-describe('NativeAgentAdapter.run — implementer stream', () => {
-  it('emits schema-valid events in the contract-pinned order', async () => {
-    const events = await collect(new NativeAgentAdapter().run(makeInput()));
+describe('NativeAgentAdapter — permission denial', () => {
+  it('denies a write to a blocked path, does not write, continues the loop', async () => {
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'write_file', { path: '.env', content: 'SECRET=1' })] },
+      { content: 'understood, I will not write .env' },
+    ]);
+    const events = await collect(new NativeAgentAdapter().run(makeInput(gateway)));
 
-    expect(events.map((event) => event.type)).toEqual(PINNED_IMPLEMENTER_ORDER);
+    // The blocked file was NOT created.
+    expect(existsSync(join(tmpRepo, '.env'))).toBe(false);
+
+    // The model received a permission-denied result and the loop continued.
+    const fileWrite = events.find((e) => e.type === 'file_write');
+    expect(fileWrite?.payload['ok']).toBe(false);
+    expect(String(fileWrite?.payload['result'])).toContain('permission denied');
+
+    const toolMsg = gateway.received[1]?.messages.find((m) => m.role === 'tool');
+    expect(String(toolMsg?.content)).toContain('permission denied');
+
+    // The loop reached the model's final answer.
+    expect(events.some((e) => e.type === 'assistant_message')).toBe(true);
+  });
+});
+
+describe('NativeAgentAdapter — confirmation gate', () => {
+  function askConfig(): ExcaliburConfig {
+    return {
+      ...DEFAULT_CONFIG,
+      permissions: {
+        ...DEFAULT_CONFIG.permissions,
+        tools: { ...DEFAULT_CONFIG.permissions?.tools, write_file: 'ask' },
+      },
+    };
+  }
+
+  it('does NOT execute a confirm-required tool when confirm returns false', async () => {
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'write_file', { path: 'src/x.ts', content: 'x' })] },
+      { content: 'ok' },
+    ]);
+    const events = await collect(
+      new NativeAgentAdapter().run(
+        makeInput(gateway, {
+          config: askConfig(),
+          confirm: () => Promise.resolve(false),
+        }),
+      ),
+    );
+    expect(existsSync(join(tmpRepo, 'src/x.ts'))).toBe(false);
+    const decision = events.find(
+      (e) => e.type === 'policy_decision' && e.payload['kind'] === 'confirmation',
+    );
+    expect(decision?.payload['decision']).toBe('deny');
+    const toolMsg = gateway.received[1]?.messages.find((m) => m.role === 'tool');
+    expect(String(toolMsg?.content)).toContain('user declined');
+  });
+
+  it('executes a confirm-required tool when confirm returns true', async () => {
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'write_file', { path: 'src/x.ts', content: 'x' })] },
+      { content: 'ok' },
+    ]);
+    await collect(
+      new NativeAgentAdapter().run(
+        makeInput(gateway, {
+          config: askConfig(),
+          confirm: () => Promise.resolve(true),
+        }),
+      ),
+    );
+    expect(existsSync(join(tmpRepo, 'src/x.ts'))).toBe(true);
+  });
+
+  it('declines a confirm-required tool when NO confirm callback is supplied', async () => {
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'write_file', { path: 'src/x.ts', content: 'x' })] },
+      { content: 'ok' },
+    ]);
+    await collect(new NativeAgentAdapter().run(makeInput(gateway, { config: askConfig() })));
+    // Safe default: a mutating tool needing confirmation never auto-executes.
+    expect(existsSync(join(tmpRepo, 'src/x.ts'))).toBe(false);
+  });
+});
+
+describe('NativeAgentAdapter — path traversal', () => {
+  it('rejects a write outside the workdir without touching the fs', async () => {
+    const escapePath = '../../etc/excalibur-pwned';
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'write_file', { path: escapePath, content: 'pwn' })] },
+      { content: 'cannot escape' },
+    ]);
+    const events = await collect(new NativeAgentAdapter().run(makeInput(gateway)));
+
+    expect(existsSync(join(tmpRepo, escapePath))).toBe(false);
+    const fileWrite = events.find((e) => e.type === 'file_write');
+    expect(fileWrite?.payload['ok']).toBe(false);
+    expect(String(fileWrite?.payload['result'])).toContain('escapes the working directory');
+  });
+
+  it('rejects an absolute read path', async () => {
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'read_file', { path: '/etc/passwd' })] },
+      { content: 'cannot read' },
+    ]);
+    const events = await collect(new NativeAgentAdapter().run(makeInput(gateway)));
+    const read = events.find((e) => e.type === 'file_read');
+    expect(read?.payload['ok']).toBe(false);
+    expect(String(read?.payload['result'])).toContain('absolute paths are not allowed');
+  });
+});
+
+describe('NativeAgentAdapter — redaction', () => {
+  it('redacts a secret read off disk before it re-enters the prompt/events', async () => {
+    const fakeKey = `sk-${'a'.repeat(40)}`;
+    writeFileSync(join(tmpRepo, 'config.ts'), `export const key = '${fakeKey}';\n`);
+
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'read_file', { path: 'config.ts' })] },
+      { content: 'read it' },
+    ]);
+    const events = await collect(new NativeAgentAdapter().run(makeInput(gateway)));
+
+    const read = events.find((e) => e.type === 'file_read');
+    expect(String(read?.payload['result'])).toContain('[REDACTED]');
+    expect(String(read?.payload['result'])).not.toContain(fakeKey);
+
+    // The tool message fed back to the model is redacted too.
+    const toolMsg = gateway.received[1]?.messages.find((m) => m.role === 'tool');
+    expect(String(toolMsg?.content)).not.toContain(fakeKey);
+    expect(String(toolMsg?.content)).toContain('[REDACTED]');
+  });
+});
+
+describe('NativeAgentAdapter — loop bound', () => {
+  it('stops at MAX_ITERATIONS when the gateway always requests a tool', async () => {
+    const gateway = new AlwaysToolGateway();
+    const events = await collect(new NativeAgentAdapter().run(makeInput(gateway)));
+
+    expect(gateway.calls).toBe(MAX_ITERATIONS);
+    const limit = events.find(
+      (e) => e.type === 'policy_decision' && String(e.payload['message']).includes('step limit'),
+    );
+    expect(limit).toBeDefined();
+    // It terminated (did not hang) and emitted a final assistant_message.
+    expect(events.some((e) => e.type === 'assistant_message')).toBe(true);
+  });
+});
+
+describe('NativeAgentAdapter — abort', () => {
+  it('stops the loop when the abort signal fires', async () => {
+    const controller = new AbortController();
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'write_file', { path: 'a.txt', content: 'a' })] },
+      { content: 'never reached' },
+    ]);
+    controller.abort();
+    const events = await collect(
+      new NativeAgentAdapter().run(makeInput(gateway, { signal: controller.signal })),
+    );
+    // Aborted before the first gateway call.
+    expect(gateway.received.length).toBe(0);
+    expect(
+      events.some(
+        (e) => e.type === 'policy_decision' && String(e.payload['message']).includes('aborted'),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('NativeAgentAdapter — provider/tool-call error (graceful)', () => {
+  /** A gateway whose chat() throws a malformed-args ProviderError. */
+  class ThrowingGateway {
+    calls = 0;
+    chat(): Promise<ChatOutput> {
+      this.calls += 1;
+      return Promise.reject(
+        new ProviderError('Model returned malformed JSON arguments for tool "write_file".', {
+          code: 'invalid_request',
+          details: { tool: 'write_file' },
+        }),
+      );
+    }
+  }
+
+  it('ends the run WITHOUT throwing, emits a graceful error event + final completion', async () => {
+    const gateway = new ThrowingGateway();
+    const adapter = new NativeAgentAdapter();
+
+    // The async generator must NOT throw — collect() would reject otherwise.
+    const events = await collect(adapter.run(makeInput(gateway)));
+
+    // Only one gateway call happened, then the loop broke cleanly.
+    expect(gateway.calls).toBe(1);
+
+    // A graceful `error` event (reused existing type) describes the failure.
+    const errorEvent = events.find((e) => e.type === 'error');
+    expect(errorEvent).toBeDefined();
+    expect(String(errorEvent?.payload['message'])).toContain('invalid tool call');
+
+    // The final completion turn is still produced.
+    const final = events.filter((e) => e.type === 'assistant_message').at(-1);
+    expect(final).toBeDefined();
+    expect(final?.payload['errored']).toBe(true);
+    expect(String(final?.payload['content'])).toContain('Run ended early');
+
+    // Every emitted event still validates against the canonical schema.
     for (const event of events) {
       const parsed = excaliburEventSchema.safeParse(event);
       expect(parsed.success, JSON.stringify(parsed.success ? null : parsed.error.issues)).toBe(
@@ -130,129 +407,43 @@ describe('NativeAgentAdapter.run — implementer stream', () => {
     }
   });
 
-  it('attributes every event to the run, session and phase', async () => {
-    const events = await collect(new NativeAgentAdapter().run(makeInput()));
-    for (const event of events) {
-      expect(event.runId).toBe('run_20260613_101500');
-      expect(event.sessionId).toBe('session_test_1');
-      expect(event.phaseId).toBe('implement');
+  it('redacts a secret embedded in the thrown provider error message', async () => {
+    const fakeKey = `sk-${'a'.repeat(40)}`;
+    class LeakyGateway {
+      chat(): Promise<ChatOutput> {
+        return Promise.reject(new Error(`provider blew up with key ${fakeKey}`));
+      }
     }
-  });
-
-  it('simulates commands and tests without executing anything', async () => {
-    const config = {
-      ...DEFAULT_CONFIG,
-      commands: { ...DEFAULT_CONFIG.commands, test: 'pnpm test' },
-    };
-    const events = await collect(new NativeAgentAdapter().run(makeInput({ config })));
-
-    const started = events.find((event) => event.type === 'command_started');
-    const completed = events.find((event) => event.type === 'command_completed');
-    const testResult = events.find((event) => event.type === 'test_result');
-
-    expect(started?.payload).toMatchObject({ command: 'pnpm test', simulated: true });
-    expect(completed?.payload).toMatchObject({
-      command: 'pnpm test',
-      simulated: true,
-      exitCode: 0,
-    });
-    expect(testResult?.payload).toMatchObject({ status: 'passed', simulated: true });
-  });
-
-  it('falls back to "npm test" when no test command is configured', async () => {
-    const config = { ...DEFAULT_CONFIG, commands: {} };
-    const events = await collect(new NativeAgentAdapter().run(makeInput({ config })));
-    const started = events.find((event) => event.type === 'command_started');
-    expect(started?.payload).toMatchObject({ command: 'npm test' });
-  });
-
-  it('carries the mock diff in the patch_generated payload as { diff, filesAffected }', async () => {
-    const events = await collect(new NativeAgentAdapter().run(makeInput()));
-    const patch = events.find((event) => event.type === 'patch_generated');
-    expect(patch).toBeDefined();
-
-    const diff = patch?.payload.diff;
-    const filesAffected = patch?.payload.filesAffected;
-    expect(typeof diff).toBe('string');
-    expect(Array.isArray(filesAffected)).toBe(true);
-
-    expectParseableUnifiedDiff(diff as string);
-    expect(filesAffected).toContain('src/escrow/escrow.service.ts');
-    expect(diff as string).toContain('+++ b/src/escrow/escrow.service.ts');
-  });
-
-  it('uses the gateway (MockProvider) for the assistant text of the model_call event', async () => {
-    const events = await collect(new NativeAgentAdapter().run(makeInput()));
-    const modelCall = events.find((event) => event.type === 'model_call');
-    expect(modelCall).toBeDefined();
-    const payload = modelCall?.payload as Record<string, unknown>;
-    expect(String(payload.content)).toContain('> Mock provider (M1)');
-    expect(payload.model).toBe('mock-model');
-    expect(Number(payload.inputTokens)).toBeGreaterThan(0);
-    expect(Number(payload.outputTokens)).toBeGreaterThan(0);
-    expect(payload.kind).toBe('patch');
-  });
-
-  it('honors an explicit model override', async () => {
-    const events = await collect(
-      new NativeAgentAdapter().run(makeInput({ model: 'mock-large' })),
-    );
-    const modelCall = events.find((event) => event.type === 'model_call');
-    expect(modelCall?.payload.model).toBe('mock-large');
-  });
-
-  it('targets the default example file when the prompt mentions no paths', async () => {
-    const events = await collect(
-      new NativeAgentAdapter().run(makeInput({ prompt: 'Fix the duplicated webhook handling' })),
-    );
-    const fileRead = events.find((event) => event.type === 'file_read');
-    const patch = events.find((event) => event.type === 'patch_generated');
-    expect(fileRead?.payload.path).toBe('src/example.service.ts');
-    expect(patch?.payload.filesAffected).toContain('src/example.service.ts');
-  });
-
-  it('never touches the user filesystem (workdir does not even exist)', async () => {
-    expect(existsSync(FAKE_WORKDIR)).toBe(false);
-    await collect(new NativeAgentAdapter().run(makeInput()));
-    expect(existsSync(FAKE_WORKDIR)).toBe(false);
-  });
-
-  it('is deterministic for identical input (ids/timestamps aside)', async () => {
-    const first = await collect(new NativeAgentAdapter().run(makeInput()));
-    const second = await collect(new NativeAgentAdapter().run(makeInput()));
-    expect(first.map((event) => event.type)).toEqual(second.map((event) => event.type));
-    const firstPatch = first.find((event) => event.type === 'patch_generated');
-    const secondPatch = second.find((event) => event.type === 'patch_generated');
-    expect(firstPatch?.payload.diff).toEqual(secondPatch?.payload.diff);
+    const events = await collect(new NativeAgentAdapter().run(makeInput(new LeakyGateway())));
+    const errorEvent = events.find((e) => e.type === 'error');
+    expect(String(errorEvent?.payload['message'])).not.toContain(fakeKey);
+    expect(String(errorEvent?.payload['message'])).toContain('[REDACTED]');
   });
 });
 
-describe('NativeAgentAdapter.run — non-implementer roles', () => {
-  it('omits patch_generated and selects a role-appropriate response kind', async () => {
+describe('NativeAgentAdapter — abort finalContent', () => {
+  it('sets a clear "Run aborted." finalContent distinct from the step-limit case', async () => {
+    const controller = new AbortController();
+    const gateway = new FakeGateway([{ content: 'never reached' }]);
+    controller.abort();
     const events = await collect(
-      new NativeAgentAdapter().run(
-        makeInput({
-          role: 'reviewer',
-          phase: { id: 'review', name: 'Review', type: 'agent_review' },
-        }),
-      ),
+      new NativeAgentAdapter().run(makeInput(gateway, { signal: controller.signal })),
     );
-    expect(events.map((event) => event.type)).toEqual(
-      PINNED_IMPLEMENTER_ORDER.slice(0, PINNED_IMPLEMENTER_ORDER.length - 1),
-    );
-    const modelCall = events.find((event) => event.type === 'model_call');
-    expect(modelCall?.payload.kind).toBe('review');
-    expect(String(modelCall?.payload.content)).toContain('Code review');
+    const final = events.filter((e) => e.type === 'assistant_message').at(-1);
+    expect(final?.payload['aborted']).toBe(true);
+    expect(String(final?.payload['content'])).toBe('Run aborted.');
+    // Distinct from the iteration-limit "truncated" summary content.
+    expect(String(final?.payload['content'])).not.toContain('step limit');
   });
+});
 
-  it('works without a phase (events carry a null phaseId)', async () => {
-    const input = makeInput({ role: 'planner' });
-    delete input.phase;
-    const events = await collect(new NativeAgentAdapter().run(input));
-    expect(events.length).toBe(7);
-    for (const event of events) {
-      expect(event.phaseId).toBeNull();
-      expect(excaliburEventSchema.safeParse(event).success).toBe(true);
-    }
+describe('NativeAgentAdapter — role-based tool exposure', () => {
+  it('exposes only read-only tools to a planner/reviewer role', async () => {
+    const gateway = new FakeGateway([{ content: 'plan complete' }]);
+    await collect(new NativeAgentAdapter().run(makeInput(gateway, { role: 'reviewer' })));
+    const offered = gateway.received[0]?.tools?.map((t) => t.name) ?? [];
+    expect(offered.sort()).toEqual(['git_diff', 'list_files', 'read_file', 'search_code']);
+    expect(offered).not.toContain('write_file');
+    expect(offered).not.toContain('run_command');
   });
 });

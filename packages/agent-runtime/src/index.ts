@@ -5,6 +5,8 @@
  */
 export * from './types';
 export * from './tools/native-tools';
+export * from './tools/zod-to-json-schema';
+export * from './tools/execute-tool';
 export * from './permissions/permission-engine';
 export * from './adapters/native/native-agent-adapter';
 export * from './adapters/custom-command/custom-command-adapter';

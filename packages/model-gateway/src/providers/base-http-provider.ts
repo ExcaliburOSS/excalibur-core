@@ -34,6 +34,7 @@ import type {
   ChatOutput,
   ChatUsage,
   ModelProviderAdapter,
+  ToolCall,
 } from '../types';
 import type { ProviderConfig } from './providers-file';
 import { resolveApiKey } from './providers-file';
@@ -48,6 +49,12 @@ export interface ParsedChatResponse {
   usage: Partial<ChatUsage>;
   finishReason: ChatFinishReason;
   model: string;
+  /**
+   * Tool calls the model requested (function calling). Present only when the
+   * response was a tool-call turn; `content` may then be empty and
+   * `finishReason` is `'tool_calls'`. Absent for text-only completions.
+   */
+  toolCalls?: ToolCall[];
 }
 
 /** Test/timing seams shared with `withRetry`, injectable for determinism. */
@@ -186,6 +193,7 @@ export abstract class BaseHttpProvider implements ModelProviderAdapter {
       // The gateway overlays cost from the provider's per-token rates.
       costCents: null,
       finishReason: parsed.finishReason,
+      ...(parsed.toolCalls !== undefined ? { toolCalls: parsed.toolCalls } : {}),
     };
   }
 
