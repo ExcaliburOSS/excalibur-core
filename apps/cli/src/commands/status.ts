@@ -72,6 +72,7 @@ export function registerStatusCommand(program: Command, deps: CliDeps): void {
               run.record.startedAt,
             ]),
         );
+        deps.ui.info('Rewind any run like a video: excalibur replay <id>');
       }
       deps.ui.write();
       deps.ui.info(

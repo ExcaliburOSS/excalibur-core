@@ -17,6 +17,7 @@ import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
 import { loadConfigContext, loadGatewayContext, safetyLine } from '../lib/context';
 import { runDiscoveryFlow } from '../commands/discovery';
+import { resolveRun, runScrubber } from '../lib/replay-scrubber';
 import { CLI_VERSION } from '../program';
 import { renderWelcome, type WelcomeContext } from './welcome';
 import {
@@ -207,6 +208,13 @@ export async function runInteractiveSession(
         }
         if (input.name === 'discovery') {
           await handleDiscoveryCommand(deps, runtime, input.argv.join(' '));
+          printStatusLine(deps, runtime);
+          continue;
+        }
+        if (input.name === 'replay') {
+          await handleReplayCommand(deps, runtime, input.argv[0], (prompt) =>
+            editor.question(prompt),
+          );
           printStatusLine(deps, runtime);
           continue;
         }
@@ -412,6 +420,7 @@ function handleSlashCommand(
       deps.ui.write('  /help          show this help');
       deps.ui.write('  /plan <task>   plan first (read-only) → approve → execute');
       deps.ui.write('  /discovery <idea>  clarify an ambiguous idea before building');
+      deps.ui.write('  /replay [id]   rewind a run step-by-step (time-machine; defaults to latest)');
       deps.ui.write('  /model         show the active provider/model');
       deps.ui.write('  /clear         clear the screen (keeps the session)');
       deps.ui.write('  /exit, /quit   close the session and leave');
@@ -472,6 +481,32 @@ async function handleDiscoveryCommand(
     text: 'Discovery session completed.',
     model: runtime.model,
   });
+}
+
+/**
+ * `/replay [id]` opens the time-machine scrubber over a run (the given id, or
+ * the session's most recent run) reusing the SAME line editor — so it reads its
+ * single-key controls from the live session stdin and returns to the prompt on
+ * `q`/EOF. Mirrors `excalibur replay` exactly (same {@link runScrubber}).
+ */
+async function handleReplayCommand(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  id: string | undefined,
+  question: (prompt: string) => Promise<string | null>,
+): Promise<void> {
+  let runId: string;
+  try {
+    runId = resolveRun(deps, id).id;
+  } catch (error) {
+    deps.ui.warn(error instanceof Error ? error.message : String(error));
+    return;
+  }
+  try {
+    await runScrubber(deps, runId, { question });
+  } catch (error) {
+    deps.ui.error(error instanceof Error ? error.message : String(error));
+  }
 }
 
 /** Reprints the StatusLine: autonomy · workflow · model · cost · safety. */

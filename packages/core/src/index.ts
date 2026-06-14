@@ -49,6 +49,27 @@ export {
 // Runs
 export { RunManager, type CreateRunInput, type ModelCallLine } from './runs/run-manager';
 
+// Replay / time-machine (replay · inspect · explain · annotate)
+export {
+  loadReplay,
+  reconstructStateAt,
+  nextStepOfKind,
+  prevStepOfKind,
+  phaseBoundaries,
+  loadAnnotations,
+  addAnnotation,
+  annotationsForStep,
+  annotationSchema,
+  type ReplayModel,
+  type ReplayStep,
+  type ReconstructedState,
+  type PhaseBoundary,
+  type JumpKind,
+  type Annotation,
+  type AddAnnotationInput,
+  type TokenTotals,
+} from './replay/replay';
+
 // Local artifact stores (ONB-8)
 export {
   InteractionStore,

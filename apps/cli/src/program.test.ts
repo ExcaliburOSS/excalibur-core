@@ -32,6 +32,7 @@ describe('program registration (Build Contract §4.9)', () => {
       'run',
       'status',
       'logs',
+      'replay',
       'apply',
       'branch',
       'reject',
