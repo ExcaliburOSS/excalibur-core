@@ -3,12 +3,24 @@ import { autonomyLevelSchema } from './autonomy';
 import { executionStyleSchema, runStatusSchema } from './enums';
 
 /**
+ * Provenance of a run created by forking another run from the time-machine: the
+ * source run id and the step index the fork branched from (the cached prefix is
+ * steps `0..atStep`). Present only on forked runs.
+ */
+export const forkOriginSchema = z.object({
+  runId: z.string().min(1),
+  /** Zero-based step index of the source run the fork branched from. */
+  atStep: z.number().int().nonnegative(),
+});
+export type ForkOrigin = z.infer<typeof forkOriginSchema>;
+
+/**
  * Local run artifact contract (OSS spec §11, Build Contract §4.1/§6).
  *
  * `run.json` inside `.excalibur/runs/<run-id>/` is a `RunRecord`. The record is
  * a superset of the OSS spec §11 example: the extra fields (`model`,
- * `executionStyle`, `methodology`, `completedAt`) are nullable so older or
- * minimal producers stay compatible.
+ * `executionStyle`, `methodology`, `completedAt`, `forkedFrom`) are nullable/
+ * optional so older or minimal producers stay compatible.
  */
 export const runRecordSchema = z.object({
   id: z.string().min(1),
@@ -22,6 +34,11 @@ export const runRecordSchema = z.object({
   /** ISO-8601 timestamp (UTC offset or `Z`). */
   startedAt: z.string().datetime({ offset: true }),
   completedAt: z.string().datetime({ offset: true }).nullable(),
+  /**
+   * Set when this run was created by forking another run from the time-machine.
+   * Optional + nullable: ordinary runs omit it entirely (back-compatible).
+   */
+  forkedFrom: forkOriginSchema.nullable().optional(),
 });
 export type RunRecord = z.infer<typeof runRecordSchema>;
 

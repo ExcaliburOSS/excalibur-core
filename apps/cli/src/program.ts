@@ -19,6 +19,7 @@ import { registerPatchCommand } from './commands/patch';
 import { registerPrCommands } from './commands/pr';
 import { registerRejectCommand } from './commands/reject';
 import { registerReplayCommand } from './commands/replay';
+import { registerChangesCommand } from './commands/changes';
 import { registerReviewCommand } from './commands/review';
 import { registerRunCommand } from './commands/run';
 import { registerSkillsCommand } from './commands/skills';
@@ -56,6 +57,7 @@ export function buildProgram(overrides: Partial<CliDeps> = {}): Command {
   registerStatusCommand(program, deps);
   registerLogsCommand(program, deps);
   registerReplayCommand(program, deps);
+  registerChangesCommand(program, deps);
   registerApplyCommand(program, deps);
   registerBranchCommand(program, deps);
   registerRejectCommand(program, deps);

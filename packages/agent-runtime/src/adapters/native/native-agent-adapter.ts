@@ -183,10 +183,21 @@ export class NativeAgentAdapter implements AgentAdapter {
     const mutated = new Set<string>();
     const totals: RunningTotals = { inputTokens: 0, outputTokens: 0, costCents: null };
 
-    const messages: ChatMessage[] = [
-      { role: 'system', content: systemPromptFor(input) },
-      { role: 'user', content: input.prompt },
-    ];
+    // Fork-from-cache (T2): when a cached prefix is supplied, replay the source
+    // run's reconstructed turns as context ahead of the new instruction — zero
+    // tokens re-spent on the prefix, only `input.prompt` runs live. The system
+    // prompt is always freshly built for THIS run's role/workdir/phase.
+    const messages: ChatMessage[] =
+      input.seedMessages !== undefined && input.seedMessages.length > 0
+        ? [
+            { role: 'system', content: systemPromptFor(input) },
+            ...input.seedMessages,
+            { role: 'user', content: input.prompt },
+          ]
+        : [
+            { role: 'system', content: systemPromptFor(input) },
+            { role: 'user', content: input.prompt },
+          ];
 
     const aborted = (): boolean =>
       input.signal?.aborted === true || this.stoppedSessions.has(input.sessionId);

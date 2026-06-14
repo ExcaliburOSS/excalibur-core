@@ -4,7 +4,7 @@ import type {
   ExcaliburEvent,
   PhaseType,
 } from '@excalibur/shared';
-import type { ModelGateway } from '@excalibur/model-gateway';
+import type { ChatMessage, ModelGateway } from '@excalibur/model-gateway';
 
 /**
  * Agent adapter contract (Build Contract §4.4, OSS spec §15).
@@ -52,6 +52,18 @@ export interface AgentRunInput {
    * Additive — existing callers pass neither `confirm` nor `signal`.
    */
   signal?: AbortSignal;
+  /**
+   * Cached conversation prefix seeded ahead of the task prompt (time-machine
+   * fork-from-cache, T2). When present, the loop starts the conversation as
+   * `[system, ...seedMessages, {user: prompt}]` instead of `[system, {user:
+   * prompt}]` — i.e. the reconstructed turns of the source run (assistant
+   * thoughts, tool calls and their results up to the fork point) are replayed
+   * as context WITHOUT re-spending a single token, and only the new `prompt`
+   * (the fork instruction) runs live. Must be a valid, self-consistent message
+   * list (every `tool` message answers a preceding `assistant` tool call).
+   * Additive — ordinary runs omit it.
+   */
+  seedMessages?: ChatMessage[];
 }
 
 /** A request to a human/approver to confirm a mutating tool invocation. */

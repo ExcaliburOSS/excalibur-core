@@ -49,6 +49,20 @@ export {
 // Runs
 export { RunManager, type CreateRunInput, type ModelCallLine } from './runs/run-manager';
 
+// Turn receipt (post-turn summary derived from the event stream)
+export {
+  buildTurnSummary,
+  parseDiffStat,
+  changeGlyph,
+  turnSummaryToMarkdown,
+  type TurnSummary,
+  type TurnTier,
+  type ChangedFile,
+  type TurnCheck,
+  type TurnMetrics,
+  type NextHint,
+} from './runs/turn-summary';
+
 // Replay / time-machine (replay · inspect · explain · annotate)
 export {
   loadReplay,

@@ -1,9 +1,12 @@
 import {
   SessionStore,
   buildStatusLineModel,
+  buildTurnSummary,
+  changeGlyph,
   getGitIdentity,
   getGitInfo,
   getLocalDiff,
+  loadReplay,
   parseStructuralInput,
   type LocalSession,
 } from '@excalibur/core';
@@ -218,6 +221,11 @@ export async function runInteractiveSession(
           printStatusLine(deps, runtime);
           continue;
         }
+        if (input.name === 'changes') {
+          handleChangesCommand(deps, input.argv[0]);
+          printStatusLine(deps, runtime);
+          continue;
+        }
         const result = handleSlashCommand(deps, runtime, input.name);
         if (result === 'exit') {
           break;
@@ -421,6 +429,7 @@ function handleSlashCommand(
       deps.ui.write('  /plan <task>   plan first (read-only) → approve → execute');
       deps.ui.write('  /discovery <idea>  clarify an ambiguous idea before building');
       deps.ui.write('  /replay [id]   rewind a run step-by-step (time-machine; defaults to latest)');
+      deps.ui.write('  /changes [id]  show the full changed-file list for a run (defaults to latest)');
       deps.ui.write('  /model         show the active provider/model');
       deps.ui.write('  /clear         clear the screen (keeps the session)');
       deps.ui.write('  /exit, /quit   close the session and leave');
@@ -507,6 +516,36 @@ async function handleReplayCommand(
   } catch (error) {
     deps.ui.error(error instanceof Error ? error.message : String(error));
   }
+}
+
+/**
+ * `/changes [id]` — the receipt's progressive-disclosure target: the FULL
+ * changed-file list with diffstat for a run (the given id, or the latest),
+ * printed inline. Mirrors `excalibur changes` (same {@link buildTurnSummary}).
+ */
+function handleChangesCommand(deps: CliDeps, id: string | undefined): void {
+  let runId: string;
+  try {
+    runId = resolveRun(deps, id).id;
+  } catch (error) {
+    deps.ui.warn(error instanceof Error ? error.message : String(error));
+    return;
+  }
+  const summary = buildTurnSummary(loadReplay(deps.cwd(), runId));
+  deps.ui.heading(`Changes · ${runId}`);
+  if (summary.changedFiles.length === 0) {
+    deps.ui.write('  No file changes recorded for this run.');
+    return;
+  }
+  const { metrics } = summary;
+  deps.ui.write(`  ${metrics.files} file${metrics.files === 1 ? '' : 's'} · +${metrics.insertions} −${metrics.deletions}`);
+  deps.ui.write();
+  for (const file of summary.changedFiles) {
+    const stat = file.insertions === 0 && file.deletions === 0 ? '' : `  +${file.insertions} −${file.deletions}`;
+    deps.ui.write(`  ${changeGlyph(file.status)}  ${file.path}${stat}`);
+  }
+  deps.ui.write();
+  deps.ui.write('  Full diff: excalibur changes --diff   ·   rewind: /replay');
 }
 
 /** Reprints the StatusLine: autonomy · workflow · model · cost · safety. */

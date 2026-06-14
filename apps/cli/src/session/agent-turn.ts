@@ -1,5 +1,5 @@
 import { NativeAgentAdapter, type AgentAdapter, type ConfirmationRequest } from '@excalibur/agent-runtime';
-import { RunManager } from '@excalibur/core';
+import { buildTurnSummary, loadReplay, RunManager, turnSummaryToMarkdown } from '@excalibur/core';
 import {
   createEvent,
   generateId,
@@ -13,6 +13,7 @@ import type { ModelGateway } from '@excalibur/model-gateway';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import { describeEvent } from '../lib/run-pipeline';
+import { renderTurnReceipt } from '../lib/turn-receipt';
 
 /**
  * The model-FIRST conversational turn (M-Shell). A natural-language line is
@@ -89,16 +90,32 @@ function renderEvent(deps: CliDeps, event: ExcaliburEvent): void {
 }
 
 /**
- * Renders the model's final answer (the assistant turn's content). The event
- * stream renders a compact `assistant message` marker; this prints the actual
- * text so the IC sees the answer/summary the model produced.
+ * Renders the post-turn receipt: a deterministic recap built from the run's
+ * event stream (files changed, checks, cost) plus the model's final narrative.
+ * Replaces a bare "print the final text" — the receipt SCALES to the work (a
+ * plain answer is just the narrative + a footer; an action turn adds the
+ * diffstat/file-list/next-step), and it persists the canonical `summary.md` so
+ * the time-machine and Enterprise sync inherit it. Best-effort: a render/parse
+ * failure never breaks the turn.
  */
-function renderFinalAnswer(deps: CliDeps, text: string): void {
-  if (text.trim().length === 0) {
+function emitReceipt(
+  turn: AgentTurnDeps,
+  runManager: RunManager,
+  runId: string,
+  model: string,
+): void {
+  let summary;
+  try {
+    summary = buildTurnSummary(loadReplay(turn.repoRoot, runId));
+  } catch {
     return;
   }
-  deps.ui.write();
-  deps.ui.write(text);
+  try {
+    runManager.writeArtifact(runId, 'summary.md', turnSummaryToMarkdown(summary));
+  } catch {
+    // Persisting the summary artifact is non-fatal.
+  }
+  renderTurnReceipt(turn.deps, summary, { now: new Date(), model });
 }
 
 interface DriveOptions {
@@ -258,7 +275,7 @@ export async function runAgentTurn(turn: AgentTurnDeps, task: string): Promise<A
   });
 
   finishRun(turn.deps, runManager, run, result.aborted);
-  renderFinalAnswer(turn.deps, result.finalText);
+  emitReceipt(turn, runManager, run.id, result.model || turn.providerName);
   return toResult(run.id, result, turn.providerName);
 }
 
@@ -359,7 +376,7 @@ export async function runPlanTurn(turn: AgentTurnDeps, task: string): Promise<Pl
     allowConfirm: true,
   });
   finishRun(turn.deps, runManager, execRun, execResult.aborted);
-  renderFinalAnswer(turn.deps, execResult.finalText);
+  emitReceipt(turn, runManager, execRun.id, execResult.model || turn.providerName);
 
   return {
     gate: 'approve',
