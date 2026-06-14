@@ -1,61 +1,23 @@
-import type { RepoAnalysis } from '@excalibur/context-engine';
 import { type AutonomyLevel, type ExcaliburConfig } from '@excalibur/shared';
-import {
-  classifyTaskIntent,
-  DEFAULT_SAFETY_PRESET_ID,
-  SAFETY_PRESETS,
-} from '../onboarding/onboarding';
+import { DEFAULT_SAFETY_PRESET_ID, SAFETY_PRESETS } from '../onboarding/onboarding';
 
 /**
- * The pure, surface-agnostic intent router for the M-Shell REPL (Slice A):
- * given a line of user input it decides what the shell should do, NEVER
- * calling a model. Slash commands and `!shell` are recognised structurally;
- * everything else is a natural-language turn whose lane is derived by reusing
- * the deterministic {@link classifyTaskIntent} heuristics.
+ * Structural input parsing + the StatusLine model for the M-Shell REPL.
+ *
+ * The shell is MODEL-FIRST: a natural-language line is handed to the agent loop,
+ * which decides what to do (answer with read tools, or edit/run with write
+ * tools), governed by the session's autonomy level — there is NO keyword
+ * classifier deciding intent. This module therefore only recognises the two
+ * STRUCTURAL forms (syntax, not language): a leading `/` slash command and a
+ * leading `!` shell passthrough. Everything else is a natural-language turn the
+ * REPL routes straight to the model.
  */
 
-/** The four conversational lanes a natural-language input can take. */
-export type RouteLane = 'ask' | 'run' | 'discovery' | 'careful';
-
-/** Context the router needs (no Ui, no model, no IO). */
-export interface RouteContext {
-  analysis: RepoAnalysis;
-  config: ExcaliburConfig;
-}
-
-/** A discriminated decision describing how to dispatch one input line. */
-export type RouteDecision =
+/** A discriminated decision describing the STRUCTURAL shape of one input line. */
+export type StructuralInput =
   | { kind: 'command'; name: string; argv: string[] }
   | { kind: 'shell'; command: string }
-  | {
-      kind: 'natural';
-      lane: RouteLane;
-      /** The classified task type (e.g. `bugfix`, `feature`, `ambiguous`). */
-      intent: string;
-      /** Human-readable reason for the lane choice. */
-      reason: string;
-    };
-
-/** Leading interrogatives that mark a question-shaped input. */
-const INTERROGATIVE_LEAD =
-  /^(what|why|how|when|where|who|which|is|are|do|does|did|can|could|should|would|will|whose|whom)\b/i;
-
-/** Actionable verbs that override the "looks like a question" heuristic. */
-const ACTIONABLE_LEAD =
-  /^(add|fix|implement|build|create|refactor|rename|remove|delete|update|migrate|write|run|make|change|support|integrate|enable|introduce|generate|set ?up|wire)\b/i;
-
-/**
- * True when the input reads like a question rather than a task: it ends with a
- * `?`, or it opens with an interrogative AND does not open with an actionable
- * verb. `"how do I add X?"` → question; `"add a retry to X"` → not.
- */
-function isQuestionShaped(text: string): boolean {
-  const trimmed = text.trim();
-  if (trimmed.endsWith('?')) {
-    return true;
-  }
-  return INTERROGATIVE_LEAD.test(trimmed) && !ACTIONABLE_LEAD.test(trimmed);
-}
+  | { kind: 'natural'; text: string };
 
 /** Tokenises an input line into argv, respecting simple quotes. */
 function tokenize(input: string): string[] {
@@ -69,17 +31,15 @@ function tokenize(input: string): string[] {
 }
 
 /**
- * Routes one line of REPL input to a {@link RouteDecision}. Deterministic and
- * model-free:
+ * Recognises the STRUCTURAL shape of one REPL line — model-free and
+ * deterministic:
  *
- * - leading `/` → a slash command (`/help`, `/exit`, …);
- * - leading `!` → a shell passthrough (recognised; execution deferred);
- * - otherwise a natural-language turn whose lane is mapped from
- *   {@link classifyTaskIntent}: discovery (ambiguous / discovery-first),
- *   ask (question-shaped, not an actionable verb), careful (sensitive),
- *   else run.
+ * - leading `/` → a slash command (`/help`, `/plan`, `/exit`, …);
+ * - leading `!` → a shell passthrough;
+ * - otherwise a natural-language turn handed verbatim to the agent loop (the
+ *   MODEL decides what to do — no keyword classification happens here).
  */
-export function routeInput(text: string, ctx: RouteContext): RouteDecision {
+export function parseStructuralInput(text: string): StructuralInput {
   const trimmed = text.trim();
 
   if (trimmed.startsWith('/')) {
@@ -91,55 +51,7 @@ export function routeInput(text: string, ctx: RouteContext): RouteDecision {
     return { kind: 'shell', command: trimmed.slice(1).trim() };
   }
 
-  const intent = classifyTaskIntent(trimmed, ctx.analysis, ctx.config);
-
-  // Question-shaped input (and not an actionable verb) → the ask lane. This
-  // takes precedence over the discovery routing below: a clear question is
-  // always answered read-only rather than triggering a discovery session,
-  // even when the intent classifier would otherwise flag it ambiguous.
-  if (isQuestionShaped(trimmed)) {
-    return {
-      kind: 'natural',
-      lane: 'ask',
-      intent: intent.taskType,
-      reason: 'Question about the repository — answered read-only (never changes code).',
-    };
-  }
-
-  const actionable = ACTIONABLE_LEAD.test(trimmed);
-
-  // Discovery next: an ambiguous / discovery-first task is never run blind —
-  // UNLESS it opens with an explicit imperative verb (an actionable command is
-  // never sent to a clarifying discovery session).
-  if ((intent.recommendDiscoveryFirst || intent.taskType === 'ambiguous') && !actionable) {
-    return {
-      kind: 'natural',
-      lane: 'discovery',
-      intent: intent.taskType,
-      reason: intent.reason,
-    };
-  }
-
-  // Sensitive areas → the careful lane (Level 4, stronger approvals).
-  if (intent.sensitive) {
-    return {
-      kind: 'natural',
-      lane: 'careful',
-      intent: intent.taskType,
-      reason: intent.reason,
-    };
-  }
-
-  // Everything else is an actionable task → the run lane.
-  return {
-    kind: 'natural',
-    lane: 'run',
-    intent: intent.taskType,
-    reason:
-      intent.taskType === 'ambiguous'
-        ? 'Actionable task — implemented in an isolated branch with approvals.'
-        : intent.reason,
-  };
+  return { kind: 'natural', text: trimmed };
 }
 
 /** The surface-agnostic model backing the StatusLine. */

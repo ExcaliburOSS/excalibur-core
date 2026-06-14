@@ -5,10 +5,18 @@ import { runInteractiveSession } from './repl';
 import { createInteractiveCli, makeTempRepo, removeDir } from '../test-utils';
 
 /**
- * Offline REPL tests (M-Shell Slice A). Each uses the mock provider (no
+ * Offline REPL tests (M-Shell, model-first). Each uses the mock provider (no
  * providers.yaml in the temp repo), an `interactive: true` Ui bound to scripted
- * stdin + memory stdout (so streaming runs), and asserts on captured stdout and
- * the persisted `.excalibur/sessions/<id>/transcript.jsonl`.
+ * stdin + memory stdout (so the agent loop and inline prompts actually run), and
+ * asserts on captured stdout and the persisted
+ * `.excalibur/sessions/<id>/transcript.jsonl`.
+ *
+ * The shell is MODEL-FIRST: a natural-language line drives the real agentic
+ * loop. With the mock provider the loop requests no tools and returns a
+ * templated text answer (graceful offline demo) — so these tests assert on that
+ * answer and the run artifacts the turn produces. The fake-gateway agentic path
+ * (a scripted tool call + inline approval + plan-mode) is covered separately in
+ * agent-turn.test.ts.
  */
 
 const repo = makeTempRepo();
@@ -33,7 +41,7 @@ function readTranscript(id: string): Array<Record<string, unknown>> {
     .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
-describe('interactive session (M-Shell Slice A)', () => {
+describe('interactive session (M-Shell, model-first)', () => {
   it('redacts secrets from the persisted transcript and prompt history', async () => {
     // Built at runtime so the literal never appears in this source file.
     const key = `sk-${'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8'}`;
@@ -67,9 +75,10 @@ describe('interactive session (M-Shell Slice A)', () => {
     expect(stdout).toContain('EXCALIBUR');
     expect(stdout).toContain('Welcome back');
     expect(stdout).toContain('Describe what you want');
-    // /help capabilities + lanes.
+    // /help capabilities + the model-first explainer.
     expect(stdout).toContain('show this help');
-    expect(stdout).toContain('discovery');
+    expect(stdout).toContain('/plan');
+    expect(stdout).toContain('the model decides');
     // StatusLine: model mock + cost + safety preset.
     expect(stdout).toContain('mock');
     expect(stdout).toContain('$0.00');
@@ -82,77 +91,37 @@ describe('interactive session (M-Shell Slice A)', () => {
     expect(dirs.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('routes a question to the ask lane (streamed mock turn + interaction artifact + transcript)', async () => {
+  it('a natural-language line drives the agent loop (mock = text answer + a run artifact)', async () => {
+    const before = new Set(sessionDirs());
     const cli = createInteractiveCli({ cwd: repo });
     cli.send('How does the run pipeline select a workflow?');
     cli.send('/exit');
     await runInteractiveSession(cli.deps, {});
 
     const stdout = cli.stdout();
-    expect(stdout).toContain('→ ask · ask-repo · L1');
-
-    // An InteractionStore artifact was created (ask dispatch).
-    const interactions = join(repo, '.excalibur', 'interactions');
-    expect(existsSync(interactions)).toBe(true);
-    expect(readdirSync(interactions).length).toBeGreaterThanOrEqual(1);
-
-    // The transcript recorded a user turn, a route turn and an assistant turn.
-    const dirs = sessionDirs();
-    const turns = readTranscript(dirs[dirs.length - 1] as string);
-    expect(turns.some((t) => t.role === 'user' && t.kind === 'message')).toBe(true);
-    expect(turns.some((t) => t.kind === 'route' && String(t.route).startsWith('ask:'))).toBe(true);
-    const assistant = turns.find((t) => t.role === 'assistant' && t.kind === 'message');
-    expect(assistant).toBeDefined();
-    expect(assistant?.model).toBe('mock');
-    expect(assistant?.artifactRef).toMatch(/^int_/);
-  });
-
-  it('routes an actionable task to the run lane (approve → runs/<id> completed)', async () => {
-    const cli = createInteractiveCli({ cwd: repo });
-    cli.send('Fix the typo in README.md');
-    // The run pipeline reads `[Enter] continue` then approval gates; empty
-    // lines accept the safe defaults (continue / approve). Extra empties after
-    // the dispatch are harmless no-op turns (they only reprint the StatusLine).
-    for (let i = 0; i < 12; i += 1) {
-      cli.send('');
-    }
-    cli.send('/exit');
-    await runInteractiveSession(cli.deps, {});
-
-    const stdout = cli.stdout();
-    expect(stdout).toContain('→ run');
+    // The model-driven turn renders the agent loop (a run dir, a model call, a
+    // completion) — not a keyword lane label.
+    expect(stdout).toContain('→ agent');
     expect(stdout).toContain('run completed');
+    // The mock degraded answer is its templated banner.
+    expect(stdout).toContain('Mock provider (M1)');
 
+    // A real RunManager run was created (events.jsonl → replay/time-machine).
     const runsDir = join(repo, '.excalibur', 'runs');
     expect(existsSync(runsDir)).toBe(true);
     const runs = readdirSync(runsDir).filter((name) => name.startsWith('run_'));
     expect(runs.length).toBeGreaterThanOrEqual(1);
+    const latestRun = runs.sort()[runs.length - 1] as string;
+    expect(existsSync(join(runsDir, latestRun, 'events.jsonl'))).toBe(true);
 
-    const dirs = sessionDirs();
-    const turns = readTranscript(dirs[dirs.length - 1] as string);
+    // The transcript recorded a user turn and an assistant turn referencing the run.
+    const id = sessionDirs().find((dir) => !before.has(dir)) as string;
+    const turns = readTranscript(id);
+    expect(turns.some((t) => t.role === 'user' && t.kind === 'message')).toBe(true);
     const assistant = turns.find((t) => t.role === 'assistant' && t.kind === 'message');
+    expect(assistant).toBeDefined();
+    expect(assistant?.model).toBe('mock');
     expect(assistant?.artifactRef).toMatch(/^run_/);
-  });
-
-  it('routes an ambiguous idea to the discovery lane (discovery session created)', async () => {
-    const cli = createInteractiveCli({ cwd: repo });
-    cli.send('the whole onboarding experience');
-    // Discovery asks its question pack interactively (yes: false); empty lines
-    // skip each question. Extra empties after the session are no-op turns.
-    for (let i = 0; i < 12; i += 1) {
-      cli.send('');
-    }
-    cli.send('/exit');
-    await runInteractiveSession(cli.deps, {});
-
-    const stdout = cli.stdout();
-    expect(stdout).toContain('→ discovery');
-    // The discovery readiness card is printed.
-    expect(stdout).toContain('Recommendation:');
-
-    const discoveryDir = join(repo, '.excalibur', 'discovery');
-    expect(existsSync(discoveryDir)).toBe(true);
-    expect(readdirSync(discoveryDir).filter((name) => name.startsWith('disc_')).length).toBeGreaterThanOrEqual(1);
   });
 
   it('an empty line reprints the StatusLine', async () => {
@@ -166,7 +135,7 @@ describe('interactive session (M-Shell Slice A)', () => {
   });
 
   it('--continue replays the prior transcript and reuses the session id', async () => {
-    // First session: one ask turn, then exit.
+    // First session: one turn, then exit.
     const first = createInteractiveCli({ cwd: repo });
     first.send('What does the session store persist?');
     first.send('/exit');
@@ -205,11 +174,36 @@ describe('interactive session (M-Shell Slice A)', () => {
     expect(metadata.status).toBe('closed');
   });
 
-  it('a recognised !shell passthrough is deferred (no execution)', async () => {
+  it('a !shell passthrough runs the command and shows its output', async () => {
     const cli = createInteractiveCli({ cwd: repo });
-    cli.send('!ls -la');
+    cli.send('!echo hello-from-shell');
     cli.send('/exit');
     await runInteractiveSession(cli.deps, {});
-    expect(cli.stdout()).toContain('later slice');
+    const stdout = cli.stdout();
+    expect(stdout).toContain('$ echo hello-from-shell');
+    expect(stdout).toContain('hello-from-shell');
+
+    const dirs = sessionDirs();
+    const turns = readTranscript(dirs[dirs.length - 1] as string);
+    expect(turns.some((t) => t.kind === 'status' && String(t.text).startsWith('shell:'))).toBe(true);
+  });
+
+  it('/discovery <idea> runs the explicit clarification flow (discovery session created)', async () => {
+    const cli = createInteractiveCli({ cwd: repo });
+    cli.send('/discovery the whole onboarding experience');
+    // Discovery asks its question pack interactively; empty lines skip each.
+    for (let i = 0; i < 12; i += 1) {
+      cli.send('');
+    }
+    cli.send('/exit');
+    await runInteractiveSession(cli.deps, {});
+
+    const stdout = cli.stdout();
+    expect(stdout).toContain('Recommendation:');
+    const discoveryDir = join(repo, '.excalibur', 'discovery');
+    expect(existsSync(discoveryDir)).toBe(true);
+    expect(
+      readdirSync(discoveryDir).filter((name) => name.startsWith('disc_')).length,
+    ).toBeGreaterThanOrEqual(1);
   });
 });

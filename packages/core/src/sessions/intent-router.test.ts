@@ -1,94 +1,55 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG, type ExcaliburConfig } from '@excalibur/shared';
-import { fakeAnalysis } from '../test-utils';
-import { buildStatusLineModel, routeInput, type RouteContext } from './intent-router';
+import { buildStatusLineModel, parseStructuralInput } from './intent-router';
 
-const ctx: RouteContext = {
-  analysis: fakeAnalysis(),
-  config: DEFAULT_CONFIG,
-};
-
-describe('routeInput — structural recognition', () => {
+describe('parseStructuralInput — structural recognition only (model-first)', () => {
   it('routes a leading / to a slash command with argv', () => {
-    const decision = routeInput('/resume sess_20260101_000000', ctx);
+    const decision = parseStructuralInput('/resume sess_20260101_000000');
     expect(decision).toEqual({ kind: 'command', name: 'resume', argv: ['sess_20260101_000000'] });
   });
 
   it('lowercases the command name and respects quotes in argv', () => {
-    const decision = routeInput('/Model "gpt 4o"', ctx);
+    const decision = parseStructuralInput('/Model "gpt 4o"');
     expect(decision).toEqual({ kind: 'command', name: 'model', argv: ['gpt 4o'] });
   });
 
+  it('parses a /plan command with the task as argv', () => {
+    const decision = parseStructuralInput('/plan add retry to the fetch transport');
+    expect(decision).toEqual({
+      kind: 'command',
+      name: 'plan',
+      argv: ['add', 'retry', 'to', 'the', 'fetch', 'transport'],
+    });
+  });
+
   it('routes a leading ! to a shell passthrough', () => {
-    const decision = routeInput('!ls -la', ctx);
+    const decision = parseStructuralInput('!ls -la');
     expect(decision).toEqual({ kind: 'shell', command: 'ls -la' });
   });
-});
 
-describe('routeInput — natural-language lanes (table-driven)', () => {
-  const cases: Array<{ name: string; input: string; lane: string }> = [
-    { name: 'ambiguous short input → discovery', input: 'thing', lane: 'discovery' },
-    {
-      name: 'no clear verb → discovery',
-      input: 'the whole onboarding experience',
-      lane: 'discovery',
-    },
-    {
-      name: 'question ending in ? → ask',
-      input: 'How does the run pipeline select a workflow?',
-      lane: 'ask',
-    },
-    {
-      name: 'interrogative lead → ask',
-      input: 'what files implement the session store',
-      lane: 'ask',
-    },
-    {
-      name: 'actionable verb → run',
-      input: 'Add a retry with backoff to the fetch transport',
-      lane: 'run',
-    },
-    {
-      name: 'refactor → run',
-      input: 'Refactor the run command to extract a pipeline helper',
-      lane: 'run',
-    },
-    {
-      name: 'sensitive auth task → careful',
-      input: 'Fix the broken login session expiry in the auth module',
-      lane: 'careful',
-    },
-    {
-      name: 'migration → careful',
-      input: 'Add a database migration to add a tier column',
-      lane: 'careful',
-    },
-  ];
-
-  for (const testCase of cases) {
-    it(testCase.name, () => {
-      const decision = routeInput(testCase.input, ctx);
-      expect(decision.kind).toBe('natural');
-      if (decision.kind === 'natural') {
-        expect(decision.lane).toBe(testCase.lane);
-        expect(decision.reason.length).toBeGreaterThan(0);
-        expect(typeof decision.intent).toBe('string');
-      }
-    });
-  }
-
-  it('an actionable verb that opens with an interrogative-ish word still runs', () => {
-    // "Make ..." is actionable; never an ask.
-    const decision = routeInput('Make the welcome banner theme-friendly', ctx);
-    expect(decision.kind).toBe('natural');
-    if (decision.kind === 'natural') {
-      expect(decision.lane).toBe('run');
+  it('treats everything else as a natural-language turn (handed to the model)', () => {
+    // No keyword classification — a question, a task and an idea are all just
+    // `natural` turns; the MODEL (the agent loop) decides what to do with them.
+    for (const text of [
+      'How does the run pipeline select a workflow?',
+      'Add a retry with backoff to the fetch transport',
+      'the whole onboarding experience',
+      'arregla el bug de expiración de sesión', // any language
+    ]) {
+      expect(parseStructuralInput(text)).toEqual({ kind: 'natural', text: text.trim() });
     }
   });
 
-  it('never calls a model (purely deterministic — stable across calls)', () => {
-    const a = routeInput('Add pagination to the logs command', ctx);
-    const b = routeInput('Add pagination to the logs command', ctx);
+  it('trims surrounding whitespace on a natural-language turn', () => {
+    expect(parseStructuralInput('   review the diff   ')).toEqual({
+      kind: 'natural',
+      text: 'review the diff',
+    });
+  });
+
+  it('is purely deterministic (never calls a model — stable across calls)', () => {
+    const a = parseStructuralInput('Add pagination to the logs command');
+    const b = parseStructuralInput('Add pagination to the logs command');
     expect(a).toEqual(b);
   });
 });

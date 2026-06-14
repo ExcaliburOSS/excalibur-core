@@ -1,28 +1,32 @@
 import {
-  DiscoveryManager,
-  InteractionStore,
   SessionStore,
   buildStatusLineModel,
   getGitIdentity,
   getGitInfo,
   getLocalDiff,
-  routeInput,
+  parseStructuralInput,
   type LocalSession,
-  type RouteContext,
-  type RouteDecision,
 } from '@excalibur/core';
 import { analyzeRepository } from '@excalibur/context-engine';
 import { redactSecrets } from '@excalibur/model-gateway';
-import type { ExcaliburConfig } from '@excalibur/shared';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import type { AutonomyLevel, ExcaliburConfig } from '@excalibur/shared';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
 import { loadConfigContext, loadGatewayContext, safetyLine } from '../lib/context';
-import { runInteractionCommand } from '../lib/interactions';
-import { runTask } from '../lib/run-pipeline';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { CLI_VERSION } from '../program';
 import { renderWelcome, type WelcomeContext } from './welcome';
+import {
+  runAgentTurn,
+  runPlanTurn,
+  type AgentTurnDeps,
+  type AgentTurnResult,
+} from './agent-turn';
+
+const execFileAsync = promisify(execFile);
 
 /** Options parsed from argv on the no-arg interactive path. */
 export interface InteractiveSessionOptions {
@@ -67,30 +71,28 @@ export function parseInteractiveArgs(argv: string[]): InteractiveSessionOptions 
 interface SessionRuntime {
   repoRoot: string;
   config: ExcaliburConfig;
-  routeContext: RouteContext;
   model: string;
+  /** Session autonomy level — governs every turn's role + approvals. */
+  autonomyLevel: AutonomyLevel;
   store: SessionStore;
   session: LocalSession;
   /** Running cost sum, in cents, across the session's assistant turns. */
   costCents: number;
 }
 
-/** Outcome of dispatching one natural-language turn. */
-interface DispatchResult {
-  text: string;
-  model: string | null;
-  costCents: number | null;
-  artifactRef: string | null;
-}
-
 /**
  * The interactive conversational session (`excalibur` with no args → a
- * readline REPL). M-Shell Slice A: a minimal but production-quality loop that
- * routes each line (deterministically, via `routeInput`) and dispatches it to
- * the existing entrypoints (`ask`/`run`/`discovery`) through the SAME
- * `CliDeps`, so streaming, prompts and approvals all just work. Everything is
- * recorded to a `SessionStore` transcript. Mock is the zero-config default;
- * the whole loop works offline.
+ * readline REPL). The shell is MODEL-FIRST: a natural-language line is handed
+ * straight to the real agentic loop ({@link runAgentTurn}) — the MODEL decides
+ * whether to answer (read tools) or to edit/run (write tools), governed by the
+ * session's autonomy level. There is no keyword classifier choosing intent.
+ *
+ * Only the two STRUCTURAL forms are parsed locally: a leading `/` slash command
+ * and a leading `!` shell passthrough. Tool approvals are inline ([y/N]),
+ * Ctrl-C cancels the in-flight turn, and everything (redacted) is recorded to a
+ * `SessionStore` transcript. Mock is the zero-config default: with the mock
+ * provider the loop returns a templated text answer (graceful offline demo);
+ * with a real provider it does full agentic work.
  *
  * Returns the process exit code (0 on a graceful close).
  */
@@ -100,7 +102,8 @@ export async function runInteractiveSession(
 ): Promise<number> {
   const repoRoot = deps.cwd();
   const { config } = loadConfigContext(repoRoot);
-  const analysis = await analyzeRepository(repoRoot, {
+  // Repo analysis warms the context engine (ISD scanning) once per session.
+  await analyzeRepository(repoRoot, {
     homeDir: deps.homeDir(),
     includeUserGlobal: deps.includeUserGlobal,
   });
@@ -140,8 +143,8 @@ export async function runInteractiveSession(
   const runtime: SessionRuntime = {
     repoRoot,
     config,
-    routeContext: { analysis, config },
     model: gateway.providerName,
+    autonomyLevel: (config.autonomy?.default ?? 3) as AutonomyLevel,
     store,
     session,
     costCents: 0,
@@ -188,11 +191,26 @@ export async function runInteractiveSession(
         continue;
       }
 
-      const decision = routeInput(text, runtime.routeContext);
+      const input = parseStructuralInput(text);
 
-      // Built-in slash commands are handled inline (never recorded as turns).
-      if (decision.kind === 'command') {
-        const result = handleSlashCommand(deps, runtime, decision.name, decision.argv);
+      // Built-in slash commands are handled inline (never recorded as turns),
+      // EXCEPT /plan and /discovery which run (recorded) work.
+      if (input.kind === 'command') {
+        if (input.name === 'plan') {
+          await handlePlanCommand(deps, runtime, input.argv.join(' '), () => {
+            inFlight = new AbortController();
+            return inFlight;
+          });
+          inFlight = null;
+          printStatusLine(deps, runtime);
+          continue;
+        }
+        if (input.name === 'discovery') {
+          await handleDiscoveryCommand(deps, runtime, input.argv.join(' '));
+          printStatusLine(deps, runtime);
+          continue;
+        }
+        const result = handleSlashCommand(deps, runtime, input.name);
         if (result === 'exit') {
           break;
         }
@@ -207,33 +225,22 @@ export async function runInteractiveSession(
       store.appendPromptHistory(safeText);
       store.appendTurn(session.id, { role: 'user', kind: 'message', text: safeText });
 
-      if (decision.kind === 'shell') {
-        deps.ui.warn(
-          'Shell passthrough (`!<command>`) is recognised, but execution lands in a later slice. ' +
-            'No command was run.',
-        );
-        store.appendTurn(session.id, {
-          role: 'system',
-          kind: 'status',
-          text: 'shell passthrough deferred',
-        });
+      if (input.kind === 'shell') {
+        await runShellPassthrough(deps, runtime, input.command);
         printStatusLine(deps, runtime);
         continue;
       }
 
-      // Natural-language turn: render the routing decision, then dispatch.
-      renderDecision(deps, decision);
-      store.appendTurn(session.id, {
-        role: 'system',
-        kind: 'route',
-        text: decision.reason,
-        route: `${decision.lane}:${decision.intent}`,
-      });
-
+      // Natural-language turn → the model-driven agent loop. Auto plan-mode for
+      // the highest autonomy level (L4 full-agentic naturally plans first);
+      // otherwise a direct turn.
       inFlight = new AbortController();
-      let dispatch: DispatchResult;
       try {
-        dispatch = await dispatchLane(deps, runtime, decision, text);
+        if (runtime.autonomyLevel >= 4) {
+          await dispatchPlan(deps, runtime, text, inFlight.signal);
+        } else {
+          await dispatchAgentTurn(deps, runtime, text, inFlight.signal);
+        }
       } catch (error) {
         inFlight = null;
         const reason = error instanceof Error ? error.message : String(error);
@@ -243,18 +250,6 @@ export async function runInteractiveSession(
         continue;
       }
       inFlight = null;
-
-      if (dispatch.costCents !== null) {
-        runtime.costCents += dispatch.costCents;
-      }
-      store.appendTurn(session.id, {
-        role: 'assistant',
-        kind: 'message',
-        text: dispatch.text,
-        ...(dispatch.model !== null ? { model: dispatch.model } : {}),
-        ...(dispatch.costCents !== null ? { costCents: dispatch.costCents } : {}),
-        ...(dispatch.artifactRef !== null ? { artifactRef: dispatch.artifactRef } : {}),
-      });
       printStatusLine(deps, runtime);
     }
   } finally {
@@ -266,79 +261,143 @@ export async function runInteractiveSession(
   return 0;
 }
 
-/** Dispatches a natural-language lane to its existing entrypoint. */
-async function dispatchLane(
+/** Builds the agent-turn deps from the session runtime. */
+function agentTurnDeps(
   deps: CliDeps,
   runtime: SessionRuntime,
-  decision: Extract<RouteDecision, { kind: 'natural' }>,
-  text: string,
-): Promise<DispatchResult> {
-  switch (decision.lane) {
-    case 'ask': {
-      const before = latestInteractionId(runtime.repoRoot);
-      await runInteractionCommand(deps, { command: 'ask', kind: 'ask', input: text, prompt: text });
-      return interactionResult(runtime.repoRoot, before, runtime.model);
-    }
-    case 'discovery': {
-      const before = latestDiscoveryId(runtime.repoRoot);
-      await runDiscoveryFlow(deps, { input: text, inputType: 'idea', yes: false });
-      const after = latestDiscoveryId(runtime.repoRoot);
-      return {
-        text: 'Discovery session completed.',
-        model: runtime.model,
-        costCents: null,
-        artifactRef: after !== before ? after : null,
-      };
-    }
-    case 'run':
-    case 'careful': {
-      const record = await runTask(deps, text, {
-        ...(decision.lane === 'careful' ? { style: 'careful' as const } : {}),
-      });
-      if (record === null) {
-        return { text: 'No run was created.', model: runtime.model, costCents: null, artifactRef: null };
-      }
-      return {
-        text: `Run ${record.id} finished with status: ${record.status}.`,
-        model: record.model ?? runtime.model,
-        costCents: null,
-        artifactRef: record.id,
-      };
-    }
-  }
-}
-
-/** Loads the model/cost/ref of the interaction created during an ask dispatch. */
-function interactionResult(
-  repoRoot: string,
-  beforeId: string | null,
-  providerName: string,
-): DispatchResult {
-  const store = new InteractionStore(repoRoot);
-  const list = store.list();
-  const latest = list.length > 0 ? (list[list.length - 1] as (typeof list)[number]) : null;
-  if (latest === null || latest.id === beforeId) {
-    return { text: 'Answered.', model: providerName, costCents: null, artifactRef: null };
-  }
+  signal: AbortSignal,
+): AgentTurnDeps {
+  const gateway = loadGatewayContext(runtime.repoRoot);
   return {
-    text: 'Answered.',
-    // The session turn records the PROVIDER name (e.g. `mock`) — the same
-    // identity the StatusLine shows — preferring it over the artifact's raw
-    // model id (which the gateway may report as `unknown` while streaming).
-    model: latest.metadata.provider ?? providerName,
-    costCents: latest.metadata.costCents,
-    artifactRef: latest.id,
+    deps,
+    repoRoot: runtime.repoRoot,
+    config: runtime.config,
+    gateway: gateway.gateway,
+    providerName: gateway.providerName,
+    autonomyLevel: runtime.autonomyLevel,
+    signal,
   };
 }
 
-function latestInteractionId(repoRoot: string): string | null {
-  const list = new InteractionStore(repoRoot).list();
-  return list.length > 0 ? (list[list.length - 1]?.id ?? null) : null;
+/** Records an assistant turn + accumulates cost from an agent-turn result. */
+function recordAssistantTurn(runtime: SessionRuntime, result: AgentTurnResult): void {
+  if (result.costCents !== null) {
+    runtime.costCents += result.costCents;
+  }
+  runtime.store.appendTurn(runtime.session.id, {
+    role: 'assistant',
+    kind: 'message',
+    text: result.text,
+    // Record the PROVIDER identity (e.g. `mock`) — the same name the StatusLine
+    // shows — for a consistent session-level model attribution.
+    model: runtime.model,
+    costCents: result.costCents,
+    artifactRef: result.runId,
+  });
 }
 
-function latestDiscoveryId(repoRoot: string): string | null {
-  const list = new DiscoveryManager(repoRoot).listSessions();
-  return list.length > 0 ? (list[list.length - 1]?.id ?? null) : null;
+/** Dispatches a direct model-driven turn (the default NL path). */
+async function dispatchAgentTurn(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  text: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const result = await runAgentTurn(agentTurnDeps(deps, runtime, signal), text);
+  recordAssistantTurn(runtime, result);
+}
+
+/** Dispatches an auto plan-mode turn (plan → gate → execute). */
+async function dispatchPlan(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  text: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const plan = await runPlanTurn(agentTurnDeps(deps, runtime, signal), text);
+  runtime.store.appendTurn(runtime.session.id, {
+    role: 'assistant',
+    kind: 'message',
+    text: plan.planText,
+    model: runtime.model,
+    artifactRef: plan.planRunId,
+  });
+  if (plan.execution !== null) {
+    recordAssistantTurn(runtime, plan.execution);
+  }
+}
+
+/**
+ * `/plan <task>` — explicit plan-mode. Records the user turn, runs the plan
+ * gate, and persists the plan (and execution, when approved).
+ */
+async function handlePlanCommand(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  task: string,
+  newController: () => AbortController,
+): Promise<void> {
+  if (task.trim().length === 0) {
+    deps.ui.warn('Usage: /plan <task>. Describe what you want planned.');
+    return;
+  }
+  const safeText = redactSecrets(task);
+  runtime.store.appendPromptHistory(`/plan ${safeText}`);
+  runtime.store.appendTurn(runtime.session.id, { role: 'user', kind: 'message', text: `/plan ${safeText}` });
+  const controller = newController();
+  try {
+    await dispatchPlan(deps, runtime, task, controller.signal);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    deps.ui.error(reason);
+    runtime.store.appendTurn(runtime.session.id, { role: 'system', kind: 'status', text: `error: ${reason}` });
+  }
+}
+
+/**
+ * `!<command>` — real shell passthrough. Runs the command in the repo root,
+ * streams its (truncated, redacted) output, and records a status turn. Output
+ * is capped to keep the transcript clean; a non-zero exit is reported.
+ */
+async function runShellPassthrough(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  command: string,
+): Promise<void> {
+  if (command.length === 0) {
+    deps.ui.warn('Empty shell command.');
+    return;
+  }
+  deps.ui.write(pc.dim(`$ ${command}`));
+  try {
+    const { stdout, stderr } = await execFileAsync('/bin/sh', ['-c', command], {
+      cwd: runtime.repoRoot,
+      maxBuffer: 4 * 1024 * 1024,
+      timeout: 120_000,
+    });
+    const output = redactSecrets(`${stdout}${stderr}`).trimEnd();
+    const shown = output.length > 4000 ? `${output.slice(0, 4000)}…` : output;
+    if (shown.length > 0) {
+      deps.ui.write(shown);
+    }
+    runtime.store.appendTurn(runtime.session.id, {
+      role: 'system',
+      kind: 'status',
+      text: `shell: ${command} → exit 0`,
+    });
+  } catch (error) {
+    const e = error as { stdout?: string; stderr?: string; code?: number; message?: string };
+    const output = redactSecrets(`${e.stdout ?? ''}${e.stderr ?? ''}`).trimEnd();
+    if (output.length > 0) {
+      deps.ui.write(output.length > 4000 ? `${output.slice(0, 4000)}…` : output);
+    }
+    deps.ui.warn(`Command failed (exit ${e.code ?? 1}).`);
+    runtime.store.appendTurn(runtime.session.id, {
+      role: 'system',
+      kind: 'status',
+      text: `shell: ${command} → exit ${e.code ?? 1}`,
+    });
+  }
 }
 
 /** Handles a built-in slash command; returns `'exit'` to leave the loop. */
@@ -346,22 +405,20 @@ function handleSlashCommand(
   deps: CliDeps,
   runtime: SessionRuntime,
   name: string,
-  _argv: string[],
 ): 'exit' | 'continue' {
   switch (name) {
     case 'help':
-      deps.ui.write(pc.bold('Excalibur interactive session — commands & lanes'));
+      deps.ui.write(pc.bold('Excalibur interactive session — commands'));
       deps.ui.write('  /help          show this help');
+      deps.ui.write('  /plan <task>   plan first (read-only) → approve → execute');
+      deps.ui.write('  /discovery <idea>  clarify an ambiguous idea before building');
       deps.ui.write('  /model         show the active provider/model');
       deps.ui.write('  /clear         clear the screen (keeps the session)');
       deps.ui.write('  /exit, /quit   close the session and leave');
       deps.ui.write('');
-      deps.ui.write(pc.dim('Lanes (chosen automatically from what you type):'));
-      deps.ui.write(pc.dim('  ask        a question about the repo (read-only)'));
-      deps.ui.write(pc.dim('  run        an actionable task (isolated branch, approvals)'));
-      deps.ui.write(pc.dim('  careful    a sensitive task (Level 4, stronger approvals)'));
-      deps.ui.write(pc.dim('  discovery  an ambiguous idea (clarify before building)'));
-      deps.ui.write(pc.dim('  !<command> shell passthrough (lands in a later slice)'));
+      deps.ui.write(pc.dim('Type anything else in plain words (any language) — the model decides'));
+      deps.ui.write(pc.dim('whether to answer (read-only) or edit/run, governed by your autonomy'));
+      deps.ui.write(pc.dim('level. Tool actions ask for inline approval. `!cmd` runs a shell command.'));
       return 'continue';
     case 'model': {
       const gateway = loadGatewayContext(runtime.repoRoot);
@@ -375,7 +432,7 @@ function handleSlashCommand(
     }
     case 'clear':
       // Clear the screen but keep the session and its transcript.
-      deps.ui.writeRaw('[2J[H');
+      deps.ui.writeRaw('[2J[H');
       printStatusLine(deps, runtime);
       return 'continue';
     case 'exit':
@@ -387,29 +444,38 @@ function handleSlashCommand(
   }
 }
 
-/** Renders the routing decision as a dim line: lane · workflow · autonomy. */
-function renderDecision(deps: CliDeps, decision: Extract<RouteDecision, { kind: 'natural' }>): void {
-  const workflow =
-    decision.lane === 'ask'
-      ? 'ask-repo'
-      : decision.lane === 'discovery'
-        ? 'discovery'
-        : decision.lane === 'careful'
-          ? 'careful'
-          : 'run';
-  const autonomy =
-    decision.lane === 'ask'
-      ? 'L1'
-      : decision.lane === 'discovery'
-        ? 'L0'
-        : decision.lane === 'careful'
-          ? 'L4'
-          : 'L3';
-  deps.ui.info(`→ ${decision.lane} · ${workflow} · ${autonomy}`);
+/**
+ * `/discovery <idea>` runs the explicit, opt-in clarification flow. Kept as a
+ * distinct command (not keyword-routed): the agent's prompts suggest it when a
+ * request is too vague to act on, but the shell never routes there by guessing.
+ */
+async function handleDiscoveryCommand(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  idea: string,
+): Promise<void> {
+  if (idea.trim().length === 0) {
+    deps.ui.warn('Usage: /discovery <idea>. Describe the idea to clarify before building.');
+    return;
+  }
+  const safeText = redactSecrets(idea);
+  runtime.store.appendPromptHistory(`/discovery ${safeText}`);
+  runtime.store.appendTurn(runtime.session.id, {
+    role: 'user',
+    kind: 'message',
+    text: `/discovery ${safeText}`,
+  });
+  await runDiscoveryFlow(deps, { input: idea, inputType: 'idea', yes: false });
+  runtime.store.appendTurn(runtime.session.id, {
+    role: 'assistant',
+    kind: 'message',
+    text: 'Discovery session completed.',
+    model: runtime.model,
+  });
 }
 
 /** Reprints the StatusLine: autonomy · workflow · model · cost · safety. */
-const WHATS_NEW = 'Real model gateway, repo-aware context, and live streaming.';
+const WHATS_NEW = 'Model-first agent loop in the shell, inline approvals, plan-mode.';
 
 /** Parses the owner/org from a git remote URL (https or ssh); '' when unknown. */
 function repoOwnerFromRemote(remoteUrl: string | null): string {
@@ -426,7 +492,7 @@ function buildWelcomeContext(deps: CliDeps, repoRoot: string, model: string): We
   const hasDiff = getLocalDiff(repoRoot).trim().length > 0;
   const tip = hasDiff
     ? 'You have uncommitted changes — try “review the working diff”.'
-    : 'Describe what you want in plain words — Excalibur routes it to ask, run, patch or discovery.';
+    : 'Describe what you want in plain words — the model decides how to act (ask, edit, run).';
   return {
     version: CLI_VERSION,
     name,
@@ -445,6 +511,7 @@ function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
     config: runtime.config,
     model: runtime.model,
     costCents: runtime.costCents,
+    autonomyLevel: runtime.autonomyLevel,
   });
   const cost = `$${(status.costCents / 100).toFixed(2)}`;
   deps.ui.info(

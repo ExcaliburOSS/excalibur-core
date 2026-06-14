@@ -141,11 +141,9 @@ export {
   type AppendTurnInput,
 } from './sessions/session-store';
 export {
-  routeInput,
+  parseStructuralInput,
   buildStatusLineModel,
-  type RouteDecision,
-  type RouteContext,
-  type RouteLane,
+  type StructuralInput,
   type StatusLineModel,
   type BuildStatusLineInput,
 } from './sessions/intent-router';
