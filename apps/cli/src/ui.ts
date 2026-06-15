@@ -1,5 +1,6 @@
 import * as readline from 'node:readline';
 import pc from 'picocolors';
+import { Spinner, isTtyStream } from './lib/spinner';
 
 /**
  * The single output module of the Excalibur CLI (Build Contract §4.9).
@@ -116,6 +117,18 @@ export class Ui {
   /** Streams a model output chunk verbatim (no added newline). */
   streamChunk(text: string): void {
     this.writeRaw(text);
+  }
+
+  /**
+   * A transient "thinking/working" indicator bound to this Ui's stdout. It only
+   * animates on a real TTY (piped/CI/test streams get a no-op), so callers can
+   * always create + drive it without guarding for non-interactive output.
+   */
+  createSpinner(options: { unicode?: boolean } = {}): Spinner {
+    return new Spinner(this.stdout, {
+      enabled: isTtyStream(this.stdout),
+      ...(options.unicode !== undefined ? { unicode: options.unicode } : {}),
+    });
   }
 
   heading(text: string): void {

@@ -33,7 +33,7 @@ import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
 import { describeEvent } from '../lib/run-pipeline';
 import { renderTurnReceipt } from '../lib/turn-receipt';
-import { ActionRenderer } from '../lib/action-render';
+import { ActionRenderer, activityFor } from '../lib/action-render';
 
 /**
  * The model-FIRST conversational turn (M-Shell). A natural-language line is
@@ -179,8 +179,31 @@ async function driveLoop(
   let model = turn.providerName;
   let mutated = false;
   let aborted = false;
+  let totalTokens = 0;
+  const turnStart = Date.now();
+  const unicode = deps.env['EXCALIBUR_ASCII'] === undefined;
+
+  // The breathing "thinking/working" indicator (transient; animates only on a
+  // real TTY). Its text is GROUNDED: the live tool activity when one is running,
+  // a phase/role gerund while the model just reasons — plus live tok·$·elapsed.
+  const spinner = deps.ui.createSpinner({ unicode });
+  // Ctrl-C: the SIGINT handler aborts cooperatively and writes "Cancelled"
+  // immediately, but the loop may keep awaiting the in-flight model call. Cancel
+  // the indicator SYNCHRONOUSLY on abort so its next frame can't overwrite that
+  // message (and it never re-arms). Listener removed in the finally below.
+  const onAbort = (): void => spinner.cancel();
+  turn.signal?.addEventListener('abort', onAbort);
+  const gerund = gerundForRole(options.role);
+  const spinnerText = (activity: string | null): string => {
+    const label = activity ?? gerund;
+    const cost = costCents !== null ? ` · $${(costCents / 100).toFixed(2)}` : '';
+    const toks = totalTokens > 0 ? ` · ${compactTokens(totalTokens)} tok` : '';
+    const elapsed = ` · ${Math.round((Date.now() - turnStart) / 1000)}s`;
+    return `${label}${pc.dim(toks + cost + elapsed)}`;
+  };
 
   const confirm = async (req: ConfirmationRequest): Promise<boolean> => {
+    spinner.stop(); // clear the transient line before the (permanent) prompt
     const detail = req.detail !== undefined ? ` (${req.detail})` : '';
     deps.ui.write(pc.yellow(`  ⚠ ${req.tool} needs approval: ${req.reason}${detail}`));
     return deps.ui.confirm('  Allow this action?', {
@@ -203,11 +226,15 @@ async function driveLoop(
 
   // The live per-action renderer: groups the stream into tool blocks (header +
   // indented result), diffs and command output — the Claude-Code-class view.
-  const renderer = new ActionRenderer(deps, {
-    unicode: deps.env['EXCALIBUR_ASCII'] === undefined,
-  });
+  const renderer = new ActionRenderer(deps, { unicode });
 
+  // Show the indicator during the FIRST wait (the opening model call). The loop
+  // is wrapped so the spinner's timer is ALWAYS cleared, even if a write throws.
+  spinner.start(() => spinnerText(null));
+
+  try {
   for await (const event of stream) {
+    spinner.stop(); // erase the transient line before any permanent output
     runManager.appendEvent(run.id, event);
     renderer.onEvent(event);
 
@@ -223,6 +250,7 @@ async function driveLoop(
       const inputTokens = event.payload['inputTokens'];
       const outputTokens = event.payload['outputTokens'];
       if (typeof inputTokens === 'number' && typeof outputTokens === 'number') {
+        totalTokens += inputTokens + outputTokens;
         runManager.appendModelCall(run.id, {
           provider: turn.config.models?.default ?? turn.providerName,
           model: typeof m === 'string' ? m : turn.providerName,
@@ -253,10 +281,42 @@ async function driveLoop(
         mutated = true;
       }
     }
+
+    // Re-arm the indicator for the NEXT wait: the grounded activity that follows
+    // this event (a tool announcement → "Running …" during execution), else the
+    // role gerund while the model reasons before the next turn.
+    const activity = activityFor(event);
+    spinner.start(() => spinnerText(activity));
+  }
+  } finally {
+    spinner.stop();
+    turn.signal?.removeEventListener('abort', onAbort);
   }
   renderer.finish();
 
   return { finalText, costCents, model, mutated, aborted };
+}
+
+/** Present-continuous label for the model "thinking" between tool calls, by role. */
+function gerundForRole(role: AgentRole): string {
+  switch (role) {
+    case 'planner':
+      return 'Planning…';
+    case 'architect':
+      return 'Designing…';
+    case 'reviewer':
+    case 'security':
+      return 'Reviewing…';
+    case 'tester':
+      return 'Writing tests…';
+    default:
+      return 'Working…';
+  }
+}
+
+/** Compact token count for the indicator (`12.4k`, `340`). */
+function compactTokens(value: number): string {
+  return value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value);
 }
 
 /**

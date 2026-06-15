@@ -57,6 +57,43 @@ function s(event: ExcaliburEvent, key: string): string {
   return typeof value === 'string' ? value : '';
 }
 
+/**
+ * The grounded present-continuous activity for an in-flight event, used as the
+ * thinking-indicator label DURING the wait that follows it — `Running npm test`
+ * while a command runs, `Editing charge.ts` while a write lands. Returns null
+ * when the event implies no specific activity (the caller falls back to a
+ * phase/role gerund like "Implementing…").
+ */
+export function activityFor(event: ExcaliburEvent): string | null {
+  if (event.type !== 'tool_call' || !('arguments' in event.payload)) {
+    return null;
+  }
+  const tool = s(event, 'tool') || s(event, 'name');
+  const args = (event.payload['arguments'] as Record<string, unknown> | undefined) ?? {};
+  const target = targetFor(tool, args);
+  switch (tool) {
+    case 'read_file':
+      return target ? `Reading ${target}` : 'Reading';
+    case 'write_file':
+      return target ? `Editing ${target}` : 'Editing';
+    case 'list_files':
+      return target ? `Listing ${target}` : 'Listing';
+    case 'search_code':
+      return target ? `Searching ${target}` : 'Searching';
+    case 'run_command':
+    case 'run_tests':
+      return target ? `Running ${target}` : 'Running';
+    case 'git_diff':
+      return 'Diffing';
+    case 'apply_patch':
+      return 'Applying patch';
+    case 'create_branch':
+      return target ? `Creating branch ${target}` : 'Creating branch';
+    default:
+      return tool ? `${tool}` : null;
+  }
+}
+
 /** Tool name → display verb. */
 function verbFor(tool: string): string {
   switch (tool) {
