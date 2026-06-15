@@ -77,8 +77,15 @@ function assistantToolUseContent(message: ChatMessage): Array<Record<string, unk
  * Splits messages into the top-level `system` string and user/assistant turns.
  * Tool-calling messages serialize into Anthropic's content-block form:
  *   - an assistant message with `toolCalls` → `tool_use` blocks;
- *   - a `tool` result message → a `user` turn carrying a `tool_result` block
- *     (`tool_use_id` = the message's `toolCallId`).
+ *   - one or MORE consecutive `tool` result messages → a SINGLE `user` turn
+ *     carrying all of their `tool_result` blocks.
+ *
+ * Coalescing consecutive tool results is REQUIRED: a parallel-tool-use turn (the
+ * model requests N tools at once) emits N `tool` messages in a row, as does a
+ * reconstructed time-machine fork prefix. Emitting one `user` turn per result
+ * would produce consecutive `user` turns, which Anthropic rejects ("roles must
+ * alternate"). The OpenAI format keeps one message per tool result, so this
+ * fix lives only in the Anthropic mapping.
  */
 function splitSystem(messages: ChatMessage[]): {
   system: string | undefined;
@@ -86,26 +93,36 @@ function splitSystem(messages: ChatMessage[]): {
 } {
   const systemParts: string[] = [];
   const turns: AnthropicTurn[] = [];
+  let pendingToolResults: Array<Record<string, unknown>> = [];
+
+  const flushToolResults = (): void => {
+    if (pendingToolResults.length > 0) {
+      turns.push({ role: 'user', content: pendingToolResults });
+      pendingToolResults = [];
+    }
+  };
+
   for (const message of messages) {
+    if (message.role === 'tool') {
+      pendingToolResults.push({
+        type: 'tool_result',
+        tool_use_id: message.toolCallId ?? '',
+        content: message.content,
+      });
+      continue;
+    }
+    // Any non-tool message ends a run of consecutive tool results.
+    flushToolResults();
     if (message.role === 'system') {
       systemParts.push(message.content);
-    } else if (message.role === 'tool') {
-      turns.push({
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: message.toolCallId ?? '',
-            content: message.content,
-          },
-        ],
-      });
     } else if (message.role === 'assistant' && (message.toolCalls?.length ?? 0) > 0) {
       turns.push({ role: 'assistant', content: assistantToolUseContent(message) });
     } else {
       turns.push({ role: message.role, content: message.content });
     }
   }
+  flushToolResults();
+
   return {
     system: systemParts.length > 0 ? systemParts.join('\n\n') : undefined,
     turns,

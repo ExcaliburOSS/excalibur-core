@@ -256,11 +256,14 @@ function buildSteps(events: ExcaliburEvent[]): ReplayStep[] {
       event.phaseId != null ? phaseNames.get(event.phaseId) ?? null : null;
     const phaseName = ownPhaseName ?? activePhaseName;
 
+    // Events replayed from cache by a fork carry `cached: true` — mark them so
+    // the time-machine shows the reused prefix distinctly from the live suffix.
+    const cached = event.payload['cached'] === true;
     steps.push({
       index,
       event,
       phaseName,
-      summary: summarize(event),
+      summary: cached ? `${summarize(event)}  (cached)` : summarize(event),
       costCentsSoFar: costCents,
       tokensSoFar: { input: tokensInput, output: tokensOutput },
     });

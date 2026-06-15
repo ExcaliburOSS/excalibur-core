@@ -148,6 +148,48 @@ describe('Anthropic tool calling', () => {
     ]);
   });
 
+  it('coalesces consecutive tool results into ONE user turn (parallel tool use)', async () => {
+    // A parallel-tool-use turn: the assistant requested two tools at once, and
+    // both results come back as consecutive `tool` messages. They MUST fold into
+    // a single `user` turn with two tool_result blocks — emitting two user turns
+    // would make Anthropic reject the request ("roles must alternate"). This is
+    // also exactly the shape a time-machine fork prefix reconstructs.
+    const parallelInput: ChatInput = {
+      messages: [
+        { role: 'user', content: 'Weather in Madrid and Paris?' },
+        {
+          role: 'assistant',
+          content: '',
+          toolCalls: [
+            { id: 'call_1', name: 'get_weather', arguments: { city: 'Madrid' } },
+            { id: 'call_2', name: 'get_weather', arguments: { city: 'Paris' } },
+          ],
+        },
+        { role: 'tool', content: '21°C sunny', toolCallId: 'call_1' },
+        { role: 'tool', content: '17°C rain', toolCallId: 'call_2' },
+      ],
+      tools: [WEATHER_TOOL],
+    };
+    const transport = new QueueTransport([fakeResponse({ body: fixture('anthropic.chat.json') })]);
+    const adapter = new AnthropicAdapter({ name: 'a', cfg: anthropicCfg(), transport, hooks });
+    await adapter.chat(parallelInput);
+    const body = JSON.parse(transport.requests[0]?.request.body ?? '{}') as {
+      messages: Array<{ role: string; content: unknown }>;
+    };
+    // Three turns total: user → assistant(tool_use ×2) → user(tool_result ×2).
+    expect(body.messages).toHaveLength(3);
+    expect(body.messages[2]).toEqual({
+      role: 'user',
+      content: [
+        { type: 'tool_result', tool_use_id: 'call_1', content: '21°C sunny' },
+        { type: 'tool_result', tool_use_id: 'call_2', content: '17°C rain' },
+      ],
+    });
+    // No two consecutive user turns (the bug this guards against).
+    const roles = body.messages.map((m) => m.role);
+    expect(roles.some((r, i) => r === 'user' && roles[i + 1] === 'user')).toBe(false);
+  });
+
   it('surfaces a typed error on malformed tool_use input', async () => {
     const body = JSON.stringify({
       content: [{ type: 'tool_use', id: 'toolu_1', name: 'get_weather', input: '{bad json' }],

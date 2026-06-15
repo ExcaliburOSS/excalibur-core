@@ -84,6 +84,16 @@ export {
   type TokenTotals,
 } from './replay/replay';
 
+// Replay / time-machine — fork-from-cache + undo-to-checkpoint (T2)
+export {
+  planFork,
+  reconstructConversationPrefix,
+  restampEventsForFork,
+  planUndo,
+  type ForkPlan,
+  type UndoPlan,
+} from './replay/fork';
+
 // Local artifact stores (ONB-8)
 export {
   InteractionStore,
@@ -113,13 +123,18 @@ export { executeLocalRun, type ExecuteLocalRunInput } from './engine/execute-loc
 
 // Git helpers
 export {
+  addWorktree,
   applyPatch,
   checkPatchApplies,
+  commitAll,
   createBranch,
   getGitIdentity,
   getGitInfo,
   getLocalDiff,
+  hasCommits,
   listRecentCommits,
+  removeWorktree,
+  revParse,
   type GitCommit,
   type GitIdentity,
   type GitInfo,

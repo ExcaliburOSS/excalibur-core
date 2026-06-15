@@ -112,6 +112,76 @@ export function createBranch(repoRoot: string, name: string): void {
   }
 }
 
+/** Resolves a ref to a full commit SHA (`git rev-parse`), or null when unknown. */
+export function revParse(repoRoot: string, ref: string): string | null {
+  return tryGit(repoRoot, ['rev-parse', '--verify', '--quiet', ref]);
+}
+
+/**
+ * Stages everything and commits it (`--no-gpg-sign` so a signing config never
+ * hangs/fails headless). Tolerant: returns false on any failure (no identity,
+ * nothing to commit, …) rather than throwing — callers use it best-effort.
+ */
+export function commitAll(repoRoot: string, message: string): boolean {
+  if (tryGit(repoRoot, ['add', '-A']) === null) {
+    return false;
+  }
+  return tryGit(repoRoot, ['commit', '--no-gpg-sign', '-m', message]) !== null;
+}
+
+/** True when the repository has at least one commit (a valid HEAD). */
+export function hasCommits(repoRoot: string): boolean {
+  return revParse(repoRoot, 'HEAD') !== null;
+}
+
+/**
+ * Creates a new git worktree at `worktreePath` on a NEW branch `branch`, based
+ * at `baseRef` (defaults to HEAD). Used by the time-machine fork to reconstruct
+ * a run's state in an isolated tree without touching the user's working copy.
+ *
+ * @throws GitOperationError when git refuses (no commits, branch/path exists, …).
+ */
+export function addWorktree(
+  repoRoot: string,
+  worktreePath: string,
+  opts: { branch: string; baseRef?: string },
+): void {
+  const base = opts.baseRef ?? 'HEAD';
+  try {
+    execFileSync('git', ['worktree', 'add', '-b', opts.branch, worktreePath, base], {
+      cwd: repoRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    const reason = stderrReason(error);
+    throw new GitOperationError(
+      `Cannot create worktree at "${worktreePath}" (branch "${opts.branch}", base "${base}"): ${reason.length > 0 ? reason : 'git worktree add failed'}`,
+      { repoRoot, worktreePath, branch: opts.branch },
+    );
+  }
+}
+
+/**
+ * Removes a git worktree (and prunes its admin entry). `force` discards any
+ * uncommitted changes in the worktree. Tolerant: never throws — a best-effort
+ * cleanup must not mask the original outcome. Returns whether removal succeeded.
+ */
+export function removeWorktree(
+  repoRoot: string,
+  worktreePath: string,
+  opts?: { force?: boolean },
+): boolean {
+  const args = ['worktree', 'remove'];
+  if (opts?.force === true) {
+    args.push('--force');
+  }
+  args.push(worktreePath);
+  const removed = tryGit(repoRoot, args) !== null;
+  // Prune stale admin entries regardless (e.g. if the dir was already gone).
+  tryGit(repoRoot, ['worktree', 'prune']);
+  return removed;
+}
+
 /** Ensures a unified diff ends with exactly one trailing newline (git apply requires it). */
 function withTrailingNewline(diff: string): string {
   return diff.endsWith('\n') ? diff : `${diff}\n`;
@@ -140,12 +210,18 @@ function stderrReason(error: unknown): string {
 export function checkPatchApplies(
   repoRoot: string,
   diff: string,
+  opts?: { reverse?: boolean },
 ): { applies: boolean; reason: string | null } {
   if (diff.trim().length === 0) {
     return { applies: false, reason: 'empty diff' };
   }
+  const args = ['apply', '--check'];
+  if (opts?.reverse === true) {
+    args.push('-R');
+  }
+  args.push('-');
   try {
-    execFileSync('git', ['apply', '--check', '-'], {
+    execFileSync('git', args, {
       cwd: repoRoot,
       input: withTrailingNewline(diff),
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -167,7 +243,11 @@ export function checkPatchApplies(
  *
  * @throws GitOperationError on an empty diff or when git refuses the patch.
  */
-export function applyPatch(repoRoot: string, diff: string, opts?: { threeway?: boolean }): void {
+export function applyPatch(
+  repoRoot: string,
+  diff: string,
+  opts?: { threeway?: boolean; reverse?: boolean },
+): void {
   if (diff.trim().length === 0) {
     throw new GitOperationError(`Cannot apply an empty diff in ${repoRoot}.`, {
       repoRoot,
@@ -177,6 +257,9 @@ export function applyPatch(repoRoot: string, diff: string, opts?: { threeway?: b
   const args = ['apply'];
   if (opts?.threeway === true) {
     args.push('--3way');
+  }
+  if (opts?.reverse === true) {
+    args.push('-R');
   }
   args.push('-');
   try {

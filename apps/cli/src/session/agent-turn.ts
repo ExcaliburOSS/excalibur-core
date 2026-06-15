@@ -1,5 +1,20 @@
 import { NativeAgentAdapter, type AgentAdapter, type ConfirmationRequest } from '@excalibur/agent-runtime';
-import { buildTurnSummary, loadReplay, RunManager, turnSummaryToMarkdown } from '@excalibur/core';
+import {
+  addWorktree,
+  applyPatch,
+  buildTurnSummary,
+  checkPatchApplies,
+  commitAll,
+  EXCALIBUR_DIR,
+  getGitInfo,
+  hasCommits,
+  loadReplay,
+  planFork,
+  removeWorktree,
+  restampEventsForFork,
+  RunManager,
+  turnSummaryToMarkdown,
+} from '@excalibur/core';
 import {
   createEvent,
   generateId,
@@ -9,7 +24,9 @@ import {
   type ExcaliburEvent,
   type LocalRun,
 } from '@excalibur/shared';
-import type { ModelGateway } from '@excalibur/model-gateway';
+import type { ChatMessage, ModelGateway } from '@excalibur/model-gateway';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import { describeEvent } from '../lib/run-pipeline';
@@ -126,6 +143,11 @@ interface DriveOptions {
   approvalDefaultYes: boolean;
   /** When false, no tool approvals are offered (read-only planner pass). */
   allowConfirm: boolean;
+  /** Working directory the loop operates in (defaults to the repo root; a fork
+   * passes its isolated worktree). */
+  workdir?: string;
+  /** Cached conversation prefix for fork-from-cache (seeds the loop). */
+  seedMessages?: ChatMessage[];
 }
 
 interface DriveResult {
@@ -167,13 +189,14 @@ async function driveLoop(
   const stream = adapter.run({
     runId: run.id,
     sessionId,
-    workdir: turn.repoRoot,
+    workdir: options.workdir ?? turn.repoRoot,
     prompt: options.prompt,
     role: options.role,
     config: turn.config,
     gateway: turn.gateway,
     ...(turn.signal !== undefined ? { signal: turn.signal } : {}),
     ...(options.allowConfirm ? { confirm } : {}),
+    ...(options.seedMessages !== undefined ? { seedMessages: options.seedMessages } : {}),
   });
 
   // The live per-action renderer: groups the stream into tool blocks (header +
@@ -411,4 +434,167 @@ function toResult(runId: string, result: DriveResult, providerName: string): Age
     runId,
     mutated: result.mutated,
   };
+}
+
+/** `$0.04`, or `—` when no cost is known. */
+function fmtCost(costCents: number | null): string {
+  return costCents === null ? '—' : `$${(costCents / 100).toFixed(2)}`;
+}
+
+/**
+ * Adds a pattern to `.git/info/exclude` (the local, uncommitted ignore list) so
+ * a fork worktree never pollutes the user's `git status` / `git add`, regardless
+ * of whether `.excalibur/` is gitignored. Best-effort: skips silently when `.git`
+ * is absent or is a linked-worktree file rather than a directory.
+ */
+function excludeFromGit(repoRoot: string, pattern: string): void {
+  try {
+    const gitDir = join(repoRoot, '.git');
+    if (!existsSync(gitDir)) {
+      return;
+    }
+    const excludePath = join(gitDir, 'info', 'exclude');
+    let current = '';
+    try {
+      current = readFileSync(excludePath, 'utf8');
+    } catch {
+      current = '';
+    }
+    if (current.split('\n').some((line) => line.trim() === pattern)) {
+      return;
+    }
+    const prefix = current.length === 0 || current.endsWith('\n') ? '' : '\n';
+    appendFileSync(excludePath, `${prefix}${pattern}\n`);
+  } catch {
+    // Best-effort — never fail a fork over the ignore list.
+  }
+}
+
+/** Input to {@link runForkTurn}. `atStep` is 0-based (the CLI converts from 1-based). */
+export interface ForkTurnInput {
+  sourceRunId: string;
+  atStep: number;
+  instruction: string;
+}
+
+export interface ForkTurnResult {
+  forkRunId: string;
+  worktreePath: string;
+  branch: string;
+  cachedTokens: { input: number; output: number };
+  cachedCostCents: number | null;
+  execution: AgentTurnResult;
+}
+
+/**
+ * Fork-from-cache (time-machine T2): branch a NEW run from step N of a source
+ * run. The prefix (0..N) is replayed FROM CACHE — its events are copied into the
+ * fork's log (marked cached) and its conversation reconstructed as the loop's
+ * seed, so not a single token of the good work is re-spent — and only the new
+ * `instruction` runs LIVE, in an isolated git worktree whose files are
+ * reconstructed to the state at N. "Start from scratch" disappears.
+ *
+ * Safety: needs a git repo with a commit (the worktree base). If the run's
+ * accumulated diff does not apply onto the current HEAD (the tree diverged) the
+ * worktree is torn down and the fork fails cleanly rather than half-built.
+ */
+export async function runForkTurn(turn: AgentTurnDeps, input: ForkTurnInput): Promise<ForkTurnResult> {
+  const { deps } = turn;
+  const runManager = new RunManager(turn.repoRoot);
+
+  if (!getGitInfo(turn.repoRoot).isRepo) {
+    throw new Error('Fork needs a git repository — the worktree is reconstructed from a base commit.');
+  }
+  if (!hasCommits(turn.repoRoot)) {
+    throw new Error('Fork needs at least one commit to base the reconstructed worktree on.');
+  }
+
+  const plan = planFork(turn.repoRoot, input.sourceRunId, input.atStep);
+  if (plan.source.totalSteps === 0) {
+    throw new Error(`Source run "${input.sourceRunId}" has no events to fork from.`);
+  }
+
+  const forkRun = runManager.createRun({
+    title: input.instruction,
+    autonomyLevel: turn.autonomyLevel,
+    workflow: 'fork',
+    methodology: null,
+    model: turn.providerName,
+    executionStyle: 'team_default',
+  });
+  runManager.updateRecord(forkRun.id, {
+    status: 'running',
+    forkedFrom: { runId: plan.source.runId, atStep: plan.source.atStep },
+  });
+
+  // Copy the cached prefix into the fork's log so the fork is itself replayable.
+  for (const event of restampEventsForFork(plan.prefixEvents, forkRun.id)) {
+    runManager.appendEvent(forkRun.id, event);
+  }
+
+  // Keep the worktree dir out of the user's git status regardless of whether
+  // `.excalibur/` is gitignored (a nested worktree would otherwise show up /
+  // get staged as a broken gitlink).
+  excludeFromGit(turn.repoRoot, '.excalibur/worktrees/');
+
+  const worktreePath = join(turn.repoRoot, EXCALIBUR_DIR, 'worktrees', forkRun.id);
+  const branch = `excalibur/fork-${forkRun.id}`;
+  addWorktree(turn.repoRoot, worktreePath, { branch });
+
+  // From here, ANY failure must tear down the worktree and mark the run failed —
+  // never leave an orphaned worktree or a run stuck "running".
+  try {
+    if (plan.baseDiff.trim().length > 0) {
+      if (plan.baseDiff.includes('[REDACTED]')) {
+        deps.ui.warn(
+          'The reconstructed base contains [REDACTED] where a secret was scrubbed at capture — ' +
+            'fill those in before relying on the forked worktree.',
+        );
+      }
+      const check = checkPatchApplies(worktreePath, plan.baseDiff);
+      applyPatch(worktreePath, plan.baseDiff, check.applies ? undefined : { threeway: true });
+      // Commit the reconstructed base so the SUFFIX's diff is purely the new
+      // work (not the replayed prefix). Best-effort: a repo without a usable
+      // identity simply keeps the base uncommitted.
+      commitAll(worktreePath, `excalibur: reconstructed base @ step ${plan.source.atStep + 1}`);
+    }
+
+    const cachedTokens = plan.cachedTokens.input + plan.cachedTokens.output;
+    deps.ui.info(`⑂ fork of ${plan.source.runId} @ step ${plan.source.atStep + 1}/${plan.source.totalSteps}`);
+    deps.ui.info(
+      `Reused ${cachedTokens} cached tokens (${fmtCost(plan.cachedCostCents)}) — only the new instruction runs live.`,
+    );
+    deps.ui.info(`Worktree ${worktreePath} · branch ${branch}`);
+
+    // Drive ONLY the live suffix: the implementer executes the new instruction
+    // with the cached prefix seeded, inside the reconstructed worktree.
+    const adapter = turn.adapter ?? new NativeAgentAdapter();
+    const result = await driveLoop(turn, adapter, runManager, forkRun, generateId('sess'), {
+      role: 'implementer',
+      prompt: input.instruction,
+      approvalDefaultYes: approvalDefaultYes(turn.autonomyLevel),
+      allowConfirm: true,
+      workdir: worktreePath,
+      seedMessages: plan.seedMessages,
+    });
+    finishRun(deps, runManager, forkRun, result.aborted);
+    emitReceipt(turn, runManager, forkRun.id, result.model || turn.providerName);
+
+    return {
+      forkRunId: forkRun.id,
+      worktreePath,
+      branch,
+      cachedTokens: plan.cachedTokens,
+      cachedCostCents: plan.cachedCostCents,
+      execution: toResult(forkRun.id, result, turn.providerName),
+    };
+  } catch (error) {
+    removeWorktree(turn.repoRoot, worktreePath, { force: true });
+    runManager.updateRecord(forkRun.id, { status: 'failed', completedAt: new Date().toISOString() });
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Fork failed at step ${plan.source.atStep + 1}: ${reason}. ` +
+        `The worktree was torn down; nothing in your working tree changed.`,
+    );
+  }
 }
