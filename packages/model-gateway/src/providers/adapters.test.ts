@@ -71,7 +71,12 @@ const hooks: BaseProviderHooks = deterministicHooks;
 describe('AnthropicAdapter', () => {
   it('chat() parses content, usage and finishReason', async () => {
     const transport = new QueueTransport([fakeResponse({ body: fixture('anthropic.chat.json') })]);
-    const adapter = new AnthropicAdapter({ name: 'anthropic', cfg: anthropicCfg(), transport, hooks });
+    const adapter = new AnthropicAdapter({
+      name: 'anthropic',
+      cfg: anthropicCfg(),
+      transport,
+      hooks,
+    });
     const output = await adapter.chat(input);
     expect(output.content).toBe('Hello from the model.');
     expect(output.usage).toEqual({ inputTokens: 42, outputTokens: 7 });
@@ -82,7 +87,12 @@ describe('AnthropicAdapter', () => {
 
   it('chat() sends the right URL, headers, system split and body', async () => {
     const transport = new QueueTransport([fakeResponse({ body: fixture('anthropic.chat.json') })]);
-    const adapter = new AnthropicAdapter({ name: 'anthropic', cfg: anthropicCfg(), transport, hooks });
+    const adapter = new AnthropicAdapter({
+      name: 'anthropic',
+      cfg: anthropicCfg(),
+      transport,
+      hooks,
+    });
     await adapter.chat({ ...input, maxTokens: 256, temperature: 0.3 });
     const sent = transport.requests[0]?.request;
     expect(sent?.url).toBe('https://api.anthropic.com/v1/messages');
@@ -103,8 +113,18 @@ describe('AnthropicAdapter', () => {
     const streamTransport = new QueueTransport([
       fakeResponse({ body: fixture('anthropic.stream.sse.txt') }),
     ]);
-    const chatAdapter = new AnthropicAdapter({ name: 'a', cfg: anthropicCfg(), transport: chatTransport, hooks });
-    const streamAdapter = new AnthropicAdapter({ name: 'a', cfg: anthropicCfg(), transport: streamTransport, hooks });
+    const chatAdapter = new AnthropicAdapter({
+      name: 'a',
+      cfg: anthropicCfg(),
+      transport: chatTransport,
+      hooks,
+    });
+    const streamAdapter = new AnthropicAdapter({
+      name: 'a',
+      cfg: anthropicCfg(),
+      transport: streamTransport,
+      hooks,
+    });
     const chatOutput = await chatAdapter.chat(input);
     const deltas = await collectStream(streamAdapter.stream(input));
     expect(deltas[deltas.length - 1]).toEqual({ content: '', done: true });
@@ -134,7 +154,12 @@ describe('AnthropicAdapter', () => {
 describe('OpenAICompatibleAdapter', () => {
   it('chat() parses content, usage and finishReason', async () => {
     const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);
-    const adapter = new OpenAICompatibleAdapter({ name: 'qwen', cfg: openaiCfg(), transport, hooks });
+    const adapter = new OpenAICompatibleAdapter({
+      name: 'qwen',
+      cfg: openaiCfg(),
+      transport,
+      hooks,
+    });
     const output = await adapter.chat(input);
     expect(output.content).toBe('Hello from the OpenAI-compatible model.');
     expect(output.usage).toEqual({ inputTokens: 31, outputTokens: 9 });
@@ -143,7 +168,12 @@ describe('OpenAICompatibleAdapter', () => {
 
   it('does not double-append /v1 when baseUrl already ends in it', async () => {
     const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);
-    const adapter = new OpenAICompatibleAdapter({ name: 'qwen', cfg: openaiCfg(), transport, hooks });
+    const adapter = new OpenAICompatibleAdapter({
+      name: 'qwen',
+      cfg: openaiCfg(),
+      transport,
+      hooks,
+    });
     await adapter.chat(input);
     expect(transport.requests[0]?.request.url).toBe('https://api.example.test/v1/chat/completions');
   });
@@ -163,11 +193,35 @@ describe('OpenAICompatibleAdapter', () => {
     expect(sent?.headers['openai-organization']).toBe('org-123');
   });
 
+  it('runs keyless (no apiKeyEnv) and sends NO authorization header — self-hosted/own-infra', async () => {
+    // A self-hosted endpoint (vLLM/TGI/internal Qwen gateway) needing no auth
+    // omits apiKeyEnv: the adapter must construct (requiresApiKey=false) and send
+    // no `Authorization` header (some endpoints reject an empty `Bearer `).
+    const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);
+    const adapter = new OpenAICompatibleAdapter({
+      name: 'self-hosted',
+      cfg: { type: 'openai-compatible', baseUrl: 'http://localhost:8000/v1', model: 'qwen-local' },
+      transport,
+      hooks,
+    });
+    const output = await adapter.chat(input);
+    expect(output.content.length).toBeGreaterThan(0);
+    const sent = transport.requests[0]?.request;
+    expect(sent?.url).toBe('http://localhost:8000/v1/chat/completions');
+    expect(sent?.headers['authorization']).toBeUndefined();
+    expect(sent?.headers['content-type']).toBe('application/json');
+  });
+
   it('stream() concatenation equals content, parses [DONE] and the final usage chunk', async () => {
     const transport = new QueueTransport([
       fakeResponse({ body: fixture('openai.stream.sse.txt') }),
     ]);
-    const adapter = new OpenAICompatibleAdapter({ name: 'qwen', cfg: openaiCfg(), transport, hooks });
+    const adapter = new OpenAICompatibleAdapter({
+      name: 'qwen',
+      cfg: openaiCfg(),
+      transport,
+      hooks,
+    });
     const deltas = await collectStream(adapter.stream(input));
     expect(deltas[deltas.length - 1]).toEqual({ content: '', done: true });
     expect(deltas.map((delta) => delta.content).join('')).toBe(
@@ -207,7 +261,9 @@ describe('OllamaAdapter', () => {
     const adapter = new OllamaAdapter({ name: 'ollama', cfg: ollamaCfg(), transport, hooks });
     const deltas = await collectStream(adapter.stream(input));
     expect(deltas[deltas.length - 1]).toEqual({ content: '', done: true });
-    expect(deltas.map((delta) => delta.content).join('')).toBe('Hello from the local Ollama model.');
+    expect(deltas.map((delta) => delta.content).join('')).toBe(
+      'Hello from the local Ollama model.',
+    );
   });
 
   it('falls back to token estimation when the response omits usage', async () => {
@@ -244,7 +300,12 @@ describe('retry behavior (shared base)', () => {
       fakeResponse({ status: 429, headers: { 'retry-after': '2' }, body: '{}' }),
       fakeResponse({ body: fixture('anthropic.chat.json') }),
     ]);
-    const adapter = new AnthropicAdapter({ name: 'a', cfg: anthropicCfg(), transport, hooks: recordingHooks });
+    const adapter = new AnthropicAdapter({
+      name: 'a',
+      cfg: anthropicCfg(),
+      transport,
+      hooks: recordingHooks,
+    });
     await adapter.chat(input);
     expect(sleeps).toEqual([2000]);
   });
@@ -274,7 +335,12 @@ describe('retry behavior (shared base)', () => {
       fakeResponse({ status: 503, body: 'unavailable' }),
       fakeResponse({ body: fixture('openai.stream.sse.txt') }),
     ]);
-    const adapter = new OpenAICompatibleAdapter({ name: 'qwen', cfg: openaiCfg(), transport, hooks });
+    const adapter = new OpenAICompatibleAdapter({
+      name: 'qwen',
+      cfg: openaiCfg(),
+      transport,
+      hooks,
+    });
     const deltas = await collectStream(adapter.stream(input));
     expect(deltas.map((delta) => delta.content).join('')).toBe(
       'Hello from the OpenAI-compatible model.',
@@ -298,8 +364,15 @@ describe('retry behavior (shared base)', () => {
         })();
       },
     }));
-    const adapter = new OpenAICompatibleAdapter({ name: 'qwen', cfg: openaiCfg(), transport, hooks });
-    await expect(collectStream(adapter.stream(input))).rejects.toThrow('connection dropped mid-stream');
+    const adapter = new OpenAICompatibleAdapter({
+      name: 'qwen',
+      cfg: openaiCfg(),
+      transport,
+      hooks,
+    });
+    await expect(collectStream(adapter.stream(input))).rejects.toThrow(
+      'connection dropped mid-stream',
+    );
     // Only the initial connect happened; no replay attempt.
     expect(transport.sendCount).toBe(1);
   });

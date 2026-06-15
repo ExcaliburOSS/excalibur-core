@@ -1,7 +1,59 @@
 import type { Command } from 'commander';
 import type { CliDeps } from '../deps';
-import { loadGatewayContext, providerNames } from '../lib/context';
+import {
+  chatWithGuidance,
+  loadGatewayContext,
+  providerNames,
+  requireConfiguredModel,
+} from '../lib/context';
+import { CliUsageError } from '../errors';
 import { promptProviderSetup, writeProvidersFile } from '../lib/provider-setup';
+
+/**
+ * Sends a tiny request to the resolved default provider and reports whether it
+ * answered (latency + tokens). Throws a {@link CliUsageError} on failure so the
+ * caller sees actionable guidance instead of a stack trace. Shared by the
+ * `models test` command and the optional post-`setup` connection check.
+ */
+async function runConnectionTest(deps: CliDeps): Promise<void> {
+  const context = loadGatewayContext(deps.cwd());
+  requireConfiguredModel(context); // refuses with setup guidance when unconfigured
+  const config = context.providers.providers[context.providerName];
+  const modelLabel =
+    config?.model !== undefined && config.model.length > 0 ? ` (${config.model})` : '';
+  if (config?.type === 'mock') {
+    deps.ui.info(
+      `Provider "${context.providerName}" is the offline mock — nothing to reach over the network. ` +
+        'Configure a real provider with `excalibur models setup` to test a live connection.',
+    );
+    return;
+  }
+  deps.ui.info(`Testing provider "${context.providerName}"${modelLabel} — sending a tiny request…`);
+  const startedAt = Date.now();
+  try {
+    const { output } = await chatWithGuidance(deps, context, {
+      messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
+      maxTokens: 16,
+      temperature: 0,
+    });
+    const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
+    const reply = output.content.trim().replace(/\s+/g, ' ').slice(0, 60);
+    const tokens = `${output.usage.inputTokens}→${output.usage.outputTokens} tok`;
+    const cost = output.costCents !== null ? ` · ${output.costCents.toFixed(3)}¢` : '';
+    deps.ui.success(
+      `Connected — ${context.providerName}${modelLabel} responded in ${seconds}s · ${tokens}${cost}.`,
+    );
+    if (reply.length > 0) {
+      deps.ui.info(`Reply: "${reply}"`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new CliUsageError(
+      `Could not reach provider "${context.providerName}"${modelLabel}: ${message} ` +
+        'Check the API key env var is exported and the base URL/model are correct (`excalibur models list`).',
+    );
+  }
+}
 
 /**
  * `excalibur models list|setup` — provider configuration. API keys are
@@ -76,5 +128,30 @@ export function registerModelsCommand(program: Command, deps: CliDeps): void {
       const filePath = writeProvidersFile(deps.cwd(), providers);
       deps.ui.success(`Wrote ${filePath}`);
       deps.ui.info('API keys are read from environment variables at call time — never stored.');
+
+      // Offer a live connection check so onboarding ends with confidence, not a
+      // guess. Skipped non-interactively and for the offline mock; a failure is
+      // surfaced as guidance (it never aborts a successful setup write).
+      const defaultName = providers.providers.default;
+      const chosen = typeof defaultName === 'string' ? providers.providers[defaultName] : undefined;
+      if (deps.ui.isInteractive() && chosen?.type !== 'mock') {
+        const test = await deps.ui.confirm('Test the connection now? (sends a tiny request)', {
+          defaultYes: true,
+        });
+        if (test) {
+          try {
+            await runConnectionTest(deps);
+          } catch (error) {
+            deps.ui.warn(error instanceof Error ? error.message : String(error));
+          }
+        }
+      }
+    });
+
+  models
+    .command('test')
+    .description('send a tiny request to the configured provider to confirm it works')
+    .action(async () => {
+      await runConnectionTest(deps);
     });
 }

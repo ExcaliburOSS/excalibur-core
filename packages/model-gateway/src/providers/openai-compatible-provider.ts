@@ -19,13 +19,7 @@ import { ConfigValidationError, ProviderError } from '@excalibur/shared';
 import { parseToolArguments } from '../errors/provider-errors';
 import { parseSSE } from '../transport/sse';
 import type { TransportRequest, TransportResponse } from '../transport/transport';
-import type {
-  ChatFinishReason,
-  ChatInput,
-  ChatMessage,
-  ChatUsage,
-  ToolCall,
-} from '../types';
+import type { ChatFinishReason, ChatInput, ChatMessage, ChatUsage, ToolCall } from '../types';
 import {
   BaseHttpProvider,
   type BaseHttpProviderOptions,
@@ -90,7 +84,11 @@ export class OpenAICompatibleAdapter extends BaseHttpProvider {
   private readonly url: string;
 
   constructor(options: Omit<BaseHttpProviderOptions, 'requiresApiKey'>) {
-    super({ ...options, requiresApiKey: true });
+    // A key is required ONLY when `apiKeyEnv` is configured. A self-hosted /
+    // own-infra endpoint (vLLM, TGI, an internal Qwen gateway) that needs no
+    // auth omits `apiKeyEnv` and runs keyless — Excalibur must support that.
+    const requiresApiKey = (options.cfg.apiKeyEnv ?? '').length > 0;
+    super({ ...options, requiresApiKey });
     if (this.cfg.baseUrl === undefined || this.cfg.baseUrl.length === 0) {
       throw new ConfigValidationError(
         `Provider "${options.name}" (type "${options.cfg.type}") requires "baseUrl" in providers.yaml (e.g. an OpenAI-compatible endpoint).`,
@@ -101,10 +99,12 @@ export class OpenAICompatibleAdapter extends BaseHttpProvider {
   }
 
   private headers(): Record<string, string> {
-    const headers: Record<string, string> = {
-      authorization: `Bearer ${this.apiKey ?? ''}`,
-      'content-type': 'application/json',
-    };
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    // Send the bearer token ONLY when there is a key — a keyless self-hosted
+    // endpoint gets no auth header (some reject an empty `Bearer `).
+    if (this.apiKey !== null) {
+      headers.authorization = `Bearer ${this.apiKey}`;
+    }
     if (this.cfg.organization !== undefined && this.cfg.organization.length > 0) {
       headers['openai-organization'] = this.cfg.organization;
     }
