@@ -8,6 +8,7 @@ import { makeTempRepo, removeDir } from '../test-utils';
 import {
   chatWithGuidance,
   loadGatewayContext,
+  requireConfiguredModel,
   streamWithGuidance,
   type GatewayContext,
 } from './context';
@@ -77,8 +78,9 @@ function throwingContext(error: unknown): GatewayContext {
       },
     } as unknown as GatewayContext['gateway'],
     providers: { providers: { default: 'p', p: { type: 'anthropic' } } } as never,
-    providersPath: null,
+    providersPath: '/x/.excalibur/models/providers.yaml',
     providerName: 'p',
+    configured: true,
   };
 }
 
@@ -94,8 +96,9 @@ function midStreamErrorContext(chunks: string[], error: unknown): GatewayContext
       },
     } as unknown as GatewayContext['gateway'],
     providers: { providers: { default: 'p', p: { type: 'anthropic' } } } as never,
-    providersPath: null,
+    providersPath: '/x/.excalibur/models/providers.yaml',
     providerName: 'p',
+    configured: true,
   };
 }
 
@@ -118,12 +121,21 @@ describe('loadGatewayContext real-provider wiring', () => {
     expect(() => context.gateway).not.toThrow();
   });
 
-  it('keeps the mock default working with no providers.yaml', async () => {
-    const repo = makeTempRepo();
+  it('is UNCONFIGURED with no providers.yaml (the mock is never a runtime fallback)', () => {
+    const repo = makeTempRepo({ mockProvider: false });
     tempRepos.push(repo);
     const context = loadGatewayContext(repo);
-    const output = await context.gateway.chat(input);
-    expect(output.content).toContain('Mock provider (M1)');
+    expect(context.configured).toBe(false);
+    // A model command must refuse with setup guidance, not run the mock.
+    expect(() => requireConfiguredModel(context)).toThrow(/models setup/);
+  });
+
+  it('is CONFIGURED when a providers.yaml explicitly sets type: mock (offline/tests)', () => {
+    const repo = makeTempRepo(); // writes an explicit mock providers.yaml
+    tempRepos.push(repo);
+    const context = loadGatewayContext(repo);
+    expect(context.configured).toBe(true);
+    expect(() => requireConfiguredModel(context)).not.toThrow();
   });
 });
 
@@ -133,33 +145,45 @@ describe('chatWithGuidance error handling', () => {
     const context: GatewayContext = {
       gateway: { chat: async () => mockOutput } as unknown as GatewayContext['gateway'],
       providers: {} as never,
-      providersPath: null,
+      providersPath: '/x/providers.yaml',
       providerName: 'local',
+      configured: true,
     };
     const result = await chatWithGuidance(deps as unknown as CliDeps, context, input);
     expect(result.provider).toBe('local');
     expect(deps.warnings).toHaveLength(0);
   });
 
-  it('falls back to mock on provider_not_implemented', async () => {
+  it('refuses with setup guidance when no provider is configured (NO mock fallback)', async () => {
+    const deps = recordingDeps();
+    const context: GatewayContext = {
+      gateway: { chat: async () => mockOutput } as unknown as GatewayContext['gateway'],
+      providers: {} as never,
+      providersPath: null,
+      providerName: 'mock',
+      configured: false,
+    };
+    await expect(chatWithGuidance(deps as unknown as CliDeps, context, input)).rejects.toThrow(
+      /models setup/,
+    );
+  });
+
+  it('turns provider_not_implemented into setup guidance (NO mock fallback)', async () => {
     const deps = recordingDeps();
     const context = throwingContext(
       new ProviderError('not impl', { code: 'provider_not_implemented' }),
     );
-    const result = await chatWithGuidance(deps as unknown as CliDeps, context, input);
-    expect(result.provider).toBe('mock');
-    expect(result.output.content).toContain('Mock provider (M1)');
-    expect(deps.warnings.join(' ')).toContain('mock provider');
+    await expect(chatWithGuidance(deps as unknown as CliDeps, context, input)).rejects.toThrow(
+      /models setup/,
+    );
   });
 
-  it('falls back to mock on provider_not_found', async () => {
+  it('turns provider_not_found into setup guidance (NO mock fallback)', async () => {
     const deps = recordingDeps();
-    const context = throwingContext(
-      new ProviderError('missing', { code: 'provider_not_found' }),
+    const context = throwingContext(new ProviderError('missing', { code: 'provider_not_found' }));
+    await expect(chatWithGuidance(deps as unknown as CliDeps, context, input)).rejects.toThrow(
+      /models setup/,
     );
-    const result = await chatWithGuidance(deps as unknown as CliDeps, context, input);
-    expect(result.provider).toBe('mock');
-    expect(deps.warnings.join(' ')).toContain('models setup');
   });
 
   it('surfaces auth_failed instead of masking it behind the mock', async () => {
@@ -209,39 +233,33 @@ describe('streamWithGuidance', () => {
     expect(result.output.content).toBe(chatOutput.content);
   });
 
-  it('falls back to mock streaming on provider_not_found (before any delta)', async () => {
+  it('turns a pre-delta provider_not_found into setup guidance (NO mock fallback)', async () => {
     const deps = recordingDeps();
-    const context = throwingContext(
-      new ProviderError('missing', { code: 'provider_not_found' }),
-    );
+    const context = throwingContext(new ProviderError('missing', { code: 'provider_not_found' }));
     const chunks: string[] = [];
-    const result = await streamWithGuidance(
-      deps as unknown as CliDeps,
-      context,
-      input,
-      (text) => chunks.push(text),
-    );
-    expect(result.provider).toBe('mock');
-    expect(result.streamed).toBe(true);
-    expect(chunks.join('')).toContain('Mock provider (M1)');
-    expect(result.output.content).toBe(chunks.join(''));
-    expect(deps.warnings.join(' ')).toContain('models setup');
+    await expect(
+      streamWithGuidance(deps as unknown as CliDeps, context, input, (text) => chunks.push(text)),
+    ).rejects.toThrow(/models setup/);
+    expect(chunks).toHaveLength(0); // nothing streamed; no mock content
   });
 
-  it('falls back to mock streaming on provider_not_implemented', async () => {
+  it('turns a pre-delta provider_not_implemented into setup guidance', async () => {
     const deps = recordingDeps();
     const context = throwingContext(
       new ProviderError('not impl', { code: 'provider_not_implemented' }),
     );
-    const chunks: string[] = [];
-    const result = await streamWithGuidance(
-      deps as unknown as CliDeps,
-      context,
-      input,
-      (text) => chunks.push(text),
-    );
-    expect(result.provider).toBe('mock');
-    expect(chunks.join('')).toContain('Mock provider (M1)');
+    await expect(
+      streamWithGuidance(deps as unknown as CliDeps, context, input, () => undefined),
+    ).rejects.toThrow(/models setup/);
+  });
+
+  it('refuses streaming with setup guidance when no provider is configured', async () => {
+    const deps = recordingDeps();
+    const context = throwingContext(new ProviderError('x', { code: 'auth_failed' }));
+    const unconfigured: GatewayContext = { ...context, providersPath: null, configured: false };
+    await expect(
+      streamWithGuidance(deps as unknown as CliDeps, unconfigured, input, () => undefined),
+    ).rejects.toThrow(/models setup/);
   });
 
   it('surfaces a non-fallback ProviderError thrown before any delta', async () => {

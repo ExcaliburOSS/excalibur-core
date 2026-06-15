@@ -3,7 +3,7 @@ import type { AutonomyLevel } from '@excalibur/shared';
 import type { Command } from 'commander';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
-import { loadConfigContext, loadGatewayContext } from '../lib/context';
+import { loadConfigContext, loadGatewayContext, requireConfiguredModel } from '../lib/context';
 import { resolveRun } from '../lib/replay-scrubber';
 import { runForkTurn, runUndo, type AgentTurnDeps } from '../session/agent-turn';
 
@@ -59,6 +59,7 @@ export function registerForkCommand(program: Command, deps: CliDeps): void {
 
       const { config } = loadConfigContext(deps.cwd());
       const gateway = loadGatewayContext(deps.cwd());
+      requireConfiguredModel(gateway); // no mock fallback: a real LLM is required
       const turn: AgentTurnDeps = {
         deps,
         repoRoot: deps.cwd(),

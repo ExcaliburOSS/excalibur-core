@@ -133,6 +133,21 @@ export interface TempRepoOptions {
   git?: boolean;
   claudeMd?: boolean;
   skill?: boolean;
+  /** Write an explicit `type: mock` providers.yaml (default true). The mock is a
+   * test double, never a runtime fallback — tests opt INTO it explicitly. Set
+   * false to test the "no LLM configured" guidance path. */
+  mockProvider?: boolean;
+}
+
+/**
+ * Writes an EXPLICIT mock provider config (`.excalibur/models/providers.yaml`).
+ * Tests use the mock as a deterministic test double by configuring it on
+ * purpose — production refuses with setup guidance when nothing is configured.
+ */
+export function writeMockProviders(repoRoot: string): void {
+  const dir = join(repoRoot, '.excalibur', 'models');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'providers.yaml'), 'providers:\n  default: mock\n  mock:\n    type: mock\n', 'utf8');
 }
 
 /** Creates a small plausible TypeScript repo in a temp directory. */
@@ -182,6 +197,9 @@ export function makeTempRepo(options: TempRepoOptions = {}): string {
       ].join('\n'),
       'utf8',
     );
+  }
+  if (options.mockProvider !== false) {
+    writeMockProviders(dir);
   }
   if (options.git !== false) {
     git(dir, ['init', '-q', '-b', 'main']);

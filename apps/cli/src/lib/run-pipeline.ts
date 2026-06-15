@@ -20,7 +20,13 @@ import type { WorkflowDefinition } from '@excalibur/workflow-schema';
 import pc from 'picocolors';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
-import { buildEffectiveContext, loadConfigContext, loadGatewayContext, safetyLine } from './context';
+import {
+  buildEffectiveContext,
+  loadConfigContext,
+  loadGatewayContext,
+  requireConfiguredModel,
+  safetyLine,
+} from './context';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { pushLatestRun } from '../commands/login';
 
@@ -271,6 +277,7 @@ export async function runTask(
   }
 
   const gatewayContext = loadGatewayContext(repoRoot);
+  requireConfiguredModel(gatewayContext); // no mock fallback: a real LLM is required
   // Resolve the methodology deliberately, not by id collision (§4.6 treats
   // methodology as an independent input). Each methodology declares the
   // workflow it drives via `defaultWorkflow`, which is the correct linkage

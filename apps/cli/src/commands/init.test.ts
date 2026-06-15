@@ -11,7 +11,9 @@ afterAll(() => {
 });
 
 function tempRepo(): string {
-  const repo = makeTempRepo();
+  // init tests assert the EXACT generated file set — start without the test
+  // fixture's explicit mock providers.yaml so init owns every file under .excalibur.
+  const repo = makeTempRepo({ mockProvider: false });
   cleanups.push(repo);
   return repo;
 }

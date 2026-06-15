@@ -35,6 +35,14 @@ export interface GatewayContext {
   providersPath: string | null;
   /** Name of the provider the gateway resolves by default. */
   providerName: string;
+  /**
+   * Whether a provider is CONFIGURED (a `providers.yaml` exists — a real
+   * provider OR an explicit `type: mock` for offline/tests). When false, no
+   * provider is set up and model commands must refuse with setup guidance: the
+   * mock is a test double, NEVER a silent runtime fallback (Excalibur requires a
+   * real LLM). See {@link requireConfiguredModel}.
+   */
+  configured: boolean;
 }
 
 export function providersFilePath(repoRoot: string): string {
@@ -76,14 +84,37 @@ export function loadGatewayContext(repoRoot: string): GatewayContext {
       providers,
       providersPath: filePath,
       providerName: defaultProviderName(providers),
+      configured: true, // a providers.yaml exists (real, or an explicit mock)
     };
   }
+  // No providers.yaml: UNCONFIGURED. A gateway is still returned (so non-model
+  // commands like `models list` work), but `configured: false` makes every
+  // model command refuse via requireConfiguredModel — the mock is never a
+  // silent runtime fallback.
   return {
     gateway: new ModelGateway(DEFAULT_PROVIDERS_CONFIG, GATEWAY_DEPS),
     providers: DEFAULT_PROVIDERS_CONFIG,
     providersPath: null,
     providerName: defaultProviderName(DEFAULT_PROVIDERS_CONFIG),
+    configured: false,
   };
+}
+
+/**
+ * Guards a model command: when no provider is configured, refuses with setup
+ * guidance instead of silently running the mock. Excalibur requires a real LLM;
+ * the mock is a test double (used only when a `providers.yaml` explicitly sets
+ * `type: mock`). Call this right after {@link loadGatewayContext} in any command
+ * or shell turn that will actually call the model.
+ */
+export function requireConfiguredModel(context: GatewayContext): void {
+  if (!context.configured) {
+    throw new CliUsageError(
+      'No LLM provider is configured — Excalibur needs a real model. ' +
+        'Run `excalibur models setup` to connect one (OpenAI, Anthropic, Groq, Ollama, …). ' +
+        '(A mock provider exists only for offline/tests, via an explicit `type: mock` in providers.yaml.)',
+    );
+  }
 }
 
 export function loadConfigContext(repoRoot: string): LoadedExcaliburConfig {
@@ -116,71 +147,63 @@ export interface GuidedChatResult {
 const FALLBACK_CODES = new Set(['provider_not_found', 'provider_not_implemented']);
 
 /**
- * Gateway chat with friendly guidance (onboarding §4).
- *
- * A *missing or not-yet-executable* provider never surfaces a low-level error:
- * the CLI explains the situation and falls back to the built-in mock. A
- * *configured real provider that fails* (M2) — e.g. `auth_failed` from a bad
- * key, or `invalid_request` — is surfaced unchanged so the user can fix it,
- * rather than silently masked behind the mock.
+ * Gateway chat. A configured provider's failure (`auth_failed` from a bad key,
+ * `rate_limited`, …) is surfaced UNCHANGED so the user can fix it; a configured
+ * provider whose adapter is missing from the build is turned into actionable
+ * setup guidance. There is NO mock fallback — the caller must have already
+ * passed {@link requireConfiguredModel} (the mock is a test double, never a
+ * silent runtime substitute).
  */
 export async function chatWithGuidance(
-  deps: CliDeps,
+  _deps: CliDeps,
   context: GatewayContext,
   input: ChatInput,
 ): Promise<GuidedChatResult> {
+  requireConfiguredModel(context);
   try {
     const output = await context.gateway.chat(input);
     return { output, provider: context.providerName };
   } catch (error) {
-    if (!(error instanceof ProviderError) || !FALLBACK_CODES.has(error.code)) {
-      // Real provider failures (auth_failed, invalid_request, rate_limited,
-      // server_error, timeout, network_error) and non-provider errors are
-      // surfaced, not masked behind the mock.
-      throw error;
-    }
-    if (error.code === 'provider_not_implemented') {
-      deps.ui.warn(
-        `Provider "${context.providerName}" is configured, but its adapter is not available in this build. ` +
-          'Using the built-in mock provider for this command.',
-      );
-    } else {
-      deps.ui.warn(
-        'No usable model provider is configured. Run `excalibur models setup` to pick one — ' +
-          'using the built-in mock provider for now (the M1 default).',
-      );
-    }
-    const fallback = new ModelGateway(DEFAULT_PROVIDERS_CONFIG);
-    const output = await fallback.chat(input);
-    return { output, provider: 'mock' };
+    throw guidanceError(context, error);
   }
+}
+
+/**
+ * Maps a provider error to actionable guidance: a not-implemented adapter
+ * becomes a setup hint; every other failure (auth/rate-limit/network/…) is
+ * surfaced unchanged so the user fixes the real cause. NEVER returns a mock.
+ */
+function guidanceError(context: GatewayContext, error: unknown): unknown {
+  if (error instanceof ProviderError && FALLBACK_CODES.has(error.code)) {
+    return new CliUsageError(
+      `Provider "${context.providerName}" is not usable: ${error.message}. ` +
+        'Run `excalibur models setup` to configure a working LLM provider.',
+    );
+  }
+  return error;
 }
 
 export interface StreamedChatResult {
   output: ChatOutput;
-  /** Provider that actually answered (mock when a real provider fell back). */
+  /** Provider that answered. */
   provider: string;
   /** True when the output was streamed delta-by-delta (vs. assembled at once). */
   streamed: boolean;
 }
 
 /**
- * Streaming counterpart of {@link chatWithGuidance} (M2, Slice 2).
- *
- * Mirrors the fallback contract EXACTLY: a *missing/not-yet-executable*
- * provider whose error has a {@link FALLBACK_CODES} code AND is raised BEFORE
- * the first delta falls back to the built-in mock and streams from it
- * (`provider: 'mock'`). A *configured real provider that fails* — or any error
- * raised mid-stream after at least one delta — is surfaced unchanged so the
- * user can fix their configuration (mid-stream output is never silently
- * replaced by mock content).
+ * Streaming counterpart of {@link chatWithGuidance}. No mock fallback: a
+ * configured provider's failure is surfaced unchanged (a not-implemented
+ * adapter becomes setup guidance), and the caller must have already passed
+ * {@link requireConfiguredModel}.
  */
 export async function streamWithGuidance(
-  deps: CliDeps,
+  _deps: CliDeps,
   context: GatewayContext,
   input: ChatInput,
   onDelta: (text: string) => void,
 ): Promise<StreamedChatResult> {
+  requireConfiguredModel(context);
   let sawDelta = false;
   try {
     const gen = context.gateway.streamWithUsage(input);
@@ -195,34 +218,13 @@ export async function streamWithGuidance(
     }
     return { output: result.value, provider: context.providerName, streamed: true };
   } catch (error) {
-    const fallbackEligible =
-      error instanceof ProviderError && FALLBACK_CODES.has(error.code);
-    // Only a fallback-code error raised before any delta may fall back; a real
-    // failure, or any error mid-stream, is surfaced unchanged.
-    if (!fallbackEligible || sawDelta) {
+    // A mid-stream failure (after at least one delta) is surfaced UNCHANGED —
+    // partial output is never retroactively reinterpreted. A pre-delta failure
+    // becomes setup guidance (a not-implemented adapter) or surfaces as-is.
+    if (sawDelta) {
       throw error;
     }
-    if (error.code === 'provider_not_implemented') {
-      deps.ui.warn(
-        `Provider "${context.providerName}" is configured, but its adapter is not available in this build. ` +
-          'Using the built-in mock provider for this command.',
-      );
-    } else {
-      deps.ui.warn(
-        'No usable model provider is configured. Run `excalibur models setup` to pick one — ' +
-          'using the built-in mock provider for now (the M1 default).',
-      );
-    }
-    const fallback = new ModelGateway(DEFAULT_PROVIDERS_CONFIG);
-    const gen = fallback.streamWithUsage(input);
-    let result = await gen.next();
-    while (!result.done) {
-      if (result.value.content.length > 0) {
-        onDelta(result.value.content);
-      }
-      result = await gen.next();
-    }
-    return { output: result.value, provider: 'mock', streamed: true };
+    throw guidanceError(context, error);
   }
 }
 

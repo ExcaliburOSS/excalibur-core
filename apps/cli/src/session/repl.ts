@@ -18,7 +18,7 @@ import type { AutonomyLevel, ExcaliburConfig } from '@excalibur/shared';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
-import { loadConfigContext, loadGatewayContext, safetyLine } from '../lib/context';
+import { loadConfigContext, loadGatewayContext, requireConfiguredModel, safetyLine } from '../lib/context';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
 import { CLI_VERSION } from '../program';
@@ -337,6 +337,9 @@ function agentTurnDeps(
   signal: AbortSignal,
 ): AgentTurnDeps {
   const gateway = loadGatewayContext(runtime.repoRoot);
+  // Every shell turn (NL / plan / fork) goes through here: refuse with setup
+  // guidance when no LLM is configured rather than driving the loop on a mock.
+  requireConfiguredModel(gateway);
   return {
     deps,
     repoRoot: runtime.repoRoot,
