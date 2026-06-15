@@ -1,6 +1,13 @@
 import * as readline from 'node:readline';
 import pc from 'picocolors';
 import { Spinner, isTtyStream } from './lib/spinner';
+import {
+  initialRawState,
+  reduceKey,
+  renderInput,
+  type ParsedKey,
+  type RawInputState,
+} from './lib/raw-input';
 
 /**
  * The single output module of the Excalibur CLI (Build Contract §4.9).
@@ -71,6 +78,17 @@ export interface LineEditor {
   question(prompt: string): Promise<string | null>;
   /** Registers a SIGINT (Ctrl-C) handler; returns an unsubscribe fn. */
   onSigint(handler: () => void): () => void;
+  /**
+   * Tells the editor a turn is in flight (`true`) or finished (`false`). The
+   * raw-keypress editor uses this to switch modes (ESC cancels a running turn;
+   * input typed during one is queued). A no-op on the line/queue editor.
+   */
+  setTurnActive(active: boolean): void;
+  /**
+   * Registers an ESC handler (raw editor: ESC during a turn cancels it). Returns
+   * an unsubscribe fn. A no-op (returning a no-op unsubscribe) on the line editor.
+   */
+  onEscape(handler: () => void): () => void;
   /** Closes the underlying interface. */
   close(): void;
 }
@@ -91,7 +109,10 @@ export class Ui {
    * a SINGLE readline owns stdin for the whole session — approvals and history
    * coexist without two interfaces fighting over the input stream.
    */
-  private activeReader: (() => Promise<string | null>) | null = null;
+  // The open editor's line reader. It takes the prompt so the reader OWNS prompt
+  // display: the queue editor echoes via the terminal, but the raw editor must
+  // re-render the prompt+buffer on every keystroke (raw mode has no echo).
+  private activeReader: ((prompt: string) => Promise<string | null>) | null = null;
 
   constructor(options: UiOptions = {}) {
     this.stdout = options.stdout ?? process.stdout;
@@ -219,14 +240,26 @@ export class Ui {
   }
 
   /**
-   * Opens a persistent {@link LineEditor} over a SINGLE long-lived
-   * `readline.Interface` (M-Shell Slice A). The interface is configured with
-   * the session prompt history (UP/DOWN native to readline) and `terminal`
-   * bound to this Ui's interactivity, so the editor behaves identically whether
-   * driven by a real TTY or scripted memory streams in tests. The per-call
-   * `ask`/`confirm`/`select` prompts are untouched — subcommands are unaffected.
+   * Opens a persistent {@link LineEditor}. On a real TTY it returns the
+   * raw-keypress editor (ghost-text, ESC-to-cancel, queued input); on any
+   * non-TTY stdin (scripted tests, CI, pipes) it returns the deterministic
+   * line/queue editor — gated on `interactive && hasTty(stdin)` (BOTH), so every
+   * scripted-stdin path is byte-for-byte unchanged.
    */
   openLineEditor(options: LineEditorOptions = {}): LineEditor {
+    const rawAllowed = process.env['EXCALIBUR_RAW_INPUT'] !== '0';
+    const useRaw = this.interactive && hasTty(this.stdin) && rawAllowed;
+    return useRaw ? this.openRawLineEditor(options) : this.openQueueLineEditor(options);
+  }
+
+  /**
+   * The deterministic line/queue editor over a SINGLE long-lived
+   * `readline.Interface` (`terminal: false`): a queue over the `line` event
+   * drives reads identically on a real TTY or scripted memory streams, so tests
+   * never depend on raw-TTY keypress handling. The per-call `ask`/`confirm`/
+   * `select` prompts route through the same queue via `activeReader`.
+   */
+  private openQueueLineEditor(options: LineEditorOptions = {}): LineEditor {
     const rl = readline.createInterface({
       input: this.stdin,
       output: this.stdout,
@@ -279,8 +312,9 @@ export class Ui {
       return nextLine();
     };
 
-    // While the editor is open, per-call prompts read through this same reader.
-    this.activeReader = nextLine;
+    // While the editor is open, per-call prompts read through this same reader
+    // (it owns prompt display — for the queue editor that's just writeRaw).
+    this.activeReader = question;
 
     return {
       question,
@@ -290,8 +324,12 @@ export class Ui {
           rl.removeListener('SIGINT', handler);
         };
       },
+      // The queue editor has no raw keypresses, so turn-mode and ESC are no-ops
+      // (cancellation here flows through SIGINT / Ctrl-C as before).
+      setTurnActive: (): void => {},
+      onEscape: (): (() => void) => (): void => {},
       close: (): void => {
-        if (this.activeReader === nextLine) {
+        if (this.activeReader === question) {
           this.activeReader = null;
         }
         rl.close();
@@ -299,13 +337,200 @@ export class Ui {
     };
   }
 
+  /**
+   * The raw-keypress editor (M-Shell, real TTY only). Drives Node `keypress`
+   * events through the pure {@link reduceKey} state machine, rendering the
+   * prompt+buffer in place on every key (raw mode has no echo). Delivers full
+   * lines on Enter via the same `lines[]`/`waiters[]` queue the line editor uses
+   * (so `confirm`/`ask` mid-turn read finished lines), surfaces ESC (cancel a
+   * turn) and Ctrl-C (SIGINT) to registered handlers, and — the safety
+   * invariant — ALWAYS restores cooked mode (close + process `exit`).
+   */
+  private openRawLineEditor(options: LineEditorOptions = {}): LineEditor {
+    const input = this.stdin as NodeJS.ReadStream;
+    const out = this.stdout;
+    const CR = String.fromCharCode(13);
+    const ESC = String.fromCharCode(27);
+
+    let state: RawInputState = initialRawState(options.history ?? []);
+    let currentPrompt: string | null = null;
+    const waiters: Array<(line: string | null) => void> = [];
+    let closed = false;
+    const sigintHandlers = new Set<() => void>();
+    const escapeHandlers = new Set<() => void>();
+    let rawActive = false;
+
+    const repaint = (): void => {
+      if (currentPrompt !== null && state.awaiting) {
+        out.write(renderInput(state, currentPrompt));
+      }
+    };
+
+    const onKeypress = (_str: string | undefined, key: ParsedKey | undefined): void => {
+      if (key === undefined) {
+        return;
+      }
+      try {
+        const result = reduceKey(state, key);
+        state = result.state;
+        switch (result.action.type) {
+          case 'submit': {
+            out.write('\n'); // commit the typed line below the prompt
+            currentPrompt = null;
+            const waiter = waiters.shift();
+            // A submit only occurs while a line is being read (awaiting ⇒ a waiter
+            // exists), so there is always a waiter; drop otherwise rather than
+            // silently buffer a line a later `confirm` could consume unseen.
+            waiter?.(result.action.line);
+            return;
+          }
+          case 'eof': {
+            out.write('\n');
+            closed = true;
+            currentPrompt = null;
+            while (waiters.length > 0) {
+              waiters.shift()?.(null);
+            }
+            return;
+          }
+          case 'sigint':
+            for (const handler of [...sigintHandlers]) {
+              handler();
+            }
+            return;
+          case 'abort':
+            for (const handler of [...escapeHandlers]) {
+              handler();
+            }
+            return;
+          case 'none':
+            repaint();
+            return;
+        }
+      } catch (error) {
+        // A handler (or a write) threw inside the keypress callback. Restore the
+        // terminal so it can NEVER be left in raw mode (no echo), degrade
+        // gracefully so the REPL doesn't hang, and surface the error.
+        failSafe(error);
+      }
+    };
+
+    const restoreCooked = (): void => {
+      try {
+        if (input.isTTY === true && typeof input.setRawMode === 'function') {
+          input.setRawMode(false);
+        }
+      } catch {
+        // best-effort: never throw while restoring the terminal
+      }
+    };
+
+    // Restore cooked mode on a terminating signal that does NOT emit `exit`
+    // (SIGTERM/SIGHUP default-terminate without it), then re-exit. Scoped: added
+    // on enable, removed on disable, so handlers never leak across editors.
+    const onTermSignal = (): void => {
+      restoreCooked();
+      process.exit(143);
+    };
+
+    const enableRaw = (): void => {
+      if (rawActive || input.isTTY !== true) {
+        return;
+      }
+      readline.emitKeypressEvents(input);
+      if (typeof input.setRawMode === 'function') {
+        input.setRawMode(true);
+      }
+      input.resume();
+      input.on('keypress', onKeypress);
+      // `exit` covers normal/crash exits; the signal hooks cover SIGTERM/SIGHUP.
+      process.on('exit', restoreCooked);
+      process.once('SIGTERM', onTermSignal);
+      process.once('SIGHUP', onTermSignal);
+      rawActive = true;
+    };
+
+    const disableRaw = (): void => {
+      if (!rawActive) {
+        return;
+      }
+      input.removeListener('keypress', onKeypress);
+      process.removeListener('exit', restoreCooked);
+      process.removeListener('SIGTERM', onTermSignal);
+      process.removeListener('SIGHUP', onTermSignal);
+      restoreCooked();
+      out.write(`${CR}${ESC}[2K`); // wipe any half-drawn prompt line
+      rawActive = false;
+    };
+
+    /** Last-resort recovery if the keypress callback throws (see onKeypress). */
+    const failSafe = (error: unknown): void => {
+      disableRaw();
+      closed = true;
+      while (waiters.length > 0) {
+        waiters.shift()?.(null);
+      }
+      this.stderr.write(
+        `${pc.red('✗')} input error: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+    };
+
+    const question = (prompt: string): Promise<string | null> => {
+      enableRaw();
+      if (closed) {
+        return Promise.resolve(null);
+      }
+      currentPrompt = prompt;
+      state = { ...state, awaiting: true, buffer: '', cursor: 0, historyIndex: -1, draft: '' };
+      out.write(renderInput(state, prompt));
+      return new Promise((resolve) => {
+        waiters.push((line) => {
+          state = { ...state, awaiting: false };
+          resolve(line);
+        });
+      });
+    };
+
+    this.activeReader = question;
+
+    return {
+      question,
+      onSigint: (handler: () => void): (() => void) => {
+        sigintHandlers.add(handler);
+        return (): void => {
+          sigintHandlers.delete(handler);
+        };
+      },
+      onEscape: (handler: () => void): (() => void) => {
+        escapeHandlers.add(handler);
+        return (): void => {
+          escapeHandlers.delete(handler);
+        };
+      },
+      setTurnActive: (active: boolean): void => {
+        state = { ...state, mode: active ? 'turn' : 'prompt' };
+      },
+      close: (): void => {
+        if (this.activeReader === question) {
+          this.activeReader = null;
+        }
+        closed = true; // set first (mirrors the eof path) so no re-entrant read races
+        disableRaw();
+        while (waiters.length > 0) {
+          waiters.shift()?.(null);
+        }
+      },
+    };
+  }
+
   private async readLine(prompt: string): Promise<string> {
     // Delegate to the active persistent reader (the REPL editor) when one is
-    // open, so a single readline owns stdin; otherwise spin up a throwaway
-    // interface (the original per-call behavior, used by every subcommand).
+    // open, so a single reader owns stdin; otherwise spin up a throwaway
+    // interface (the original per-call behavior, used by every subcommand). The
+    // reader owns prompt display (raw editor renders it live), so we DON'T
+    // writeRaw here when delegating.
     if (this.activeReader !== null) {
-      this.writeRaw(prompt);
-      const line = await this.activeReader();
+      const line = await this.activeReader(prompt);
       return line ?? '';
     }
     const rl = readline.createInterface({ input: this.stdin, output: this.stdout });

@@ -164,23 +164,51 @@ export async function runInteractiveSession(
   const history = store.loadPromptHistory().slice().reverse(); // readline wants newest-first
   const editor = deps.ui.openLineEditor({ history });
 
-  // First Ctrl-C during an in-flight turn cancels it; a second at an empty
-  // prompt exits. We track an AbortController per in-flight dispatch.
+  // First Ctrl-C (or ESC, on the raw editor) during an in-flight turn cancels
+  // it; a second Ctrl-C at an empty prompt exits. We track an AbortController
+  // per in-flight dispatch, and tell the editor when a turn is active so the raw
+  // editor can route ESC / queue typed input.
   let inFlight: AbortController | null = null;
   let sawSigintAtPrompt = false;
+
+  /** Begins a turn: a fresh AbortController + the editor enters turn-mode. */
+  const beginTurn = (): AbortController => {
+    inFlight = new AbortController();
+    editor.setTurnActive(true);
+    return inFlight;
+  };
+  /** Ends a turn: clears the controller + the editor leaves turn-mode. */
+  const endTurn = (): void => {
+    inFlight = null;
+    editor.setTurnActive(false);
+  };
+  /** Cancels the in-flight turn (shared by Ctrl-C and ESC); true when one ran. */
+  const cancelInFlight = (): boolean => {
+    if (inFlight === null) {
+      return false;
+    }
+    inFlight.abort();
+    endTurn();
+    deps.ui.write();
+    deps.ui.info('Cancelled. Back to the prompt.');
+    return true;
+  };
+
   const offSigint = editor.onSigint(() => {
-    if (inFlight !== null) {
-      inFlight.abort();
-      inFlight = null;
-      deps.ui.write();
-      deps.ui.info('Cancelled. Back to the prompt.');
-    } else if (sawSigintAtPrompt) {
+    if (cancelInFlight()) {
+      return;
+    }
+    if (sawSigintAtPrompt) {
       editor.close();
     } else {
       sawSigintAtPrompt = true;
       deps.ui.write();
       deps.ui.info('Press Ctrl-C again to exit.');
     }
+  });
+  // ESC (raw editor only; a no-op on the line editor) cancels an in-flight turn.
+  const offEscape = editor.onEscape(() => {
+    cancelInFlight();
   });
 
   try {
@@ -207,11 +235,8 @@ export async function runInteractiveSession(
       if (input.kind === 'command') {
         try {
           if (input.name === 'plan') {
-            await handlePlanCommand(deps, runtime, input.argv.join(' '), () => {
-              inFlight = new AbortController();
-              return inFlight;
-            });
-            inFlight = null;
+            await handlePlanCommand(deps, runtime, input.argv.join(' '), () => beginTurn());
+            endTurn();
             printStatusLine(deps, runtime);
             continue;
           }
@@ -233,9 +258,9 @@ export async function runInteractiveSession(
             continue;
           }
           if (input.name === 'fork') {
-            inFlight = new AbortController();
-            const execution = await handleForkCommand(deps, runtime, input.argv, inFlight.signal);
-            inFlight = null;
+            const ctrl = beginTurn();
+            const execution = await handleForkCommand(deps, runtime, input.argv, ctrl.signal);
+            endTurn();
             if (execution !== null) {
               recordAssistantTurn(runtime, execution);
             }
@@ -253,7 +278,7 @@ export async function runInteractiveSession(
           }
           continue;
         } catch (error) {
-          inFlight = null;
+          endTurn();
           deps.ui.error(error instanceof Error ? error.message : String(error));
           printStatusLine(deps, runtime);
           continue;
@@ -277,26 +302,27 @@ export async function runInteractiveSession(
       // Natural-language turn → the model-driven agent loop. Auto plan-mode for
       // the highest autonomy level (L4 full-agentic naturally plans first);
       // otherwise a direct turn.
-      inFlight = new AbortController();
+      const ctrl = beginTurn();
       try {
         if (runtime.autonomyLevel >= 4) {
-          await dispatchPlan(deps, runtime, text, inFlight.signal);
+          await dispatchPlan(deps, runtime, text, ctrl.signal);
         } else {
-          await dispatchAgentTurn(deps, runtime, text, inFlight.signal);
+          await dispatchAgentTurn(deps, runtime, text, ctrl.signal);
         }
       } catch (error) {
-        inFlight = null;
+        endTurn();
         const reason = error instanceof Error ? error.message : String(error);
         deps.ui.error(reason);
         store.appendTurn(session.id, { role: 'system', kind: 'status', text: `error: ${reason}` });
         printStatusLine(deps, runtime);
         continue;
       }
-      inFlight = null;
+      endTurn();
       printStatusLine(deps, runtime);
     }
   } finally {
     offSigint();
+    offEscape();
     editor.close();
   }
 
