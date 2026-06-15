@@ -72,17 +72,29 @@ export function describeEvent(event: ExcaliburEvent): string | null {
     case 'file_read':
       return pc.dim(`  read ${str('path')}`);
     case 'file_write':
-      return pc.dim(`  write ${str('path')} (simulated)`);
+      // Derive "(simulated)" from the payload — the real native loop writes for
+      // real (no flag); only the M1 phase engine sets simulated:true. Hardcoding
+      // it lied about real writes.
+      return pc.dim(`  write ${str('path')}${payload['simulated'] === true ? ' (simulated)' : ''}`);
     case 'command_started':
-      return pc.dim(`  $ ${str('command')} ${payload['simulated'] === true ? '(simulated)' : ''}`);
-    case 'command_completed':
-      return null;
+      return pc.dim(`  $ ${str('command')}${payload['simulated'] === true ? ' (simulated)' : ''}`);
+    case 'command_completed': {
+      // Surface the result (previously dropped → the user never saw exit codes).
+      const exit = typeof payload['exitCode'] === 'number' ? (payload['exitCode'] as number) : null;
+      if (exit === null) {
+        return null;
+      }
+      const tail = payload['simulated'] === true ? ' (simulated)' : '';
+      return exit === 0
+        ? pc.dim(`  ⎿ exit 0${tail}`)
+        : pc.red(`  ⎿ exit ${exit}${tail}`);
+    }
     case 'test_result':
-      return pc.green(`  tests: ${str('status') || 'passed'} ${payload['simulated'] === true ? '(simulated)' : ''}`);
+      return pc.green(`  tests: ${str('status') || 'passed'}${payload['simulated'] === true ? ' (simulated)' : ''}`);
     case 'patch_generated':
       return pc.yellow('  ± patch generated');
     case 'patch_applied':
-      return pc.yellow('  ± patch applied (simulated)');
+      return pc.yellow(`  ± patch applied${payload['simulated'] === true ? ' (simulated)' : ''}`);
     case 'branch_created':
       return pc.yellow(`  branch: ${str('branch')}`);
     case 'approval_requested':

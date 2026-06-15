@@ -14,6 +14,7 @@ import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import { describeEvent } from '../lib/run-pipeline';
 import { renderTurnReceipt } from '../lib/turn-receipt';
+import { ActionRenderer } from '../lib/action-render';
 
 /**
  * The model-FIRST conversational turn (M-Shell). A natural-language line is
@@ -175,9 +176,15 @@ async function driveLoop(
     ...(options.allowConfirm ? { confirm } : {}),
   });
 
+  // The live per-action renderer: groups the stream into tool blocks (header +
+  // indented result), diffs and command output — the Claude-Code-class view.
+  const renderer = new ActionRenderer(deps, {
+    unicode: deps.env['EXCALIBUR_ASCII'] === undefined,
+  });
+
   for await (const event of stream) {
     runManager.appendEvent(run.id, event);
-    renderEvent(deps, event);
+    renderer.onEvent(event);
 
     if (event.type === 'model_call') {
       const m = event.payload['model'];
@@ -222,6 +229,7 @@ async function driveLoop(
       }
     }
   }
+  renderer.finish();
 
   return { finalText, costCents, model, mutated, aborted };
 }

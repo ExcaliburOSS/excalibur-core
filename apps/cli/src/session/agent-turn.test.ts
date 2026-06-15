@@ -133,7 +133,9 @@ describe('runAgentTurn — the real agentic loop (fake gateway)', () => {
 
     const stdout = h.stdout();
     expect(stdout).toContain('→ agent');
-    expect(stdout).toContain('read README.md');
+    // The live action renderer shows a `Read` block targeting the file.
+    expect(stdout).toContain('Read');
+    expect(stdout).toContain('README.md');
     expect(stdout).toContain('run completed');
 
     // The run recorded its events.jsonl (replayable).
