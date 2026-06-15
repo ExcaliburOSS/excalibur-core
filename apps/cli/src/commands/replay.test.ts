@@ -17,7 +17,7 @@ import {
  * RunManager, then driven via:
  *   - `--print` (non-TTY): the static linear summary of every step;
  *   - `--at <n>` (non-TTY): the reconstructed state at one step;
- *   - the interactive scrubber via scripted stdin (n,n,f → failure; ? → mock
+ *   - the interactive scrubber via scripted stdin (n,n,x → failure; ? → mock
  *     explanation; pin → annotate; q → quit);
  *   - `/replay` inside a session.
  * No real model/network — the zero-config mock provider supplies the explanation.
@@ -135,11 +135,11 @@ describe('excalibur replay — non-interactive (--print / --at)', () => {
 });
 
 describe('excalibur replay — interactive scrubber (scripted stdin)', () => {
-  it('n,n,f jumps to the failure; ? explains (mock); pin annotates; q quits', async () => {
+  it('n,n,x jumps to the failure; ? explains (mock); pin annotates; q quits', async () => {
     const cli = createInteractiveCli({ cwd: repo });
     cli.send('n'); // step 1 → 2
     cli.send('n'); // step 2 → 3
-    cli.send('f'); // jump to the failed test_result (step 8, 1-based)
+    cli.send('x'); // jump to the failed test_result (step 8, 1-based) — `f` is now fork
     cli.send('?'); // explain at the cursor (mock provider)
     cli.send('pin this is where tests break'); // annotate the current step
     cli.send('d'); // show the accumulated diff

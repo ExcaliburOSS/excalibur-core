@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createEvent, type ExcaliburEvent } from '@excalibur/shared';
 import { RunManager } from '@excalibur/core';
-import { createTestCli, makeTempRepo, removeDir } from '../test-utils';
+import { createInteractiveCli, createTestCli, makeTempRepo, removeDir } from '../test-utils';
+import { runScrubber } from '../lib/replay-scrubber';
 
 /**
  * End-to-end tests for `excalibur fork` and `excalibur undo` (time-machine T2).
@@ -123,5 +124,63 @@ describe('excalibur undo', () => {
     await expect(cli.run('undo', srcRunId, '--at', '1', '--yes')).rejects.toThrow(/do not reverse-apply|reverse/i);
     // No partial damage: the committed file is untouched.
     expect(readFileSync(join(repo, 'src', 'service.ts'), 'utf8')).toContain('release');
+  });
+});
+
+describe('replay scrubber f/u keys', () => {
+  let repo: string;
+  beforeEach(() => {
+    repo = initRepo();
+  });
+  afterEach(() => removeDir(repo));
+
+  /** Drives runScrubber with scripted single-line controls over the session reader. */
+  async function scrub(repoRoot: string, runId: string, keys: string[]): Promise<ReturnType<typeof createInteractiveCli>> {
+    const cli = createInteractiveCli({ cwd: repoRoot });
+    for (const key of keys) {
+      cli.send(key);
+    }
+    const editor = cli.deps.ui.openLineEditor();
+    await runScrubber(cli.deps, runId, {
+      question: (prompt: string): Promise<string | null> => editor.question(prompt),
+      now: () => '2026-01-01T00:00:00.000Z',
+    });
+    editor.close();
+    return cli;
+  }
+
+  it('`f` forks from the cursor step — reconstructs the worktree + records provenance', async () => {
+    const srcRunId = seedRun(repo, GUARD_DIFF);
+    // `$` → last step (after the patch), `f` → fork, then the instruction, then quit.
+    await scrub(repo, srcRunId, ['$', 'f', 'now add a comment', 'q']);
+
+    const manager = new RunManager(repo);
+    const forkRun = manager.listRuns().find((r) => r.id !== srcRunId);
+    expect(forkRun?.record.forkedFrom?.runId).toBe(srcRunId);
+    // The worktree was reconstructed to the cursor state (the patched file is there).
+    expect(
+      existsSync(join(repo, '.excalibur', 'worktrees', forkRun?.id as string, 'src', 'guard.ts')),
+    ).toBe(true);
+  });
+
+  it('`u` reverts the working tree to the cursor (gated, confirmed)', async () => {
+    // The run's change is present in the tree; undo at the base cursor removes it.
+    writeFileSync(join(repo, 'src', 'guard.ts'), 'export const guard = true;\n', 'utf8');
+    const srcRunId = seedRun(repo, GUARD_DIFF);
+    // cursor starts at step 0 (base) → `u` reverts everything; `y` confirms.
+    await scrub(repo, srcRunId, ['u', 'y', 'q']);
+
+    expect(existsSync(join(repo, 'src', 'guard.ts'))).toBe(false);
+  });
+
+  it('`x` (not `f`) is the failure jump now that `f` means fork', async () => {
+    const srcRunId = seedRun(repo, GUARD_DIFF);
+    const cli = await scrub(repo, srcRunId, ['x', 'q']);
+    // No fork run was created by the failure jump.
+    const manager = new RunManager(repo);
+    expect(manager.listRuns().filter((r) => r.id !== srcRunId)).toHaveLength(0);
+    // The controls help advertises the new bindings.
+    expect(cli.stdout()).toContain('f fork');
+    expect(cli.stdout()).toContain('u undo');
   });
 });

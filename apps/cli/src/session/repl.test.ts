@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { RunManager } from '@excalibur/core';
 import { runInteractiveSession } from './repl';
 import { createInteractiveCli, makeTempRepo, removeDir } from '../test-utils';
 
@@ -205,5 +206,53 @@ describe('interactive session (M-Shell, model-first)', () => {
     expect(
       readdirSync(discoveryDir).filter((name) => name.startsWith('disc_')).length,
     ).toBeGreaterThanOrEqual(1);
+  });
+
+  it('/fork forks the latest run (reusing its cached context) and records the fork', async () => {
+    const cli = createInteractiveCli({ cwd: repo });
+    cli.send('How does the run pipeline work?'); // a NL turn → creates a run
+    cli.send('/fork now also add a note'); // fork that run from its last step
+    cli.send('/exit');
+    await runInteractiveSession(cli.deps, {});
+
+    expect(cli.stdout()).toContain('fork of');
+    // A run.json carrying fork provenance now exists.
+    const runsDir = join(repo, '.excalibur', 'runs');
+    const forked = readdirSync(runsDir)
+      .filter((id) => id.startsWith('run_'))
+      .some((id) => {
+        const record = JSON.parse(readFileSync(join(runsDir, id, 'run.json'), 'utf8')) as {
+          forkedFrom?: unknown;
+        };
+        return record.forkedFrom != null;
+      });
+    expect(forked).toBe(true);
+  });
+
+  it('a slash command on a corrupt run errors gracefully — the session survives', async () => {
+    // Regression for the unguarded loadReplay crash: a command that resolves a
+    // run with an unreadable events.jsonl must NOT kill the whole session.
+    const freshRepo = makeTempRepo();
+    try {
+      const run = new RunManager(freshRepo).createRun({
+        title: 'x',
+        autonomyLevel: 3,
+        workflow: 'conversation',
+        methodology: null,
+        model: 'mock',
+        executionStyle: 'team_default',
+      });
+      writeFileSync(join(run.dir, 'events.jsonl'), 'this is not valid json\n', 'utf8');
+
+      const cli = createInteractiveCli({ cwd: freshRepo });
+      cli.send('/changes'); // resolves the latest (corrupt) run → loadReplay throws
+      cli.send('/exit');
+      const code = await runInteractiveSession(cli.deps, {});
+
+      expect(code).toBe(0); // the session survived and closed cleanly
+      expect(cli.stdout()).toContain('Goodbye.');
+    } finally {
+      removeDir(freshRepo);
+    }
   });
 });

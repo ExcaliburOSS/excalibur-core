@@ -12,10 +12,12 @@ import {
   type ReplayStep,
 } from '@excalibur/core';
 import type { ChatMessage } from '@excalibur/model-gateway';
+import type { AutonomyLevel } from '@excalibur/shared';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
-import { chatWithGuidance, loadGatewayContext, streamWithGuidance } from './context';
+import { chatWithGuidance, loadConfigContext, loadGatewayContext, streamWithGuidance } from './context';
+import { runForkTurn, runUndo, type AgentTurnDeps } from '../session/agent-turn';
 
 /**
  * The Excalibur time-machine scrubber (replay · inspect · explain · annotate).
@@ -153,9 +155,51 @@ interface ManagedReplay {
 /** Renders the one-line control help. */
 function renderControls(deps: CliDeps): void {
   deps.ui.info(
-    'controls: n/p step · ⏎ next phase · e edit · t test · c command · f failure · a approval · ' +
-      'g <n> goto · 0/$ first/last · d diff · ? explain · pin <note> · q quit',
+    'controls: n/p step · ⏎ next phase · e edit · t test · c command · x failure · a approval · ' +
+      'g <n> goto · 0/$ first/last · d diff · ? explain · pin <note> · ' +
+      pc.bold('f fork') + ' · ' + pc.bold('u undo') + ' · q quit',
   );
+}
+
+/**
+ * Fork-from-cursor: prompt for an instruction (reusing the scrubber's single
+ * line reader — safe, no raw-key hazard) and run {@link runForkTurn} at the
+ * current 0-based step. Reconstructs the worktree at this point and runs only
+ * the new instruction live, reusing the cached prefix. Errors (no git repo, a
+ * diff that won't reconstruct) are surfaced without breaking the scrub loop.
+ */
+async function forkFromCursor(
+  deps: CliDeps,
+  options: { question: (prompt: string) => Promise<string | null> },
+  runId: string,
+  repoRoot: string,
+  cursor: number,
+  autonomyLevel: AutonomyLevel,
+): Promise<void> {
+  const answer = await options.question(pc.cyan('fork instruction › '));
+  const instruction = (answer ?? '').trim();
+  if (instruction.length === 0) {
+    deps.ui.info('Fork cancelled — no instruction given.');
+    return;
+  }
+  try {
+    const { config } = loadConfigContext(deps.cwd());
+    const gateway = loadGatewayContext(deps.cwd());
+    const turn: AgentTurnDeps = {
+      deps,
+      repoRoot,
+      config,
+      gateway: gateway.gateway,
+      providerName: gateway.providerName,
+      // Inherit the SOURCE run's autonomy — a fork must not silently escalate
+      // (L0/L1 review-only) or downgrade (L4 auto) the level the run ran at.
+      autonomyLevel,
+    };
+    const result = await runForkTurn(turn, { sourceRunId: runId, atStep: cursor, instruction });
+    deps.ui.info(`Fork ${result.forkRunId} created — replay it: excalibur replay ${result.forkRunId}`);
+  } catch (error) {
+    deps.ui.error(error instanceof Error ? error.message : String(error));
+  }
 }
 
 /** Explains the cursor: asks the gateway "why here, given task + history so far". */
@@ -323,9 +367,10 @@ export async function runScrubber(
       case 'command':
         cursor = jump(deps, model, cursor, 'command');
         break;
-      case 'f':
+      case 'x':
       case 'fail':
       case 'failure':
+        // `f` is reserved for fork; the failure jump lives on `x` (error/✗).
         cursor = jump(deps, model, cursor, 'failure');
         break;
       case 'a':
@@ -380,6 +425,29 @@ export async function runScrubber(
         });
         model.annotations.push(annotation);
         deps.ui.success(`Pinned a note to step ${cursor + 1}.`);
+        moved = false;
+        break;
+      }
+      case 'f':
+      case 'fork': {
+        // Fork-from-HERE: reconstruct this step in an isolated worktree and run
+        // a new instruction live, reusing the cached prefix (zero re-spend). The
+        // cursor (0-based) IS the fork point. runForkTurn renders its own
+        // progress + receipt; we just redraw the source step afterward.
+        await forkFromCursor(deps, options, runId, repoRoot, cursor, model.replay.run.autonomyLevel);
+        renderStep(deps, model, cursor);
+        moved = false;
+        break;
+      }
+      case 'u':
+      case 'undo': {
+        // Undo-to-HERE: revert the working tree to this step (gated + pre-flight).
+        try {
+          await runUndo(deps, runId, cursor, { yes: false });
+        } catch (error) {
+          deps.ui.warn(error instanceof Error ? error.message : String(error));
+        }
+        renderStep(deps, model, cursor);
         moved = false;
         break;
       }

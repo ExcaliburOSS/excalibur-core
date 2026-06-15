@@ -10,6 +10,7 @@ import {
   hasCommits,
   loadReplay,
   planFork,
+  planUndo,
   removeWorktree,
   restampEventsForFork,
   RunManager,
@@ -29,6 +30,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
+import { CliUsageError } from '../errors';
 import { describeEvent } from '../lib/run-pipeline';
 import { renderTurnReceipt } from '../lib/turn-receipt';
 import { ActionRenderer } from '../lib/action-render';
@@ -597,4 +599,76 @@ export async function runForkTurn(turn: AgentTurnDeps, input: ForkTurnInput): Pr
         `The worktree was torn down; nothing in your working tree changed.`,
     );
   }
+}
+
+/**
+ * Undo-to-checkpoint (time-machine T2): revert the WORKING TREE to a run's state
+ * at step `atStep` (0-based). Shared by `excalibur undo`, the `/undo` shell
+ * command and the scrubber's `u` key so the safety logic lives in ONE place.
+ *
+ * Conservative + gated: it reverse-applies the run's changes only after a
+ * `git apply --check` pre-flight (a diverged tree aborts with NO mutation), then
+ * re-applies up to the checkpoint — and if that re-apply will not land, it
+ * RESTORES the original tree and throws, never leaving a half-state or a
+ * silently-wrong step. Throws {@link CliUsageError} on the abort paths so the
+ * command surfaces a clean usage error; callers inside a loop (the scrubber)
+ * should try/catch and route the message to the UI.
+ */
+export async function runUndo(
+  deps: CliDeps,
+  runId: string,
+  atStep: number,
+  options: { yes?: boolean } = {},
+): Promise<void> {
+  const repoRoot = deps.cwd();
+  const plan = planUndo(repoRoot, runId, atStep);
+
+  if (plan.fullDiff.trim().length === 0) {
+    deps.ui.info(`Run ${runId} recorded no file changes — nothing to undo.`);
+    return;
+  }
+
+  // Pre-flight: can we cleanly unwind the run's changes from the tree?
+  const canReverse = checkPatchApplies(repoRoot, plan.fullDiff, { reverse: true });
+  if (!canReverse.applies) {
+    throw new CliUsageError(
+      `Cannot undo: the run's changes do not reverse-apply cleanly to your working tree ` +
+        `(${canReverse.reason ?? 'diverged'}). The tree has changed since the run; resolve it first.`,
+    );
+  }
+
+  deps.ui.warn(
+    `This reverts your working tree to run ${runId}'s state at step ${plan.atStep + 1}/${plan.totalSteps}.`,
+  );
+  // Always confirm unless `-y`: `confirm` returns its default (false) when
+  // non-interactive, so a piped/non-TTY undo ABORTS rather than silently
+  // mutating the tree.
+  if (options.yes !== true) {
+    const ok = await deps.ui.confirm('Proceed?', { defaultYes: false });
+    if (!ok) {
+      deps.ui.info('Undo cancelled. Nothing was changed.');
+      return;
+    }
+  }
+
+  // Unwind the run's changes (pre-flighted above), bringing the tree to the base.
+  applyPatch(repoRoot, plan.fullDiff, { reverse: true });
+
+  if (plan.targetDiff.trim().length === 0) {
+    deps.ui.info(pc.green("✓ Working tree reverted — the run's changes were undone."));
+    return;
+  }
+
+  // Re-apply up to the checkpoint; on a non-applying target, RESTORE the original
+  // tree (forward-apply) and abort — never silently land at a different step.
+  const canReapply = checkPatchApplies(repoRoot, plan.targetDiff);
+  if (!canReapply.applies) {
+    applyPatch(repoRoot, plan.fullDiff);
+    throw new CliUsageError(
+      `Could not reconstruct step ${plan.atStep + 1} (${canReapply.reason ?? 'no clean apply'}). ` +
+        `Your working tree was left UNCHANGED.`,
+    );
+  }
+  applyPatch(repoRoot, plan.targetDiff);
+  deps.ui.info(pc.green(`✓ Working tree reverted to step ${plan.atStep + 1}.`));
 }

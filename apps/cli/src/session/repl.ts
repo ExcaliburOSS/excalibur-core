@@ -25,7 +25,9 @@ import { CLI_VERSION } from '../program';
 import { renderWelcome, type WelcomeContext } from './welcome';
 import {
   runAgentTurn,
+  runForkTurn,
   runPlanTurn,
+  runUndo,
   type AgentTurnDeps,
   type AgentTurnResult,
 } from './agent-turn';
@@ -198,39 +200,64 @@ export async function runInteractiveSession(
       const input = parseStructuralInput(text);
 
       // Built-in slash commands are handled inline (never recorded as turns),
-      // EXCEPT /plan and /discovery which run (recorded) work.
+      // EXCEPT /plan and /discovery which run (recorded) work. The whole block
+      // is wrapped so a handler throw (e.g. a corrupt run's events.jsonl while
+      // resolving `/changes`/`/fork`, or a disk write fault) returns to the
+      // prompt instead of crashing the session — mirroring the NL path below.
       if (input.kind === 'command') {
-        if (input.name === 'plan') {
-          await handlePlanCommand(deps, runtime, input.argv.join(' '), () => {
+        try {
+          if (input.name === 'plan') {
+            await handlePlanCommand(deps, runtime, input.argv.join(' '), () => {
+              inFlight = new AbortController();
+              return inFlight;
+            });
+            inFlight = null;
+            printStatusLine(deps, runtime);
+            continue;
+          }
+          if (input.name === 'discovery') {
+            await handleDiscoveryCommand(deps, runtime, input.argv.join(' '));
+            printStatusLine(deps, runtime);
+            continue;
+          }
+          if (input.name === 'replay') {
+            await handleReplayCommand(deps, runtime, input.argv[0], (prompt) =>
+              editor.question(prompt),
+            );
+            printStatusLine(deps, runtime);
+            continue;
+          }
+          if (input.name === 'changes') {
+            handleChangesCommand(deps, input.argv[0]);
+            printStatusLine(deps, runtime);
+            continue;
+          }
+          if (input.name === 'fork') {
             inFlight = new AbortController();
-            return inFlight;
-          });
+            const execution = await handleForkCommand(deps, runtime, input.argv, inFlight.signal);
+            inFlight = null;
+            if (execution !== null) {
+              recordAssistantTurn(runtime, execution);
+            }
+            printStatusLine(deps, runtime);
+            continue;
+          }
+          if (input.name === 'undo') {
+            await handleUndoCommand(deps);
+            printStatusLine(deps, runtime);
+            continue;
+          }
+          const result = handleSlashCommand(deps, runtime, input.name);
+          if (result === 'exit') {
+            break;
+          }
+          continue;
+        } catch (error) {
           inFlight = null;
+          deps.ui.error(error instanceof Error ? error.message : String(error));
           printStatusLine(deps, runtime);
           continue;
         }
-        if (input.name === 'discovery') {
-          await handleDiscoveryCommand(deps, runtime, input.argv.join(' '));
-          printStatusLine(deps, runtime);
-          continue;
-        }
-        if (input.name === 'replay') {
-          await handleReplayCommand(deps, runtime, input.argv[0], (prompt) =>
-            editor.question(prompt),
-          );
-          printStatusLine(deps, runtime);
-          continue;
-        }
-        if (input.name === 'changes') {
-          handleChangesCommand(deps, input.argv[0]);
-          printStatusLine(deps, runtime);
-          continue;
-        }
-        const result = handleSlashCommand(deps, runtime, input.name);
-        if (result === 'exit') {
-          break;
-        }
-        continue;
       }
 
       // Record the user turn + remember the prompt for history. The raw `text`
@@ -430,6 +457,8 @@ function handleSlashCommand(
       deps.ui.write('  /discovery <idea>  clarify an ambiguous idea before building');
       deps.ui.write('  /replay [id]   rewind a run step-by-step (time-machine; defaults to latest)');
       deps.ui.write('  /changes [id]  show the full changed-file list for a run (defaults to latest)');
+      deps.ui.write('  /fork <instr>  fork the latest run (reuse its cached context) and run <instr> live');
+      deps.ui.write('  /undo          revert the working tree by undoing the latest run (gated)');
       deps.ui.write('  /model         show the active provider/model');
       deps.ui.write('  /clear         clear the screen (keeps the session)');
       deps.ui.write('  /exit, /quit   close the session and leave');
@@ -546,6 +575,66 @@ function handleChangesCommand(deps: CliDeps, id: string | undefined): void {
   }
   deps.ui.write();
   deps.ui.write('  Full diff: excalibur changes --diff   ·   rewind: /replay');
+}
+
+/**
+ * `/fork <instruction>` — fork the latest run from its LAST step, reusing the
+ * cached prefix, and run the new instruction live in an isolated worktree (the
+ * user's tree is untouched). To fork from an EARLIER step, use `/replay` →
+ * scrub to the step → `f`. Returns the execution result to record, or null.
+ */
+async function handleForkCommand(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  argv: string[],
+  signal: AbortSignal,
+): Promise<AgentTurnResult | null> {
+  const instruction = argv.join(' ').trim();
+  if (instruction.length === 0) {
+    deps.ui.warn('Usage: /fork <instruction> — continue the latest run with a new instruction (reusing its cached context).');
+    return null;
+  }
+  let runId: string;
+  try {
+    runId = resolveRun(deps, undefined).id;
+  } catch (error) {
+    deps.ui.warn(error instanceof Error ? error.message : String(error));
+    return null;
+  }
+  try {
+    // Forking continues the run from its LAST step (an unreadable events.jsonl
+    // throws here — kept inside the try so it surfaces cleanly, not a crash).
+    const atStep = Math.max(0, loadReplay(runtime.repoRoot, runId).steps.length - 1);
+    const result = await runForkTurn(agentTurnDeps(deps, runtime, signal), {
+      sourceRunId: runId,
+      atStep,
+      instruction,
+    });
+    return result.execution;
+  } catch (error) {
+    deps.ui.error(error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+
+/**
+ * `/undo` — revert the working tree by undoing the latest run's changes (gated +
+ * pre-flight-checked). Mirrors `excalibur undo` (full revert; use the scrubber's
+ * `u` to undo to a specific step).
+ */
+async function handleUndoCommand(deps: CliDeps): Promise<void> {
+  let runId: string;
+  try {
+    runId = resolveRun(deps, undefined).id;
+  } catch (error) {
+    deps.ui.warn(error instanceof Error ? error.message : String(error));
+    return;
+  }
+  try {
+    await runUndo(deps, runId, 0, { yes: false });
+  } catch (error) {
+    deps.ui.warn(error instanceof Error ? error.message : String(error));
+  }
 }
 
 /** Reprints the StatusLine: autonomy · workflow · model · cost · safety. */
