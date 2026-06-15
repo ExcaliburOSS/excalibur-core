@@ -1,6 +1,13 @@
 import { PassThrough } from 'node:stream';
-import { afterEach, describe, expect, it } from 'vitest';
-import { initialRawState, reduceKey, renderInput, type ParsedKey, type RawInputState } from './raw-input';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  initialRawState,
+  instantGhost,
+  reduceKey,
+  renderInput,
+  type ParsedKey,
+  type RawInputState,
+} from './raw-input';
 import { Ui } from '../ui';
 
 /**
@@ -116,6 +123,44 @@ describe('reduceKey (pure state machine)', () => {
   });
 });
 
+describe('ghost-text (instant + reducer + render)', () => {
+  it('instantGhost completes a partial slash command (first match), else nothing', () => {
+    expect(instantGhost('/re', ['replay', 'review'])).toBe('play');
+    expect(instantGhost('/replay', ['replay', 'review'])).toBe(''); // already complete
+    expect(instantGhost('/zz', ['replay'])).toBe(''); // no match
+    expect(instantGhost('/', ['replay'])).toBe(''); // nothing typed yet
+    expect(instantGhost('review the code', ['replay'])).toBe(''); // not a bare /command
+  });
+
+  it('Tab accepts the ghost into the buffer', () => {
+    const s = prompt({ buffer: '/re', cursor: 3, ghost: 'play' });
+    const r = reduceKey(s, key({ name: 'tab' }));
+    expect(r.state.buffer).toBe('/replay');
+    expect(r.state.cursor).toBe(7);
+    expect(r.state.ghost).toBe('');
+  });
+
+  it('→ at the end of the buffer accepts the ghost; mid-buffer it just moves', () => {
+    const atEnd = reduceKey(prompt({ buffer: 'rea', cursor: 3, ghost: 'd it' }), key({ name: 'right' }));
+    expect(atEnd.state.buffer).toBe('read it');
+    const mid = reduceKey(prompt({ buffer: 'abc', cursor: 1, ghost: 'X' }), key({ name: 'right' }));
+    expect(mid.state.buffer).toBe('abc');
+    expect(mid.state.cursor).toBe(2);
+  });
+
+  it('an edit clears the ghost (the shell recomputes it)', () => {
+    expect(reduceKey(prompt({ buffer: 'a', cursor: 1, ghost: 'bc' }), key({ name: 'x', sequence: 'x' })).state.ghost).toBe('');
+    expect(reduceKey(prompt({ buffer: 'a', cursor: 1, ghost: 'bc' }), key({ name: 'backspace' })).state.ghost).toBe('');
+  });
+
+  it('renderInput draws the ghost and counts it in the cursor-back', () => {
+    const out = renderInput(prompt({ buffer: '/re', cursor: 3, ghost: 'play' }), '> ');
+    expect(out).toContain('/re');
+    expect(out).toContain('play');
+    expect(out).toContain('[4D'); // cursor back over the 4-char ghost
+  });
+});
+
 describe('renderInput', () => {
   it('clears the line, writes prompt+buffer, and moves the cursor back', () => {
     const s = prompt({ buffer: 'abcd', cursor: 2 });
@@ -202,6 +247,46 @@ describe('raw editor shell (fake TTY)', () => {
 
     await expect(pending).resolves.toBeNull(); // degraded gracefully, not hung
     expect(stdin.rawCalls).toContain(false); // cooked mode restored
+  });
+
+  it('renders an instant slash-command ghost and accepts it with Tab', async () => {
+    const stdin = fakeTty();
+    const out = memOut();
+    const ui = new Ui({ stdin, stdout: out as unknown as NodeJS.WritableStream, interactive: true });
+    const editor = ui.openLineEditor({ ghostCommands: ['replay', 'review'] });
+    opened.push(editor);
+
+    const pending = editor.question('› ');
+    stdin.emit('keypress', '/', { sequence: '/' });
+    stdin.emit('keypress', 'r', { name: 'r', sequence: 'r' });
+    stdin.emit('keypress', 'e', { name: 'e', sequence: 'e' });
+    expect(out.text).toContain('play'); // ghost for "/re" → replay
+
+    stdin.emit('keypress', '\t', { name: 'tab' }); // accept → "/replay"
+    stdin.emit('keypress', '\r', { name: 'return' });
+    await expect(pending).resolves.toBe('/replay');
+  });
+
+  it('shows a model-ghost suggestion after the debounce, when there is no instant ghost', async () => {
+    vi.useFakeTimers();
+    try {
+      const stdin = fakeTty();
+      const out = memOut();
+      const suggest = vi.fn(async () => 'the payment module');
+      const ui = new Ui({ stdin, stdout: out as unknown as NodeJS.WritableStream, interactive: true });
+      const editor = ui.openLineEditor({ suggest });
+      opened.push(editor);
+
+      void editor.question('› ');
+      stdin.emit('keypress', 'r', { name: 'r', sequence: 'r' });
+      stdin.emit('keypress', 'e', { name: 'e', sequence: 'e' }); // "re" — not a slash, so no instant ghost
+      await vi.advanceTimersByTimeAsync(320); // fire the debounced suggest + resolve it
+
+      expect(suggest).toHaveBeenCalled();
+      expect(out.text).toContain('the payment module');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('routes ESC during a turn to the onEscape handler', () => {

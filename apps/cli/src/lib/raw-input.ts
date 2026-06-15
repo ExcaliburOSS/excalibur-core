@@ -15,6 +15,8 @@
  * are intentionally absent here to keep this slice small.
  */
 
+import pc from 'picocolors';
+
 const ESC = String.fromCharCode(27);
 const CR = String.fromCharCode(13);
 const CLEAR_LINE = `${CR}${ESC}[2K`; // CR + "erase entire line"
@@ -42,6 +44,14 @@ export interface RawInputState {
   historyIndex: number;
   /** The live draft saved when the user starts navigating history. */
   draft: string;
+  /**
+   * Ghost-text: a dim, not-yet-accepted completion SUFFIX shown after the
+   * buffer (e.g. typing `/re` ghosts `play`). Accepted with Tab or → at the end
+   * of the buffer; cleared on any edit (the shell recomputes it). Set by the
+   * shell (instant slash/command completion, or an async model suggestion) — the
+   * reducer only clears/accepts it, never invents it.
+   */
+  ghost: string;
   /** `turn` = a turn is in flight (set via setTurnActive); `prompt` otherwise. */
   mode: 'prompt' | 'turn';
   /**
@@ -70,6 +80,7 @@ export function initialRawState(history: string[] = []): RawInputState {
     history: [...history],
     historyIndex: -1,
     draft: '',
+    ghost: '',
     mode: 'prompt',
     awaiting: false,
   };
@@ -106,8 +117,10 @@ function clamp(n: number, lo: number, hi: number): number {
  * state and the action the shell must take. Never mutates its input.
  */
 export function reduceKey(state: RawInputState, key: ParsedKey): { state: RawInputState; action: RawAction } {
+  // Any edit clears the ghost by default (the shell recomputes it); a case that
+  // wants to keep/accept the ghost sets it explicitly.
   const keep = (next: Partial<RawInputState>): { state: RawInputState; action: RawAction } => ({
-    state: { ...state, ...next },
+    state: { ...state, ghost: '', ...next },
     action: NONE,
   });
 
@@ -153,10 +166,17 @@ export function reduceKey(state: RawInputState, key: ParsedKey): { state: RawInp
       const history =
         line.length > 0 && state.history[0] !== line ? [line, ...state.history] : state.history;
       return {
-        state: { ...state, buffer: '', cursor: 0, historyIndex: -1, draft: '', history },
+        state: { ...state, buffer: '', cursor: 0, historyIndex: -1, draft: '', ghost: '', history },
         action: { type: 'submit', line },
       };
     }
+    case 'tab':
+      // Accept the ghost completion (append the dim suffix into the buffer).
+      if (state.ghost.length > 0) {
+        const buffer = state.buffer + state.ghost;
+        return keep({ buffer, cursor: buffer.length, ghost: '' });
+      }
+      return { state, action: NONE };
     case 'backspace':
       if (state.cursor === 0) {
         return { state, action: NONE };
@@ -173,9 +193,15 @@ export function reduceKey(state: RawInputState, key: ParsedKey): { state: RawInp
         buffer: state.buffer.slice(0, state.cursor) + state.buffer.slice(state.cursor + 1),
       });
     case 'left':
-      return keep({ cursor: clamp(state.cursor - 1, 0, state.buffer.length) });
+      // Cursor move keeps the (end-anchored) ghost.
+      return { state: { ...state, cursor: clamp(state.cursor - 1, 0, state.buffer.length) }, action: NONE };
     case 'right':
-      return keep({ cursor: clamp(state.cursor + 1, 0, state.buffer.length) });
+      // → at the end of the buffer accepts the ghost; otherwise just moves right.
+      if (state.cursor >= state.buffer.length && state.ghost.length > 0) {
+        const buffer = state.buffer + state.ghost;
+        return keep({ buffer, cursor: buffer.length, ghost: '' });
+      }
+      return { state: { ...state, cursor: clamp(state.cursor + 1, 0, state.buffer.length) }, action: NONE };
     case 'home':
       return keep({ cursor: 0 });
     case 'end':
@@ -186,9 +212,7 @@ export function reduceKey(state: RawInputState, key: ParsedKey): { state: RawInp
       return historyNext(state);
     case 'escape':
       // At the prompt, ESC clears the line (it must NEVER resolve null / exit).
-      return keep({ buffer: '', cursor: 0, historyIndex: -1, draft: '' });
-    case 'tab':
-      return { state, action: NONE }; // ghost accept lands in Slice 2
+      return keep({ buffer: '', cursor: 0, historyIndex: -1, draft: '', ghost: '' });
     default:
       break;
   }
@@ -212,7 +236,7 @@ function historyPrev(state: RawInputState): { state: RawInputState; action: RawA
   const draft = state.historyIndex === -1 ? state.buffer : state.draft;
   const historyIndex = state.historyIndex + 1;
   const buffer = state.history[historyIndex] ?? '';
-  return { state: { ...state, draft, historyIndex, buffer, cursor: buffer.length }, action: NONE };
+  return { state: { ...state, draft, historyIndex, buffer, cursor: buffer.length, ghost: '' }, action: NONE };
 }
 
 /** ↓ — move toward the live draft; past the newest entry restores the draft. */
@@ -222,7 +246,7 @@ function historyNext(state: RawInputState): { state: RawInputState; action: RawA
   }
   const historyIndex = state.historyIndex - 1;
   const buffer = historyIndex === -1 ? state.draft : state.history[historyIndex] ?? '';
-  return { state: { ...state, historyIndex, buffer, cursor: buffer.length }, action: NONE };
+  return { state: { ...state, historyIndex, buffer, cursor: buffer.length, ghost: '' }, action: NONE };
 }
 
 /**
@@ -231,8 +255,31 @@ function historyNext(state: RawInputState): { state: RawInputState; action: RawA
  * point. The prompt may carry ANSI color (zero-width) — the cursor-back count
  * is relative to the END of the buffer, so the prompt's width is irrelevant.
  */
+/**
+ * Instant, deterministic ghost (Slice 2a): completes a partial slash command.
+ * `"/re"` against `["replay","review"]` ghosts `"play"` (first match by list
+ * order). Returns '' when the buffer is not a single bare `/command` token (a
+ * space/argument means the command is chosen; the model ghost handles the rest).
+ */
+export function instantGhost(buffer: string, commands: readonly string[]): string {
+  if (!buffer.startsWith('/') || buffer.length < 2 || /\s/.test(buffer)) {
+    return '';
+  }
+  const typed = buffer.slice(1);
+  for (const command of commands) {
+    if (command.length > typed.length && command.startsWith(typed)) {
+      return command.slice(typed.length);
+    }
+  }
+  return '';
+}
+
 export function renderInput(state: RawInputState, prompt: string): string {
-  const back = state.buffer.length - state.cursor;
+  // Lay out: prompt + buffer + dim ghost, then move the cursor back over
+  // everything after the insertion point (the post-cursor buffer + the ghost).
+  // The prompt's ANSI color is zero-width, so the move count is buffer-relative.
+  const ghost = state.ghost.length > 0 ? pc.dim(state.ghost) : '';
+  const back = state.buffer.length - state.cursor + state.ghost.length;
   const moveBack = back > 0 ? `${ESC}[${back}D` : '';
-  return `${CLEAR_LINE}${prompt}${state.buffer}${moveBack}`;
+  return `${CLEAR_LINE}${prompt}${state.buffer}${ghost}${moveBack}`;
 }

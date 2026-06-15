@@ -162,7 +162,11 @@ export async function runInteractiveSession(
   printStatusLine(deps, runtime);
 
   const history = store.loadPromptHistory().slice().reverse(); // readline wants newest-first
-  const editor = deps.ui.openLineEditor({ history });
+  const editor = deps.ui.openLineEditor({
+    history,
+    ghostCommands: GHOST_COMMANDS,
+    suggest: buildSuggester(deps, runtime),
+  });
 
   // First Ctrl-C (or ESC, on the raw editor) during an in-flight turn cancels
   // it; a second Ctrl-C at an empty prompt exits. We track an AbortController
@@ -328,6 +332,79 @@ export async function runInteractiveSession(
 
   closeSession(deps, runtime);
   return 0;
+}
+
+/** Slash commands the INSTANT ghost completes (no leading `/`). */
+const GHOST_COMMANDS = [
+  'help',
+  'plan',
+  'discovery',
+  'replay',
+  'changes',
+  'fork',
+  'undo',
+  'model',
+  'clear',
+  'exit',
+  'quit',
+];
+
+/**
+ * The MODEL-powered ghost suggester (opt-out via `EXCALIBUR_GHOST=off`). Returns
+ * undefined when disabled; otherwise an async fn that asks the session's
+ * CONFIGURED real model for a short, redacted completion of the buffer.
+ *
+ * It self-gates on SPEED: a short `timeoutMs` + small `maxTokens` means a fast,
+ * cheap model shows a ghost while a slow/reasoning flagship (e.g. kimi-k2.7-code,
+ * which spends ~200 tokens thinking) simply times out → no ghost, bounded cost.
+ * The proper long-term home is the cheap-model routing (`summarizerModel`); the
+ * editor also debounces + cancels per keystroke, and a mock/unconfigured
+ * provider yields no ghost (the instant slash-completion still works).
+ */
+function buildSuggester(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+): ((buffer: string, signal: AbortSignal) => Promise<string | null>) | undefined {
+  if (deps.env['EXCALIBUR_GHOST'] === 'off') {
+    return undefined;
+  }
+  // Resolve the gateway ONCE (don't re-stat/parse providers.yaml per keystroke).
+  const gateway = loadGatewayContext(runtime.repoRoot);
+  if (!gateway.configured) {
+    return undefined; // no real model → no model ghost (instant ghost still works)
+  }
+  const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[
+    gateway.providerName
+  ]?.type;
+  if (providerType === 'mock') {
+    return undefined; // the mock is a test double — never a ghost source
+  }
+  return async (buffer: string, signal: AbortSignal): Promise<string | null> => {
+    try {
+      const output = await gateway.gateway.chat({
+        messages: [
+          {
+            role: 'system',
+            content:
+              "You autocomplete a developer's half-typed input to a coding agent. Reply with ONLY " +
+              'the text that should CONTINUE their input (the suffix) — no quotes, no preamble, at ' +
+              'most ~8 words. If there is no sensible continuation, reply with nothing.',
+          },
+          { role: 'user', content: redactSecrets(buffer) },
+        ],
+        maxTokens: 24,
+        timeoutMs: 2000, // a live ghost must be fast; slow/reasoning models time out → no ghost
+        metadata: { kind: 'ghost' },
+        signal,
+      });
+      const raw = output.content.trim();
+      const suffix = (raw.startsWith(buffer) ? raw.slice(buffer.length) : raw).split('\n')[0] ?? '';
+      const trimmed = suffix.slice(0, 60);
+      return trimmed.length > 0 ? trimmed : null;
+    } catch {
+      return null; // a background suggestion must never disrupt the prompt
+    }
+  };
 }
 
 /** Builds the agent-turn deps from the session runtime. */

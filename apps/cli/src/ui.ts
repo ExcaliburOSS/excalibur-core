@@ -3,6 +3,7 @@ import pc from 'picocolors';
 import { Spinner, isTtyStream } from './lib/spinner';
 import {
   initialRawState,
+  instantGhost,
   reduceKey,
   renderInput,
   type ParsedKey,
@@ -65,6 +66,18 @@ export interface LineEditorOptions {
   history?: string[];
   /** Optional readline completer for tab-completion (slash commands, …). */
   completer?: readline.Completer;
+  /**
+   * Slash-command names (no leading `/`) for the raw editor's INSTANT ghost-text
+   * completion (e.g. typing `/re` ghosts `play`). Ignored by the queue editor.
+   */
+  ghostCommands?: string[];
+  /**
+   * Async model-powered ghost suggester (raw editor only): given the current
+   * buffer, returns a dim completion to show (or null). Debounced, cancelable
+   * per keystroke, and only applied if the buffer is unchanged. The caller is
+   * responsible for redaction + opt-out + cheap-model routing.
+   */
+  suggest?: (buffer: string, signal: AbortSignal) => Promise<string | null>;
 }
 
 /**
@@ -359,10 +372,71 @@ export class Ui {
     const sigintHandlers = new Set<() => void>();
     const escapeHandlers = new Set<() => void>();
     let rawActive = false;
+    const ghostCommands = options.ghostCommands ?? [];
+    const suggest = options.suggest;
+    let suggestTimer: ReturnType<typeof setTimeout> | null = null;
+    let suggestController: AbortController | null = null;
+    let suggestSeq = 0; // monotonic: only the LATEST request may paint a ghost
+    const GHOST_DEBOUNCE_MS = 280;
 
     const repaint = (): void => {
       if (currentPrompt !== null && state.awaiting) {
         out.write(renderInput(state, currentPrompt));
+      }
+    };
+
+    /** Cancels any pending/in-flight model-ghost request. */
+    const cancelSuggest = (): void => {
+      if (suggestTimer !== null) {
+        clearTimeout(suggestTimer);
+        suggestTimer = null;
+      }
+      if (suggestController !== null) {
+        suggestController.abort();
+        suggestController = null;
+      }
+    };
+
+    /**
+     * Recomputes ghost-text for the current buffer: the INSTANT slash-completion
+     * synchronously, then (debounced) an async MODEL suggestion that fills in
+     * when there's no instant ghost and the buffer is still unchanged.
+     */
+    const refreshGhost = (): void => {
+      cancelSuggest();
+      const seq = ++suggestSeq;
+      if (!state.awaiting) {
+        return;
+      }
+      state = { ...state, ghost: instantGhost(state.buffer, ghostCommands) };
+      if (suggest === undefined || state.ghost.length > 0 || state.buffer.trim().length === 0) {
+        return; // instant ghost wins, or nothing to suggest
+      }
+      const at = state.buffer;
+      suggestTimer = setTimeout(() => {
+        const controller = new AbortController();
+        suggestController = controller;
+        void suggest(at, controller.signal)
+          .then((completion) => {
+            // Apply only if THIS is still the latest request, the user hasn't
+            // typed since, we're still at the prompt, and no instant ghost took
+            // over — so a stale (even same-text, cross-prompt) resolve can't paint.
+            if (
+              seq === suggestSeq &&
+              completion !== null &&
+              completion.length > 0 &&
+              state.awaiting &&
+              state.buffer === at &&
+              state.ghost === ''
+            ) {
+              state = { ...state, ghost: completion };
+              repaint();
+            }
+          })
+          .catch(() => undefined);
+      }, GHOST_DEBOUNCE_MS);
+      if (typeof (suggestTimer as { unref?: () => void }).unref === 'function') {
+        (suggestTimer as { unref: () => void }).unref();
       }
     };
 
@@ -375,6 +449,7 @@ export class Ui {
         state = result.state;
         switch (result.action.type) {
           case 'submit': {
+            cancelSuggest();
             out.write('\n'); // commit the typed line below the prompt
             currentPrompt = null;
             const waiter = waiters.shift();
@@ -385,6 +460,7 @@ export class Ui {
             return;
           }
           case 'eof': {
+            cancelSuggest();
             out.write('\n');
             closed = true;
             currentPrompt = null;
@@ -404,6 +480,9 @@ export class Ui {
             }
             return;
           case 'none':
+            // The reducer cleared the ghost on an edit; recompute it (instant +
+            // debounced model) before repainting the line.
+            refreshGhost();
             repaint();
             return;
         }
@@ -481,7 +560,7 @@ export class Ui {
         return Promise.resolve(null);
       }
       currentPrompt = prompt;
-      state = { ...state, awaiting: true, buffer: '', cursor: 0, historyIndex: -1, draft: '' };
+      state = { ...state, awaiting: true, buffer: '', cursor: 0, historyIndex: -1, draft: '', ghost: '' };
       out.write(renderInput(state, prompt));
       return new Promise((resolve) => {
         waiters.push((line) => {
@@ -515,6 +594,7 @@ export class Ui {
           this.activeReader = null;
         }
         closed = true; // set first (mirrors the eof path) so no re-entrant read races
+        cancelSuggest();
         disableRaw();
         while (waiters.length > 0) {
           waiters.shift()?.(null);
