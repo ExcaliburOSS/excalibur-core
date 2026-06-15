@@ -7,7 +7,8 @@ import { promptProviderSetup, writeProvidersFile } from '../lib/provider-setup';
  * `excalibur models list|setup` — provider configuration. API keys are
  * referenced by environment variable NAME only. Real providers execute (M2):
  * a configured provider is `ready` once its API key env var is set; the
- * built-in mock is the zero-config default.
+ * the free default is local Ollama and Kimi K2 (Moonshot) is the recommended
+ * paid option; the mock is for offline/tests only, never a runtime fallback.
  */
 export function registerModelsCommand(program: Command, deps: CliDeps): void {
   const models = program.command('models').description('inspect and configure model providers');
@@ -42,7 +43,8 @@ export function registerModelsCommand(program: Command, deps: CliDeps): void {
       }
       if (context.providersPath === null) {
         deps.ui.info(
-          'No .excalibur/models/providers.yaml — using the built-in defaults. Run `excalibur models setup` to configure.',
+          'No LLM provider configured. Run `excalibur models setup` — the free default is local Ollama; ' +
+            'Kimi K2 (Moonshot) is the recommended paid option (bring your own key).',
         );
       }
       deps.ui.table(
@@ -61,12 +63,13 @@ export function registerModelsCommand(program: Command, deps: CliDeps): void {
   models
     .command('setup')
     .description('configure a model provider (env var names only, never key values)')
-    .option('-y, --yes', 'skip prompts (selects the built-in mock — the M1 default)')
+    .option('-y, --yes', 'skip prompts (writes the offline mock — for tests/CI, not a real model)')
     .action(async (options: { yes?: boolean }) => {
       const providers = await promptProviderSetup(deps, { yes: options.yes === true });
       if (providers === null) {
         deps.ui.info(
-          'Provider setup skipped. Commands keep using the built-in mock provider; run `excalibur models setup` anytime.',
+          'Provider setup skipped. Excalibur needs an LLM — run `excalibur models setup` anytime ' +
+            '(free: local Ollama · recommended: Kimi K2 via Moonshot, BYOK).',
         );
         return;
       }

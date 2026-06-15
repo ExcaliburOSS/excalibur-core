@@ -9,10 +9,12 @@ import { providersFilePath } from './context';
 /**
  * One-question model provider setup (onboarding spec §4), shared by
  * `excalibur init` and `excalibur models setup`. Hosted providers store the
- * NAME of an API key environment variable — never a key value. Real providers
- * execute end-to-end (M2): with the relevant API key set, commands call the
- * configured provider; with no key set, Excalibur falls back to the built-in
- * mock so every command keeps working out of the box.
+ * NAME of an API key environment variable — never a key value.
+ *
+ * Excalibur is free OSS and requires a real LLM (the mock is a test double, not
+ * a runtime fallback), so the choices are tiered: a FREE default (local Ollama —
+ * no key, no cost), a RECOMMENDED paid model (Kimi K2 via Moonshot — bring your
+ * own key), the other hosted providers, and the mock for offline/tests only.
  */
 
 const ENV_VAR_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
@@ -42,92 +44,113 @@ async function askEnvVarName(deps: CliDeps, defaultName: string, yes: boolean): 
   }
 }
 
-/**
- * Accurate post-save guidance (M2): the provider executes once its API key env
- * var is set; with no key, commands fall back to the built-in mock.
- */
+/** Post-save guidance: the provider runs once its API key env var is set. */
 function announceSaved(deps: CliDeps, apiKeyEnv: string): void {
   deps.ui.info(
-    `Saved. Set the ${apiKeyEnv} environment variable to your API key and Excalibur will use ` +
-      'this provider; with no key set it falls back to the built-in mock.',
+    `Saved. Set ${apiKeyEnv} to your API key (Excalibur stores only the variable name) and ` +
+      'this provider will be used. With no key set, commands ask you to configure one — there is no mock fallback.',
   );
 }
 
-function withMock(name: string, config: ProviderConfig): ProvidersFileConfig {
+/** A single-provider config — no bundled mock (the mock is never a fallback). */
+function single(name: string, config: ProviderConfig): ProvidersFileConfig {
   return {
-    providers: {
-      default: name,
-      [name]: config,
-      // The mock stays configured so every command keeps working in M1.
-      ...(name === 'mock' ? {} : { mock: { type: 'mock' } }),
-    } as ProvidersFileConfig['providers'],
+    providers: { default: name, [name]: config } as ProvidersFileConfig['providers'],
   };
 }
 
+const MOCK_ONLY: ProvidersFileConfig = single('mock', { type: 'mock' });
+
 /**
- * Runs the chooser. Returns the providers config to write, or `null` when
- * the user picked "Configure later". `--yes` (and non-interactive stdin)
- * selects the M1 default: the built-in mock provider.
+ * Runs the chooser. Returns the providers config to write, or `null` for
+ * "Configure later". `--yes` / non-interactive stdin selects the explicit mock
+ * (the offline/test double) since there is no key to prompt for. Interactively,
+ * the FREE local Ollama is the default selection and Kimi K2 the recommendation.
  */
 export async function promptProviderSetup(
   deps: CliDeps,
   options: { yes: boolean },
 ): Promise<ProvidersFileConfig | null> {
+  // Non-interactive: there is nothing to prompt and no key to capture, so write
+  // the explicit mock (tests/CI/offline). A real provider needs interaction.
+  if (options.yes || !deps.ui.isInteractive()) {
+    return MOCK_ONLY;
+  }
+
   const ollamaDetected = isCommandOnPath('ollama', deps.env);
-  const mockIndex = 4;
+  const OLLAMA_INDEX = 0;
   const index = await deps.ui.select(
-    'How should Excalibur call models?',
+    'How should Excalibur call models? (Excalibur is free OSS — bring your own key for paid models)',
     [
-      { label: 'OpenAI-compatible API', hint: 'any OpenAI-style endpoint' },
-      { label: 'Anthropic', hint: 'Claude models' },
-      { label: 'OpenRouter', hint: 'openai-compatible, https://openrouter.ai/api/v1' },
       {
-        label: 'Ollama (local)',
-        hint: ollamaDetected ? 'detected on this machine!' : 'http://localhost:11434',
+        label: 'Ollama (local) — free',
+        hint: ollamaDetected ? 'detected on this machine!' : 'install from ollama.com, then pull a model',
       },
-      { label: 'Mock (built-in)', hint: 'deterministic, no network — the zero-config default' },
+      {
+        label: 'Kimi K2 (Moonshot) — recommended',
+        hint: 'best quality · paid · bring your MOONSHOT_API_KEY',
+      },
+      { label: 'OpenAI-compatible API', hint: 'any OpenAI-style endpoint · BYOK' },
+      { label: 'Anthropic', hint: 'Claude models · BYOK' },
+      { label: 'OpenRouter', hint: 'https://openrouter.ai/api/v1 · BYOK' },
+      { label: 'Mock', hint: 'offline / tests only — NOT a real model' },
       { label: 'Configure later' },
     ],
-    { yes: options.yes, defaultIndex: mockIndex },
+    { yes: false, defaultIndex: OLLAMA_INDEX },
   );
 
   switch (index) {
     case 0: {
+      const model = await deps.ui.ask('Ollama model name [llama3]:', {
+        yes: options.yes,
+        defaultAnswer: 'llama3',
+      });
+      deps.ui.info(
+        'Saved. Excalibur will use your local Ollama server at http://localhost:11434 (no API key, ' +
+          'no cost). Make sure Ollama is running and the model is pulled (`ollama pull <model>`).',
+      );
+      return single('ollama', { type: 'ollama', baseUrl: 'http://localhost:11434', model });
+    }
+    case 1: {
+      const model = await deps.ui.ask('Kimi model [kimi-k2.7-code]:', {
+        yes: options.yes,
+        defaultAnswer: 'kimi-k2.7-code',
+      });
+      const apiKeyEnv = await askEnvVarName(deps, 'MOONSHOT_API_KEY', options.yes);
+      announceSaved(deps, apiKeyEnv);
+      return single('kimi', {
+        type: 'openai-compatible',
+        baseUrl: 'https://api.moonshot.ai/v1',
+        apiKeyEnv,
+        model,
+        contextWindow: 262144,
+      });
+    }
+    case 2: {
       const baseUrl = await deps.ui.ask('Base URL [https://api.openai.com/v1]:', {
         yes: options.yes,
         defaultAnswer: 'https://api.openai.com/v1',
       });
       const apiKeyEnv = await askEnvVarName(deps, 'OPENAI_API_KEY', options.yes);
       announceSaved(deps, apiKeyEnv);
-      return withMock('openai', { type: 'openai-compatible', baseUrl, apiKeyEnv });
+      return single('openai', { type: 'openai-compatible', baseUrl, apiKeyEnv });
     }
-    case 1: {
+    case 3: {
       const apiKeyEnv = await askEnvVarName(deps, 'ANTHROPIC_API_KEY', options.yes);
       announceSaved(deps, apiKeyEnv);
-      return withMock('anthropic', { type: 'anthropic', apiKeyEnv });
+      return single('anthropic', { type: 'anthropic', apiKeyEnv });
     }
-    case 2: {
+    case 4: {
       const apiKeyEnv = await askEnvVarName(deps, 'OPENROUTER_API_KEY', options.yes);
       announceSaved(deps, apiKeyEnv);
-      return withMock('openrouter', {
+      return single('openrouter', {
         type: 'openai-compatible',
         baseUrl: 'https://openrouter.ai/api/v1',
         apiKeyEnv,
       });
     }
-    case 3: {
-      const model = await deps.ui.ask('Ollama model name [llama3]:', {
-        yes: options.yes,
-        defaultAnswer: 'llama3',
-      });
-      deps.ui.info(
-        'Saved. Excalibur will use your local Ollama server at http://localhost:11434 ' +
-          '(no API key needed); if it is unreachable, commands fall back to the built-in mock.',
-      );
-      return withMock('ollama', { type: 'ollama', baseUrl: 'http://localhost:11434', model });
-    }
-    case 4:
-      return withMock('mock', { type: 'mock' });
+    case 5:
+      return MOCK_ONLY;
     default:
       return null;
   }
