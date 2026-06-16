@@ -55,7 +55,7 @@ async function maybeEnrichAgentsMd(
     return;
   }
   try {
-    deps.ui.info('Enriching AGENTS.md with your model…');
+    deps.ui.info(deps.t('init.enriching'));
     agentsFile.content = await enrichAgentsMd(analysis, {
       chat: gateway.gateway,
       provider: gateway.providerName,
@@ -139,11 +139,11 @@ export function registerInitCommand(program: Command, deps: CliDeps): void {
 
       const updateMode = plan.files.some((file) => file.exists);
       const question = updateMode
-        ? 'Some files already exist (see above). Apply the changes?'
-        : 'Apply these changes?';
+        ? deps.t('init.applyQuestionUpdate')
+        : deps.t('init.applyQuestion');
       const confirmed = await deps.ui.confirm(question, { yes, defaultYes: true });
       if (!confirmed) {
-        deps.ui.info('Init cancelled — nothing was written.');
+        deps.ui.info(deps.t('init.cancelled'));
         return;
       }
 
@@ -151,11 +151,11 @@ export function registerInitCommand(program: Command, deps: CliDeps): void {
 
       // Confidence-building final output (onboarding §8 / raw spec §12).
       deps.ui.write();
-      deps.ui.heading('Detected:');
+      deps.ui.heading(deps.t('init.detected'));
       deps.ui.write(
         `  ${[...analysis.languages, ...analysis.frameworks, analysis.packageManager ?? '']
           .filter((part) => part.length > 0)
-          .join(' · ') || 'nothing specific — defaults apply'}`,
+          .join(' · ') || deps.t('init.detected.none')}`,
       );
       const commandsLine = Object.entries(analysis.commands)
         .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
@@ -169,7 +169,7 @@ export function registerInitCommand(program: Command, deps: CliDeps): void {
         (source) => source.kind === 'instruction' && source.scope === 'project',
       );
       if (projectInstructions.length > 0) {
-        deps.ui.heading('Using existing instructions:');
+        deps.ui.heading(deps.t('init.usingInstructions'));
         for (const source of projectInstructions) {
           deps.ui.success(`  ${source.path}`);
         }
@@ -177,24 +177,19 @@ export function registerInitCommand(program: Command, deps: CliDeps): void {
 
       deps.ui.write(safetyLine({}));
 
-      deps.ui.heading('Created:');
+      deps.ui.heading(deps.t('init.created'));
       for (const relPath of result.written) {
         deps.ui.write(`  + ${relPath}`);
       }
       if (result.skipped.length > 0) {
-        deps.ui.info(
-          `  Skipped ${result.skipped.length} existing file(s) — re-run with --force to overwrite.`,
-        );
+        deps.ui.info(deps.t('init.skipped', { count: result.skipped.length }));
       }
 
       if (providers === undefined && !existsSync(providersFilePath(repoRoot))) {
-        deps.ui.info(
-          'No model provider configured yet — commands use the built-in mock provider (M1). ' +
-            'Run `excalibur models setup` when ready.',
-        );
+        deps.ui.info(deps.t('init.noProvider'));
       }
 
-      deps.ui.heading('Try now:');
+      deps.ui.heading(deps.t('init.tryNow'));
       deps.ui.write('  excalibur ask "How does this repo work?"');
       deps.ui.write('  excalibur review --diff');
       deps.ui.write('  excalibur patch "Fix duplicated webhook handling"');

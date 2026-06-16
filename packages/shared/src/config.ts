@@ -145,6 +145,8 @@ const skillSourceRefSchema = z.object({
 
 const baseExcaliburConfigSchema = z.object({
   version: z.number().int().optional(),
+  /** Spoken UI locale for generated chrome/prose (`en`|`es`); auto-detected when absent. */
+  language: z.string().optional(),
   project: projectSectionSchema.optional(),
   /** Top-level canonical commands; `project.commands` is normalized into it. */
   commands: commandsConfigSchema.optional(),
