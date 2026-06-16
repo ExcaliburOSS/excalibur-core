@@ -15,6 +15,7 @@ import {
   getGitInfo,
   getLocalDiff,
   loadReplay,
+  MemoryStore,
   parseStructuralInput,
   type AsyncSummarizer,
   type LocalSession,
@@ -319,6 +320,11 @@ export async function runInteractiveSession(
             printStatusLine(deps, runtime);
             continue;
           }
+          if (input.name === 'remember') {
+            handleRememberCommand(deps, runtime, input.argv.join(' '));
+            printStatusLine(deps, runtime);
+            continue;
+          }
           if (input.name === 'goal') {
             await handleGoalCommand(deps, runtime, input.argv.join(' '), beginTurn, endTurn);
             printStatusLine(deps, runtime);
@@ -420,6 +426,7 @@ const GHOST_COMMANDS = [
   'fork',
   'undo',
   'compact',
+  'remember',
   'goal',
   'loop',
   'model',
@@ -541,6 +548,34 @@ async function recordAssistantTurn(
   // (best-effort; respects the `compaction.enabled` switch). Awaited so the next
   // turn's seed reflects the compaction.
   await runCompaction(deps, runtime, { manual: false });
+}
+
+/**
+ * `/remember <text>` — captures a project-memory node (Knowledge Compounding,
+ * M2.6). Subject paths are inferred from path-like mentions so a future run
+ * touching those files is primed with it. Best-effort; never throws into the loop.
+ */
+function handleRememberCommand(deps: CliDeps, runtime: SessionRuntime, text: string): void {
+  const statement = text.trim();
+  if (statement.length === 0) {
+    deps.ui.warn('Usage: /remember <a decision, rejection, risk or convention to remember>');
+    return;
+  }
+  const subjectPaths = [...new Set(statement.match(/[\w.-]+(?:\/[\w.-]+)+/g) ?? [])];
+  try {
+    const node = new MemoryStore(runtime.repoRoot).capture({
+      type: 'decision',
+      statement,
+      subjectPaths,
+      sourceRunId: runtime.session.id,
+    });
+    deps.ui.success(
+      `Remembered (${node.type}${subjectPaths.length > 0 ? ` · ${subjectPaths.join(', ')}` : ''}). ` +
+        'Future runs touching these paths will be primed with it.',
+    );
+  } catch (error) {
+    deps.ui.warn(`Could not save memory: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 /** The active main model's context window (tokens), or a safe default. */
@@ -1048,6 +1083,7 @@ function handleSlashCommand(
       );
       deps.ui.write('  /undo          revert the working tree by undoing the latest run (gated)');
       deps.ui.write('  /compact       condense older turns into a summary (frees context)');
+      deps.ui.write('  /remember <x>  save a decision/risk/convention; future runs touching those paths are primed');
       deps.ui.write('  /model         show the active provider/model');
       deps.ui.write('  /clear         clear the screen (keeps the session)');
       deps.ui.write('  /exit, /quit   close the session and leave');

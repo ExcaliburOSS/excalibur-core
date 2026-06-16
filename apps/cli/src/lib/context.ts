@@ -6,6 +6,7 @@ import {
   EXCALIBUR_DIR,
   EffectiveInstructionBuilder,
   SAFETY_PRESETS,
+  buildMemoryContext,
   formatHitsAsSources,
   loadExcaliburConfig,
   type AdditionalContextSource,
@@ -273,15 +274,27 @@ export async function buildEffectiveContext(
     additionalSources?: AdditionalContextSource[];
   } = {},
 ): Promise<EffectiveContext> {
+  // Knowledge Compounding (M2.6): retrieve project memory relevant to the files
+  // already in context and inject it as a context source — the agent is primed
+  // with prior decisions/rejections/risks for those paths. Best-effort + scoped
+  // (no relevant memory → nothing injected).
+  const repoSources = options.additionalSources ?? [];
+  const queryPaths = repoSources
+    .map((source) => source.path)
+    .filter((path) => !path.startsWith(EXCALIBUR_DIR) && !path.startsWith('.excalibur'));
+  const memorySource = queryPaths.length > 0 ? buildMemoryContext(repoRoot, queryPaths) : null;
+  const additionalSources: AdditionalContextSource[] = [
+    ...repoSources,
+    ...(memorySource !== null ? [memorySource] : []),
+  ];
+
   const builder = new EffectiveInstructionBuilder({ repoRoot });
   const built = await builder.build({
     repositoryPath: repoRoot,
     includeUserGlobal: deps.includeUserGlobal,
     ...(options.workflowId !== undefined ? { workflowId: options.workflowId } : {}),
     ...(options.autonomyLevel !== undefined ? { autonomyLevel: options.autonomyLevel } : {}),
-    ...(options.additionalSources !== undefined
-      ? { additionalSources: options.additionalSources }
-      : {}),
+    ...(additionalSources.length > 0 ? { additionalSources } : {}),
   });
   return {
     instructionsMarkdown: built.instructionsMarkdown,

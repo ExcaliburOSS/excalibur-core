@@ -111,6 +111,9 @@ export {
 // Context compaction (plan §"Compactación de contexto") — the M-Shell offline slice
 export * from './compaction';
 
+// Knowledge Compounding (plan §"Knowledge Compounding") — project memory (OSS slice)
+export * from './memory';
+
 // Local artifact stores (ONB-8)
 export {
   InteractionStore,
