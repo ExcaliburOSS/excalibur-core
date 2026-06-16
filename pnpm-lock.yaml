@@ -68,6 +68,9 @@ importers:
       '@excalibur/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@excalibur/tui':
+        specifier: workspace:*
+        version: link:../../packages/tui
       '@excalibur/work-items':
         specifier: workspace:*
         version: link:../../packages/work-items
@@ -397,6 +400,9 @@ importers:
       '@types/react':
         specifier: ^18.3.12
         version: 18.3.31
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(postcss@8.5.15)(tsx@4.22.4)(typescript@5.9.3)(yaml@2.9.0)
       tsx:
         specifier: ^4.19.2
         version: 4.22.4

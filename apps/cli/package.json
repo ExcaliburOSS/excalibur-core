@@ -55,6 +55,7 @@
     "@excalibur/extension-sdk": "workspace:*",
     "@excalibur/model-gateway": "workspace:*",
     "@excalibur/shared": "workspace:*",
+    "@excalibur/tui": "workspace:*",
     "@excalibur/work-items": "workspace:*",
     "@excalibur/workflow-schema": "workspace:*",
     "commander": "^13.0.0",

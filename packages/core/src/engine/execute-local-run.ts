@@ -160,7 +160,11 @@ class LocalRunExecution {
       { role: 'user', content: userContent },
     ];
     const output = await this.input.gateway.chat({
-      ...(this.run.record.model !== null ? { model: this.run.record.model } : {}),
+      // `record.model` holds the PROVIDER name (e.g. `groq`), not a model id, so
+      // it selects the provider and the gateway resolves the real model from
+      // that provider's `providers.yaml` config. Passing it as `model` would
+      // override the model id with the provider name (→ 404 model_not_found).
+      ...(this.run.record.model !== null ? { provider: this.run.record.model } : {}),
       messages,
       metadata: { kind, runId: this.run.id, phaseId: phase?.id ?? null },
     });
@@ -244,7 +248,10 @@ class LocalRunExecution {
       workdir: this.input.repoRoot,
       prompt,
       role,
-      ...(this.run.record.model !== null ? { model: this.run.record.model } : {}),
+      // `record.model` is the PROVIDER name; forward it as `provider` so the
+      // gateway picks that provider and resolves its real model id (passing it
+      // as `model` would clobber the model id → 404 model_not_found).
+      ...(this.run.record.model !== null ? { provider: this.run.record.model } : {}),
       phase: { id: phase.id, name: phase.name, type: phase.type },
       config: this.input.config,
       gateway: this.input.gateway,

@@ -4,13 +4,23 @@
   "description": "Excalibur terminal UI — Ink components and design system for the conversational shell (M-Shell seed)",
   "license": "Apache-2.0",
   "type": "module",
+  "main": "./dist/rail.cjs",
+  "module": "./dist/rail.js",
+  "types": "./dist/rail.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/rail.d.ts",
+      "import": "./dist/rail.js",
+      "require": "./dist/rail.cjs"
+    }
+  },
   "bin": {
     "excalibur-tui-demo": "./src/demo-timeline.tsx"
   },
-  "files": ["src"],
+  "files": ["dist", "src"],
   "scripts": {
     "demo": "tsx src/demo-timeline.tsx",
-    "build": "tsc --noEmit",
+    "build": "tsup src/rail.ts --format cjs,esm --dts --sourcemap --clean",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint src"
@@ -23,6 +33,7 @@
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
+    "tsup": "^8.3.5",
     "tsx": "^4.19.2",
     "typescript": "^5.8.3",
     "vitest": "^3.0.5"

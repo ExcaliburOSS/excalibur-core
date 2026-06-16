@@ -221,6 +221,7 @@ async function driveLoop(
     workdir: options.workdir ?? turn.repoRoot,
     prompt: options.prompt,
     role: options.role,
+    provider: turn.providerName,
     config: turn.config,
     gateway: turn.gateway,
     ...(turn.signal !== undefined ? { signal: turn.signal } : {}),

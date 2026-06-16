@@ -261,6 +261,9 @@ export class NativeAgentAdapter implements AgentAdapter {
             iteration,
           },
         };
+        if (input.provider !== undefined) {
+          chatInput.provider = input.provider;
+        }
         if (input.model !== undefined) {
           chatInput.model = input.model;
         }

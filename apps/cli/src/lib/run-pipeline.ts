@@ -18,6 +18,7 @@ import {
   type RunRecord,
 } from '@excalibur/shared';
 import type { WorkflowDefinition } from '@excalibur/workflow-schema';
+import { reduceRail, renderRail } from '@excalibur/tui';
 import pc from 'picocolors';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
@@ -354,6 +355,21 @@ export async function runTask(
       }
     },
   });
+
+  // The LIVING RAIL: fold the run's recorded event stream into the rail model
+  // and render it as text. This is the exact same reducer that drives the live
+  // Ink view, an Esc-Esc scrub and a replay — so the post-run summary is a
+  // byte-faithful projection of what the interactive shell shows in flight.
+  deps.ui.write();
+  const rail = reduceRail(runManager.readEvents(run.id), {
+    autonomyLabel: AUTONOMY_LEVEL_LABELS[choice.autonomyLevel],
+    safety: config.safety?.preset ?? 'standard-safe',
+    model: gatewayContext.providerName,
+    push: options.sync === true,
+  });
+  for (const line of renderRail(rail)) {
+    deps.ui.write(line);
+  }
 
   deps.ui.write();
   if (record.status === 'completed') {

@@ -107,6 +107,11 @@ export function formatCents(cents: number): string {
 }
 
 export function formatElapsed(ms: number): string {
+  // Sub-second runs (e.g. a fast Groq call) get one decimal so they never floor
+  // to a misleading "0s".
+  if (ms < 1000) {
+    return `${(ms / 1000).toFixed(1)}s`;
+  }
   const totalSeconds = Math.floor(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;

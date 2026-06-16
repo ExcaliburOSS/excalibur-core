@@ -33,7 +33,13 @@ export interface AgentRunInput {
   /** Task prompt (the core engine prepends effective instructions itself). */
   prompt: string;
   role: AgentRole;
-  /** Optional model override, forwarded to the model gateway. */
+  /**
+   * Optional provider selector (a `providers.yaml` key), forwarded to the
+   * gateway so it resolves the real model id from that provider's config.
+   * This is the provider NAME (e.g. `groq`), not a model id.
+   */
+  provider?: string;
+  /** Optional model override (a model id), forwarded to the model gateway. */
   model?: string;
   phase?: AgentRunPhaseRef;
   config: ExcaliburConfig;
