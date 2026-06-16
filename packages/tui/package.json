@@ -16,6 +16,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@excalibur/shared": "workspace:*",
     "ink": "^5.0.1",
     "ink-spinner": "^5.0.0",
     "react": "^18.3.1"

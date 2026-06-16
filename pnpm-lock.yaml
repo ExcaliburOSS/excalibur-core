@@ -381,6 +381,9 @@ importers:
 
   packages/tui:
     dependencies:
+      '@excalibur/shared':
+        specifier: workspace:*
+        version: link:../shared
       ink:
         specifier: ^5.0.1
         version: 5.2.1(@types/react@18.3.31)(react@18.3.1)
