@@ -42,6 +42,14 @@ export {
   type TaskType,
 } from './onboarding/onboarding';
 
+// Automatic swarm sizing (deterministic allocator; fan-out execution is M3)
+export {
+  planAgentAllocation,
+  type AgentAllocation,
+  type AgentAllocationInput,
+  type Subtask,
+} from './swarm/agent-allocation';
+
 // Runs
 export { RunManager, type CreateRunInput, type ModelCallLine } from './runs/run-manager';
 
