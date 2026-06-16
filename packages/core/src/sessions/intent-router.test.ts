@@ -1,6 +1,39 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG, type ExcaliburConfig } from '@excalibur/shared';
-import { buildStatusLineModel, parseStructuralInput } from './intent-router';
+import { buildStatusLineModel, classifyGoalIntent, parseStructuralInput } from './intent-router';
+
+describe('classifyGoalIntent — explicit iterate-until-done detection (en+es)', () => {
+  it('detects English "until it passes/works/done" goals', () => {
+    expect(classifyGoalIntent('fix the parser and keep going until the tests pass').isGoal).toBe(
+      true,
+    );
+    expect(classifyGoalIntent("don't stop until the build is green").isGoal).toBe(true);
+    expect(classifyGoalIntent('iterate until it works').isGoal).toBe(true);
+    expect(classifyGoalIntent('make sure all the tests pass').isGoal).toBe(true);
+  });
+
+  it('detects Spanish goals', () => {
+    expect(classifyGoalIntent('arregla el bug y no pares hasta que pasen los tests').isGoal).toBe(
+      true,
+    );
+    expect(classifyGoalIntent('sigue trabajando hasta que funcione').isGoal).toBe(true);
+    expect(classifyGoalIntent('arréglalo del todo').isGoal).toBe(true);
+  });
+
+  it('returns the matched signal for the offer message', () => {
+    const intent = classifyGoalIntent('please keep going until the tests pass');
+    expect(intent.isGoal).toBe(true);
+    expect(intent.signal.length).toBeGreaterThan(0);
+    expect(intent.signal.toLowerCase()).toContain('until');
+  });
+
+  it('does NOT fire on ordinary one-shot requests (conservative)', () => {
+    expect(classifyGoalIntent('fix the webhook retry bug').isGoal).toBe(false);
+    expect(classifyGoalIntent('what does this function do?').isGoal).toBe(false);
+    expect(classifyGoalIntent('add a test for parseConfig').isGoal).toBe(false);
+    expect(classifyGoalIntent('explain the auth flow').isGoal).toBe(false);
+  });
+});
 
 describe('parseStructuralInput — structural recognition only (model-first)', () => {
   it('routes a leading / to a slash command with argv', () => {

@@ -4,6 +4,7 @@ import {
   buildStatusLineModel,
   buildTurnSummary,
   changeGlyph,
+  classifyGoalIntent,
   compactSession,
   DEFAULT_COMPACTION_CONFIG,
   getGitIdentity,
@@ -328,12 +329,29 @@ export async function runInteractiveSession(
         continue;
       }
 
-      // Natural-language turn → the model-driven agent loop. Auto plan-mode for
-      // the highest autonomy level (L4 full-agentic naturally plans first);
-      // otherwise a direct turn.
+      // A line that EXPLICITLY signals iterate-until-done ("…until the tests
+      // pass", "no pares hasta…") OFFERS the autonomous goal loop — the user
+      // confirms; we never silently reroute. Confirm BEFORE beginTurn so the
+      // prompt read isn't fighting the turn-active editor.
+      const goalIntent = deps.ui.isInteractive()
+        ? classifyGoalIntent(text)
+        : { isGoal: false, signal: '' };
+      let asGoal = false;
+      if (goalIntent.isGoal) {
+        asGoal = await deps.ui.confirm(
+          `That reads as a goal to complete ("${goalIntent.signal}…"). Pursue it across turns until an evaluator says it's done (max ${GOAL_MAX_ITERATIONS})?`,
+          { defaultYes: true },
+        );
+      }
+
+      // Natural-language turn → the model-driven agent loop. Goal-mode (if
+      // accepted) iterates to completion; else auto plan-mode at L4; else a
+      // direct turn.
       const ctrl = beginTurn();
       try {
-        if (runtime.autonomyLevel >= 4) {
+        if (asGoal) {
+          await executeGoalLoop(deps, runtime, text, seed, ctrl.signal);
+        } else if (runtime.autonomyLevel >= 4) {
           await dispatchPlan(deps, runtime, text, ctrl.signal, seed);
         } else {
           await dispatchAgentTurn(deps, runtime, text, ctrl.signal, seed);
@@ -634,11 +652,48 @@ async function handlePlanCommand(
 const GOAL_MAX_ITERATIONS = 6;
 
 /**
- * `/goal <objective>` — the autonomous loop. Works toward the objective ACROSS
- * iterations (each a real, gated, replayable agent turn) until a cheap-model
- * evaluator confirms it is done, the iteration cap is hit, or ESC cancels.
- * Records the user goal, the final outcome and a status line; auto-compaction
- * keeps long loops within context.
+ * Runs the autonomous goal loop for an objective and reports + records the
+ * outcome (each iteration is a real, gated, replayable agent turn; a cheap-model
+ * evaluator decides done). The CALLER owns the turn lifecycle + recording the
+ * user message — shared by the `/goal` command AND the NL goal offer.
+ */
+async function executeGoalLoop(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  objective: string,
+  seed: ChatMessage[],
+  signal: AbortSignal,
+): Promise<void> {
+  const cheap = loadGatewayContext(runtime.repoRoot).cheapProviderName ?? undefined;
+  const result = await runGoalLoop(agentTurnDeps(deps, runtime, signal), objective, {
+    maxIterations: GOAL_MAX_ITERATIONS,
+    signal,
+    seed,
+    ...(cheap !== undefined ? { evaluatorProvider: cheap } : {}),
+    onIteration: (n, verdict) =>
+      deps.ui.info(
+        `  goal · iteration ${n}/${GOAL_MAX_ITERATIONS}: ${verdict.done ? 'DONE' : 'continue'} — ${verdict.reason}`,
+      ),
+  });
+  const summary =
+    result.status === 'done'
+      ? `Goal achieved in ${result.iterations} iteration(s).`
+      : result.status === 'max-iterations'
+        ? `Stopped at the ${result.iterations}-iteration cap${result.lastReason ? ` — ${result.lastReason}` : ''}. Refine the goal, or run /goal again to continue.`
+        : result.status === 'aborted'
+          ? `Goal loop cancelled after ${result.iterations} iteration(s).`
+          : `Goal loop stopped (evaluator unavailable) after ${result.iterations} iteration(s).`;
+  deps.ui.info(summary);
+  const last = result.results.at(-1);
+  if (last !== undefined) {
+    recordAssistantTurn(deps, runtime, last);
+  }
+  runtime.store.appendTurn(runtime.session.id, { role: 'system', kind: 'status', text: summary });
+}
+
+/**
+ * `/goal <objective>` — explicit autonomous loop. (A natural-language line with
+ * an iterate-until-done signal also OFFERS this; see the NL dispatch.)
  */
 async function handleGoalCommand(
   deps: CliDeps,
@@ -665,34 +720,8 @@ async function handleGoalCommand(
 
   const ctrl = beginTurn();
   try {
-    const cheap = loadGatewayContext(runtime.repoRoot).cheapProviderName ?? undefined;
-    const result = await runGoalLoop(agentTurnDeps(deps, runtime, ctrl.signal), objective, {
-      maxIterations: GOAL_MAX_ITERATIONS,
-      signal: ctrl.signal,
-      seed,
-      ...(cheap !== undefined ? { evaluatorProvider: cheap } : {}),
-      onIteration: (n, verdict) =>
-        deps.ui.info(
-          `  goal · iteration ${n}/${GOAL_MAX_ITERATIONS}: ${verdict.done ? 'DONE' : 'continue'} — ${verdict.reason}`,
-        ),
-    });
-    endTurn();
-    const summary =
-      result.status === 'done'
-        ? `Goal achieved in ${result.iterations} iteration(s).`
-        : result.status === 'max-iterations'
-          ? `Stopped at the ${result.iterations}-iteration cap${result.lastReason ? ` — ${result.lastReason}` : ''}. Refine the goal, or run /goal again to continue.`
-          : result.status === 'aborted'
-            ? `Goal loop cancelled after ${result.iterations} iteration(s).`
-            : `Goal loop stopped (evaluator unavailable) after ${result.iterations} iteration(s).`;
-    deps.ui.info(summary);
-    const last = result.results.at(-1);
-    if (last !== undefined) {
-      recordAssistantTurn(deps, runtime, last);
-    }
-    runtime.store.appendTurn(runtime.session.id, { role: 'system', kind: 'status', text: summary });
+    await executeGoalLoop(deps, runtime, objective, seed, ctrl.signal);
   } catch (error) {
-    endTurn();
     const reason = error instanceof Error ? error.message : String(error);
     deps.ui.error(reason);
     runtime.store.appendTurn(runtime.session.id, {
@@ -700,6 +729,8 @@ async function handleGoalCommand(
       kind: 'status',
       text: `error: ${reason}`,
     });
+  } finally {
+    endTurn();
   }
 }
 

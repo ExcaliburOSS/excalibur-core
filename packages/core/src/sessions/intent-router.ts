@@ -54,6 +54,51 @@ export function parseStructuralInput(text: string): StructuralInput {
   return { kind: 'natural', text: trimmed };
 }
 
+/** Whether an input expresses an explicit "iterate-until-done" objective. */
+export interface GoalIntent {
+  isGoal: boolean;
+  /** The phrase that signaled it (shown in the offer); empty when not a goal. */
+  signal: string;
+}
+
+/**
+ * Explicit "iterate-until-done" signals (English + Spanish). These are CLEAR
+ * user phrasings of pursue-until-complete — not a general intent classifier.
+ */
+const GOAL_SIGNALS: readonly RegExp[] = [
+  // English
+  /\b(?:don['’]?t|do not|never)\s+stop\s+(?:until|till)\b/i,
+  /\bkeep\s+(?:going|trying|working|iterating)\b[^.!?]*\b(?:until|till)\b/i,
+  /\b(?:iterate|loop|repeat)\b[^.!?]*\b(?:until|till)\b/i,
+  /\b(?:until|till)\b[^.!?]*\b(?:pass(?:es|ing)?|work(?:s|ing)?|green|done|complete|succeed|finished)\b/i,
+  /\bmake\s+sure\s+(?:all\s+)?(?:the\s+)?tests?\s+(?:pass|are\s+green)/i,
+  /\bfix\s+(?:it\s+)?(?:everything|completely|for\s+good)\b/i,
+  // Spanish
+  /\bno\s+(?:pares|te\s+detengas|dejes\s+de\b[^.!?]*)\b[^.!?]*\bhasta\b/i,
+  /\bsigue\b[^.!?]*\bhasta\s+que\b/i,
+  /\bitera\b[^.!?]*\bhasta\b/i,
+  /\bhasta\s+que\b[^.!?]*\b(?:pase|pasen|funcione|funcionen|est[ée]n?|verde|listo|hecho)\b/i,
+  /\baseg[úu]rate\s+de\s+que\b[^.!?]*\b(?:pase|pasen|funcione|funcionen)\b/i,
+  /\barr[ée]glalo\s+del\s+todo\b/i,
+];
+
+/**
+ * Detects an EXPLICIT iterate-until-done objective in a natural-language line so
+ * the shell can OFFER the goal loop (`/goal`) — the user always confirms; this
+ * never silently reroutes. Conservative by design: a plain "fix the bug" is a
+ * normal turn; only clear "…until it passes / no pares hasta…" phrasing matches.
+ * Locale-aware (en+es), pure + deterministic.
+ */
+export function classifyGoalIntent(text: string): GoalIntent {
+  for (const pattern of GOAL_SIGNALS) {
+    const match = text.match(pattern);
+    if (match !== null) {
+      return { isGoal: true, signal: match[0].trim() };
+    }
+  }
+  return { isGoal: false, signal: '' };
+}
+
 /** The surface-agnostic model backing the StatusLine. */
 export interface StatusLineModel {
   /** Autonomy label for the active lane / default. */
