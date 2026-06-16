@@ -13,3 +13,4 @@ export * from './adapters/custom-command/custom-command-adapter';
 export * from './adapters/resolve-agent-adapter';
 export * from './mcp/mcp-client';
 export * from './mcp/mcp-tools';
+export * from './sandbox/docker-sandbox';
