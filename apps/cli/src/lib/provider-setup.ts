@@ -112,8 +112,8 @@ async function askEnvVarNameOptional(
 /**
  * A good+fast PAIR config from one provider key: `default` → the good (coding)
  * model, `cheap` → the fast model (ghost-text + compaction), both sharing the
- * same API key env var. The fast role's low-latency knob (see the catalog) is
- * applied when that role is actually consumed.
+ * same API key env var. The fast provider carries the catalog's low-latency
+ * `extraBody` (reasoning-off) so the `cheap` role stays snappy when consumed.
  */
 function pairConfig(entry: ProviderCatalogEntry, apiKeyEnv: string): ProvidersFileConfig {
   const pair = entry.pair;
@@ -121,10 +121,13 @@ function pairConfig(entry: ProviderCatalogEntry, apiKeyEnv: string): ProvidersFi
     return single(entry.key, { type: entry.type, apiKeyEnv }); // unreachable: callers guard
   }
   const fastName = `${entry.key}-fast`;
-  const make = (model: string): ProviderConfig => {
+  const make = (model: string, extraBody?: Record<string, unknown>): ProviderConfig => {
     const config: ProviderConfig = { type: entry.type, apiKeyEnv, model };
     if (entry.baseUrl !== undefined) {
       config.baseUrl = entry.baseUrl;
+    }
+    if (extraBody !== undefined) {
+      config.extraBody = extraBody;
     }
     return config;
   };
@@ -137,7 +140,7 @@ function pairConfig(entry: ProviderCatalogEntry, apiKeyEnv: string): ProvidersFi
       default: entry.key,
       cheap: fastName,
       [entry.key]: good,
-      [fastName]: make(pair.fast),
+      [fastName]: make(pair.fast, pair.fastExtraBody),
     } as ProvidersFileConfig['providers'],
   };
 }

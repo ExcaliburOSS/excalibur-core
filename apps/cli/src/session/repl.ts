@@ -18,7 +18,12 @@ import type { AutonomyLevel, ExcaliburConfig } from '@excalibur/shared';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
-import { loadConfigContext, loadGatewayContext, requireConfiguredModel, safetyLine } from '../lib/context';
+import {
+  loadConfigContext,
+  loadGatewayContext,
+  requireConfiguredModel,
+  safetyLine,
+} from '../lib/context';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
 import { CLI_VERSION } from '../program';
@@ -351,15 +356,17 @@ const GHOST_COMMANDS = [
 
 /**
  * The MODEL-powered ghost suggester (opt-out via `EXCALIBUR_GHOST=off`). Returns
- * undefined when disabled; otherwise an async fn that asks the session's
- * CONFIGURED real model for a short, redacted completion of the buffer.
+ * undefined when disabled; otherwise an async fn that asks the session's FAST
+ * model for a short, redacted completion of the buffer.
  *
- * It self-gates on SPEED: a short `timeoutMs` + small `maxTokens` means a fast,
- * cheap model shows a ghost while a slow/reasoning flagship (e.g. kimi-k2.7-code,
- * which spends ~200 tokens thinking) simply times out → no ghost, bounded cost.
- * The proper long-term home is the cheap-model routing (`summarizerModel`); the
- * editor also debounces + cancels per keystroke, and a mock/unconfigured
- * provider yields no ghost (the instant slash-completion still works).
+ * It routes to the `cheap` (fast/low-cost) provider when one is paired — that
+ * provider runs the fast model with reasoning pinned off (its `extraBody`), so
+ * the ghost is snappy and cheap even when the main model is a slow reasoner.
+ * With no distinct fast model it falls back to the default and self-gates on
+ * SPEED: a short `timeoutMs` + small `maxTokens` means a fast model shows a
+ * ghost while a slow/reasoning flagship (e.g. kimi-k2.7-code) simply times out →
+ * no ghost, bounded cost. The editor also debounces + cancels per keystroke, and
+ * a mock/unconfigured provider yields no ghost (instant slash-completion still works).
  */
 function buildSuggester(
   deps: CliDeps,
@@ -373,8 +380,13 @@ function buildSuggester(
   if (!gateway.configured) {
     return undefined; // no real model → no model ghost (instant ghost still works)
   }
+  // Route the ghost to the FAST `cheap` model when one is paired (low latency +
+  // cost; its config also pins reasoning-off). Fall back to the default when no
+  // distinct fast model exists (single-model configs) — there it self-gates on
+  // speed: a slow/reasoning default times out → no ghost.
+  const ghostProvider = gateway.cheapProviderName ?? gateway.providerName;
   const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[
-    gateway.providerName
+    ghostProvider
   ]?.type;
   if (providerType === 'mock') {
     return undefined; // the mock is a test double — never a ghost source
@@ -382,6 +394,7 @@ function buildSuggester(
   return async (buffer: string, signal: AbortSignal): Promise<string | null> => {
     try {
       const output = await gateway.gateway.chat({
+        provider: ghostProvider,
         messages: [
           {
             role: 'system',
@@ -408,11 +421,7 @@ function buildSuggester(
 }
 
 /** Builds the agent-turn deps from the session runtime. */
-function agentTurnDeps(
-  deps: CliDeps,
-  runtime: SessionRuntime,
-  signal: AbortSignal,
-): AgentTurnDeps {
+function agentTurnDeps(deps: CliDeps, runtime: SessionRuntime, signal: AbortSignal): AgentTurnDeps {
   const gateway = loadGatewayContext(runtime.repoRoot);
   // Every shell turn (NL / plan / fork) goes through here: refuse with setup
   // guidance when no LLM is configured rather than driving the loop on a mock.
@@ -492,14 +501,22 @@ async function handlePlanCommand(
   }
   const safeText = redactSecrets(task);
   runtime.store.appendPromptHistory(`/plan ${safeText}`);
-  runtime.store.appendTurn(runtime.session.id, { role: 'user', kind: 'message', text: `/plan ${safeText}` });
+  runtime.store.appendTurn(runtime.session.id, {
+    role: 'user',
+    kind: 'message',
+    text: `/plan ${safeText}`,
+  });
   const controller = newController();
   try {
     await dispatchPlan(deps, runtime, task, controller.signal);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     deps.ui.error(reason);
-    runtime.store.appendTurn(runtime.session.id, { role: 'system', kind: 'status', text: `error: ${reason}` });
+    runtime.store.appendTurn(runtime.session.id, {
+      role: 'system',
+      kind: 'status',
+      text: `error: ${reason}`,
+    });
   }
 }
 
@@ -561,9 +578,15 @@ function handleSlashCommand(
       deps.ui.write('  /help          show this help');
       deps.ui.write('  /plan <task>   plan first (read-only) → approve → execute');
       deps.ui.write('  /discovery <idea>  clarify an ambiguous idea before building');
-      deps.ui.write('  /replay [id]   rewind a run step-by-step (time-machine; defaults to latest)');
-      deps.ui.write('  /changes [id]  show the full changed-file list for a run (defaults to latest)');
-      deps.ui.write('  /fork <instr>  fork the latest run (reuse its cached context) and run <instr> live');
+      deps.ui.write(
+        '  /replay [id]   rewind a run step-by-step (time-machine; defaults to latest)',
+      );
+      deps.ui.write(
+        '  /changes [id]  show the full changed-file list for a run (defaults to latest)',
+      );
+      deps.ui.write(
+        '  /fork <instr>  fork the latest run (reuse its cached context) and run <instr> live',
+      );
       deps.ui.write('  /undo          revert the working tree by undoing the latest run (gated)');
       deps.ui.write('  /model         show the active provider/model');
       deps.ui.write('  /clear         clear the screen (keeps the session)');
@@ -571,7 +594,9 @@ function handleSlashCommand(
       deps.ui.write('');
       deps.ui.write(pc.dim('Type anything else in plain words (any language) — the model decides'));
       deps.ui.write(pc.dim('whether to answer (read-only) or edit/run, governed by your autonomy'));
-      deps.ui.write(pc.dim('level. Tool actions ask for inline approval. `!cmd` runs a shell command.'));
+      deps.ui.write(
+        pc.dim('level. Tool actions ask for inline approval. `!cmd` runs a shell command.'),
+      );
       return 'continue';
     case 'model': {
       const gateway = loadGatewayContext(runtime.repoRoot);
@@ -579,7 +604,9 @@ function handleSlashCommand(
       deps.ui.write(
         gateway.providersPath !== null
           ? `Config: ${gateway.providersPath}`
-          : pc.dim('Using the built-in mock provider (no providers.yaml — the zero-config default).'),
+          : pc.dim(
+              'Using the built-in mock provider (no providers.yaml — the zero-config default).',
+            ),
       );
       return 'continue';
     }
@@ -673,10 +700,15 @@ function handleChangesCommand(deps: CliDeps, id: string | undefined): void {
     return;
   }
   const { metrics } = summary;
-  deps.ui.write(`  ${metrics.files} file${metrics.files === 1 ? '' : 's'} · +${metrics.insertions} −${metrics.deletions}`);
+  deps.ui.write(
+    `  ${metrics.files} file${metrics.files === 1 ? '' : 's'} · +${metrics.insertions} −${metrics.deletions}`,
+  );
   deps.ui.write();
   for (const file of summary.changedFiles) {
-    const stat = file.insertions === 0 && file.deletions === 0 ? '' : `  +${file.insertions} −${file.deletions}`;
+    const stat =
+      file.insertions === 0 && file.deletions === 0
+        ? ''
+        : `  +${file.insertions} −${file.deletions}`;
     deps.ui.write(`  ${changeGlyph(file.status)}  ${file.path}${stat}`);
   }
   deps.ui.write();
@@ -697,7 +729,9 @@ async function handleForkCommand(
 ): Promise<AgentTurnResult | null> {
   const instruction = argv.join(' ').trim();
   if (instruction.length === 0) {
-    deps.ui.warn('Usage: /fork <instruction> — continue the latest run with a new instruction (reusing its cached context).');
+    deps.ui.warn(
+      'Usage: /fork <instruction> — continue the latest run with a new instruction (reusing its cached context).',
+    );
     return null;
   }
   let runId: string;

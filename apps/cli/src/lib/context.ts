@@ -37,6 +37,12 @@ export interface GatewayContext {
   /** Name of the provider the gateway resolves by default. */
   providerName: string;
   /**
+   * Provider serving the `cheap` (fast/low-cost) role — ghost-text + compaction
+   * route here for low latency/cost. Null when no distinct fast model is paired
+   * (single-model configs), in which case those roles fall back to the default.
+   */
+  cheapProviderName: string | null;
+  /**
    * Whether a provider is CONFIGURED (a `providers.yaml` exists — a real
    * provider OR an explicit `type: mock` for offline/tests). When false, no
    * provider is set up and model commands must refuse with setup guidance: the
@@ -64,6 +70,21 @@ export function defaultProviderName(config: ProvidersFileConfig): string {
 }
 
 /**
+ * The provider serving the `cheap` (fast/low-cost) role, if configured and
+ * pointing at a real provider entry; null otherwise. Latency/volume-sensitive
+ * roles (ghost-text, compaction) route here, falling back to the default model
+ * when no distinct fast model is paired.
+ */
+export function cheapProviderName(config: ProvidersFileConfig): string | null {
+  const section: { cheap?: string } = config.providers;
+  const name = section.cheap;
+  if (name === undefined || name.length === 0) {
+    return null;
+  }
+  return providerNames(config).includes(name) ? name : null;
+}
+
+/**
  * Real-provider wiring (OSS-4, M2): a configured `providers.yaml` gets real
  * adapters (anthropic / openai-compatible / vllm / custom / ollama) via the
  * Core factory map and the default fetch transport. The built-in mock stays
@@ -85,6 +106,7 @@ export function loadGatewayContext(repoRoot: string): GatewayContext {
       providers,
       providersPath: filePath,
       providerName: defaultProviderName(providers),
+      cheapProviderName: cheapProviderName(providers),
       configured: true, // a providers.yaml exists (real, or an explicit mock)
     };
   }
@@ -97,6 +119,7 @@ export function loadGatewayContext(repoRoot: string): GatewayContext {
     providers: DEFAULT_PROVIDERS_CONFIG,
     providersPath: null,
     providerName: defaultProviderName(DEFAULT_PROVIDERS_CONFIG),
+    cheapProviderName: null,
     configured: false,
   };
 }

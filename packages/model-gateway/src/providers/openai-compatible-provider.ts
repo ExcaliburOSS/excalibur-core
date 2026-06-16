@@ -136,7 +136,12 @@ export class OpenAICompatibleAdapter extends BaseHttpProvider {
     if (stream) {
       payload['stream_options'] = { include_usage: true };
     }
-    return JSON.stringify(payload);
+    // Merge configured `extraBody` UNDER the core fields: it adds pinned per-
+    // provider knobs (chiefly reasoning-off for the fast/`cheap` role, e.g.
+    // {reasoning_effort:'none'} or {thinking:{type:'disabled'}}) but can never
+    // clobber model/messages/stream/tools.
+    const extra = this.cfg.extraBody;
+    return JSON.stringify(extra !== undefined ? { ...extra, ...payload } : payload);
   }
 
   protected buildChatRequest(input: ChatInput, model: string): TransportRequest {

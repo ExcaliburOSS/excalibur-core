@@ -23,10 +23,15 @@ export interface CatalogPair {
   fast: string;
   /**
    * Human-readable note describing the knob that MUST be applied to the fast
-   * role to keep it low-latency (e.g. disable reasoning). Applied when the
-   * `cheap` role is actually consumed (ghost/compaction wiring).
+   * role to keep it low-latency (e.g. disable reasoning).
    */
   fastLowLatency: string;
+  /**
+   * Request-body params merged into the fast provider's call to disable/minimize
+   * reasoning for low latency (written to the `cheap` provider's `extraBody`).
+   * Absent → the fast model is already non-reasoning and needs no knob.
+   */
+  fastExtraBody?: Record<string, unknown>;
 }
 
 /** How a provider's subscription (vs pay-per-token API) can legitimately be used. */
@@ -108,6 +113,7 @@ export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
       fast: 'gpt-5.4-nano',
       fastLowLatency:
         "reasoning_effort='none' + capped max_output_tokens (nano is a reasoning-family model)",
+      fastExtraBody: { reasoning_effort: 'none' },
     },
     subscription: {
       kind: 'cli-passthrough',
@@ -128,7 +134,8 @@ export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
       good: 'gemini-3.5-flash',
       fast: 'gemini-3.1-flash-lite',
       fastLowLatency:
-        'set thinking level minimal on the fast role (the 3.x line are thinking models)',
+        "reasoning_effort='minimal' (the floor on Gemini 3.x; 'none' is 2.5-only and 400s here)",
+      fastExtraBody: { reasoning_effort: 'minimal' },
     },
     subscription: {
       kind: 'cli-passthrough',
@@ -190,6 +197,7 @@ export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
       fast: 'deepseek-v4-flash',
       fastLowLatency:
         'v4-flash thinking DEFAULTS ON (auto-escalates for agent clients) — MUST send {"thinking":{"type":"disabled"}}',
+      fastExtraBody: { thinking: { type: 'disabled' } },
     },
   },
   {
@@ -202,7 +210,9 @@ export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
     pair: {
       good: 'anthropic/claude-opus-4.8',
       fast: 'google/gemini-3.1-flash-lite',
-      fastLowLatency: "thinking_level='minimal' on Flash Lite; use nitro/exacto routing",
+      fastLowLatency:
+        "reasoning_effort='minimal' (the genuine floor; 'none' doesn't disable on this Gemini-3 model); use nitro/exacto routing",
+      fastExtraBody: { reasoning_effort: 'minimal' },
     },
   },
 ];

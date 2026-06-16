@@ -212,6 +212,40 @@ describe('OpenAICompatibleAdapter', () => {
     expect(sent?.headers['content-type']).toBe('application/json');
   });
 
+  it('merges `extraBody` into the request body (reasoning-off knob for the fast role)', async () => {
+    const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);
+    const adapter = new OpenAICompatibleAdapter({
+      name: 'fast',
+      cfg: openaiCfg({ extraBody: { reasoning_effort: 'none' } }),
+      transport,
+      hooks,
+    });
+    await adapter.chat({ ...input, maxTokens: 24 });
+    const body = JSON.parse(transport.requests[0]?.request.body ?? '{}');
+    expect(body.reasoning_effort).toBe('none'); // the pinned knob is sent
+    expect(body.model).toBe('test-openai-model'); // core fields survive the merge
+    expect(body.max_tokens).toBe(24);
+    expect(Array.isArray(body.messages)).toBe(true);
+  });
+
+  it('never lets `extraBody` clobber core fields (model/messages/stream)', async () => {
+    const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);
+    const adapter = new OpenAICompatibleAdapter({
+      name: 'fast',
+      // A hostile extraBody trying to override core fields must NOT win.
+      cfg: openaiCfg({
+        extraBody: { model: 'evil', stream: true, thinking: { type: 'disabled' } },
+      }),
+      transport,
+      hooks,
+    });
+    await adapter.chat(input);
+    const body = JSON.parse(transport.requests[0]?.request.body ?? '{}');
+    expect(body.model).toBe('test-openai-model'); // core wins
+    expect(body.stream).toBe(false); // chat() is non-streaming
+    expect(body.thinking).toEqual({ type: 'disabled' }); // additive key survives
+  });
+
   it('stream() concatenation equals content, parses [DONE] and the final usage chunk', async () => {
     const transport = new QueueTransport([
       fakeResponse({ body: fixture('openai.stream.sse.txt') }),

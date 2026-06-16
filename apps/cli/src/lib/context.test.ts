@@ -80,6 +80,7 @@ function throwingContext(error: unknown): GatewayContext {
     providers: { providers: { default: 'p', p: { type: 'anthropic' } } } as never,
     providersPath: '/x/.excalibur/models/providers.yaml',
     providerName: 'p',
+    cheapProviderName: null,
     configured: true,
   };
 }
@@ -98,6 +99,7 @@ function midStreamErrorContext(chunks: string[], error: unknown): GatewayContext
     providers: { providers: { default: 'p', p: { type: 'anthropic' } } } as never,
     providersPath: '/x/.excalibur/models/providers.yaml',
     providerName: 'p',
+    cheapProviderName: null,
     configured: true,
   };
 }
@@ -147,6 +149,7 @@ describe('chatWithGuidance error handling', () => {
       providers: {} as never,
       providersPath: '/x/providers.yaml',
       providerName: 'local',
+      cheapProviderName: null,
       configured: true,
     };
     const result = await chatWithGuidance(deps as unknown as CliDeps, context, input);
@@ -161,6 +164,7 @@ describe('chatWithGuidance error handling', () => {
       providers: {} as never,
       providersPath: null,
       providerName: 'mock',
+      cheapProviderName: null,
       configured: false,
     };
     await expect(chatWithGuidance(deps as unknown as CliDeps, context, input)).rejects.toThrow(
@@ -206,9 +210,9 @@ describe('chatWithGuidance error handling', () => {
   it('re-throws non-ProviderError failures', async () => {
     const deps = recordingDeps();
     const context = throwingContext(new Error('boom'));
-    await expect(
-      chatWithGuidance(deps as unknown as CliDeps, context, input),
-    ).rejects.toThrow('boom');
+    await expect(chatWithGuidance(deps as unknown as CliDeps, context, input)).rejects.toThrow(
+      'boom',
+    );
   });
 });
 
@@ -221,11 +225,8 @@ describe('streamWithGuidance', () => {
     const chatOutput = await context.gateway.chat(input);
 
     const chunks: string[] = [];
-    const result = await streamWithGuidance(
-      deps as unknown as CliDeps,
-      context,
-      input,
-      (text) => chunks.push(text),
+    const result = await streamWithGuidance(deps as unknown as CliDeps, context, input, (text) =>
+      chunks.push(text),
     );
     expect(result.streamed).toBe(true);
     expect(result.provider).toBe(context.providerName);

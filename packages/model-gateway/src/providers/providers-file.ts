@@ -38,6 +38,14 @@ export const providerConfigSchema = z.object({
   apiVersion: z.string().min(1).optional(),
   /** OpenAI-compatible `openai-organization` header value. */
   organization: z.string().min(1).optional(),
+  /**
+   * Extra request-body params merged verbatim into the chat-completions call
+   * (openai-compatible adapter). Pins per-provider knobs — chiefly disabling
+   * reasoning on the fast/`cheap` role for low latency (e.g.
+   * `{ reasoning_effort: 'none' }` or `{ thinking: { type: 'disabled' } }`).
+   * Must NEVER hold secrets (the file stores only env var names).
+   */
+  extraBody: z.record(z.unknown()).optional(),
 });
 export type ProviderConfig = z.infer<typeof providerConfigSchema>;
 
