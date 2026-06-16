@@ -1,5 +1,6 @@
 import {
   SessionStore,
+  buildSessionSeed,
   buildStatusLineModel,
   buildTurnSummary,
   changeGlyph,
@@ -14,7 +15,7 @@ import {
 } from '@excalibur/core';
 import { analyzeRepository } from '@excalibur/context-engine';
 import { agentUsesGateway, resolveAgentAdapter } from '@excalibur/agent-runtime';
-import { redactSecrets } from '@excalibur/model-gateway';
+import { redactSecrets, type ChatMessage } from '@excalibur/model-gateway';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { AutonomyLevel, ExcaliburConfig } from '@excalibur/shared';
@@ -306,6 +307,11 @@ export async function runInteractiveSession(
       // still drives dispatch (the user typed it on purpose), but everything
       // PERSISTED to disk is redacted so a pasted key never lands in
       // transcript.jsonl or the history file.
+      // Prior conversation (compacted) for cross-turn memory — captured BEFORE
+      // recording this turn's user message, so it is context only, not the
+      // current prompt. Empty on the first turn → an independent turn as before.
+      const seed = sessionSeed(runtime);
+
       const safeText = redactSecrets(text);
       store.appendPromptHistory(safeText);
       store.appendTurn(session.id, { role: 'user', kind: 'message', text: safeText });
@@ -322,9 +328,9 @@ export async function runInteractiveSession(
       const ctrl = beginTurn();
       try {
         if (runtime.autonomyLevel >= 4) {
-          await dispatchPlan(deps, runtime, text, ctrl.signal);
+          await dispatchPlan(deps, runtime, text, ctrl.signal, seed);
         } else {
-          await dispatchAgentTurn(deps, runtime, text, ctrl.signal);
+          await dispatchAgentTurn(deps, runtime, text, ctrl.signal, seed);
         }
       } catch (error) {
         endTurn();
@@ -532,14 +538,31 @@ function runCompaction(deps: CliDeps, runtime: SessionRuntime, opts: { manual: b
   }
 }
 
+/**
+ * The compacted prior conversation to seed the next turn (cross-turn memory):
+ * the persisted transcript reduced through the latest compaction record. Empty
+ * when there is no prior context. This is the reinjection consumer (the turn
+ * loop already supports `seedMessages`); it also makes a RESUMED session carry
+ * its history, since the seed is rebuilt from the persisted transcript.
+ */
+function sessionSeed(runtime: SessionRuntime): ChatMessage[] {
+  try {
+    const turns = runtime.store.readTranscript(runtime.session.id);
+    return buildSessionSeed(turns, runtime.store.latestCompaction(runtime.session.id));
+  } catch {
+    return []; // context memory is best-effort — never block a turn
+  }
+}
+
 /** Dispatches a direct model-driven turn (the default NL path). */
 async function dispatchAgentTurn(
   deps: CliDeps,
   runtime: SessionRuntime,
   text: string,
   signal: AbortSignal,
+  seed: ChatMessage[],
 ): Promise<void> {
-  const result = await runAgentTurn(agentTurnDeps(deps, runtime, signal), text);
+  const result = await runAgentTurn(agentTurnDeps(deps, runtime, signal), text, seed);
   recordAssistantTurn(deps, runtime, result);
 }
 
@@ -549,8 +572,9 @@ async function dispatchPlan(
   runtime: SessionRuntime,
   text: string,
   signal: AbortSignal,
+  seed: ChatMessage[],
 ): Promise<void> {
-  const plan = await runPlanTurn(agentTurnDeps(deps, runtime, signal), text);
+  const plan = await runPlanTurn(agentTurnDeps(deps, runtime, signal), text, seed);
   runtime.store.appendTurn(runtime.session.id, {
     role: 'assistant',
     kind: 'message',
@@ -577,6 +601,7 @@ async function handlePlanCommand(
     deps.ui.warn('Usage: /plan <task>. Describe what you want planned.');
     return;
   }
+  const seed = sessionSeed(runtime); // prior context, before recording this turn
   const safeText = redactSecrets(task);
   runtime.store.appendPromptHistory(`/plan ${safeText}`);
   runtime.store.appendTurn(runtime.session.id, {
@@ -586,7 +611,7 @@ async function handlePlanCommand(
   });
   const controller = newController();
   try {
-    await dispatchPlan(deps, runtime, task, controller.signal);
+    await dispatchPlan(deps, runtime, task, controller.signal, seed);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     deps.ui.error(reason);

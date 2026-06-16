@@ -348,7 +348,11 @@ function createTurnRun(
  * Runs a single model-driven conversational turn (no plan gate). The role is
  * derived from the autonomy level; the model decides whether to answer or act.
  */
-export async function runAgentTurn(turn: AgentTurnDeps, task: string): Promise<AgentTurnResult> {
+export async function runAgentTurn(
+  turn: AgentTurnDeps,
+  task: string,
+  seedMessages?: ChatMessage[],
+): Promise<AgentTurnResult> {
   const adapter = turn.adapter ?? resolveAgentAdapter(turn.config);
   const runManager = new RunManager(turn.repoRoot);
   const role = roleForAutonomy(turn.autonomyLevel);
@@ -371,6 +375,9 @@ export async function runAgentTurn(turn: AgentTurnDeps, task: string): Promise<A
     prompt: task,
     approvalDefaultYes: approvalDefaultYes(turn.autonomyLevel),
     allowConfirm: role !== 'planner',
+    // Prior conversation (compacted) so the turn has cross-turn memory. Omitted
+    // (no key) → an independent turn, exactly as before.
+    ...(seedMessages !== undefined && seedMessages.length > 0 ? { seedMessages } : {}),
   });
 
   finishRun(turn.deps, runManager, run, result.aborted);
@@ -405,9 +412,15 @@ export interface PlanTurnResult {
  * present the plan and stop, so a piped session never executes a plan blind;
  * we therefore return `gate: 'cancel'` when non-interactive.
  */
-export async function runPlanTurn(turn: AgentTurnDeps, task: string): Promise<PlanTurnResult> {
+export async function runPlanTurn(
+  turn: AgentTurnDeps,
+  task: string,
+  seedMessages?: ChatMessage[],
+): Promise<PlanTurnResult> {
   const adapter = turn.adapter ?? resolveAgentAdapter(turn.config);
   const runManager = new RunManager(turn.repoRoot);
+  const seed: Pick<DriveOptions, 'seedMessages'> =
+    seedMessages !== undefined && seedMessages.length > 0 ? { seedMessages } : {};
 
   // --- 1. Plan pass (planner role, read-only) ------------------------------
   const planRun = createTurnRun(runManager, task, turn.autonomyLevel, turn.providerName, 'plan');
@@ -420,6 +433,7 @@ export async function runPlanTurn(turn: AgentTurnDeps, task: string): Promise<Pl
     prompt: `Produce a concise, numbered implementation plan for the following task. Use read-only tools to ground the plan in the actual repository; do NOT modify anything.\n\nTask: ${task}`,
     approvalDefaultYes: false,
     allowConfirm: false,
+    ...seed,
   });
   finishRun(turn.deps, runManager, planRun, planResult.aborted);
 
@@ -489,6 +503,7 @@ export async function runPlanTurn(turn: AgentTurnDeps, task: string): Promise<Pl
     prompt: `Execute this approved plan for the task. Make the changes using the available tools.\n\nTask: ${task}\n\nApproved plan:\n${planResult.finalText}`,
     approvalDefaultYes: approvalDefaultYes(turn.autonomyLevel),
     allowConfirm: true,
+    ...seed,
   });
   finishRun(turn.deps, runManager, execRun, execResult.aborted);
   emitReceipt(turn, runManager, execRun.id, execResult.model || turn.providerName);

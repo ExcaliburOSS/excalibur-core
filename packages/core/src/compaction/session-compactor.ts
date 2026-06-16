@@ -53,10 +53,19 @@ export function buildSessionSeed(
   if (latestRecord === null) {
     return entries.map((entry) => ({ role: entry.role, content: entry.text }));
   }
-  const anchorIndex =
+  // The verbatim tail starts at the reload anchor — but advance to the first
+  // USER turn so the post-summary conversation is user-first (Anthropic rejects
+  // an assistant-leading turn; openai-compatible is lenient but this is safe for
+  // both). Everything older is represented by the summary.
+  let start =
     latestRecord.firstKeptEntryId === null
       ? entries.length
       : entries.findIndex((entry) => entry.id === latestRecord.firstKeptEntryId);
-  const kept = anchorIndex >= 0 ? entries.slice(anchorIndex) : entries;
-  return reassembleContext(latestRecord, kept);
+  if (start < 0) {
+    start = 0;
+  }
+  while (start < entries.length && entries[start]!.role !== 'user') {
+    start += 1;
+  }
+  return reassembleContext(latestRecord, entries.slice(start));
 }

@@ -4,7 +4,7 @@ import { PassThrough, Writable } from 'node:stream';
 import { afterAll, describe, expect, it } from 'vitest';
 import { NativeAgentAdapter } from '@excalibur/agent-runtime';
 import { DEFAULT_CONFIG, type AutonomyLevel } from '@excalibur/shared';
-import type { ChatInput, ChatOutput, ModelGateway } from '@excalibur/model-gateway';
+import type { ChatInput, ChatMessage, ChatOutput, ModelGateway } from '@excalibur/model-gateway';
 import { Ui } from '../ui';
 import { defaultDeps, type CliDeps } from '../deps';
 import { makeTempRepo, removeDir } from '../test-utils';
@@ -85,11 +85,7 @@ function output(content: string, extra: Partial<ChatOutput> = {}): ChatOutput {
   };
 }
 
-function turnDeps(
-  deps: CliDeps,
-  gateway: ModelGateway,
-  level: AutonomyLevel,
-): AgentTurnDeps {
+function turnDeps(deps: CliDeps, gateway: ModelGateway, level: AutonomyLevel): AgentTurnDeps {
   return {
     deps,
     repoRoot: repo,
@@ -144,6 +140,39 @@ describe('runAgentTurn — the real agentic loop (fake gateway)', () => {
     const events = readFileSync(eventsFile, 'utf8');
     expect(events).toContain('"type":"tool_call"');
     expect(events).toContain('"type":"run_completed"');
+  });
+
+  it('forwards seedMessages (prior conversation) into the model context — cross-turn memory', async () => {
+    const h = makeHarness();
+    const inputs: ChatInput[] = [];
+    const gw = {
+      chat: (input: ChatInput): Promise<ChatOutput> => {
+        inputs.push(input);
+        return Promise.resolve(output('Recalled it.'));
+      },
+    } as unknown as ModelGateway;
+    const seed: ChatMessage[] = [
+      { role: 'user', content: 'EARLIER_USER_MARKER' },
+      { role: 'assistant', content: 'EARLIER_ASSISTANT_MARKER' },
+    ];
+
+    const result = await runAgentTurn(turnDeps(h.deps, gw, 1), 'current question MARKER', seed);
+    expect(result.text).toContain('Recalled it.');
+
+    const sent = inputs[0]!;
+    const idxEarlierUser = sent.messages.findIndex((m) =>
+      m.content.includes('EARLIER_USER_MARKER'),
+    );
+    const idxEarlierAsst = sent.messages.findIndex((m) =>
+      m.content.includes('EARLIER_ASSISTANT_MARKER'),
+    );
+    const idxCurrent = sent.messages.findIndex((m) =>
+      m.content.includes('current question MARKER'),
+    );
+    // Both prior turns are present, in order, BEFORE the current prompt.
+    expect(idxEarlierUser).toBeGreaterThanOrEqual(0);
+    expect(idxEarlierAsst).toBeGreaterThan(idxEarlierUser);
+    expect(idxCurrent).toBeGreaterThan(idxEarlierAsst);
   });
 
   it('inline approval: APPROVING a write tool executes it (file is written)', async () => {
@@ -288,10 +317,7 @@ describe('runPlanTurn — plan-mode (plan → gate → execute)', () => {
       includeUserGlobal: false,
     });
     const gw = fakeGateway([output('1. A plan in a non-interactive context.')]);
-    const result = await runPlanTurn(
-      { ...turnDeps(deps, gw, 3) },
-      'plan in CI',
-    );
+    const result = await runPlanTurn({ ...turnDeps(deps, gw, 3) }, 'plan in CI');
     expect(result.gate).toBe('cancel');
     expect(result.execution).toBeNull();
     expect(out.text()).toContain('not executing');
