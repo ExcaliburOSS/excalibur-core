@@ -658,6 +658,47 @@ async function handlePlanCommand(
 /** Hard iteration cap for `/goal` (anti-runaway; overridable later via config). */
 const GOAL_MAX_ITERATIONS = 6;
 
+/** Goals where a green test/build/lint run is an authoritative "done" signal. */
+const TEST_GOAL_RE =
+  /\b(tests?|build|compiles?|compil\w*|lint|type-?check|typecheck|tipos?|pasan?|pasen|verde|green|ci)\b/i;
+
+/** Whether an objective is about tests/build/lint (→ gate done on a real run). */
+export function isTestyGoal(objective: string): boolean {
+  return TEST_GOAL_RE.test(objective);
+}
+
+/**
+ * A deterministic "tests green" check for the goal loop, built from the repo's
+ * configured test command. Runs it with NO shell (split on whitespace), the
+ * loop's abort signal, and a hard timeout; exit 0 → authoritative DONE. Returns
+ * undefined when no test command is configured (model judge only).
+ */
+export function runConfiguredTestsCheck(
+  repoRoot: string,
+  testCommand: string | undefined,
+  signal: AbortSignal | undefined,
+): (() => Promise<{ passed: boolean; detail: string }>) | undefined {
+  const command = testCommand?.trim();
+  if (command === undefined || command.length === 0) {
+    return undefined;
+  }
+  const [bin, ...args] = command.split(/\s+/);
+  return async () => {
+    try {
+      await execFileAsync(bin ?? '', args, {
+        cwd: repoRoot,
+        ...(signal !== undefined ? { signal } : {}),
+        timeout: 300_000,
+        maxBuffer: 16 * 1024 * 1024,
+      });
+      return { passed: true, detail: `\`${command}\` passed` };
+    } catch (error) {
+      const first = (error instanceof Error ? error.message : String(error)).split('\n')[0] ?? '';
+      return { passed: false, detail: `\`${command}\` failed: ${first.slice(0, 140)}` };
+    }
+  };
+}
+
 /**
  * Runs the autonomous goal loop for an objective and reports + records the
  * outcome (each iteration is a real, gated, replayable agent turn; a cheap-model
@@ -672,11 +713,20 @@ async function executeGoalLoop(
   signal: AbortSignal,
 ): Promise<void> {
   const cheap = loadGatewayContext(runtime.repoRoot).cheapProviderName ?? undefined;
+  // For test/build/lint goals, gate "done" on the real test command (a green run
+  // is authoritative); the cheap-model judge handles everything else.
+  const deterministicCheck = isTestyGoal(objective)
+    ? runConfiguredTestsCheck(runtime.repoRoot, runtime.config.commands?.test, signal)
+    : undefined;
+  if (deterministicCheck !== undefined) {
+    deps.ui.info(`  goal · done-gate: \`${runtime.config.commands?.test ?? ''}\` must pass`);
+  }
   const result = await runGoalLoop(agentTurnDeps(deps, runtime, signal), objective, {
     maxIterations: GOAL_MAX_ITERATIONS,
     signal,
     seed,
     ...(cheap !== undefined ? { evaluatorProvider: cheap } : {}),
+    ...(deterministicCheck !== undefined ? { deterministicCheck } : {}),
     onIteration: (n, verdict) =>
       deps.ui.info(
         `  goal · iteration ${n}/${GOAL_MAX_ITERATIONS}: ${verdict.done ? 'DONE' : 'continue'} — ${verdict.reason}`,
