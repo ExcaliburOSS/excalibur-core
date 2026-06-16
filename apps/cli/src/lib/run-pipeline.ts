@@ -4,6 +4,7 @@ import {
   classifyTaskIntent,
   createExtensionHost,
   executeLocalRun,
+  planAgentAllocation,
   selectWorkflow,
   workflowCatalog,
   type TaskIntent,
@@ -35,8 +36,19 @@ export interface RunTaskOptions {
   level?: AutonomyLevel;
   style?: ExecutionStyle;
   workflow?: string;
+  /** Power-user override of the auto-sized agent count (`--agents`). */
+  agents?: number;
+  /** Hard ceiling on the agent count (`--max-agents`). */
+  maxAgents?: number;
   yes?: boolean;
   sync?: boolean;
+}
+
+/** Distinct path-like mentions in a task — a rough pre-plan "affected modules" proxy. */
+const TASK_PATH_PATTERN = /[\w.-]+(?:\/[\w.-]+)+/g;
+function estimateAffectedUnits(task: string): number {
+  const mentions = new Set(task.match(TASK_PATH_PATTERN) ?? []);
+  return Math.max(1, mentions.size);
 }
 
 interface RunChoice {
@@ -234,6 +246,22 @@ export async function runTask(
     deps.ui.write(`Autonomy: ${AUTONOMY_LEVEL_LABELS[choice.autonomyLevel]}`);
     deps.ui.write(safetyLine(config));
     deps.ui.info(`Reason: ${choice.reason}`);
+
+    // Swarm sizing (pre-plan estimate). The developer never picks the count;
+    // the allocator does, explainably. Shown only when it sizes to >1 — and
+    // honestly: the parallel fan-out itself executes in a later milestone, so
+    // this run still uses a single agent.
+    const allocation = planAgentAllocation({
+      taskType: intent.taskType,
+      sensitive: intent.sensitive,
+      affectedUnits: estimateAffectedUnits(task),
+      ...(options.agents !== undefined ? { requested: options.agents } : {}),
+      ...(options.maxAgents !== undefined ? { maxAgents: options.maxAgents } : {}),
+    });
+    if (allocation.agentCount > 1) {
+      deps.ui.write(pc.dim(`Swarm: ${allocation.reason}`));
+      deps.ui.write(pc.dim('  (parallel fan-out is coming; this run uses one agent for now)'));
+    }
     if (intent.sensitive) {
       deps.ui.warn(`Sensitive areas: ${intent.sensitiveAreas.join(', ')}`);
     }

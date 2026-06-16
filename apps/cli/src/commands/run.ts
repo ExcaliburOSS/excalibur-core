@@ -26,8 +26,22 @@ interface RunOptions {
   workflow?: string;
   output?: string;
   outputFormat?: string;
+  agents?: string;
+  maxAgents?: string;
   yes?: boolean;
   sync?: boolean;
+}
+
+/** Parses a positive-integer agent count flag (`--agents` / `--max-agents`). */
+function parseAgentCount(value: string | undefined, flag: string): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 1 || String(parsed) !== value.trim()) {
+    throw new CliUsageError(`${flag} must be a positive integer (got "${value}").`);
+  }
+  return parsed;
 }
 
 function parseLevel(value: string | undefined): AutonomyLevel | undefined {
@@ -83,6 +97,8 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
     .option('--structured', 'structured execution style (structured-feature)')
     .option('--explore', 'explore engineering alternatives')
     .option('--workflow <id>', 'use an explicit workflow id')
+    .option('--agents <n>', 'override the auto-sized agent count (power user; default: auto)')
+    .option('--max-agents <n>', 'hard ceiling on the agent count')
     .option(
       '--output <type>',
       'desired output type (branch|pull_request|patch|review|plan|alternatives)',
@@ -103,11 +119,15 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
       parseOutput(options.output);
       const explicitStyle = styleFromFlags(options);
       const outputFormat: RunOutputFormat = parseOutputFormat(options.outputFormat) ?? 'text';
+      const agents = parseAgentCount(options.agents, '--agents');
+      const maxAgents = parseAgentCount(options.maxAgents, '--max-agents');
 
       const taskOptions: RunTaskOptions = {
         ...(explicitLevel !== undefined ? { level: explicitLevel } : {}),
         ...(explicitStyle !== undefined ? { style: explicitStyle } : {}),
         ...(options.workflow !== undefined ? { workflow: options.workflow } : {}),
+        ...(agents !== undefined ? { agents } : {}),
+        ...(maxAgents !== undefined ? { maxAgents } : {}),
         ...(options.yes === true ? { yes: true } : {}),
         ...(options.sync === true ? { sync: true } : {}),
       };
