@@ -1,3 +1,4 @@
+import { RunManager } from '@excalibur/core';
 import {
   isAutonomyLevel,
   type AutonomyLevel,
@@ -9,6 +10,12 @@ import type { Command } from 'commander';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
 import { runTask, type RunTaskOptions } from '../lib/run-pipeline';
+import {
+  emitRunOutput,
+  parseOutputFormat,
+  quietDepsForMachineOutput,
+  type RunOutputFormat,
+} from '../lib/run-output';
 
 interface RunOptions {
   level?: string;
@@ -18,6 +25,7 @@ interface RunOptions {
   explore?: boolean;
   workflow?: string;
   output?: string;
+  outputFormat?: string;
   yes?: boolean;
   sync?: boolean;
 }
@@ -75,7 +83,14 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
     .option('--structured', 'structured execution style (structured-feature)')
     .option('--explore', 'explore engineering alternatives')
     .option('--workflow <id>', 'use an explicit workflow id')
-    .option('--output <type>', 'desired output type (branch|pull_request|patch|review|plan|alternatives)')
+    .option(
+      '--output <type>',
+      'desired output type (branch|pull_request|patch|review|plan|alternatives)',
+    )
+    .option(
+      '--output-format <text|json|stream-json>',
+      'output format for CI/scripts: text (default), json (full run as one JSON doc), stream-json (one event per line)',
+    )
     .option('--sync', 'push the finished run to Excalibur Enterprise (experimental)')
     .option('-y, --yes', 'skip prompts and accept safe defaults')
     .action(async (taskWords: string[], options: RunOptions) => {
@@ -87,6 +102,7 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
       const explicitLevel = parseLevel(options.level);
       parseOutput(options.output);
       const explicitStyle = styleFromFlags(options);
+      const outputFormat: RunOutputFormat = parseOutputFormat(options.outputFormat) ?? 'text';
 
       const taskOptions: RunTaskOptions = {
         ...(explicitLevel !== undefined ? { level: explicitLevel } : {}),
@@ -96,6 +112,23 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
         ...(options.sync === true ? { sync: true } : {}),
       };
 
-      await runTask(deps, task, taskOptions);
+      // `text` is unchanged: the run streams human output through deps.ui.
+      if (outputFormat === 'text') {
+        await runTask(deps, task, taskOptions);
+        return;
+      }
+
+      // Machine-readable formats (json / stream-json) are PROJECTIONS of the
+      // same run: execute it with a quiet Ui so the human chatter never
+      // corrupts the JSON a consumer is parsing, then emit the persisted event
+      // stream (events.jsonl) in the requested shape through the real stdout.
+      const record = await runTask(quietDepsForMachineOutput(deps), task, taskOptions);
+      if (record === null) {
+        // The run was cancelled or diverted to Discovery — no run, no events.
+        return;
+      }
+      const runManager = new RunManager(deps.cwd());
+      const events = runManager.readEvents(record.id);
+      emitRunOutput(deps.ui, outputFormat, { run: record, events });
     });
 }
