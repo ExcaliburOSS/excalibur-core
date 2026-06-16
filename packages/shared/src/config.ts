@@ -127,6 +127,24 @@ export const mcpSectionSchema = z.object({
   servers: z.record(mcpServerConfigSchema).optional(),
 });
 
+/**
+ * `sandbox:` — run agent shell commands inside an ephemeral Docker container
+ * (OSS spec §18, M3). Off by default. When `enabled`, `run_command` executes in
+ * an isolated container (only the repo mounted, no host secrets/network) instead
+ * of on the host. `image` must carry the repo's toolchain (default Alpine has no
+ * node/pnpm), so this is an advanced opt-in.
+ */
+export const sandboxConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  /** Container image (must have `sh` + the repo's toolchain). */
+  image: z.string().min(1).optional(),
+  memoryMb: z.number().int().positive().optional(),
+  cpus: z.number().positive().optional(),
+  /** Allow network inside the sandbox (default false). */
+  network: z.boolean().optional(),
+});
+export type SandboxConfig = z.infer<typeof sandboxConfigSchema>;
+
 const instructionSourceRefSchema = z.object({
   path: z.string().min(1),
   format: instructionSourceFormatSchema.optional(),
@@ -163,6 +181,7 @@ const baseExcaliburConfigSchema = z.object({
   agents: agentsSectionSchema.optional(),
   compaction: compactionConfigSchema.optional(),
   mcp: mcpSectionSchema.optional(),
+  sandbox: sandboxConfigSchema.optional(),
   instructions: z.object({ sources: z.array(instructionSourceRefSchema).optional() }).optional(),
   skills: z.object({ sources: z.array(skillSourceRefSchema).optional() }).optional(),
 });

@@ -17,6 +17,7 @@ import { redactSecrets } from '@excalibur/model-gateway';
 import type { ExcaliburConfig } from '@excalibur/shared';
 import { getNativeTool, type NativeToolName } from './native-tools';
 import type { PermissionEngine } from '../permissions/permission-engine';
+import { runInDockerSandbox, type SandboxLimits } from '../sandbox/docker-sandbox';
 
 /**
  * Real native-tool executors (OSS-7, M2) — the security-critical core of the
@@ -460,9 +461,23 @@ async function execRunCommand(
     }
     cwd = confined.abs;
   }
-  // The command is gated by the allowlist/confirm path before reaching here, so
-  // it runs through the shell as-is. We pin a minimal env (PATH+HOME only) so a
-  // command cannot read arbitrary secrets out of the inherited environment.
+  // Sandbox (M3): when configured, the command runs inside an ephemeral Docker
+  // container (only the repo mounted, no host secrets/network) — a second line of
+  // defense beyond the allowlist/confirm gate.
+  const sandbox = ctx.config.sandbox;
+  if (sandbox?.enabled === true) {
+    const limits: SandboxLimits = {
+      ...(sandbox.image !== undefined ? { image: sandbox.image } : {}),
+      ...(sandbox.memoryMb !== undefined ? { memoryMb: sandbox.memoryMb } : {}),
+      ...(sandbox.cpus !== undefined ? { cpus: sandbox.cpus } : {}),
+      ...(sandbox.network !== undefined ? { allowNetwork: sandbox.network } : {}),
+    };
+    const sb = runInDockerSandbox(cwd, command, limits);
+    return formatCommandResult(command, sb.exitCode, `${sb.stdout}${sb.stderr}`.trim(), sb.timedOut);
+  }
+  // Host execution: the command is gated by the allowlist/confirm path before
+  // reaching here, so it runs through the shell as-is. We pin a minimal env
+  // (PATH+HOME only) so a command cannot read arbitrary secrets out of the env.
   const { code, output, timedOut } = await runProcess(command, [], {
     cwd,
     ...(ctx.env !== undefined ? { env: ctx.env } : {}),
