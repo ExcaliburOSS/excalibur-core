@@ -7,6 +7,8 @@
  */
 export { reduceRail, type ReduceRailOptions } from './rail-reducer.js';
 export { renderRail, type RenderRailOptions } from './rail-render.js';
+export { detectColorTier, paint, stripAnsi, type ColorTier } from './color.js';
+export { detectThemeSync, type ThemeMode } from './theme.js';
 export type {
   ApprovalPrompt,
   Phase,

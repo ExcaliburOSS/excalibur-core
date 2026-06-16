@@ -18,7 +18,7 @@ import {
   type RunRecord,
 } from '@excalibur/shared';
 import type { WorkflowDefinition } from '@excalibur/workflow-schema';
-import { reduceRail, renderRail } from '@excalibur/tui';
+import { detectColorTier, detectThemeSync, reduceRail, renderRail } from '@excalibur/tui';
 import pc from 'picocolors';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
@@ -367,7 +367,14 @@ export async function runTask(
     model: gatewayContext.providerName,
     push: options.sync === true,
   });
-  for (const line of renderRail(rail)) {
+  // Paint the rail with the terminal's real colour capability (truecolor → 256
+  // → 16 → none) and detected light/dark background; on a piped/CI stdout this
+  // degrades to the plain text form automatically.
+  const railLines = renderRail(rail, {
+    tier: detectColorTier(),
+    mode: detectThemeSync() ?? 'dark',
+  });
+  for (const line of railLines) {
     deps.ui.write(line);
   }
 

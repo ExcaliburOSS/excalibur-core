@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { stripAnsi } from './color.js';
 import { renderRail } from './rail-render.js';
 import type { RailModel } from './rail-types.js';
 
@@ -70,5 +71,23 @@ describe('renderRail', () => {
     const text = lines.join('\n');
     expect(text).toContain('Apply edit to charge.ts?');
     expect(text).toContain('[y/N/always]');
+  });
+
+  it('the coloured form embeds ANSI and strips back to the plain form byte-identically', () => {
+    const m = model({ approval: { question: 'Apply?', options: '[y/N]' } });
+    const plain = renderRail(m);
+    const truecolor = renderRail(m, { tier: 'truecolor' });
+    const ansi256 = renderRail(m, { tier: 'ansi256', mode: 'light' });
+    // Colour is actually applied (escape sequences present)…
+    expect(truecolor.join('\n')).toContain('\x1b[38;2;');
+    expect(ansi256.join('\n')).toContain('\x1b[38;5;');
+    // …and removing it reproduces the plain render exactly (live=scrub=replay).
+    expect(truecolor.map(stripAnsi)).toEqual(plain);
+    expect(ansi256.map(stripAnsi)).toEqual(plain);
+  });
+
+  it('tier none is byte-identical to omitting the option', () => {
+    const m = model();
+    expect(renderRail(m, { tier: 'none' })).toEqual(renderRail(m));
   });
 });
