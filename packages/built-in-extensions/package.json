@@ -24,6 +24,7 @@
   "dependencies": {
     "@excalibur/declarative-schemas": "workspace:*",
     "@excalibur/extension-runtime": "workspace:*",
+    "@excalibur/model-gateway": "workspace:*",
     "@excalibur/shared": "workspace:*",
     "@excalibur/workflow-schema": "workspace:*",
     "yaml": "^2.6.0",

@@ -132,6 +132,9 @@ importers:
       '@excalibur/extension-runtime':
         specifier: workspace:*
         version: link:../extension-runtime
+      '@excalibur/model-gateway':
+        specifier: workspace:*
+        version: link:../model-gateway
       '@excalibur/shared':
         specifier: workspace:*
         version: link:../shared

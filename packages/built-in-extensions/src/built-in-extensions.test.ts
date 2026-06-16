@@ -28,9 +28,11 @@ import {
   CORE_METHODOLOGIES_PACK,
   CORE_POLICIES_PACK,
   CORE_PROMPTS_PACK,
+  CORE_PROVIDERS_PACK,
   CORE_REPORTS_PACK,
   CORE_WORKFLOWS_PACK,
   DISCOVERY_PACK,
+  coreProviderFactories,
   getBuiltInExtension,
 } from './index';
 
@@ -56,7 +58,7 @@ function contributionsOf(packId: string, kind?: string): Contribution[] {
 }
 
 describe('BUILT_IN_EXTENSIONS catalog', () => {
-  it('exposes exactly the seven contracted packs, in registration order', () => {
+  it('exposes exactly the contracted packs, in registration order', () => {
     expect(BUILT_IN_EXTENSIONS.map((pack) => pack.manifest.id)).toEqual([
       'core-methodologies',
       'core-workflows',
@@ -65,6 +67,7 @@ describe('BUILT_IN_EXTENSIONS catalog', () => {
       'core-policies',
       'core-reports',
       'core-command-mappings',
+      'core-providers',
     ]);
   });
 
@@ -86,17 +89,25 @@ describe('BUILT_IN_EXTENSIONS catalog', () => {
     }
   });
 
-  it('validates every contribution against its declarative schema', () => {
+  it('validates every contribution: declarative kinds against their schema, programmatic kinds carry a runtime value', () => {
     for (const pack of BUILT_IN_EXTENSIONS) {
       expect(pack.contributions.length).toBeGreaterThan(0);
       for (const contribution of pack.contributions) {
         const schema = SCHEMAS_BY_KIND[contribution.kind];
-        expect(schema, `no declarative schema for kind ${contribution.kind}`).toBeDefined();
-        const result = schema?.safeParse(contribution.definition);
+        if (schema === undefined) {
+          // Programmatic contribution (e.g. model_provider): no declarative
+          // schema — it carries a runtime `value`, not a parsed `definition`.
+          expect(
+            contribution.value !== undefined,
+            `${pack.manifest.id}/${contribution.kind}/${contribution.id}: programmatic contribution must carry a value`,
+          ).toBe(true);
+          continue;
+        }
+        const result = schema.safeParse(contribution.definition);
         expect(
-          result?.success,
+          result.success,
           `${pack.manifest.id}/${contribution.kind}/${contribution.id}: ${
-            result && !result.success ? JSON.stringify(result.error.issues) : ''
+            result.success ? '' : JSON.stringify(result.error.issues)
           }`,
         ).toBe(true);
       }
@@ -198,6 +209,33 @@ describe('CORE pack constants', () => {
     expect(BUILT_IN_EXTENSIONS).toContain(CORE_POLICIES_PACK);
     expect(BUILT_IN_EXTENSIONS).toContain(CORE_REPORTS_PACK);
     expect(BUILT_IN_EXTENSIONS).toContain(CORE_COMMAND_MAPPINGS_PACK);
+    expect(BUILT_IN_EXTENSIONS).toContain(CORE_PROVIDERS_PACK);
+  });
+});
+
+describe('core-providers (EXT-6 model providers)', () => {
+  it('contributes a model_provider for each provider type, carrying the factory as its value', () => {
+    const contributions = contributionsOf('core-providers');
+    expect(contributions.length).toBeGreaterThan(0);
+    for (const contribution of contributions) {
+      expect(contribution.kind).toBe('model_provider');
+      expect(typeof contribution.value).toBe('function'); // the runtime factory
+      expect(contribution.definition).toBeUndefined();
+    }
+    // Covers the real provider types the gateway can construct.
+    const ids = contributions.map((c) => c.id);
+    for (const type of ['openai-compatible', 'anthropic', 'ollama']) {
+      expect(ids).toContain(type);
+    }
+  });
+
+  it('coreProviderFactories() rebuilds the gateway factory map from those contributions', () => {
+    const factories = coreProviderFactories();
+    const ids = contributionsOf('core-providers').map((c) => c.id);
+    expect(Object.keys(factories).sort()).toEqual([...ids].sort());
+    for (const type of Object.keys(factories)) {
+      expect(typeof factories[type as keyof typeof factories]).toBe('function');
+    }
   });
 });
 

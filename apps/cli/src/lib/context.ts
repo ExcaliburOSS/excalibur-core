@@ -12,8 +12,8 @@ import {
   type LoadedExcaliburConfig,
 } from '@excalibur/core';
 import { searchRepoCode } from '@excalibur/context-engine';
+import { coreProviderFactories } from '@excalibur/built-in-extensions';
 import {
-  CORE_PROVIDER_FACTORIES,
   DEFAULT_PROVIDERS_CONFIG,
   ModelGateway,
   RESERVED_PROVIDER_KEYS,
@@ -91,7 +91,10 @@ export function cheapProviderName(config: ProvidersFileConfig): string | null {
  * the zero-config default, and a real provider that fails to construct (e.g. a
  * missing key) falls back to mock through `chatWithGuidance`.
  */
-const GATEWAY_DEPS: ModelGatewayDeps = { factories: CORE_PROVIDER_FACTORIES };
+// Providers are sourced from the EXT-6 `core-providers` built-in pack's
+// model_provider contributions (synchronous — the pack is a static const), so
+// the gateway gets its real adapters through the extension representation.
+const GATEWAY_DEPS: ModelGatewayDeps = { factories: coreProviderFactories() };
 
 /**
  * Loads the model gateway for a repository: `providers.yaml` when present,

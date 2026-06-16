@@ -16,6 +16,7 @@ import { CORE_PROMPTS_PACK } from './core-prompts';
 import { CORE_POLICIES_PACK } from './core-policies';
 import { CORE_REPORTS_PACK } from './core-reports';
 import { CORE_COMMAND_MAPPINGS_PACK } from './core-command-mappings';
+import { CORE_PROVIDERS_PACK } from './core-providers';
 
 export { BUILT_IN_EXTENSION_VERSION, builtInContribution, type BuiltInExtensionPack } from './types';
 export { CORE_METHODOLOGIES_PACK } from './core-methodologies';
@@ -37,6 +38,7 @@ export {
 } from './core-policies';
 export { CORE_REPORTS_PACK, DAILY_SUMMARY_REPORT, WEEKLY_PLAN_REPORT } from './core-reports';
 export { CORE_COMMAND_MAPPINGS_PACK, WORK_ITEM_COMMAND_MAPPING } from './core-command-mappings';
+export { CORE_PROVIDERS_PACK, coreProviderFactories } from './core-providers';
 
 /**
  * All built-in extension packs, in registration order. Pinned API
@@ -51,6 +53,7 @@ export const BUILT_IN_EXTENSIONS: ReadonlyArray<BuiltInExtensionPack> = [
   CORE_POLICIES_PACK,
   CORE_REPORTS_PACK,
   CORE_COMMAND_MAPPINGS_PACK,
+  CORE_PROVIDERS_PACK,
 ];
 
 /** Look up a built-in pack by its manifest id. */
