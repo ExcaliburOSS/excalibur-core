@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { GitOperationError } from '../errors';
 
 /**
@@ -135,6 +137,15 @@ export function hasCommits(repoRoot: string): boolean {
 }
 
 /**
+ * Stages everything (`git add -A`) WITHOUT committing, so a subsequent
+ * `git diff HEAD` ({@link getLocalDiff}) includes newly-created files (which an
+ * unstaged `git diff` omits). Best-effort: returns whether staging succeeded.
+ */
+export function stageAll(repoRoot: string): boolean {
+  return tryGit(repoRoot, ['add', '-A']) !== null;
+}
+
+/**
  * Creates a new git worktree at `worktreePath` on a NEW branch `branch`, based
  * at `baseRef` (defaults to HEAD). Used by the time-machine fork to reconstruct
  * a run's state in an isolated tree without touching the user's working copy.
@@ -180,6 +191,35 @@ export function removeWorktree(
   // Prune stale admin entries regardless (e.g. if the dir was already gone).
   tryGit(repoRoot, ['worktree', 'prune']);
   return removed;
+}
+
+/**
+ * Adds a pattern to `.git/info/exclude` (the local, uncommitted ignore list) so
+ * worktree dirs never pollute the user's `git status` / `git add`, regardless of
+ * whether `.excalibur/` is gitignored. Best-effort: skips silently when `.git`
+ * is absent or unreadable. Idempotent (never duplicates the pattern).
+ */
+export function excludePathFromGit(repoRoot: string, pattern: string): void {
+  try {
+    const gitDir = join(repoRoot, '.git');
+    if (!existsSync(gitDir)) {
+      return;
+    }
+    const excludePath = join(gitDir, 'info', 'exclude');
+    let current = '';
+    try {
+      current = readFileSync(excludePath, 'utf8');
+    } catch {
+      current = '';
+    }
+    if (current.split('\n').some((line) => line.trim() === pattern)) {
+      return;
+    }
+    const prefix = current.length === 0 || current.endsWith('\n') ? '' : '\n';
+    appendFileSync(excludePath, `${prefix}${pattern}\n`);
+  } catch {
+    /* best-effort — never fail over the ignore list */
+  }
 }
 
 /** Ensures a unified diff ends with exactly one trailing newline (git apply requires it). */

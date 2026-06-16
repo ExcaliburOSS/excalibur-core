@@ -52,13 +52,23 @@ export {
   type TaskType,
 } from './onboarding/onboarding';
 
-// Automatic swarm sizing (deterministic allocator; fan-out execution is M3)
+// Automatic swarm sizing (deterministic allocator) + real fan-out/fan-in execution (M3)
 export {
   planAgentAllocation,
   type AgentAllocation,
   type AgentAllocationInput,
   type Subtask,
 } from './swarm/agent-allocation';
+export {
+  runSwarm,
+  type RunSwarmOptions,
+  type SwarmConflict,
+  type SwarmLane,
+  type SwarmLaneContext,
+  type SwarmLaneResult,
+  type SwarmLaneRunner,
+  type SwarmResult,
+} from './swarm/run-swarm';
 
 // Runs
 export { RunManager, type CreateRunInput, type ModelCallLine } from './runs/run-manager';
@@ -150,7 +160,9 @@ export {
   createBranch,
   getGitIdentity,
   getGitInfo,
+  excludePathFromGit,
   getLocalDiff,
+  stageAll,
   hasCommits,
   listRecentCommits,
   removeWorktree,
