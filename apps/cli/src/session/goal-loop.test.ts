@@ -122,4 +122,82 @@ describe('runGoalLoop', () => {
     expect(result.status).toBe('aborted');
     expect(result.iterations).toBe(0);
   });
+
+  it('treats a passing deterministic check as authoritative done in one iteration', async () => {
+    let modelJudgeCalls = 0;
+    const result = await runGoalLoop(turn(fakeGateway('did the work')), 'g', {
+      maxIterations: 6,
+      deterministicCheck: () => Promise.resolve({ passed: true, detail: 'tests green (12/12)' }),
+      // The model judge must NOT run when the deterministic check passes.
+      evaluate: () => {
+        modelJudgeCalls += 1;
+        return Promise.resolve({ done: false, reason: 'should be ignored' });
+      },
+    });
+    expect(result.status).toBe('done');
+    expect(result.iterations).toBe(1);
+    expect(result.lastReason).toBe('tests green (12/12)');
+    expect(modelJudgeCalls).toBe(0);
+  });
+
+  it('continues on a failing deterministic check then ends when it passes', async () => {
+    const checks = [
+      { passed: false, detail: '2 tests failing' },
+      { passed: true, detail: 'all tests pass' },
+    ];
+    let i = 0;
+    const seen: GoalVerdict[] = [];
+    const result = await runGoalLoop(turn(fakeGateway('iterating')), 'g', {
+      maxIterations: 6,
+      deterministicCheck: () => Promise.resolve(checks[i++]!),
+      onIteration: (_iteration, verdict) => seen.push(verdict),
+    });
+    expect(result.status).toBe('done');
+    expect(result.iterations).toBe(2);
+    expect(result.lastReason).toBe('all tests pass');
+    // First iteration reports the deterministic failure detail (not the model).
+    expect(seen[0]).toEqual({ done: false, reason: '2 tests failing' });
+    expect(seen[1]).toEqual({ done: true, reason: 'all tests pass' });
+  });
+
+  it("lets the failing deterministic detail override the model judge's verdict", async () => {
+    const checks = [
+      { passed: false, detail: 'lint errors remain' },
+      { passed: true, detail: 'clean' },
+    ];
+    let i = 0;
+    const result = await runGoalLoop(turn(fakeGateway('x')), 'g', {
+      maxIterations: 6,
+      deterministicCheck: () => Promise.resolve(checks[i++]!),
+      // Model says done, but the failing deterministic check must win.
+      evaluate: () => Promise.resolve({ done: true, reason: 'model thinks done' }),
+    });
+    expect(result.status).toBe('done');
+    expect(result.iterations).toBe(2);
+    expect(result.lastReason).toBe('clean');
+  });
+
+  it('reports evaluator-failed when the deterministic check throws', async () => {
+    const result = await runGoalLoop(turn(fakeGateway('x')), 'g', {
+      maxIterations: 5,
+      deterministicCheck: () => Promise.reject(new Error('runner crashed')),
+    });
+    expect(result.status).toBe('evaluator-failed');
+    expect(result.iterations).toBe(1);
+  });
+
+  it('uses the model judge only when no deterministic check is given', async () => {
+    const verdicts: GoalVerdict[] = [
+      { done: false, reason: 'keep going' },
+      { done: true, reason: 'model done' },
+    ];
+    let i = 0;
+    const result = await runGoalLoop(turn(fakeGateway('working')), 'g', {
+      maxIterations: 6,
+      evaluate: () => Promise.resolve(verdicts[i++]!),
+    });
+    expect(result.status).toBe('done');
+    expect(result.iterations).toBe(2);
+    expect(result.lastReason).toBe('model done');
+  });
 });

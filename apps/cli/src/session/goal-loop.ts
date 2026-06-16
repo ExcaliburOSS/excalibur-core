@@ -16,6 +16,18 @@ export interface GoalVerdict {
   reason: string;
 }
 
+/**
+ * Result of a {@link GoalLoopOptions.deterministicCheck} — an objective,
+ * ground-truth signal (e.g. "tests are green") that does not depend on a model's
+ * judgement.
+ */
+export interface DeterministicCheckResult {
+  /** `true` iff the goal's objective acceptance criterion is met. */
+  passed: boolean;
+  /** Human-readable detail: the proof when passed, or what failed otherwise. */
+  detail: string;
+}
+
 export type GoalLoopStatus = 'done' | 'max-iterations' | 'aborted' | 'evaluator-failed';
 
 export interface GoalLoopResult {
@@ -36,6 +48,14 @@ export interface GoalLoopOptions {
   evaluatorProvider?: string;
   /** Evaluator override (tests inject a deterministic judge). */
   evaluate?: (goal: string, latest: string) => Promise<GoalVerdict>;
+  /**
+   * Optional objective acceptance check run after each agent turn (e.g. "the
+   * project's tests pass"). When supplied it is AUTHORITATIVE: a `passed` result
+   * ends the loop as `done` immediately — no model judge is consulted — and a
+   * failing result's `detail` drives the next iteration's reviewer feedback. When
+   * omitted, the loop falls back to the model-judge path unchanged.
+   */
+  deterministicCheck?: () => Promise<DeterministicCheckResult>;
   /** Progress callback after each iteration's verdict. */
   onIteration?: (iteration: number, verdict: GoalVerdict) => void;
 }
@@ -97,6 +117,12 @@ async function evaluateWithModel(
  * reviewer's feedback until `done`, the `maxIterations` cap, an abort, or an
  * evaluator failure. The repository (and prior iterations' edits) are the carried
  * state across iterations; the feedback steers the next pass.
+ *
+ * When {@link GoalLoopOptions.deterministicCheck} is supplied it takes precedence
+ * over the model judge: a `passed` check short-circuits to `done` (its `detail`
+ * becomes the reason and no model is called), while a failing check drives the
+ * next iteration's feedback with its `detail`. Without it, behavior is the
+ * model-judge path unchanged.
  */
 export async function runGoalLoop(
   turn: AgentTurnDeps,
@@ -134,6 +160,36 @@ export async function runGoalLoop(
       };
     }
 
+    // Authoritative objective check (if any): a pass is ground-truth DONE and
+    // short-circuits the model judge; a failure both supersedes the next prompt's
+    // feedback and is reported via `onIteration` without ending the loop.
+    let deterministic: DeterministicCheckResult | undefined;
+    if (options.deterministicCheck !== undefined) {
+      try {
+        deterministic = await options.deterministicCheck();
+      } catch {
+        return {
+          status: 'evaluator-failed',
+          iterations: iteration,
+          results,
+          finalText: result.text,
+          lastReason,
+        };
+      }
+      if (deterministic.passed) {
+        lastReason = deterministic.detail;
+        const verdict: GoalVerdict = { done: true, reason: deterministic.detail };
+        options.onIteration?.(iteration, verdict);
+        return {
+          status: 'done',
+          iterations: iteration,
+          results,
+          finalText: result.text,
+          lastReason,
+        };
+      }
+    }
+
     let verdict: GoalVerdict;
     try {
       verdict =
@@ -154,6 +210,12 @@ export async function runGoalLoop(
         finalText: result.text,
         lastReason,
       };
+    }
+
+    // A failing deterministic check overrides any model "done": ground truth says
+    // the goal is NOT met, and its detail drives the next iteration's feedback.
+    if (deterministic !== undefined) {
+      verdict = { done: false, reason: deterministic.detail };
     }
 
     lastReason = verdict.reason;
