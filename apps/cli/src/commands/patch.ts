@@ -1,9 +1,8 @@
-import { PatchStore } from '@excalibur/core';
 import type { Command } from 'commander';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
 import { generatePatch } from '../lib/interactions';
-import { appendPatchEvent } from '../lib/patches';
+import { applyStoredPatch } from '../lib/patches';
 
 /**
  * `excalibur patch "<task>"` — Level 2 patch proposal (COMMAND_DEFAULTS:
@@ -24,18 +23,17 @@ export function registerPatchCommand(program: Command, deps: CliDeps): void {
 
       const patch = await generatePatch(deps, task);
 
-      const apply = await deps.ui.confirm('Apply patch?', {
+      const apply = await deps.ui.confirm('Apply patch to your working tree?', {
         yes: options.yes,
         defaultYes: false,
       });
       if (apply) {
-        appendPatchEvent(patch, 'patch_applied', { simulated: true, patchId: patch.id });
-        new PatchStore(deps.cwd()).update(patch.id, {
-          status: 'applied',
-          completedAt: new Date().toISOString(),
-        });
+        // Real `git apply` (M2) — the same path as `excalibur apply`.
+        const { filesAffected } = applyStoredPatch(deps, patch);
         deps.ui.success(
-          `Patch ${patch.id} marked as applied (simulated — M1 never modifies your files).`,
+          `Applied patch ${patch.id} to your working tree (${
+            filesAffected.length > 0 ? filesAffected.join(', ') : 'no files detected'
+          }).`,
         );
       } else {
         deps.ui.info(
