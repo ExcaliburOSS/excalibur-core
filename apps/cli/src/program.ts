@@ -25,6 +25,7 @@ import { registerReviewCommand } from './commands/review';
 import { registerRunCommand } from './commands/run';
 import { registerSkillsCommand } from './commands/skills';
 import { registerStatusCommand } from './commands/status';
+import { registerUpdateCommand } from './commands/update';
 import { registerWeeklyPlanCommand } from './commands/weekly-plan';
 import { registerWorkflowsCommand } from './commands/workflows';
 
@@ -77,6 +78,7 @@ export function buildProgram(overrides: Partial<CliDeps> = {}): Command {
   registerExtensionsCommand(program, deps);
   registerInstructionsCommand(program, deps);
   registerSkillsCommand(program, deps);
+  registerUpdateCommand(program, deps);
 
   return program;
 }
