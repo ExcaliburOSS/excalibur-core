@@ -51,6 +51,7 @@ export function planCompaction(
   transcript: SessionTranscript,
   config: CompactionConfig,
   contextWindow: number,
+  force = false,
 ): CompactionPlan {
   const { entries } = transcript;
   const tokensBefore = transcript.totalTokens;
@@ -61,11 +62,15 @@ export function planCompaction(
     kept: [...entries],
     tokensBefore,
   });
-  if (!config.enabled) {
-    return keepAll();
-  }
-  if (tokensBefore <= usableBudget({ contextWindow, reserveTokens: config.reserveTokens })) {
-    return keepAll();
+  // `force` (manual /compact) bypasses the enabled + budget gates and compacts
+  // whatever is older than the recent tail now; otherwise honor both.
+  if (!force) {
+    if (!config.enabled) {
+      return keepAll();
+    }
+    if (tokensBefore <= usableBudget({ contextWindow, reserveTokens: config.reserveTokens })) {
+      return keepAll();
+    }
   }
 
   const cut = recentCutIndex(entries, config.keepRecentTokens);
@@ -128,6 +133,8 @@ export interface CompactOptions {
   };
   /** Secret redactor applied to the summary (defaults to `redactSecrets`). */
   redact?: (text: string) => string;
+  /** Manual force (bypass the enabled + budget gates); the recent tail is still preserved. */
+  force?: boolean;
 }
 
 /**
@@ -139,7 +146,12 @@ export function compact(
   transcript: SessionTranscript,
   options: CompactOptions,
 ): CompactionRecord | null {
-  const plan = planCompaction(transcript, options.config, options.contextWindow);
+  const plan = planCompaction(
+    transcript,
+    options.config,
+    options.contextWindow,
+    options.force ?? false,
+  );
   if (!plan.needed) {
     return null;
   }

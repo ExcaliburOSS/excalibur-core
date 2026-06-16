@@ -9,3 +9,4 @@
 export * from './types';
 export * from './transcript';
 export * from './compactor';
+export * from './session-compactor';

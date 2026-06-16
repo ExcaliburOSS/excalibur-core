@@ -8,28 +8,12 @@
  * `compaction` ExcaliburEvent so replay/time-machine/fork keep working for free.
  */
 
-/** `compaction:` config block (the only user-facing knobs). */
-export interface CompactionConfig {
-  /** Master switch (default true; disable with one flag). */
-  enabled: boolean;
-  /** Tokens held back from the window for the reply + headroom. */
-  reserveTokens: number;
-  /** Tokens of the most-recent tail preserved verbatim (cut only at turn limits). */
-  keepRecentTokens: number;
-  /** Which model summarizes: `active` | `cheap` | a concrete model id. */
-  summarizerModel: string;
-  /** Prune stale tool outputs before summarizing (cheaper, higher-signal). */
-  pruneToolOutputs: boolean;
-}
-
-/** Field-tested defaults (plan §"Compactación de contexto"). */
-export const DEFAULT_COMPACTION_CONFIG: CompactionConfig = {
-  enabled: true,
-  reserveTokens: 16384,
-  keepRecentTokens: 20000,
-  summarizerModel: 'cheap',
-  pruneToolOutputs: true,
-};
+/**
+ * The `compaction:` config (the only user-facing knobs) — schema + defaults are
+ * OWNED by `@excalibur/shared` (the canonical config-file schema). Re-exported
+ * here so the compaction engine and its callers share ONE definition.
+ */
+export { type CompactionConfig, DEFAULT_COMPACTION_CONFIG } from '@excalibur/shared';
 
 /** One projected transcript entry (a whole session turn — never split). */
 export interface TranscriptEntry {

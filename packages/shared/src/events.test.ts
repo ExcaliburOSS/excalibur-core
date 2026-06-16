@@ -39,8 +39,9 @@ describe('createEvent', () => {
     expect(attributed.sessionId).toBe('sess_1');
   });
 
-  it('supports all 23 pinned event types', () => {
-    expect(excaliburEventTypeSchema.options).toHaveLength(23);
+  it('supports all 24 pinned event types', () => {
+    expect(excaliburEventTypeSchema.options).toHaveLength(24);
+    expect(excaliburEventTypeSchema.options).toContain('compaction'); // the 24th (context compaction)
     for (const type of excaliburEventTypeSchema.options) {
       const event = createEvent({ runId: 'run_1', type, payload: {} });
       expect(excaliburEventSchema.safeParse(event).success).toBe(true);
@@ -89,9 +90,7 @@ describe('serializeEventLine / parseEventsJsonl round-trip', () => {
     const good = serializeEventLine(
       createEvent({ runId: 'run_1', type: 'file_read', payload: { path: 'README.md' } }),
     );
-    expect(() => parseEventsJsonl(`${good}\n{not json`)).toThrowError(
-      /line 2 is not valid JSON/,
-    );
+    expect(() => parseEventsJsonl(`${good}\n{not json`)).toThrowError(/line 2 is not valid JSON/);
   });
 
   it('reports the line number for schema-violating lines', () => {

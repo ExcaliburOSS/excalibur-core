@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { ArtifactRecordError } from '../errors';
 import { EXCALIBUR_DIR } from '../config/load-config';
+import type { CompactionRecord } from '../compaction/types';
 import {
   appendLineEnsured,
   listSubdirectories,
@@ -101,6 +102,8 @@ export interface AppendTurnInput {
 const METADATA_FILE = 'metadata.json';
 const TRANSCRIPT_FILE = 'transcript.jsonl';
 const HISTORY_FILE = 'history';
+/** Per-session compaction index (plan §"Compactación de contexto"): one record/line. */
+const COMPACTIONS_FILE = 'compactions.jsonl';
 
 /** Prompt-history cap: how many recent submitted prompts to retain. */
 export const PROMPT_HISTORY_CAP = 500;
@@ -188,6 +191,39 @@ export class SessionStore {
       }
     }
     return turns;
+  }
+
+  /** Appends a {@link CompactionRecord} to the session's compaction index. */
+  appendCompaction(id: string, record: CompactionRecord): void {
+    const session = this.getSession(id);
+    appendLineEnsured(join(session.dir, COMPACTIONS_FILE), JSON.stringify(record));
+  }
+
+  /** Reads every compaction record for a session, oldest first (tolerant of corrupt lines). */
+  loadCompactions(id: string): CompactionRecord[] {
+    const session = this.getSession(id);
+    const raw = readTextIfExists(join(session.dir, COMPACTIONS_FILE));
+    if (raw === null) {
+      return [];
+    }
+    const records: CompactionRecord[] = [];
+    for (const line of raw.split('\n')) {
+      if (line.trim().length === 0) {
+        continue;
+      }
+      try {
+        records.push(JSON.parse(line) as CompactionRecord);
+      } catch {
+        continue; // a corrupt line never breaks reload
+      }
+    }
+    return records;
+  }
+
+  /** The most recent compaction record for a session, or null when none. */
+  latestCompaction(id: string): CompactionRecord | null {
+    const records = this.loadCompactions(id);
+    return records.length > 0 ? (records[records.length - 1] ?? null) : null;
   }
 
   getSession(id: string): LocalSession {

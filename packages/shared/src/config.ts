@@ -74,9 +74,36 @@ const contextSectionSchema = z.object({
   exclude: z.array(z.string()).optional(),
 });
 
-const agentsSectionSchema = z
-  .object({ default: z.string().optional() })
-  .catchall(z.unknown());
+const agentsSectionSchema = z.object({ default: z.string().optional() }).catchall(z.unknown());
+
+/**
+ * `compaction:` — context compaction knobs (plan §"Compactación de contexto").
+ * Automatic + config-only (no plugin SDK). Field-tested defaults; each field
+ * defaults independently so a partial block is valid. The core compaction engine
+ * (`@excalibur/core`) consumes this exact shape.
+ */
+export const compactionConfigSchema = z.object({
+  /** Master switch (default true; disable with one flag). */
+  enabled: z.boolean().default(true),
+  /** Tokens held back from the window for the reply + headroom. */
+  reserveTokens: z.number().int().positive().default(16384),
+  /** Tokens of the recent tail preserved verbatim (cut only at turn limits). */
+  keepRecentTokens: z.number().int().positive().default(20000),
+  /** Which model summarizes: `active` | `cheap` | a concrete model id. */
+  summarizerModel: z.string().min(1).default('cheap'),
+  /** Prune stale tool outputs before summarizing. */
+  pruneToolOutputs: z.boolean().default(true),
+});
+export type CompactionConfig = z.infer<typeof compactionConfigSchema>;
+
+/** Default compaction config when `.excalibur/config.yaml` has no `compaction:` block. */
+export const DEFAULT_COMPACTION_CONFIG: CompactionConfig = {
+  enabled: true,
+  reserveTokens: 16384,
+  keepRecentTokens: 20000,
+  summarizerModel: 'cheap',
+  pruneToolOutputs: true,
+};
 
 const instructionSourceRefSchema = z.object({
   path: z.string().min(1),
@@ -110,12 +137,9 @@ const baseExcaliburConfigSchema = z.object({
   context: contextSectionSchema.optional(),
   integrations: z.record(z.record(z.string())).optional(),
   agents: agentsSectionSchema.optional(),
-  instructions: z
-    .object({ sources: z.array(instructionSourceRefSchema).optional() })
-    .optional(),
-  skills: z
-    .object({ sources: z.array(skillSourceRefSchema).optional() })
-    .optional(),
+  compaction: compactionConfigSchema.optional(),
+  instructions: z.object({ sources: z.array(instructionSourceRefSchema).optional() }).optional(),
+  skills: z.object({ sources: z.array(skillSourceRefSchema).optional() }).optional(),
 });
 
 /**
@@ -194,6 +218,7 @@ export const DEFAULT_CONFIG: ExcaliburConfig = {
   },
   models: { default: 'mock' },
   agents: { default: 'native' },
+  compaction: DEFAULT_COMPACTION_CONFIG,
   permissions: {
     tools: {
       read_file: true,

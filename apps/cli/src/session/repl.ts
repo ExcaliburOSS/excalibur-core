@@ -3,6 +3,8 @@ import {
   buildStatusLineModel,
   buildTurnSummary,
   changeGlyph,
+  compactSession,
+  DEFAULT_COMPACTION_CONFIG,
   getGitIdentity,
   getGitInfo,
   getLocalDiff,
@@ -272,13 +274,18 @@ export async function runInteractiveSession(
             const execution = await handleForkCommand(deps, runtime, input.argv, ctrl.signal);
             endTurn();
             if (execution !== null) {
-              recordAssistantTurn(runtime, execution);
+              recordAssistantTurn(deps, runtime, execution);
             }
             printStatusLine(deps, runtime);
             continue;
           }
           if (input.name === 'undo') {
             await handleUndoCommand(deps);
+            printStatusLine(deps, runtime);
+            continue;
+          }
+          if (input.name === 'compact') {
+            runCompaction(deps, runtime, { manual: true });
             printStatusLine(deps, runtime);
             continue;
           }
@@ -350,6 +357,7 @@ const GHOST_COMMANDS = [
   'changes',
   'fork',
   'undo',
+  'compact',
   'model',
   'clear',
   'exit',
@@ -447,7 +455,11 @@ function agentTurnDeps(deps: CliDeps, runtime: SessionRuntime, signal: AbortSign
 }
 
 /** Records an assistant turn + accumulates cost from an agent-turn result. */
-function recordAssistantTurn(runtime: SessionRuntime, result: AgentTurnResult): void {
+function recordAssistantTurn(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  result: AgentTurnResult,
+): void {
   if (result.costCents !== null) {
     runtime.costCents += result.costCents;
   }
@@ -461,6 +473,63 @@ function recordAssistantTurn(runtime: SessionRuntime, result: AgentTurnResult): 
     costCents: result.costCents,
     artifactRef: result.runId,
   });
+  // After each recorded turn, auto-compact if the session is over budget
+  // (best-effort; respects the `compaction.enabled` switch).
+  runCompaction(deps, runtime, { manual: false });
+}
+
+/** The active main model's context window (tokens), or a safe default. */
+function compactionContextWindow(repoRoot: string, providerName: string): number {
+  try {
+    const gateway = loadGatewayContext(repoRoot);
+    const config = (gateway.providers.providers as Record<string, { contextWindow?: number }>)[
+      providerName
+    ];
+    return config?.contextWindow ?? 128_000;
+  } catch {
+    return 128_000;
+  }
+}
+
+/**
+ * Compacts the session transcript (plan §"Compactación de contexto"). Manual
+ * `/compact` forces it now (bypassing the budget gate); the automatic path fires
+ * only when the transcript exceeds the model's usable budget. Best-effort: a
+ * failure never breaks the session. The {@link CompactionRecord} is persisted to
+ * the session's compaction index for replay/reinjection.
+ */
+function runCompaction(deps: CliDeps, runtime: SessionRuntime, opts: { manual: boolean }): void {
+  const config = runtime.config.compaction ?? DEFAULT_COMPACTION_CONFIG;
+  if (!opts.manual && !config.enabled) {
+    return; // the automatic path respects the master switch
+  }
+  try {
+    const turns = runtime.store.readTranscript(runtime.session.id);
+    const contextWindow = compactionContextWindow(runtime.repoRoot, runtime.model);
+    const record = compactSession(turns, {
+      config,
+      contextWindow,
+      model: runtime.model,
+      force: opts.manual,
+    });
+    if (record === null) {
+      if (opts.manual) {
+        deps.ui.info('Nothing to compact yet — the recent context already fits.');
+      }
+      return;
+    }
+    runtime.store.appendCompaction(runtime.session.id, record);
+    const n = record.details.summarizedEntryIds.length;
+    const verb = opts.manual ? 'Compacted' : 'Auto-compacted';
+    deps.ui.info(
+      `${verb} ${n} earlier turn(s) → summary · ${record.tokensBefore}→${record.tokensAfter} tokens. ` +
+        'Full detail stays in the run history.',
+    );
+  } catch (error) {
+    if (opts.manual) {
+      deps.ui.warn(`Compaction failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
 }
 
 /** Dispatches a direct model-driven turn (the default NL path). */
@@ -471,7 +540,7 @@ async function dispatchAgentTurn(
   signal: AbortSignal,
 ): Promise<void> {
   const result = await runAgentTurn(agentTurnDeps(deps, runtime, signal), text);
-  recordAssistantTurn(runtime, result);
+  recordAssistantTurn(deps, runtime, result);
 }
 
 /** Dispatches an auto plan-mode turn (plan → gate → execute). */
@@ -490,7 +559,7 @@ async function dispatchPlan(
     artifactRef: plan.planRunId,
   });
   if (plan.execution !== null) {
-    recordAssistantTurn(runtime, plan.execution);
+    recordAssistantTurn(deps, runtime, plan.execution);
   }
 }
 
@@ -597,6 +666,7 @@ function handleSlashCommand(
         '  /fork <instr>  fork the latest run (reuse its cached context) and run <instr> live',
       );
       deps.ui.write('  /undo          revert the working tree by undoing the latest run (gated)');
+      deps.ui.write('  /compact       condense older turns into a summary (frees context)');
       deps.ui.write('  /model         show the active provider/model');
       deps.ui.write('  /clear         clear the screen (keeps the session)');
       deps.ui.write('  /exit, /quit   close the session and leave');
