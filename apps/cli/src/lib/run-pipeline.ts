@@ -19,6 +19,7 @@ import {
 } from '@excalibur/shared';
 import type { WorkflowDefinition } from '@excalibur/workflow-schema';
 import { detectColorTier, detectThemeSync, reduceRail, renderRail } from '@excalibur/tui';
+import { LiveRail } from './live-rail';
 import pc from 'picocolors';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
@@ -332,6 +333,33 @@ export async function runTask(
   deps.ui.info(`Run ${run.id} → ${run.dir}`);
 
   const interactive = deps.ui.isInteractive() && !yes;
+
+  // The LIVING RAIL. On a TTY we redraw the whole rail block in place as events
+  // stream (the rail fills with green as phases complete); on a piped/CI stdout
+  // we stream plain per-event lines and print a static rail recap afterwards.
+  // Both fold the SAME `reduceRail`, so live = scrub = replay.
+  const reduceOpts = {
+    autonomyLabel: AUTONOMY_LEVEL_LABELS[choice.autonomyLevel],
+    safety: config.safety?.preset ?? 'standard-safe',
+    model: gatewayContext.providerName,
+    push: options.sync === true,
+  };
+  const tier = detectColorTier();
+  const mode = detectThemeSync() ?? 'dark';
+  const liveRail = deps.ui.isOutputTty()
+    ? new LiveRail({ writeRaw: (t) => deps.ui.writeRaw(t) }, { tier, mode, reduce: reduceOpts })
+    : null;
+
+  deps.ui.write();
+  liveRail?.start();
+
+  const confirm = (question: string): Promise<boolean> => {
+    // Suspend the in-place redraw so the prompt prints below the rail cleanly,
+    // then resume a fresh frame under the answer.
+    liveRail?.pause();
+    return deps.ui.confirm(question, { defaultYes: true }).finally(() => liveRail?.resume());
+  };
+
   const record = await executeLocalRun({
     repoRoot,
     runManager,
@@ -342,13 +370,12 @@ export async function runTask(
     config,
     // Without a confirm fn the engine auto-approves ({ auto: true }) —
     // exactly what --yes / non-interactive runs want.
-    ...(interactive
-      ? {
-          confirm: (question: string): Promise<boolean> =>
-            deps.ui.confirm(question, { defaultYes: true }),
-        }
-      : {}),
+    ...(interactive ? { confirm } : {}),
     onEvent: (event): void => {
+      if (liveRail !== null) {
+        liveRail.push(event);
+        return;
+      }
       const line = describeEvent(event);
       if (line !== null) {
         deps.ui.write(line);
@@ -356,26 +383,18 @@ export async function runTask(
     },
   });
 
-  // The LIVING RAIL: fold the run's recorded event stream into the rail model
-  // and render it as text. This is the exact same reducer that drives the live
-  // Ink view, an Esc-Esc scrub and a replay — so the post-run summary is a
-  // byte-faithful projection of what the interactive shell shows in flight.
-  deps.ui.write();
-  const rail = reduceRail(runManager.readEvents(run.id), {
-    autonomyLabel: AUTONOMY_LEVEL_LABELS[choice.autonomyLevel],
-    safety: config.safety?.preset ?? 'standard-safe',
-    model: gatewayContext.providerName,
-    push: options.sync === true,
-  });
-  // Paint the rail with the terminal's real colour capability (truecolor → 256
-  // → 16 → none) and detected light/dark background; on a piped/CI stdout this
-  // degrades to the plain text form automatically.
-  const railLines = renderRail(rail, {
-    tier: detectColorTier(),
-    mode: detectThemeSync() ?? 'dark',
-  });
-  for (const line of railLines) {
-    deps.ui.write(line);
+  if (liveRail !== null) {
+    liveRail.stop();
+  } else {
+    // Non-TTY recap: a static rail of the recorded stream (byte-faithful to what
+    // the TTY redraw settled on).
+    deps.ui.write();
+    for (const line of renderRail(reduceRail(runManager.readEvents(run.id), reduceOpts), {
+      tier,
+      mode,
+    })) {
+      deps.ui.write(line);
+    }
   }
 
   deps.ui.write();

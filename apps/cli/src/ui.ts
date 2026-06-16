@@ -146,6 +146,15 @@ export class Ui {
     return this.interactive;
   }
 
+  /**
+   * Whether STDOUT is a real TTY (distinct from {@link isInteractive}, which
+   * tracks STDIN for prompts). The live in-place rail redraw needs this: a
+   * piped/CI stdout must fall back to streamed lines.
+   */
+  isOutputTty(): boolean {
+    return isTtyStream(this.stdout);
+  }
+
   /** Plain line to stdout. */
   write(text = ''): void {
     this.stdout.write(`${text}\n`);
