@@ -6,12 +6,15 @@ import {
   changeGlyph,
   classifyGoalIntent,
   compactSession,
+  compactSessionAsync,
+  createModelSummarizer,
   DEFAULT_COMPACTION_CONFIG,
   getGitIdentity,
   getGitInfo,
   getLocalDiff,
   loadReplay,
   parseStructuralInput,
+  type AsyncSummarizer,
   type LocalSession,
 } from '@excalibur/core';
 import { analyzeRepository } from '@excalibur/context-engine';
@@ -291,7 +294,7 @@ export async function runInteractiveSession(
             const execution = await handleForkCommand(deps, runtime, input.argv, ctrl.signal);
             endTurn();
             if (execution !== null) {
-              recordAssistantTurn(deps, runtime, execution);
+              await recordAssistantTurn(deps, runtime, execution);
             }
             printStatusLine(deps, runtime);
             continue;
@@ -302,7 +305,7 @@ export async function runInteractiveSession(
             continue;
           }
           if (input.name === 'compact') {
-            runCompaction(deps, runtime, { manual: true });
+            await runCompaction(deps, runtime, { manual: true });
             printStatusLine(deps, runtime);
             continue;
           }
@@ -506,11 +509,11 @@ function agentTurnDeps(deps: CliDeps, runtime: SessionRuntime, signal: AbortSign
 }
 
 /** Records an assistant turn + accumulates cost from an agent-turn result. */
-function recordAssistantTurn(
+async function recordAssistantTurn(
   deps: CliDeps,
   runtime: SessionRuntime,
   result: AgentTurnResult,
-): void {
+): Promise<void> {
   if (result.costCents !== null) {
     runtime.costCents += result.costCents;
   }
@@ -525,8 +528,9 @@ function recordAssistantTurn(
     artifactRef: result.runId,
   });
   // After each recorded turn, auto-compact if the session is over budget
-  // (best-effort; respects the `compaction.enabled` switch).
-  runCompaction(deps, runtime, { manual: false });
+  // (best-effort; respects the `compaction.enabled` switch). Awaited so the next
+  // turn's seed reflects the compaction.
+  await runCompaction(deps, runtime, { manual: false });
 }
 
 /** The active main model's context window (tokens), or a safe default. */
@@ -543,13 +547,63 @@ function compactionContextWindow(repoRoot: string, providerName: string): number
 }
 
 /**
+ * Builds the M2 real-model summarizer routed to the FAST `cheap` provider (low
+ * cost + latency), or `undefined` when there is no real model to summarize with
+ * (no gateway, or a mock provider) — in which case the caller uses the offline
+ * deterministic default. `summarizerModel: 'active'` pins the main model instead.
+ */
+function buildCompactionSummarizer(
+  runtime: SessionRuntime,
+  config: typeof DEFAULT_COMPACTION_CONFIG,
+): AsyncSummarizer | undefined {
+  try {
+    const gateway = loadGatewayContext(runtime.repoRoot);
+    if (!gateway.configured) {
+      return undefined;
+    }
+    const provider =
+      config.summarizerModel === 'active'
+        ? gateway.providerName
+        : (gateway.cheapProviderName ?? gateway.providerName);
+    const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[provider]
+      ?.type;
+    if (providerType === 'mock') {
+      return undefined; // the mock is a test double — use the offline summarizer
+    }
+    return createModelSummarizer({
+      chat: gateway.gateway,
+      provider,
+      locale: sessionLocale(runtime),
+    });
+  } catch {
+    return undefined; // any resolution failure → offline default (never blocks)
+  }
+}
+
+/**
+ * The session's spoken locale for generated prose (summaries). The summarizer
+ * already speaks `en`/`es`; until the i18n milestone adds a spoken-language
+ * config + auto-detection (plan §"Idioma"), this is `en`. Wire that setting here
+ * when it lands — the rest of the path is locale-ready.
+ */
+function sessionLocale(_runtime: SessionRuntime): string {
+  return 'en';
+}
+
+/**
  * Compacts the session transcript (plan §"Compactación de contexto"). Manual
  * `/compact` forces it now (bypassing the budget gate); the automatic path fires
- * only when the transcript exceeds the model's usable budget. Best-effort: a
+ * only when the transcript exceeds the model's usable budget. The summary is
+ * produced by the real `cheap` model (M2) with a graceful fallback to the
+ * deterministic offline summarizer if it is unavailable or fails. Best-effort: a
  * failure never breaks the session. The {@link CompactionRecord} is persisted to
  * the session's compaction index for replay/reinjection.
  */
-function runCompaction(deps: CliDeps, runtime: SessionRuntime, opts: { manual: boolean }): void {
+async function runCompaction(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  opts: { manual: boolean },
+): Promise<void> {
   const config = runtime.config.compaction ?? DEFAULT_COMPACTION_CONFIG;
   if (!opts.manual && !config.enabled) {
     return; // the automatic path respects the master switch
@@ -557,12 +611,26 @@ function runCompaction(deps: CliDeps, runtime: SessionRuntime, opts: { manual: b
   try {
     const turns = runtime.store.readTranscript(runtime.session.id);
     const contextWindow = compactionContextWindow(runtime.repoRoot, runtime.model);
-    const record = compactSession(turns, {
-      config,
-      contextWindow,
-      model: runtime.model,
-      force: opts.manual,
-    });
+    const summarizer = buildCompactionSummarizer(runtime, config);
+    let record;
+    if (summarizer !== undefined) {
+      try {
+        record = await compactSessionAsync(turns, {
+          config,
+          contextWindow,
+          model: runtime.model,
+          force: opts.manual,
+          locale: sessionLocale(runtime),
+          summarize: summarizer,
+        });
+      } catch {
+        // The real-model summary failed (network/timeout) — fall back to the
+        // deterministic offline summarizer so compaction still happens.
+        record = compactSession(turns, { config, contextWindow, model: runtime.model, force: opts.manual });
+      }
+    } else {
+      record = compactSession(turns, { config, contextWindow, model: runtime.model, force: opts.manual });
+    }
     if (record === null) {
       if (opts.manual) {
         deps.ui.info('Nothing to compact yet — the recent context already fits.');
@@ -608,7 +676,7 @@ async function dispatchAgentTurn(
   seed: ChatMessage[],
 ): Promise<void> {
   const result = await runAgentTurn(agentTurnDeps(deps, runtime, signal), text, seed);
-  recordAssistantTurn(deps, runtime, result);
+  await recordAssistantTurn(deps, runtime, result);
 }
 
 /** Dispatches an auto plan-mode turn (plan → gate → execute). */
@@ -628,7 +696,7 @@ async function dispatchPlan(
     artifactRef: plan.planRunId,
   });
   if (plan.execution !== null) {
-    recordAssistantTurn(deps, runtime, plan.execution);
+    await recordAssistantTurn(deps, runtime, plan.execution);
   }
 }
 
@@ -756,7 +824,7 @@ async function executeGoalLoop(
   deps.ui.info(summary);
   const last = result.results.at(-1);
   if (last !== undefined) {
-    recordAssistantTurn(deps, runtime, last);
+    await recordAssistantTurn(deps, runtime, last);
   }
   runtime.store.appendTurn(runtime.session.id, { role: 'system', kind: 'status', text: summary });
 }
@@ -874,7 +942,7 @@ async function handleLoopCommand(
           prompt,
           seed,
         );
-        recordAssistantTurn(deps, runtime, turnResult);
+        await recordAssistantTurn(deps, runtime, turnResult);
       },
     });
     const summary =

@@ -1,6 +1,7 @@
 import type { ChatMessage } from '@excalibur/model-gateway';
 import type { SessionTurn } from '../sessions/session-store';
-import { compact, reassembleContext } from './compactor';
+import { compact, compactAsync, reassembleContext } from './compactor';
+import type { AsyncSummarizer } from './model-summarizer';
 import { projectTranscript } from './transcript';
 import type { CompactionConfig, CompactionRecord } from './types';
 
@@ -31,6 +32,28 @@ export function compactSession(
   return compact(transcript, {
     config: options.config,
     contextWindow: options.contextWindow,
+    force: options.force ?? false,
+    ...(options.model !== undefined ? { model: options.model } : {}),
+    ...(options.locale !== undefined ? { locale: options.locale } : {}),
+  });
+}
+
+/**
+ * The async sibling of {@link compactSession}: same projection + engine, but a
+ * model-backed {@link AsyncSummarizer} produces the summary (M2 real-model
+ * path). Returns `null` when nothing needs compacting. The caller should catch
+ * a thrown summarizer failure and fall back to {@link compactSession} (offline)
+ * so compaction still happens.
+ */
+export async function compactSessionAsync(
+  turns: ReadonlyArray<SessionTurn>,
+  options: CompactSessionOptions & { summarize: AsyncSummarizer },
+): Promise<CompactionRecord | null> {
+  const transcript = projectTranscript(turns, options.pinnedIds);
+  return compactAsync(transcript, {
+    config: options.config,
+    contextWindow: options.contextWindow,
+    summarize: options.summarize,
     force: options.force ?? false,
     ...(options.model !== undefined ? { model: options.model } : {}),
     ...(options.locale !== undefined ? { locale: options.locale } : {}),
