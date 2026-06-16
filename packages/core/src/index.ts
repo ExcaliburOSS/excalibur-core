@@ -19,9 +19,13 @@ export { createExtensionHost, workflowCatalog, type WorkflowCatalogEntry } from 
 // Init
 export {
   applyInitPlan,
+  enrichAgentsMd,
   generateInitPlan,
+  type AgentsMdChat,
+  type AgentsMdEnrichment,
   type ApplyInitPlanOptions,
   type ApplyInitPlanResult,
+  type EnrichAgentsMdOptions,
   type GenerateInitPlanOptions,
   type InitMode,
   type InitPlan,

@@ -7,7 +7,13 @@ import type {
   ModelRoutingDefinition,
   PolicyPresetDefinition,
 } from '@excalibur/declarative-schemas';
-import { DEFAULT_PROVIDERS_CONFIG, type ProvidersFileConfig } from '@excalibur/model-gateway';
+import {
+  DEFAULT_PROVIDERS_CONFIG,
+  redactSecrets,
+  type ChatOutput,
+  type GatewayChatInput,
+  type ProvidersFileConfig,
+} from '@excalibur/model-gateway';
 import type { DetectedSkill, InstructionSource } from '@excalibur/shared';
 import { DEFAULT_METHODOLOGIES, DEFAULT_WORKFLOWS } from '@excalibur/workflow-schema';
 import { EXCALIBUR_DIR } from '../config/load-config';
@@ -266,7 +272,15 @@ function hasRootAgentsMd(analysis: RepoAnalysis): boolean {
  * in M2. Only ever generated when the repo has no AGENTS.md — an existing one is
  * respected (ISD), never overwritten.
  */
-function buildAgentsMd(analysis: RepoAnalysis): string {
+/** Optional model-generated PROSE spliced into AGENTS.md (M2 enrichment). */
+export interface AgentsMdEnrichment {
+  /** Extra repo-specific convention bullets (text only, no leading dash). */
+  conventions?: string[];
+  /** A concise architecture-overview paragraph, grounded in the detected facts. */
+  architecture?: string;
+}
+
+function buildAgentsMd(analysis: RepoAnalysis, enrichment: AgentsMdEnrichment = {}): string {
   const name = projectName(analysis);
   const commands = detectedCommands(analysis);
   const pm = analysis.packageManager;
@@ -296,7 +310,21 @@ function buildAgentsMd(analysis: RepoAnalysis): string {
       ? `- Run \`${commands.test}\`${commands.typecheck !== undefined ? ` and \`${commands.typecheck}\`` : ''} before considering a change done.`
       : '- Add a test command so changes can be verified before they are considered done.';
 
-  return [
+  // Conventions: the deterministic core + any model-enriched, repo-specific
+  // bullets (the model only ADDS prose; the factual sections above are never
+  // model-generated, so commands/stack/layout can't drift).
+  const conventionLines = [
+    '- Keep changes small, focused and reviewable.',
+    verifyLine,
+    '- Update the relevant documentation (ADRs, module/API docs, CHANGELOG) as part of any change — not just code.',
+    '- Never commit secrets; use environment variables.',
+    ...(enrichment.conventions ?? [])
+      .map((c) => c.trim())
+      .filter((c) => c.length > 0)
+      .map((c) => `- ${c.replace(/^[-*]\s*/, '')}`),
+  ];
+
+  const sections: string[] = [
     `# ${name}`,
     '',
     '> Guidance for AI coding agents working in this repository. `AGENTS.md` is the',
@@ -318,12 +346,17 @@ function buildAgentsMd(analysis: RepoAnalysis): string {
     '',
     layout.join('\n'),
     '',
+  ];
+
+  const architecture = (enrichment.architecture ?? '').trim();
+  if (architecture.length > 0) {
+    sections.push('## Architecture', '', architecture, '');
+  }
+
+  sections.push(
     '## Conventions',
     '',
-    '- Keep changes small, focused and reviewable.',
-    verifyLine,
-    '- Update the relevant documentation (ADRs, module/API docs, CHANGELOG) as part of any change — not just code.',
-    '- Never commit secrets; use environment variables.',
+    conventionLines.join('\n'),
     '',
     '## Sensitive areas',
     '',
@@ -331,7 +364,114 @@ function buildAgentsMd(analysis: RepoAnalysis): string {
       ? `Take extra care and expect human review for: ${patterns.sensitivePaths.join(', ')}.`
       : 'Treat authentication, billing, payments and secret-handling code as sensitive (human review).',
     '',
-  ].join('\n');
+  );
+  return sections.join('\n');
+}
+
+/** Minimal chat surface the AGENTS.md enrichment needs; `ModelGateway` satisfies it. */
+export interface AgentsMdChat {
+  chat(input: GatewayChatInput): Promise<ChatOutput>;
+}
+
+export interface EnrichAgentsMdOptions {
+  chat: AgentsMdChat;
+  /** Provider to route to (the main quality model is best for one-off doc prose). */
+  provider?: string;
+  /** Locale for the generated prose (`es` → Spanish; else English). */
+  locale?: string;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+/** Extracts and parses the first JSON object from model output (fence-tolerant). */
+function parseFirstJsonObject(content: string): Record<string, unknown> | null {
+  const match = content.match(/\{[\s\S]*\}/);
+  if (match === null) return null;
+  try {
+    const value = JSON.parse(match[0]) as unknown;
+    return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Builds the AGENTS.md with MODEL-ENRICHED prose (M2). The model contributes ONLY
+ * repo-specific convention bullets + a concise architecture overview, grounded in
+ * the deterministic draft + detected facts; the factual sections (stack/commands/
+ * layout) stay deterministic, so nothing can drift. Throws when the model yields
+ * nothing usable — the caller falls back to the deterministic {@link buildAgentsMd}.
+ */
+export async function enrichAgentsMd(
+  analysis: RepoAnalysis,
+  options: EnrichAgentsMdOptions,
+): Promise<string> {
+  const spanish = (options.locale ?? 'en').toLowerCase().startsWith('es');
+  const commands = detectedCommands(analysis);
+  const p = analysis.patterns;
+  // Feed COMPACT FACTS, not the full AGENTS.md markdown — a full markdown doc as
+  // input primes the model to continue markdown instead of emitting JSON.
+  const facts = [
+    `name: ${projectName(analysis)}`,
+    `languages: ${analysis.languages.join(', ') || 'unknown'}`,
+    `frameworks: ${analysis.frameworks.join(', ') || 'none detected'}`,
+    `package manager: ${analysis.packageManager ?? 'unknown'}`,
+    `commands: ${
+      (['test', 'lint', 'typecheck', 'build'] as const)
+        .map((k) => (commands[k] !== undefined ? `${k}=${commands[k]}` : null))
+        .filter((s): s is string => s !== null)
+        .join('; ') || 'none detected'
+    }`,
+    `backend: ${p.hasBackend}; frontend: ${p.hasFrontend}`,
+    p.apiDirs.length > 0 ? `api dirs: ${p.apiDirs.join(', ')}` : null,
+    p.domainDirs.length > 0 ? `modules: ${p.domainDirs.slice(0, 12).join(', ')}` : null,
+    p.testDirs.length > 0 ? `test dirs: ${p.testDirs.join(', ')}` : null,
+    p.migrationDirs.length > 0 ? `migration dirs: ${p.migrationDirs.join(', ')}` : null,
+    p.sensitivePaths.length > 0 ? `sensitive paths: ${p.sensitivePaths.join(', ')}` : null,
+  ]
+    .filter((s): s is string => s !== null)
+    .join('\n');
+
+  const system =
+    'You enrich an AGENTS.md for AI coding agents from the detected repository facts. Return ONLY a ' +
+    'single JSON object — no prose, no markdown, no code fences — with exactly: ' +
+    '{"conventions": string[], "architecture": string}. `conventions` = up to 6 SPECIFIC, actionable ' +
+    'convention bullets for THIS repo grounded in the facts (not generic platitudes; do NOT restate ' +
+    'commands/stack). `architecture` = a concise overview (≤ 6 sentences) of how this codebase is ' +
+    'organized and how its parts fit, grounded ONLY in the given facts — do NOT invent files, ' +
+    'frameworks, or commands. ' +
+    (spanish ? 'Write both in Spanish.' : 'Write both in English.');
+
+  const output = await options.chat.chat({
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: `Repository facts:\n${facts}\n\nReturn the JSON now.` },
+    ],
+    maxTokens: 1000,
+    timeoutMs: options.timeoutMs ?? 20_000,
+    metadata: { kind: 'agents-md-enrich' },
+    ...(options.provider !== undefined ? { provider: options.provider } : {}),
+    ...(options.signal !== undefined ? { signal: options.signal } : {}),
+  });
+
+  const parsed = parseFirstJsonObject(output.content);
+  if (parsed === null) {
+    throw new Error('AGENTS.md enrichment returned no parseable JSON.');
+  }
+  const conventions = Array.isArray(parsed['conventions'])
+    ? parsed['conventions']
+        .filter((c): c is string => typeof c === 'string')
+        .map((c) => redactSecrets(c.trim()).slice(0, 300))
+        .filter((c) => c.length > 0)
+        .slice(0, 6)
+    : [];
+  const architectureRaw = typeof parsed['architecture'] === 'string' ? parsed['architecture'] : '';
+  const architecture = redactSecrets(architectureRaw.trim()).slice(0, 1200);
+
+  if (conventions.length === 0 && architecture.length === 0) {
+    throw new Error('AGENTS.md enrichment produced no usable content.');
+  }
+  return buildAgentsMd(analysis, { conventions, architecture });
 }
 
 function sensitivePathGlobs(analysis: RepoAnalysis): string[] {

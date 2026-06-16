@@ -3,14 +3,16 @@ import { join } from 'node:path';
 import {
   EXCALIBUR_DIR,
   applyInitPlan,
+  enrichAgentsMd,
   generateInitPlan,
   type InitMode,
+  type InitPlan,
 } from '@excalibur/core';
-import { analyzeRepository } from '@excalibur/context-engine';
+import { analyzeRepository, type RepoAnalysis } from '@excalibur/context-engine';
 import type { Command } from 'commander';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
-import { providersFilePath, safetyLine } from '../lib/context';
+import { loadGatewayContext, providersFilePath, safetyLine } from '../lib/context';
 import { promptProviderSetup } from '../lib/provider-setup';
 
 interface InitOptions {
@@ -18,6 +20,49 @@ interface InitOptions {
   full?: boolean;
   yes?: boolean;
   force?: boolean;
+  enrich?: boolean;
+}
+
+/**
+ * Best-effort M2 AGENTS.md enrichment: when a real model is configured and the
+ * plan is generating a FRESH AGENTS.md (never an existing one — ISD), replace
+ * its deterministic content with model-enriched prose. Routed to the MAIN model
+ * (one-off doc quality matters). Any failure keeps the deterministic version.
+ */
+async function maybeEnrichAgentsMd(
+  deps: CliDeps,
+  repoRoot: string,
+  analysis: RepoAnalysis,
+  plan: InitPlan,
+): Promise<void> {
+  const agentsFile = plan.files.find((file) => file.relPath === 'AGENTS.md' && !file.exists);
+  if (agentsFile === undefined) {
+    return; // no fresh AGENTS.md to enrich (absent, or one already exists)
+  }
+  let gateway;
+  try {
+    gateway = loadGatewayContext(repoRoot);
+  } catch {
+    return;
+  }
+  if (!gateway.configured) {
+    return; // no real model yet → keep the deterministic AGENTS.md
+  }
+  const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[
+    gateway.providerName
+  ]?.type;
+  if (providerType === 'mock') {
+    return;
+  }
+  try {
+    deps.ui.info('Enriching AGENTS.md with your model…');
+    agentsFile.content = await enrichAgentsMd(analysis, {
+      chat: gateway.gateway,
+      provider: gateway.providerName,
+    });
+  } catch {
+    // Keep the deterministic AGENTS.md — enrichment is additive, never blocking.
+  }
 }
 
 /**
@@ -33,6 +78,7 @@ export function registerInitCommand(program: Command, deps: CliDeps): void {
     .option('--team', 'also generate shared team standards (instructions, policies, routing)')
     .option('--full', 'export every built-in catalog for inspection/customization')
     .option('--force', 'overwrite existing files (update mode otherwise)')
+    .option('--no-enrich', 'skip AI enrichment of a freshly generated AGENTS.md')
     .option('-y, --yes', 'skip prompts and accept safe defaults')
     .action(async (options: InitOptions) => {
       if (options.team === true && options.full === true) {
@@ -64,6 +110,11 @@ export function registerInitCommand(program: Command, deps: CliDeps): void {
         mode,
         ...(providers !== undefined ? { providers } : {}),
       });
+
+      // M2: enrich a freshly-generated AGENTS.md with the model (best-effort).
+      if (options.enrich !== false) {
+        await maybeEnrichAgentsMd(deps, repoRoot, analysis, plan);
+      }
 
       deps.ui.write();
       for (const line of plan.summaryLines) {
