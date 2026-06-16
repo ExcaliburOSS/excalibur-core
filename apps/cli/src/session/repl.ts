@@ -42,6 +42,7 @@ import {
   type AgentTurnResult,
 } from './agent-turn';
 import { runGoalLoop } from './goal-loop';
+import { runIntervalLoop } from './interval-loop';
 
 const execFileAsync = promisify(execFile);
 
@@ -297,6 +298,11 @@ export async function runInteractiveSession(
             printStatusLine(deps, runtime);
             continue;
           }
+          if (input.name === 'loop') {
+            await handleLoopCommand(deps, runtime, input.argv, beginTurn, endTurn);
+            printStatusLine(deps, runtime);
+            continue;
+          }
           const result = handleSlashCommand(deps, runtime, input.name);
           if (result === 'exit') {
             break;
@@ -389,6 +395,7 @@ const GHOST_COMMANDS = [
   'undo',
   'compact',
   'goal',
+  'loop',
   'model',
   'clear',
   'exit',
@@ -734,6 +741,98 @@ async function handleGoalCommand(
   }
 }
 
+/** Defaults + cap for `/loop` (the periodic interval re-run). */
+const LOOP_DEFAULT_EVERY_SECONDS = 60;
+const LOOP_DEFAULT_TIMES = 10;
+const LOOP_MAX_TIMES = 100;
+
+/** Parses `/loop [--every <sec>] [--times <n>] <prompt>` (flags in any order). */
+function parseLoopArgs(argv: string[]): { everySeconds: number; times: number; prompt: string } {
+  let everySeconds = LOOP_DEFAULT_EVERY_SECONDS;
+  let times = LOOP_DEFAULT_TIMES;
+  const rest: string[] = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--every' && argv[i + 1] !== undefined) {
+      const value = Number.parseInt(argv[(i += 1)] ?? '', 10);
+      if (!Number.isNaN(value) && value >= 0) everySeconds = value;
+    } else if (arg === '--times' && argv[i + 1] !== undefined) {
+      const value = Number.parseInt(argv[(i += 1)] ?? '', 10);
+      if (!Number.isNaN(value) && value >= 1) times = value;
+    } else if (arg !== undefined) {
+      rest.push(arg);
+    }
+  }
+  return { everySeconds, times: Math.min(times, LOOP_MAX_TIMES), prompt: rest.join(' ') };
+}
+
+/**
+ * `/loop [--every <sec>] [--times <n>] <prompt>` — the periodic interval loop.
+ * Re-runs `<prompt>` as a gated agent turn every `--every` seconds (default 60),
+ * up to `--times` (default 10, cap 100), until ESC. RECURRENCE, not completion —
+ * for "watch/poll/retry this periodically" (vs `/goal`, which stops when done).
+ */
+async function handleLoopCommand(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  argv: string[],
+  beginTurn: () => AbortController,
+  endTurn: () => void,
+): Promise<void> {
+  const { everySeconds, times, prompt } = parseLoopArgs(argv);
+  if (prompt.trim().length === 0) {
+    deps.ui.warn(
+      'Usage: /loop [--every <sec>] [--times <n>] <prompt> — re-runs it periodically until ESC.',
+    );
+    return;
+  }
+  const safe = redactSecrets(prompt);
+  runtime.store.appendPromptHistory(`/loop ${safe}`);
+  runtime.store.appendTurn(runtime.session.id, {
+    role: 'user',
+    kind: 'message',
+    text: `/loop ${safe}`,
+  });
+  deps.ui.info(
+    `Looping every ${everySeconds}s, up to ${times}× — press ESC to stop. (recurrence, not completion)`,
+  );
+
+  const ctrl = beginTurn();
+  try {
+    const result = await runIntervalLoop({
+      everySeconds,
+      times,
+      signal: ctrl.signal,
+      run: async (iteration) => {
+        deps.ui.info(`  loop · iteration ${iteration}/${times}`);
+        const seed = sessionSeed(runtime); // each pass carries the (compacted) prior context
+        const turnResult = await runAgentTurn(
+          agentTurnDeps(deps, runtime, ctrl.signal),
+          prompt,
+          seed,
+        );
+        recordAssistantTurn(deps, runtime, turnResult);
+      },
+    });
+    const summary =
+      result.status === 'completed'
+        ? `Loop completed ${result.iterations} iteration(s).`
+        : `Loop cancelled after ${result.iterations} iteration(s).`;
+    deps.ui.info(summary);
+    runtime.store.appendTurn(runtime.session.id, { role: 'system', kind: 'status', text: summary });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    deps.ui.error(reason);
+    runtime.store.appendTurn(runtime.session.id, {
+      role: 'system',
+      kind: 'status',
+      text: `error: ${reason}`,
+    });
+  } finally {
+    endTurn();
+  }
+}
+
 /**
  * `!<command>` — real shell passthrough. Runs the command in the repo root,
  * streams its (truncated, redacted) output, and records a status turn. Output
@@ -794,6 +893,7 @@ function handleSlashCommand(
       deps.ui.write(
         '  /goal <objective>  work toward it across turns until an evaluator says done',
       );
+      deps.ui.write('  /loop [--every s] [--times n] <prompt>  re-run periodically until ESC');
       deps.ui.write('  /discovery <idea>  clarify an ambiguous idea before building');
       deps.ui.write(
         '  /rewind [id]   rewind a run step-by-step (time-machine; defaults to latest)',
