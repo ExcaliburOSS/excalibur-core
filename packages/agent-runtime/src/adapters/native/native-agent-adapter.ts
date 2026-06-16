@@ -189,22 +189,16 @@ export class NativeAgentAdapter implements AgentAdapter {
       config: input.config,
       permissions,
     };
-    // MCP (Model Context Protocol): when servers are configured AND this role
-    // can act (read-only planner roles get native read tools only — an external
-    // MCP tool might mutate), connect them and merge their namespaced tools. A
-    // server that fails to start is skipped with a warning; MCP never breaks the
-    // run, and every client is closed in the `finally` around the loop.
-    const mcpServers = input.config.mcp?.servers;
-    const mcp: ConnectedMcp =
-      !READ_ONLY_ROLES.has(input.role) &&
-      mcpServers !== undefined &&
-      Object.keys(mcpServers).length > 0
-        ? await connectMcpServers(mcpServers)
-        : { specs: [], byName: new Map<string, McpToolEntry>(), clients: [], warnings: [] };
-    for (const warning of mcp.warnings) {
-      yield emit('policy_decision', { kind: 'log', decision: 'allow', message: warning });
-    }
-    const tools = [...toolSpecsFor(input.role), ...mcp.specs];
+    // MCP (Model Context Protocol) clients are connected INSIDE the try below so
+    // the `finally` that calls closeMcp() always reclaims their subprocesses —
+    // even if the consumer abandons this generator at the warnings yield, before
+    // the loop. Declared here (empty) so it is in scope for both try and finally.
+    let mcp: ConnectedMcp = {
+      specs: [],
+      byName: new Map<string, McpToolEntry>(),
+      clients: [],
+      warnings: [],
+    };
     const responseKind = ROLE_TO_RESPONSE_KIND[input.role] ?? 'ask';
     const mutated = new Set<string>();
     const totals: RunningTotals = { inputTokens: 0, outputTokens: 0, costCents: null };
@@ -233,6 +227,23 @@ export class NativeAgentAdapter implements AgentAdapter {
     let finalContent = '';
 
     try {
+      // Connect MCP servers for acting roles only (read-only planner roles get
+      // native read tools only — an external MCP tool might mutate), then merge
+      // their namespaced specs into the model's tool list. A server that fails to
+      // start is skipped with a warning; MCP never breaks the run.
+      const mcpServers = input.config.mcp?.servers;
+      if (
+        !READ_ONLY_ROLES.has(input.role) &&
+        mcpServers !== undefined &&
+        Object.keys(mcpServers).length > 0
+      ) {
+        mcp = await connectMcpServers(mcpServers);
+      }
+      for (const warning of mcp.warnings) {
+        yield emit('policy_decision', { kind: 'log', decision: 'allow', message: warning });
+      }
+      const tools = [...toolSpecsFor(input.role), ...mcp.specs];
+
       for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
         if (aborted()) {
           wasAborted = true;
@@ -521,7 +532,11 @@ export class NativeAgentAdapter implements AgentAdapter {
         toolMessage: { role: 'tool', toolCallId: call.id, content: text },
       });
     } catch (error) {
-      const message = `MCP call failed: ${error instanceof Error ? error.message : String(error)}`;
+      // Redact like the success path: a server's error string could echo back
+      // arguments the model placed there (which may include a secret).
+      const message = redactSecrets(
+        `MCP call failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
       events.push({
         event: emit('tool_call', { tool: call.name, server: entry.serverName, error: message }),
         toolMessage: { role: 'tool', toolCallId: call.id, content: message },

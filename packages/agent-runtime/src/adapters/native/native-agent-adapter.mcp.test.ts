@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG, type ExcaliburConfig, type ExcaliburEvent } from '@excalibur/shared';
 import type { ChatInput, ChatOutput, ModelGateway } from '@excalibur/model-gateway';
@@ -33,6 +36,30 @@ process.stdin.on("data", (chunk) => {
   }
 });
 `;
+
+/**
+ * A working MCP echo server that records liveness in a marker file: it writes the
+ * file on startup and DELETES it when its stdin closes (which `closeMcp` triggers
+ * via `child.stdin.end()`). The marker disappearing proves the subprocess was
+ * torn down. `MCP_MARKER` is supplied through the server's configured env.
+ */
+const MARKER_MCP_SERVER = `
+const fs = require("fs");
+const marker = process.env.MCP_MARKER;
+if (marker) { try { fs.writeFileSync(marker, "alive"); } catch {} }
+function cleanup() { try { if (marker) fs.unlinkSync(marker); } catch {} process.exit(0); }
+process.stdin.on("end", cleanup);
+process.on("SIGTERM", cleanup);
+${FAKE_MCP_SERVER}
+`;
+
+async function waitFor(predicate: () => boolean, timeoutMs = 4000): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
 
 function output(content: string, extra: Partial<ChatOutput> = {}): ChatOutput {
   return {
@@ -164,5 +191,44 @@ describe('NativeAgentAdapter — MCP tool wiring', () => {
     ).toBe(true);
     expect(captured[0]!.tools?.some((t) => t.name.startsWith('mcp__'))).toBe(false);
     expect(events.some((e) => e.type === 'assistant_message')).toBe(true);
+  });
+
+  it('tears down spawned MCP subprocesses when the generator is abandoned at the warnings yield', async () => {
+    const marker = join(tmpdir(), `excalibur-mcp-marker-${process.pid}-${Date.now()}`);
+    const captured: ChatInput[] = [];
+    const gateway = scriptedGateway([output('done')], captured);
+    // Broken server FIRST (emits a warning), working server SECOND (spawns a real
+    // subprocess that writes the marker). Both connect before the warning yields.
+    const run = new NativeAgentAdapter().run(
+      makeInput({
+        gateway,
+        confirm: () => Promise.resolve(true),
+        config: withMcp({
+          servers: {
+            broken: { command: 'excalibur-not-a-real-mcp-bin-7f3a' },
+            worker: {
+              command: process.execPath,
+              args: ['-e', MARKER_MCP_SERVER],
+              env: { MCP_MARKER: marker },
+            },
+          },
+        }),
+      }),
+    );
+    const iterator = run[Symbol.asyncIterator]();
+
+    // The first yielded event is the broken-server warning — by now both servers
+    // have been connected, so the worker subprocess is alive (marker present).
+    const first = await iterator.next();
+    expect(first.done).toBe(false);
+    expect(String((first.value as ExcaliburEvent).payload['message'])).toContain('unavailable');
+    expect(existsSync(marker)).toBe(true);
+
+    // Abandon the run right here (as a consumer break / cancel would). The
+    // `finally { closeMcp() }` must still run and reclaim the worker subprocess.
+    await iterator.return?.(undefined);
+
+    await waitFor(() => !existsSync(marker));
+    expect(existsSync(marker)).toBe(false);
   });
 });
