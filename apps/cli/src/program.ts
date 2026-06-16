@@ -23,6 +23,7 @@ import { registerChangesCommand } from './commands/changes';
 import { registerForkCommand, registerUndoCommand } from './commands/fork';
 import { registerReviewCommand } from './commands/review';
 import { registerRunCommand } from './commands/run';
+import { registerSwarmCommand } from './commands/swarm';
 import { registerSkillsCommand } from './commands/skills';
 import { registerStatusCommand } from './commands/status';
 import { registerUpdateCommand } from './commands/update';
@@ -56,6 +57,7 @@ export function buildProgram(overrides: Partial<CliDeps> = {}): Command {
   registerReviewCommand(program, deps);
   registerPatchCommand(program, deps);
   registerRunCommand(program, deps);
+  registerSwarmCommand(program, deps);
   registerStatusCommand(program, deps);
   registerLogsCommand(program, deps);
   registerReplayCommand(program, deps);
