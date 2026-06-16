@@ -7,8 +7,10 @@ import {
   classifyGoalIntent,
   compactSession,
   compactSessionAsync,
+  createExtensionHost,
   createModelSummarizer,
   DEFAULT_COMPACTION_CONFIG,
+  withExtensionMcpServers,
   getGitIdentity,
   getGitInfo,
   getLocalDiff,
@@ -123,7 +125,15 @@ export async function runInteractiveSession(
   options: InteractiveSessionOptions = {},
 ): Promise<number> {
   const repoRoot = deps.cwd();
-  const { config } = loadConfigContext(repoRoot);
+  let config = loadConfigContext(repoRoot).config;
+  // Extensions can bring MCP servers (EXT-6); merge them into the session config
+  // so the native agent loop connects them too (the repo's own mcp.servers wins).
+  // Best-effort — a failing extension load never blocks the session.
+  try {
+    config = withExtensionMcpServers(config, await createExtensionHost(repoRoot));
+  } catch {
+    /* extensions are additive; never block the shell on a load failure */
+  }
   // Repo analysis warms the context engine (ISD scanning) once per session.
   await analyzeRepository(repoRoot, {
     homeDir: deps.homeDir(),

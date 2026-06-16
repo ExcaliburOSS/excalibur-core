@@ -91,6 +91,38 @@ describe('extensionManifestSchema / validateManifest', () => {
     expect(manifest?.permissions?.network?.allowedHosts).toEqual(['api.linear.app']);
   });
 
+  it('accepts a declarative extension that contributes MCP servers (EXT-6)', () => {
+    const result = validateManifest(
+      parseYaml(`
+id: github-mcp
+name: GitHub MCP
+version: 0.1.0
+kind: declarative
+contributes:
+  mcpServers:
+    - name: github
+      command: gh-mcp-server
+      args: ['--stdio']
+      env:
+        GH_HOST: github.com
+permissions:
+  process:
+    allowedCommands:
+      - gh-mcp-server
+  secrets:
+    env:
+      - GITHUB_TOKEN
+`),
+    );
+    expect(result.success).toBe(true);
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.contributes?.mcpServers).toEqual([
+      { name: 'github', command: 'gh-mcp-server', args: ['--stdio'], env: { GH_HOST: 'github.com' } },
+    ]);
+    // The spawned MCP process is governed by the manifest's own process/secrets perms.
+    expect(result.data?.permissions?.process?.allowedCommands).toEqual(['gh-mcp-server']);
+  });
+
   it('accepts a mixed extension with both contributions and an entrypoint', () => {
     const result = validateManifest({
       id: 'mixed-ext',

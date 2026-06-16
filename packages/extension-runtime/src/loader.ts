@@ -70,9 +70,16 @@ const DIR_NAME_TO_TYPE: ReadonlyMap<string, DeclarativeType> = new Map(
   PROJECT_DECLARATIVE_DIRS.map(({ dirName, type }) => [dirName, type]),
 );
 
+/**
+ * `contributes` keys whose value is a string list (file paths or names). Excludes
+ * `mcpServers`, whose value is an object list collected directly from manifests
+ * (see `collectExtensionMcpServers`), not registered as a string-keyed contribution.
+ */
+type StringListContributesKey = Exclude<keyof ExtensionContributions, 'mcpServers'>;
+
 /** Manifest `contributes` keys that reference declarative files. */
 const DECLARATIVE_CONTRIBUTES_KEYS: ReadonlyArray<{
-  key: keyof ExtensionContributions;
+  key: StringListContributesKey;
   type: DeclarativeType;
 }> = [
   { key: 'methodologies', type: 'methodology' },
@@ -93,7 +100,7 @@ const DECLARATIVE_CONTRIBUTES_KEYS: ReadonlyArray<{
  * contribution kind in M1, so it is not auto-registered.
  */
 const PROGRAMMATIC_CONTRIBUTES_KEYS: ReadonlyArray<{
-  key: keyof ExtensionContributions;
+  key: StringListContributesKey;
   kind: ProgrammaticContributionKind;
 }> = [
   { key: 'workItemProviders', kind: 'work_item_provider' },

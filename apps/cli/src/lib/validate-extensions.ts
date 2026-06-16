@@ -46,7 +46,10 @@ const PROJECT_DECLARATIVE_DIRS: ReadonlyArray<{ dirName: string; type: Declarati
   { dirName: 'command-mappings', type: 'command_mapping' },
 ];
 
-const MANIFEST_CONTRIBUTES: ReadonlyArray<{ key: keyof ExtensionContributions; type: DeclarativeType }> = [
+const MANIFEST_CONTRIBUTES: ReadonlyArray<{
+  key: Exclude<keyof ExtensionContributions, 'mcpServers'>;
+  type: DeclarativeType;
+}> = [
   { key: 'methodologies', type: 'methodology' },
   { key: 'workflows', type: 'workflow' },
   { key: 'questionPacks', type: 'question_pack' },

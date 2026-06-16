@@ -21,6 +21,21 @@ const fileList = z.array(z.string().min(1));
 const nameList = z.array(z.string().min(1));
 
 /**
+ * An MCP server an extension brings (EXT-6). Inline (not a file path / runtime
+ * name) because a server spec is small declarative config — a spawned process
+ * governed by the extension's own `permissions.process` / `secrets`. `env` is
+ * for NON-secret overrides only; real auth comes from the process environment.
+ */
+export const mcpServerContributionSchema = z.object({
+  name: z.string().min(1),
+  command: z.string().min(1),
+  args: z.array(z.string()).optional(),
+  cwd: z.string().optional(),
+  env: z.record(z.string()).optional(),
+});
+export type McpServerContribution = z.infer<typeof mcpServerContributionSchema>;
+
+/**
  * `contributes` keys (spec §3). Declarative keys hold file paths relative to
  * the extension directory; programmatic keys hold contribution names that the
  * entrypoint registers at runtime. `vcsProviders` / `enterpriseSyncProviders`
@@ -38,6 +53,8 @@ export const extensionContributionsSchema = z.object({
   reportTemplates: fileList.optional(),
   roleDefinitions: fileList.optional(),
   commandMappings: fileList.optional(),
+  /** MCP servers this extension brings (EXT-6) — merged into the agent's MCP config. */
+  mcpServers: z.array(mcpServerContributionSchema).optional(),
   workItemProviders: nameList.optional(),
   communicationProviders: nameList.optional(),
   modelProviders: nameList.optional(),

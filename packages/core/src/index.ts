@@ -14,7 +14,13 @@ export {
 } from './config/load-config';
 
 // Extension host
-export { createExtensionHost, workflowCatalog, type WorkflowCatalogEntry } from './extensions/host';
+export {
+  collectExtensionMcpServers,
+  createExtensionHost,
+  withExtensionMcpServers,
+  workflowCatalog,
+  type WorkflowCatalogEntry,
+} from './extensions/host';
 
 // Init
 export {
