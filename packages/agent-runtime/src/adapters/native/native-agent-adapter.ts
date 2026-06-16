@@ -7,7 +7,13 @@ import {
   type ExcaliburEventType,
 } from '@excalibur/shared';
 import { redactSecrets } from '@excalibur/model-gateway';
-import type { ChatMessage, ChatOutput, ModelGateway, ToolCall, ToolSpec } from '@excalibur/model-gateway';
+import type {
+  ChatMessage,
+  ChatOutput,
+  ModelGateway,
+  ToolCall,
+  ToolSpec,
+} from '@excalibur/model-gateway';
 import {
   NATIVE_TOOLS,
   NATIVE_TOOL_NAMES,
@@ -18,6 +24,14 @@ import {
 import { zodToJsonSchema } from '../../tools/zod-to-json-schema';
 import { executeNativeTool, type ToolExecutionContext } from '../../tools/execute-tool';
 import { PermissionEngine } from '../../permissions/permission-engine';
+import {
+  asJsonObject,
+  closeMcp,
+  connectMcpServers,
+  mcpResultToText,
+  type ConnectedMcp,
+  type McpToolEntry,
+} from '../../mcp/mcp-tools';
 import type { AgentAdapter, AgentRunInput } from '../../types';
 
 /**
@@ -160,10 +174,7 @@ export class NativeAgentAdapter implements AgentAdapter {
    * no tool calls, at {@link MAX_ITERATIONS}, or on abort/stop.
    */
   async *run(input: AgentRunInput): AsyncIterable<ExcaliburEvent> {
-    const emit = (
-      type: ExcaliburEventType,
-      payload: Record<string, unknown>,
-    ): ExcaliburEvent =>
+    const emit = (type: ExcaliburEventType, payload: Record<string, unknown>): ExcaliburEvent =>
       createEvent({
         runId: input.runId,
         type,
@@ -178,7 +189,22 @@ export class NativeAgentAdapter implements AgentAdapter {
       config: input.config,
       permissions,
     };
-    const tools = toolSpecsFor(input.role);
+    // MCP (Model Context Protocol): when servers are configured AND this role
+    // can act (read-only planner roles get native read tools only — an external
+    // MCP tool might mutate), connect them and merge their namespaced tools. A
+    // server that fails to start is skipped with a warning; MCP never breaks the
+    // run, and every client is closed in the `finally` around the loop.
+    const mcpServers = input.config.mcp?.servers;
+    const mcp: ConnectedMcp =
+      !READ_ONLY_ROLES.has(input.role) &&
+      mcpServers !== undefined &&
+      Object.keys(mcpServers).length > 0
+        ? await connectMcpServers(mcpServers)
+        : { specs: [], byName: new Map<string, McpToolEntry>(), clients: [], warnings: [] };
+    for (const warning of mcp.warnings) {
+      yield emit('policy_decision', { kind: 'log', decision: 'allow', message: warning });
+    }
+    const tools = [...toolSpecsFor(input.role), ...mcp.specs];
     const responseKind = ROLE_TO_RESPONSE_KIND[input.role] ?? 'ask';
     const mutated = new Set<string>();
     const totals: RunningTotals = { inputTokens: 0, outputTokens: 0, costCents: null };
@@ -206,108 +232,119 @@ export class NativeAgentAdapter implements AgentAdapter {
     let wasErrored = false;
     let finalContent = '';
 
-    for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
-      if (aborted()) {
-        wasAborted = true;
-        break;
-      }
-
-      const chatInput: Parameters<ChatRunner['chat']>[0] = {
-        messages,
-        tools,
-        metadata: {
-          kind: responseKind,
-          role: input.role,
-          runId: input.runId,
-          phaseId: input.phase?.id ?? null,
-          iteration,
-        },
-      };
-      if (input.model !== undefined) {
-        chatInput.model = input.model;
-      }
-      if (input.signal !== undefined) {
-        chatInput.signal = input.signal;
-      }
-
-      // A model can return invalid JSON tool arguments (→ a typed ProviderError
-      // from parseToolArguments) or the provider can fail transiently. Either
-      // would otherwise propagate out of this generator and TERMINATE the run.
-      // Catch it, surface a graceful (redacted) `error` event, and end the run
-      // cleanly so consumers always see a final completion turn.
-      let output: ChatOutput;
-      try {
-        output = await input.gateway.chat(chatInput);
-      } catch (error) {
-        wasErrored = true;
-        const code =
-          typeof (error as { code?: unknown }).code === 'string'
-            ? ((error as { code: string }).code as string)
-            : 'provider_error';
-        const reason = error instanceof Error ? error.message : String(error);
-        yield emit('error', {
-          code,
-          iteration,
-          message: `The model returned an invalid tool call / a provider error: ${redactSecrets(reason)}`,
-        });
-        finalContent =
-          'Run ended early: the model returned an invalid tool call or the provider failed.';
-        break;
-      }
-      totals.inputTokens += output.usage.inputTokens;
-      totals.outputTokens += output.usage.outputTokens;
-      if (output.costCents !== null) {
-        totals.costCents = (totals.costCents ?? 0) + output.costCents;
-      }
-
-      yield emit('model_call', {
-        model: output.model,
-        kind: responseKind,
-        iteration,
-        inputTokens: output.usage.inputTokens,
-        outputTokens: output.usage.outputTokens,
-        costCents: output.costCents,
-        finishReason: output.finishReason,
-        content: redactSecrets(output.content),
-      });
-
-      const toolCalls = output.toolCalls ?? [];
-      if (toolCalls.length === 0) {
-        // Final answer — no more tools requested.
-        yield emit('assistant_message', {
-          content: redactSecrets(output.content),
-          totalInputTokens: totals.inputTokens,
-          totalOutputTokens: totals.outputTokens,
-          totalCostCents: totals.costCents,
-          iterations: iteration + 1,
-        });
-        // Implementer turns surface the real working-tree diff for the engine.
-        for (const ev of await this.maybeEmitPatch(input, mutated, emit)) {
-          yield ev;
-        }
-        return;
-      }
-
-      // Record the assistant turn that requested the tools.
-      messages.push({ role: 'assistant', content: output.content, toolCalls });
-      finalContent = output.content;
-
-      for (const call of toolCalls) {
+    try {
+      for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
         if (aborted()) {
           wasAborted = true;
           break;
         }
-        for (const ev of await this.runToolCall(input, toolCtx, call, mutated, emit)) {
-          yield ev.event;
-          if (ev.toolMessage !== undefined) {
-            messages.push(ev.toolMessage);
+
+        const chatInput: Parameters<ChatRunner['chat']>[0] = {
+          messages,
+          tools,
+          metadata: {
+            kind: responseKind,
+            role: input.role,
+            runId: input.runId,
+            phaseId: input.phase?.id ?? null,
+            iteration,
+          },
+        };
+        if (input.model !== undefined) {
+          chatInput.model = input.model;
+        }
+        if (input.signal !== undefined) {
+          chatInput.signal = input.signal;
+        }
+
+        // A model can return invalid JSON tool arguments (→ a typed ProviderError
+        // from parseToolArguments) or the provider can fail transiently. Either
+        // would otherwise propagate out of this generator and TERMINATE the run.
+        // Catch it, surface a graceful (redacted) `error` event, and end the run
+        // cleanly so consumers always see a final completion turn.
+        let output: ChatOutput;
+        try {
+          output = await input.gateway.chat(chatInput);
+        } catch (error) {
+          wasErrored = true;
+          const code =
+            typeof (error as { code?: unknown }).code === 'string'
+              ? ((error as { code: string }).code as string)
+              : 'provider_error';
+          const reason = error instanceof Error ? error.message : String(error);
+          yield emit('error', {
+            code,
+            iteration,
+            message: `The model returned an invalid tool call / a provider error: ${redactSecrets(reason)}`,
+          });
+          finalContent =
+            'Run ended early: the model returned an invalid tool call or the provider failed.';
+          break;
+        }
+        totals.inputTokens += output.usage.inputTokens;
+        totals.outputTokens += output.usage.outputTokens;
+        if (output.costCents !== null) {
+          totals.costCents = (totals.costCents ?? 0) + output.costCents;
+        }
+
+        yield emit('model_call', {
+          model: output.model,
+          kind: responseKind,
+          iteration,
+          inputTokens: output.usage.inputTokens,
+          outputTokens: output.usage.outputTokens,
+          costCents: output.costCents,
+          finishReason: output.finishReason,
+          content: redactSecrets(output.content),
+        });
+
+        const toolCalls = output.toolCalls ?? [];
+        if (toolCalls.length === 0) {
+          // Final answer — no more tools requested.
+          yield emit('assistant_message', {
+            content: redactSecrets(output.content),
+            totalInputTokens: totals.inputTokens,
+            totalOutputTokens: totals.outputTokens,
+            totalCostCents: totals.costCents,
+            iterations: iteration + 1,
+          });
+          // Implementer turns surface the real working-tree diff for the engine.
+          for (const ev of await this.maybeEmitPatch(input, mutated, emit)) {
+            yield ev;
+          }
+          return;
+        }
+
+        // Record the assistant turn that requested the tools.
+        messages.push({ role: 'assistant', content: output.content, toolCalls });
+        finalContent = output.content;
+
+        for (const call of toolCalls) {
+          if (aborted()) {
+            wasAborted = true;
+            break;
+          }
+          for (const ev of await this.runToolCall(
+            input,
+            toolCtx,
+            call,
+            mutated,
+            emit,
+            mcp.byName,
+          )) {
+            yield ev.event;
+            if (ev.toolMessage !== undefined) {
+              messages.push(ev.toolMessage);
+            }
           }
         }
-      }
 
-      if (wasAborted) {
-        break;
+        if (wasAborted) {
+          break;
+        }
       }
+    } finally {
+      closeMcp(mcp);
     }
 
     // Reached only on abort, a provider/tool-call error, or iteration-limit
@@ -353,8 +390,16 @@ export class NativeAgentAdapter implements AgentAdapter {
     call: ToolCall,
     mutated: Set<string>,
     emit: (type: ExcaliburEventType, payload: Record<string, unknown>) => ExcaliburEvent,
+    mcpByName: ReadonlyMap<string, McpToolEntry>,
   ): Promise<Array<{ event: ExcaliburEvent; toolMessage?: ChatMessage }>> {
     const events: Array<{ event: ExcaliburEvent; toolMessage?: ChatMessage }> = [];
+
+    // MCP tool (namespaced `mcp__<server>__<tool>`) → route to its server,
+    // gated by confirmation (external tools always require approval).
+    const mcpEntry = mcpByName.get(call.name);
+    if (mcpEntry !== undefined) {
+      return this.runMcpToolCall(input, call, mcpEntry, emit);
+    }
 
     if (!isNativeToolName(call.name)) {
       const result = `unknown tool "${call.name}"`;
@@ -421,6 +466,67 @@ export class NativeAgentAdapter implements AgentAdapter {
       event: emit(eventType, payload),
       toolMessage: { role: 'tool', toolCallId: call.id, content: result },
     });
+    return events;
+  }
+
+  /**
+   * Executes one MCP tool call: announce → confirm (external tools ALWAYS require
+   * approval; no confirmer ⇒ declined) → route to the owning server's
+   * `callTool`. The result text (redacted) becomes the model's tool message; a
+   * transport/tool failure is reported as a tool result, never thrown.
+   */
+  private async runMcpToolCall(
+    input: AgentRunInput,
+    call: ToolCall,
+    entry: McpToolEntry,
+    emit: (type: ExcaliburEventType, payload: Record<string, unknown>) => ExcaliburEvent,
+  ): Promise<Array<{ event: ExcaliburEvent; toolMessage?: ChatMessage }>> {
+    const events: Array<{ event: ExcaliburEvent; toolMessage?: ChatMessage }> = [];
+    events.push({
+      event: emit('tool_call', {
+        tool: call.name,
+        server: entry.serverName,
+        arguments: redactArgs(call.arguments),
+      }),
+    });
+
+    const reason = `external MCP tool "${entry.toolName}" (server: ${entry.serverName})`;
+    const approved =
+      input.confirm !== undefined
+        ? await input.confirm({ tool: call.name, reason, detail: entry.toolName })
+        : false;
+    if (!approved) {
+      const result = `user declined: ${reason}`;
+      events.push({
+        event: emit('policy_decision', {
+          kind: 'confirmation',
+          tool: call.name,
+          decision: 'deny',
+          message: result,
+        }),
+        toolMessage: { role: 'tool', toolCallId: call.id, content: result },
+      });
+      return events;
+    }
+
+    try {
+      const output = await entry.client.callTool(entry.toolName, asJsonObject(call.arguments));
+      const text = redactSecrets(mcpResultToText(output));
+      events.push({
+        event: emit('tool_call', {
+          tool: call.name,
+          server: entry.serverName,
+          ok: !output.isError,
+        }),
+        toolMessage: { role: 'tool', toolCallId: call.id, content: text },
+      });
+    } catch (error) {
+      const message = `MCP call failed: ${error instanceof Error ? error.message : String(error)}`;
+      events.push({
+        event: emit('tool_call', { tool: call.name, server: entry.serverName, error: message }),
+        toolMessage: { role: 'tool', toolCallId: call.id, content: message },
+      });
+    }
     return events;
   }
 
@@ -588,7 +694,9 @@ function describeCall(name: NativeToolName, args: Record<string, unknown>): stri
     return typeof args['command'] === 'string' ? `command: ${args['command']}` : undefined;
   }
   if (name === 'run_tests') {
-    return typeof args['command'] === 'string' ? `command: ${args['command']}` : 'detected test command';
+    return typeof args['command'] === 'string'
+      ? `command: ${args['command']}`
+      : 'detected test command';
   }
   if (name === 'create_branch') {
     return typeof args['name'] === 'string' ? `branch: ${args['name']}` : undefined;

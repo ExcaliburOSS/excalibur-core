@@ -105,6 +105,24 @@ export const DEFAULT_COMPACTION_CONFIG: CompactionConfig = {
   pruneToolOutputs: true,
 };
 
+/**
+ * `mcp:` — Model Context Protocol servers whose tools the agent may call. Each
+ * is a subprocess (command + args, NO shell). Absent → MCP off (no behavior
+ * change). API keys/secrets belong in the process environment (inherited by the
+ * server), NOT in this file; `env` here is for non-secret overrides only.
+ */
+const mcpServerConfigSchema = z.object({
+  command: z.string().min(1),
+  args: z.array(z.string()).optional(),
+  cwd: z.string().optional(),
+  env: z.record(z.string()).optional(),
+});
+export type McpServerConfig = z.infer<typeof mcpServerConfigSchema>;
+
+export const mcpSectionSchema = z.object({
+  servers: z.record(mcpServerConfigSchema).optional(),
+});
+
 const instructionSourceRefSchema = z.object({
   path: z.string().min(1),
   format: instructionSourceFormatSchema.optional(),
@@ -138,6 +156,7 @@ const baseExcaliburConfigSchema = z.object({
   integrations: z.record(z.record(z.string())).optional(),
   agents: agentsSectionSchema.optional(),
   compaction: compactionConfigSchema.optional(),
+  mcp: mcpSectionSchema.optional(),
   instructions: z.object({ sources: z.array(instructionSourceRefSchema).optional() }).optional(),
   skills: z.object({ sources: z.array(skillSourceRefSchema).optional() }).optional(),
 });
