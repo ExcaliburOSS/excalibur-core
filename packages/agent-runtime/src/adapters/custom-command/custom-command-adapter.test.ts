@@ -13,16 +13,17 @@ import {
   isCommandOnPath,
 } from './custom-command-adapter';
 
-function makeInput(): AgentRunInput {
+function makeInput(overrides: Partial<AgentRunInput> = {}): AgentRunInput {
   return {
     runId: 'run_20260613_111500',
     sessionId: 'session_custom_1',
-    workdir: '/tmp/does-not-matter',
+    workdir: process.cwd(),
     prompt: 'Fix the webhook retry bug',
     role: 'implementer',
     config: DEFAULT_CONFIG,
     gateway: new ModelGateway(DEFAULT_PROVIDERS_CONFIG),
     phase: { id: 'implement', name: 'Implement', type: 'agent_work' },
+    ...overrides,
   };
 }
 
@@ -125,24 +126,75 @@ describe('CustomCommandAdapter.detect', () => {
   });
 });
 
-describe('CustomCommandAdapter.run', () => {
-  it('yields exactly one schema-valid error event explaining M3 activation', async () => {
-    const adapter = new CustomCommandAdapter({ id: 'claude-code', command: 'claude' });
-    const events = await collect(adapter.run(makeInput()));
+describe('CustomCommandAdapter.run (subprocess passthrough)', () => {
+  // Tiny node programs stand in for a vendor CLI — deterministic, no network.
+  const ECHO_STDIN =
+    'let s="";process.stdin.on("data",d=>{s+=d});process.stdin.on("end",()=>process.stdout.write("ECHO:"+s))';
 
-    expect(events).toHaveLength(1);
-    const [event] = events;
-    expect(event).toBeDefined();
-    expect(excaliburEventSchema.safeParse(event).success).toBe(true);
-    expect(event?.type).toBe('error');
-    expect(event?.runId).toBe('run_20260613_111500');
-    expect(event?.sessionId).toBe('session_custom_1');
-    expect(event?.phaseId).toBe('implement');
-    expect(event?.payload).toMatchObject({
-      code: 'agent_adapter_not_available',
-      adapter: 'claude-code',
-      command: 'claude',
+  it('feeds the prompt via stdin (no {{prompt}} token) and maps stdout to assistant_message', async () => {
+    const adapter = new CustomCommandAdapter({
+      id: 'echo',
+      command: process.execPath,
+      args: ['-e', ECHO_STDIN],
     });
-    expect(String(event?.payload.message)).toContain('M3');
+    const events = await collect(adapter.run(makeInput({ prompt: 'hello there' })));
+    expect(events.every((e) => excaliburEventSchema.safeParse(e).success)).toBe(true);
+    expect(events.map((e) => e.type)).toEqual([
+      'run_started',
+      'assistant_message',
+      'run_completed',
+    ]);
+    expect(String(events[1]?.payload.content)).toBe('ECHO:hello there');
+    expect(events[0]?.runId).toBe('run_20260613_111500');
+    expect(events[0]?.phaseId).toBe('implement');
+    expect(events[0]?.sessionId).toBe('session_custom_1');
+  });
+
+  it('substitutes {{prompt}} into the args when the token is present', async () => {
+    const adapter = new CustomCommandAdapter({
+      id: 'argprompt',
+      command: process.execPath,
+      args: ['-e', 'process.stdout.write("GOT:"+process.argv[1])', '{{prompt}}'],
+    });
+    const events = await collect(adapter.run(makeInput({ prompt: 'do the thing' })));
+    expect(events.map((e) => e.type)).toEqual([
+      'run_started',
+      'assistant_message',
+      'run_completed',
+    ]);
+    expect(String(events[1]?.payload.content)).toBe('GOT:do the thing');
+  });
+
+  it('emits an error event on a non-zero exit (capturing the exit code + stderr)', async () => {
+    const adapter = new CustomCommandAdapter({
+      id: 'failer',
+      command: process.execPath,
+      args: ['-e', 'process.stderr.write("boom");process.exit(3)'],
+    });
+    const events = await collect(adapter.run(makeInput()));
+    expect(events.map((e) => e.type)).toEqual(['run_started', 'error']);
+    expect(events[1]?.payload).toMatchObject({ code: 'agent_exit_nonzero', exitCode: 3 });
+    expect(String(events[1]?.payload.stderr)).toContain('boom');
+  });
+
+  it('emits a spawn_failed error when the binary is missing (never throws)', async () => {
+    const adapter = new CustomCommandAdapter({
+      id: 'ghost',
+      command: 'excalibur-definitely-not-a-real-binary-7f3a',
+    });
+    const events = await collect(adapter.run(makeInput()));
+    expect(events.map((e) => e.type)).toEqual(['run_started', 'error']);
+    expect(events[1]?.payload.code).toBe('agent_spawn_failed');
+  });
+
+  it('emits an aborted error when the signal is already aborted', async () => {
+    const adapter = new CustomCommandAdapter({
+      id: 'long',
+      command: process.execPath,
+      args: ['-e', 'setInterval(()=>{},1000)'],
+    });
+    const events = await collect(adapter.run(makeInput({ signal: AbortSignal.abort() })));
+    expect(events.map((e) => e.type)).toEqual(['run_started', 'error']);
+    expect(events[1]?.payload.code).toBe('aborted');
   });
 });

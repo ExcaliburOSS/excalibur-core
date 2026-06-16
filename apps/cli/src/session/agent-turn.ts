@@ -1,4 +1,8 @@
-import { NativeAgentAdapter, type AgentAdapter, type ConfirmationRequest } from '@excalibur/agent-runtime';
+import {
+  resolveAgentAdapter,
+  type AgentAdapter,
+  type ConfirmationRequest,
+} from '@excalibur/agent-runtime';
 import {
   addWorktree,
   applyPatch,
@@ -233,61 +237,61 @@ async function driveLoop(
   spinner.start(() => spinnerText(null));
 
   try {
-  for await (const event of stream) {
-    spinner.stop(); // erase the transient line before any permanent output
-    runManager.appendEvent(run.id, event);
-    renderer.onEvent(event);
+    for await (const event of stream) {
+      spinner.stop(); // erase the transient line before any permanent output
+      runManager.appendEvent(run.id, event);
+      renderer.onEvent(event);
 
-    if (event.type === 'model_call') {
-      const m = event.payload['model'];
-      if (typeof m === 'string' && m.length > 0) {
-        model = m;
+      if (event.type === 'model_call') {
+        const m = event.payload['model'];
+        if (typeof m === 'string' && m.length > 0) {
+          model = m;
+        }
+        const c = event.payload['costCents'];
+        if (typeof c === 'number') {
+          costCents = (costCents ?? 0) + c;
+        }
+        const inputTokens = event.payload['inputTokens'];
+        const outputTokens = event.payload['outputTokens'];
+        if (typeof inputTokens === 'number' && typeof outputTokens === 'number') {
+          totalTokens += inputTokens + outputTokens;
+          runManager.appendModelCall(run.id, {
+            provider: turn.config.models?.default ?? turn.providerName,
+            model: typeof m === 'string' ? m : turn.providerName,
+            inputTokens,
+            outputTokens,
+            costCents: typeof c === 'number' ? c : null,
+            timestamp: new Date().toISOString(),
+          });
+        }
       }
-      const c = event.payload['costCents'];
-      if (typeof c === 'number') {
-        costCents = (costCents ?? 0) + c;
+      if (event.type === 'assistant_message') {
+        const content = event.payload['content'];
+        if (typeof content === 'string' && content.length > 0) {
+          finalText = content;
+        }
+        if (event.payload['aborted'] === true) {
+          aborted = true;
+        }
       }
-      const inputTokens = event.payload['inputTokens'];
-      const outputTokens = event.payload['outputTokens'];
-      if (typeof inputTokens === 'number' && typeof outputTokens === 'number') {
-        totalTokens += inputTokens + outputTokens;
-        runManager.appendModelCall(run.id, {
-          provider: turn.config.models?.default ?? turn.providerName,
-          model: typeof m === 'string' ? m : turn.providerName,
-          inputTokens,
-          outputTokens,
-          costCents: typeof c === 'number' ? c : null,
-          timestamp: new Date().toISOString(),
-        });
+      if (event.type === 'patch_generated') {
+        const diff = event.payload['diff'];
+        if (typeof diff === 'string' && diff.trim().length > 0) {
+          mutated = true;
+          runManager.writeArtifact(run.id, 'diff.patch', `${diff}\n`);
+        }
+        const affected = event.payload['filesAffected'];
+        if (Array.isArray(affected) && affected.length > 0) {
+          mutated = true;
+        }
       }
-    }
-    if (event.type === 'assistant_message') {
-      const content = event.payload['content'];
-      if (typeof content === 'string' && content.length > 0) {
-        finalText = content;
-      }
-      if (event.payload['aborted'] === true) {
-        aborted = true;
-      }
-    }
-    if (event.type === 'patch_generated') {
-      const diff = event.payload['diff'];
-      if (typeof diff === 'string' && diff.trim().length > 0) {
-        mutated = true;
-        runManager.writeArtifact(run.id, 'diff.patch', `${diff}\n`);
-      }
-      const affected = event.payload['filesAffected'];
-      if (Array.isArray(affected) && affected.length > 0) {
-        mutated = true;
-      }
-    }
 
-    // Re-arm the indicator for the NEXT wait: the grounded activity that follows
-    // this event (a tool announcement → "Running …" during execution), else the
-    // role gerund while the model reasons before the next turn.
-    const activity = activityFor(event);
-    spinner.start(() => spinnerText(activity));
-  }
+      // Re-arm the indicator for the NEXT wait: the grounded activity that follows
+      // this event (a tool announcement → "Running …" during execution), else the
+      // role gerund while the model reasons before the next turn.
+      const activity = activityFor(event);
+      spinner.start(() => spinnerText(activity));
+    }
   } finally {
     spinner.stop();
     turn.signal?.removeEventListener('abort', onAbort);
@@ -345,7 +349,7 @@ function createTurnRun(
  * derived from the autonomy level; the model decides whether to answer or act.
  */
 export async function runAgentTurn(turn: AgentTurnDeps, task: string): Promise<AgentTurnResult> {
-  const adapter = turn.adapter ?? new NativeAgentAdapter();
+  const adapter = turn.adapter ?? resolveAgentAdapter(turn.config);
   const runManager = new RunManager(turn.repoRoot);
   const role = roleForAutonomy(turn.autonomyLevel);
   const run = createTurnRun(
@@ -357,7 +361,9 @@ export async function runAgentTurn(turn: AgentTurnDeps, task: string): Promise<A
   );
   runManager.updateRecord(run.id, { status: 'running' });
 
-  turn.deps.ui.info(`→ agent · ${role === 'planner' ? 'answer (read-only)' : 'act'} · L${turn.autonomyLevel}`);
+  turn.deps.ui.info(
+    `→ agent · ${role === 'planner' ? 'answer (read-only)' : 'act'} · L${turn.autonomyLevel}`,
+  );
   turn.deps.ui.info(`Run ${run.id} → ${run.dir}`);
 
   const result = await driveLoop(turn, adapter, runManager, run, generateId('sess'), {
@@ -400,7 +406,7 @@ export interface PlanTurnResult {
  * we therefore return `gate: 'cancel'` when non-interactive.
  */
 export async function runPlanTurn(turn: AgentTurnDeps, task: string): Promise<PlanTurnResult> {
-  const adapter = turn.adapter ?? new NativeAgentAdapter();
+  const adapter = turn.adapter ?? resolveAgentAdapter(turn.config);
   const runManager = new RunManager(turn.repoRoot);
 
   // --- 1. Plan pass (planner role, read-only) ------------------------------
@@ -424,19 +430,29 @@ export async function runPlanTurn(turn: AgentTurnDeps, task: string): Promise<Pl
   turn.deps.ui.write();
 
   if (planResult.aborted) {
-    return { gate: 'cancel', planText: planResult.finalText, execution: null, planRunId: planRun.id };
+    return {
+      gate: 'cancel',
+      planText: planResult.finalText,
+      execution: null,
+      planRunId: planRun.id,
+    };
   }
 
   // --- 2. Gate -------------------------------------------------------------
   // Non-interactive: present + stop (never execute a plan blind in CI/piped).
   if (!turn.deps.ui.isInteractive()) {
-    turn.deps.ui.info('Plan ready. Re-run with approval to execute (non-interactive: not executing).');
-    return { gate: 'cancel', planText: planResult.finalText, execution: null, planRunId: planRun.id };
+    turn.deps.ui.info(
+      'Plan ready. Re-run with approval to execute (non-interactive: not executing).',
+    );
+    return {
+      gate: 'cancel',
+      planText: planResult.finalText,
+      execution: null,
+      planRunId: planRun.id,
+    };
   }
 
-  const answer = (
-    await turn.deps.ui.ask('[approve / edit / cancel]', { defaultAnswer: 'cancel' })
-  )
+  const answer = (await turn.deps.ui.ask('[approve / edit / cancel]', { defaultAnswer: 'cancel' }))
     .trim()
     .toLowerCase();
   const gate: PlanGate =
@@ -456,7 +472,13 @@ export async function runPlanTurn(turn: AgentTurnDeps, task: string): Promise<Pl
   }
 
   // --- 3. Execute pass (implementer role, write tools) ---------------------
-  const execRun = createTurnRun(runManager, task, turn.autonomyLevel, turn.providerName, 'conversation');
+  const execRun = createTurnRun(
+    runManager,
+    task,
+    turn.autonomyLevel,
+    turn.providerName,
+    'conversation',
+  );
   runManager.updateRecord(execRun.id, { status: 'running' });
   turn.deps.ui.write();
   turn.deps.ui.info(`→ execute · implementer · L${turn.autonomyLevel}`);
@@ -560,12 +582,17 @@ export interface ForkTurnResult {
  * accumulated diff does not apply onto the current HEAD (the tree diverged) the
  * worktree is torn down and the fork fails cleanly rather than half-built.
  */
-export async function runForkTurn(turn: AgentTurnDeps, input: ForkTurnInput): Promise<ForkTurnResult> {
+export async function runForkTurn(
+  turn: AgentTurnDeps,
+  input: ForkTurnInput,
+): Promise<ForkTurnResult> {
   const { deps } = turn;
   const runManager = new RunManager(turn.repoRoot);
 
   if (!getGitInfo(turn.repoRoot).isRepo) {
-    throw new Error('Fork needs a git repository — the worktree is reconstructed from a base commit.');
+    throw new Error(
+      'Fork needs a git repository — the worktree is reconstructed from a base commit.',
+    );
   }
   if (!hasCommits(turn.repoRoot)) {
     throw new Error('Fork needs at least one commit to base the reconstructed worktree on.');
@@ -622,7 +649,9 @@ export async function runForkTurn(turn: AgentTurnDeps, input: ForkTurnInput): Pr
     }
 
     const cachedTokens = plan.cachedTokens.input + plan.cachedTokens.output;
-    deps.ui.info(`⑂ fork of ${plan.source.runId} @ step ${plan.source.atStep + 1}/${plan.source.totalSteps}`);
+    deps.ui.info(
+      `⑂ fork of ${plan.source.runId} @ step ${plan.source.atStep + 1}/${plan.source.totalSteps}`,
+    );
     deps.ui.info(
       `Reused ${cachedTokens} cached tokens (${fmtCost(plan.cachedCostCents)}) — only the new instruction runs live.`,
     );
@@ -630,7 +659,7 @@ export async function runForkTurn(turn: AgentTurnDeps, input: ForkTurnInput): Pr
 
     // Drive ONLY the live suffix: the implementer executes the new instruction
     // with the cached prefix seeded, inside the reconstructed worktree.
-    const adapter = turn.adapter ?? new NativeAgentAdapter();
+    const adapter = turn.adapter ?? resolveAgentAdapter(turn.config);
     const result = await driveLoop(turn, adapter, runManager, forkRun, generateId('sess'), {
       role: 'implementer',
       prompt: input.instruction,
@@ -652,7 +681,10 @@ export async function runForkTurn(turn: AgentTurnDeps, input: ForkTurnInput): Pr
     };
   } catch (error) {
     removeWorktree(turn.repoRoot, worktreePath, { force: true });
-    runManager.updateRecord(forkRun.id, { status: 'failed', completedAt: new Date().toISOString() });
+    runManager.updateRecord(forkRun.id, {
+      status: 'failed',
+      completedAt: new Date().toISOString(),
+    });
     const reason = error instanceof Error ? error.message : String(error);
     throw new Error(
       `Fork failed at step ${plan.source.atStep + 1}: ${reason}. ` +

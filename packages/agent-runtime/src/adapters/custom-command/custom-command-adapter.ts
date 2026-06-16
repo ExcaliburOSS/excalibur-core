@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { accessSync, constants, statSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { z } from 'zod';
@@ -5,6 +6,7 @@ import {
   ConfigValidationError,
   createEvent,
   type ExcaliburEvent,
+  type ExcaliburEventType,
 } from '@excalibur/shared';
 import type { AgentAdapter, AgentRunInput } from '../../types';
 
@@ -22,9 +24,11 @@ import type { AgentAdapter, AgentRunInput } from '../../types';
  *     args: ["--print", "{{prompt}}"]
  * ```
  *
- * M1 behavior: `detect()` really checks the binary on PATH, but `run()` only
- * yields a single honest `error` event — custom-command execution activates
- * in M3.
+ * `detect()` checks the binary on PATH; `run()` drives it as a subprocess,
+ * inheriting the environment so the wrapped tool uses ITS OWN auth (e.g. a
+ * logged-in vendor CLI holding a subscription) — Excalibur never reads or
+ * forwards a credential. This is the legitimate "use your subscription" path:
+ * the vendor's own client does the inference, Excalibur only orchestrates it.
  */
 
 /** `agents.<id>` entry shape for `type: custom-command` (OSS spec §15). */
@@ -57,10 +61,7 @@ function isExecutableFile(filePath: string): boolean {
  * path separator are checked directly; bare names are searched on PATH
  * (honoring PATHEXT on Windows).
  */
-export function isCommandOnPath(
-  command: string,
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
+export function isCommandOnPath(command: string, env: NodeJS.ProcessEnv = process.env): boolean {
   const trimmed = command.trim();
   if (trimmed.length === 0) {
     return false;
@@ -159,21 +160,147 @@ export class CustomCommandAdapter implements AgentAdapter {
     return Promise.resolve(isCommandOnPath(this.command));
   }
 
-  /** M1: yields a single honest `error` event — execution activates in M3. */
+  /**
+   * Runs the external CLI as a subprocess and maps its output to canonical
+   * events. The task prompt is substituted into any `{{prompt}}` arg token; with
+   * no token it is written to the child's stdin. The child INHERITS the
+   * environment so the wrapped tool uses its own auth/credential store —
+   * Excalibur never reads or forwards a token. No shell is used (args are an
+   * array), so the prompt can never inject a command. Emits `run_started`, then
+   * `assistant_message` + `run_completed` on a clean exit, or `error` on a
+   * non-zero exit / spawn failure / abort.
+   */
   async *run(input: AgentRunInput): AsyncIterable<ExcaliburEvent> {
-    yield createEvent({
-      runId: input.runId,
-      type: 'error',
-      phaseId: input.phase?.id ?? null,
-      sessionId: input.sessionId,
-      payload: {
-        code: 'agent_adapter_not_available',
+    const emit = (type: ExcaliburEventType, payload: Record<string, unknown>): ExcaliburEvent =>
+      createEvent({
+        runId: input.runId,
+        type,
+        phaseId: input.phase?.id ?? null,
+        sessionId: input.sessionId,
+        payload,
+      });
+
+    yield emit('run_started', { adapter: this.id, command: this.command });
+
+    const hasPromptToken = this.args.some((arg) => arg.includes('{{prompt}}'));
+    const args = this.args.map((arg) => arg.replaceAll('{{prompt}}', input.prompt));
+    const stdin = hasPromptToken ? undefined : input.prompt;
+
+    const result = await this.spawnProcess(args, input.workdir, stdin, input.signal);
+
+    if (result.kind === 'spawn_error') {
+      yield emit('error', {
+        code: 'agent_spawn_failed',
         adapter: this.id,
         command: this.command,
-        message:
-          `Custom command agent "${this.id}" ("${this.command}") cannot run yet: ` +
-          'custom-command adapters activate in M3. M1 runs use the native adapter.',
-      },
+        message: `Could not start "${this.command}": ${result.message}. Is it installed and on PATH?`,
+      });
+      return;
+    }
+    if (result.kind === 'aborted') {
+      yield emit('error', {
+        code: 'aborted',
+        adapter: this.id,
+        message: `"${this.command}" was cancelled.`,
+      });
+      return;
+    }
+    if (result.exitCode !== 0) {
+      yield emit('error', {
+        code: 'agent_exit_nonzero',
+        adapter: this.id,
+        command: this.command,
+        exitCode: result.exitCode,
+        message: `"${this.command}" exited with code ${result.exitCode}.`,
+        stderr: truncate(result.stderr),
+      });
+      return;
+    }
+    const content = result.stdout.trim();
+    if (content.length > 0) {
+      yield emit('assistant_message', { adapter: this.id, content });
+    }
+    yield emit('run_completed', { adapter: this.id, exitCode: 0 });
+  }
+
+  /**
+   * Spawns the command (no shell), feeds `stdin` when provided, and resolves
+   * with the captured output. Never rejects: a spawn failure, non-zero exit or
+   * abort each map to a discriminated result the caller turns into an event.
+   */
+  private spawnProcess(
+    args: string[],
+    cwd: string,
+    stdin: string | undefined,
+    signal: AbortSignal | undefined,
+  ): Promise<SpawnResult> {
+    return new Promise((resolve) => {
+      let child;
+      try {
+        child = spawn(this.command, args, { cwd, env: process.env, shell: false });
+      } catch (error) {
+        resolve({
+          kind: 'spawn_error',
+          message: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
+      let stdout = '';
+      let stderr = '';
+      let settled = false;
+      const onAbort = (): void => {
+        try {
+          child.kill('SIGTERM');
+        } catch {
+          /* already exited */
+        }
+      };
+      const cleanup = (): void => signal?.removeEventListener('abort', onAbort);
+      if (signal !== undefined) {
+        if (signal.aborted) {
+          onAbort();
+        } else {
+          signal.addEventListener('abort', onAbort, { once: true });
+        }
+      }
+      child.stdout?.on('data', (chunk: Buffer) => {
+        stdout += chunk.toString();
+      });
+      child.stderr?.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+      child.on('error', (error: Error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve({ kind: 'spawn_error', message: error.message });
+      });
+      child.on('close', (code: number | null) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (signal?.aborted) {
+          resolve({ kind: 'aborted' });
+        } else {
+          resolve({ kind: 'exit', exitCode: code ?? 0, stdout, stderr });
+        }
+      });
+      if (stdin !== undefined) {
+        child.stdin?.write(stdin);
+      }
+      child.stdin?.end();
     });
   }
+}
+
+/** Result of a subprocess run — never an exception (the caller maps it to events). */
+type SpawnResult =
+  | { kind: 'exit'; exitCode: number; stdout: string; stderr: string }
+  | { kind: 'spawn_error'; message: string }
+  | { kind: 'aborted' };
+
+/** Caps captured stderr put on an event so a chatty tool can't bloat the log. */
+function truncate(text: string, max = 2000): string {
+  const trimmed = text.trim();
+  return trimmed.length > max ? `${trimmed.slice(0, max)}\n…(truncated)` : trimmed;
 }

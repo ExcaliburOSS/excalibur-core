@@ -11,6 +11,7 @@ import {
   type LocalSession,
 } from '@excalibur/core';
 import { analyzeRepository } from '@excalibur/context-engine';
+import { agentUsesGateway, resolveAgentAdapter } from '@excalibur/agent-runtime';
 import { redactSecrets } from '@excalibur/model-gateway';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -423,9 +424,15 @@ function buildSuggester(
 /** Builds the agent-turn deps from the session runtime. */
 function agentTurnDeps(deps: CliDeps, runtime: SessionRuntime, signal: AbortSignal): AgentTurnDeps {
   const gateway = loadGatewayContext(runtime.repoRoot);
-  // Every shell turn (NL / plan / fork) goes through here: refuse with setup
-  // guidance when no LLM is configured rather than driving the loop on a mock.
-  requireConfiguredModel(gateway);
+  const adapter = resolveAgentAdapter(runtime.config);
+  // The native loop runs through the gateway, so a real provider must be
+  // configured (refuse with setup guidance rather than drive a mock). A
+  // custom-command passthrough does its OWN inference (it drives a vendor CLI
+  // that holds the auth), so a subscription-only user with no providers.yaml can
+  // still run — skip the model guard for it.
+  if (agentUsesGateway(runtime.config)) {
+    requireConfiguredModel(gateway);
+  }
   return {
     deps,
     repoRoot: runtime.repoRoot,
@@ -433,6 +440,7 @@ function agentTurnDeps(deps: CliDeps, runtime: SessionRuntime, signal: AbortSign
     gateway: gateway.gateway,
     providerName: gateway.providerName,
     autonomyLevel: runtime.autonomyLevel,
+    adapter,
     signal,
   };
 }
