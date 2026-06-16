@@ -13,4 +13,5 @@ export * from './errors';
 export * from './artifacts';
 export * from './config';
 export * from './ids';
+export * from './i18n';
 export * from './instructions';
