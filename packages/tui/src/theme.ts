@@ -97,6 +97,40 @@ const asciiSet: GlyphSet = {
 
 export const glyph: GlyphSet = ascii ? asciiSet : unicode;
 
+import type { PhaseEventKind } from './rail-types.js';
+
+/** Per-tool glyphs for within-phase event lines (Nerd/Unicode set). */
+const unicodeEventGlyph: Record<PhaseEventKind, string> = {
+  tool: '◈',
+  read: '▭',
+  write: '✎',
+  command: '❯',
+  exit: '↳',
+  test: '◆',
+  patch: '±',
+  branch: '⎇',
+  compaction: '≡',
+  error: '✗',
+};
+
+const asciiEventGlyph: Record<PhaseEventKind, string> = {
+  tool: '*',
+  read: '-',
+  write: '~',
+  command: '>',
+  exit: '=',
+  test: '+',
+  patch: '%',
+  branch: 'Y',
+  compaction: '#',
+  error: 'x',
+};
+
+/** The glyph for a within-phase event kind, degrading to ASCII when needed. */
+export const eventGlyph: Record<PhaseEventKind, string> = ascii
+  ? asciiEventGlyph
+  : unicodeEventGlyph;
+
 /** Smooth braille spinner; ASCII terminals get a simple rotation. */
 export const spinnerFrames = ascii
   ? ['-', '\\', '|', '/']

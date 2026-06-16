@@ -28,27 +28,29 @@ function railEventFor(event: ExcaliburEvent): PhaseEvent | null {
   const p = event.payload;
   switch (event.type) {
     case 'tool_call':
-      return { text: `tool ${str(p, 'tool') || str(p, 'name')}`.trim(), tone: 'accent' };
+      return { text: `tool ${str(p, 'tool') || str(p, 'name')}`.trim(), tone: 'accent', kind: 'tool' };
     case 'file_read':
-      return { text: `read ${str(p, 'path')}`, tone: 'muted' };
+      return { text: `read ${str(p, 'path')}`, tone: 'muted', kind: 'read' };
     case 'file_write':
-      return { text: `write ${str(p, 'path')}`, tone: 'accent' };
+      return { text: `write ${str(p, 'path')}`, tone: 'accent', kind: 'write' };
     case 'command_started':
-      return { text: `$ ${str(p, 'command')}`, tone: 'muted' };
+      return { text: `$ ${str(p, 'command')}`, tone: 'muted', kind: 'command' };
     case 'command_completed': {
       const exit = typeof p['exitCode'] === 'number' ? (p['exitCode'] as number) : null;
-      return exit === null ? null : { text: `exit ${exit}`, tone: exit === 0 ? 'success' : 'warn' };
+      return exit === null
+        ? null
+        : { text: `exit ${exit}`, tone: exit === 0 ? 'success' : 'warn', kind: 'exit' };
     }
     case 'test_result':
-      return { text: `tests ${str(p, 'status') || 'passed'}`, tone: 'success' };
+      return { text: `tests ${str(p, 'status') || 'passed'}`, tone: 'success', kind: 'test' };
     case 'patch_generated':
-      return { text: 'patch generated', tone: 'warn' };
+      return { text: 'patch generated', tone: 'warn', kind: 'patch' };
     case 'patch_applied':
-      return { text: 'patch applied', tone: 'warn' };
+      return { text: 'patch applied', tone: 'warn', kind: 'patch' };
     case 'branch_created':
-      return { text: `branch ${str(p, 'branch')}`, tone: 'accent' };
+      return { text: `branch ${str(p, 'branch')}`, tone: 'accent', kind: 'branch' };
     case 'compaction':
-      return { text: 'compacted context', tone: 'muted' };
+      return { text: 'compacted context', tone: 'muted', kind: 'compaction' };
     default:
       return null;
   }

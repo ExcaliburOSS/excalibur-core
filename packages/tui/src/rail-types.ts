@@ -8,11 +8,31 @@
 
 export type PhaseState = 'pending' | 'running' | 'completed' | 'waiting' | 'failed';
 
+/**
+ * The semantic kind of a within-phase event. The reducer sets it; the renderer
+ * maps it to a per-tool glyph (▭ read · ✎ write · ❯ command · ↳ result · ◈ tool
+ * · …). Keeping it semantic (not a glyph string) means the reducer stays
+ * presentation-free and the text + Ink renderers pick their own glyphs.
+ */
+export type PhaseEventKind =
+  | 'tool'
+  | 'read'
+  | 'write'
+  | 'command'
+  | 'exit'
+  | 'test'
+  | 'patch'
+  | 'branch'
+  | 'compaction'
+  | 'error';
+
 export interface PhaseEvent {
   text: string;
   /** A trailing annotation rendered dim/coloured, e.g. "+24 −6" or "12 passing". */
   note?: string;
   tone?: 'muted' | 'accent' | 'success' | 'warn';
+  /** Semantic kind, used by the renderer to pick a per-tool glyph. */
+  kind?: PhaseEventKind;
 }
 
 export interface Phase {

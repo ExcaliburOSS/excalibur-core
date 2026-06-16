@@ -1,6 +1,7 @@
 import { paint, type ColorTier } from './color.js';
 import {
   ascii,
+  eventGlyph,
   formatCents,
   formatElapsed,
   getColors,
@@ -122,9 +123,11 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
     if (isActive) {
       for (const event of phase.events ?? []) {
         const note = event.note !== undefined && event.note.length > 0 ? `  ${event.note}` : '';
-        const text = c(event.text, toneHex(event.tone, palette));
+        const hex = toneHex(event.tone, palette);
+        const prefix = event.kind !== undefined ? `${c(eventGlyph[event.kind], hex)} ` : '';
+        const text = c(event.text, hex);
         const noteCol = note.length > 0 ? c(note, palette.muted) : '';
-        lines.push(` ${c(RAIL, palette.rail)}   ${text}${noteCol}`.trimEnd());
+        lines.push(` ${c(RAIL, palette.rail)}   ${prefix}${text}${noteCol}`.trimEnd());
       }
     }
   });

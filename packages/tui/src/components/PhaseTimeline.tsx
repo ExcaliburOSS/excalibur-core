@@ -1,6 +1,6 @@
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
-import { glyph, spinnerFrames, formatCents, formatElapsed, type Palette } from '../theme.js';
+import { glyph, eventGlyph, spinnerFrames, formatCents, formatElapsed, type Palette } from '../theme.js';
 import { useColors } from '../ThemeContext.js';
 
 /**
@@ -100,7 +100,9 @@ function PhaseRow({
         ? phase.events.map((event, index) => (
             <Box key={index}>
               <Text color={railColor}>{` ${glyph.railV}   `}</Text>
-              <Text color={colors.muted}>{`${glyph.branch} `}</Text>
+              <Text color={toneColor(event.tone, colors)}>
+                {`${event.kind !== undefined ? eventGlyph[event.kind] : glyph.branch} `}
+              </Text>
               <Text color={colors.text}>{event.text}</Text>
               {event.note !== undefined ? (
                 <Text color={toneColor(event.tone, colors)}>{`  ${event.note}`}</Text>

@@ -90,4 +90,29 @@ describe('renderRail', () => {
     const m = model();
     expect(renderRail(m, { tier: 'none' })).toEqual(renderRail(m));
   });
+
+  it('prepends a per-tool glyph when an event carries a kind', () => {
+    const lines = renderRail(
+      model({
+        phases: [
+          {
+            id: 'b',
+            name: 'Implement',
+            state: 'running',
+            events: [
+              { text: 'write src/a.ts', kind: 'write' },
+              { text: '$ pnpm test', kind: 'command' },
+              { text: 'plain line' }, // no kind → no glyph
+            ],
+          },
+        ],
+      }),
+    );
+    const text = lines.join('\n');
+    expect(text).toContain(`✎ write src/a.ts`);
+    expect(text).toContain(`❯ $ pnpm test`);
+    // A kind-less event keeps its bare text (no glyph injected).
+    expect(text).toContain(` plain line`);
+    expect(text).not.toContain(`◈ plain line`);
+  });
 });
