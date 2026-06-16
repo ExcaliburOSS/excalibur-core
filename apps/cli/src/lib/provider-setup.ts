@@ -5,16 +5,23 @@ import { isCommandOnPath } from '@excalibur/agent-runtime';
 import type { ProviderConfig, ProvidersFileConfig } from '@excalibur/model-gateway';
 import type { CliDeps } from '../deps';
 import { providersFilePath } from './context';
+import { PROVIDER_CATALOG, type ProviderCatalogEntry } from './model-catalog';
 
 /**
- * One-question model provider setup (onboarding spec §4), shared by
- * `excalibur init` and `excalibur models setup`. Hosted providers store the
- * NAME of an API key environment variable — never a key value.
+ * Model provider onboarding (onboarding spec §4), shared by `excalibur init` and
+ * `excalibur models setup`. Providers store the NAME of an API key environment
+ * variable — never a key value.
  *
- * Excalibur is free OSS and requires a real LLM (the mock is a test double, not
- * a runtime fallback), so the choices are tiered: a FREE default (local Ollama —
- * no key, no cost), a RECOMMENDED paid model (Kimi K2 via Moonshot — bring your
- * own key), the other hosted providers, and the mock for offline/tests only.
+ * Flow: pick a provider, then (for providers with a subscription) choose how you
+ * pay — SUBSCRIPTION first (the individual-dev default), API key second (the
+ * enterprise default). The API-key rail auto-configures a curated good + fast
+ * model pair from one key (see {@link PROVIDER_CATALOG}); the subscription rail
+ * uses a sanctioned subscription key (MiniMax/Kimi) or drives the vendor's own
+ * CLI — Excalibur never reimplements/replays subscription OAuth. Free local
+ * Ollama and a keyless self-hosted/own-infra endpoint (vLLM/TGI/Qwen) are also
+ * covered; the mock is offline/tests only (never a runtime fallback). Excalibur
+ * never hosts or pays for a model — every path is the user's own key/account or
+ * local endpoint.
  */
 
 const ENV_VAR_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
@@ -103,16 +110,146 @@ async function askEnvVarNameOptional(
 }
 
 /**
+ * A good+fast PAIR config from one provider key: `default` → the good (coding)
+ * model, `cheap` → the fast model (ghost-text + compaction), both sharing the
+ * same API key env var. The fast role's low-latency knob (see the catalog) is
+ * applied when that role is actually consumed.
+ */
+function pairConfig(entry: ProviderCatalogEntry, apiKeyEnv: string): ProvidersFileConfig {
+  const pair = entry.pair;
+  if (pair === undefined) {
+    return single(entry.key, { type: entry.type, apiKeyEnv }); // unreachable: callers guard
+  }
+  const fastName = `${entry.key}-fast`;
+  const make = (model: string): ProviderConfig => {
+    const config: ProviderConfig = { type: entry.type, apiKeyEnv, model };
+    if (entry.baseUrl !== undefined) {
+      config.baseUrl = entry.baseUrl;
+    }
+    return config;
+  };
+  const good = make(pair.good);
+  if (entry.contextWindow !== undefined) {
+    good.contextWindow = entry.contextWindow;
+  }
+  return {
+    providers: {
+      default: entry.key,
+      cheap: fastName,
+      [entry.key]: good,
+      [fastName]: make(pair.fast),
+    } as ProvidersFileConfig['providers'],
+  };
+}
+
+/** Dim hint for the "Subscription" option, per the provider's sanctioned path. */
+function subscriptionHint(entry: ProviderCatalogEntry): string {
+  const sub = entry.subscription;
+  if (sub === undefined) {
+    return '';
+  }
+  if (sub.kind === 'subscription-key') {
+    return 'sanctioned subscription key · full native Excalibur';
+  }
+  return sub.risk === 'prohibited'
+    ? 'drives the vendor’s official CLI · third-party token reuse is prohibited (at your own risk)'
+    : 'drives the vendor’s official CLI · at your own risk';
+}
+
+/** The API-key (BYOK) rail: prompt the key env var, auto-configure good+fast, show it. */
+async function setupApiKeyRail(
+  deps: CliDeps,
+  entry: ProviderCatalogEntry,
+): Promise<ProvidersFileConfig> {
+  const apiKeyEnv = await askEnvVarName(deps, entry.apiKeyEnv, false);
+  if (entry.pair !== undefined) {
+    deps.ui.info(
+      `Auto-configured ${entry.label}: ${entry.pair.good} for coding, ${entry.pair.fast} for fast ` +
+        `suggestions & compaction — both on ${apiKeyEnv}. Change either with \`excalibur models setup\`.`,
+    );
+    announceSaved(deps, apiKeyEnv);
+    return pairConfig(entry, apiKeyEnv);
+  }
+  const model = (await deps.ui.ask(`${entry.label} model:`, { defaultAnswer: '' })).trim();
+  announceSaved(deps, apiKeyEnv);
+  const config: ProviderConfig = { type: entry.type, apiKeyEnv };
+  if (entry.baseUrl !== undefined) {
+    config.baseUrl = entry.baseUrl;
+  }
+  if (model.length > 0) {
+    config.model = model;
+  }
+  return single(entry.key, config);
+}
+
+/**
+ * The subscription branch for one provider. A SANCTIONED subscription-backed API
+ * key (MiniMax/Kimi) is clean BYOK on the subscription quota. Otherwise the
+ * subscription is reachable only through the vendor's own CLI: Excalibur NEVER
+ * reimplements/replays subscription OAuth (Anthropic/Google/Copilot prohibit it,
+ * OpenAI/xAI are gray) — the official-CLI passthrough adapter drives the vendor's
+ * binary later; for now we explain that, then nudge to the API-key rail.
+ */
+async function setupSubscription(
+  deps: CliDeps,
+  entry: ProviderCatalogEntry,
+): Promise<ProvidersFileConfig | null> {
+  const sub = entry.subscription;
+  if (sub === undefined) {
+    return setupApiKeyRail(deps, entry);
+  }
+  if (sub.kind === 'subscription-key' && sub.keyConfig !== undefined) {
+    deps.ui.info(
+      `Your ${entry.label} subscription runs through a subscription key (sanctioned) — full native Excalibur.`,
+    );
+    const apiKeyEnv = await askEnvVarName(deps, sub.keyConfig.apiKeyEnv, false);
+    announceSaved(deps, apiKeyEnv);
+    return single(entry.key, {
+      type: entry.type,
+      baseUrl: sub.keyConfig.baseUrl,
+      apiKeyEnv,
+      model: sub.keyConfig.model,
+    });
+  }
+  if (sub.disclaimer !== undefined) {
+    deps.ui.warn(sub.disclaimer);
+  }
+  if (sub.cli !== undefined) {
+    deps.ui.info(
+      `Excalibur will drive the official \`${sub.cli.command}\` CLI (${sub.cli.loginHint}). ` +
+        'That passthrough adapter is coming — for now you can connect an API key instead.',
+    );
+  }
+  const useKey = await deps.ui.confirm(`Set up a ${entry.label} API key now instead?`, {
+    defaultYes: true,
+  });
+  if (useKey) {
+    return setupApiKeyRail(deps, entry);
+  }
+  deps.ui.info(`No problem — run \`excalibur models setup\` anytime to connect ${entry.label}.`);
+  return null;
+}
+
+type ProviderChoice =
+  | { kind: 'catalog'; entry: ProviderCatalogEntry }
+  | { kind: 'ollama' }
+  | { kind: 'self-hosted' }
+  | { kind: 'mock' }
+  | { kind: 'later' };
+
+/**
  * The comfortable model-onboarding chooser (OSS, USER level — `excalibur init` /
- * `models setup`). Covers every scenario a user/org might run: a recommended
- * paid model (Kimi, BYOK), a free local model (Ollama), a free hosted tier
- * (Gemini/Groq with the user's own free key), their OWN self-hosted/on-infra
- * model (vLLM/TGI/internal Qwen — keyless or token-auth), the other hosted
- * providers, and the offline mock for tests. Excalibur never hosts/pays for a
- * model; everything here is the user's local or BYOK provider. Returns the
- * config to write, or null for "Configure later"; `--yes`/non-interactive writes
- * the explicit test mock. (Org/team-level central provisioning lives in
- * Excalibur Enterprise — admins configure providers once and users inherit them.)
+ * `models setup`). Pick a provider, then — for providers with a subscription —
+ * choose how you pay, SUBSCRIPTION FIRST (most individual devs pay a subscription;
+ * API key is the second option and the enterprise default). The API-key rail
+ * AUTO-CONFIGURES a curated good + fast model pair from one key; the subscription
+ * rail uses a sanctioned subscription key (MiniMax/Kimi) or drives the vendor's
+ * official CLI. Also covers free local Ollama and a keyless self-hosted/own-infra
+ * endpoint (vLLM/TGI/Qwen), plus the offline mock for tests. Excalibur never
+ * hosts/pays for a model — everything here is the user's own key/account or local
+ * endpoint. Returns the config to write, or null for "Configure later";
+ * `--yes`/non-interactive writes the explicit test mock. (Org/team-level central
+ * provisioning lives in Excalibur Enterprise — admins configure once, users inherit.)
  */
 export async function promptProviderSetup(
   deps: CliDeps,
@@ -123,104 +260,82 @@ export async function promptProviderSetup(
   }
 
   const ollamaDetected = isCommandOnPath('ollama', deps.env);
+  const choices: ProviderChoice[] = [
+    ...PROVIDER_CATALOG.map((entry): ProviderChoice => ({ kind: 'catalog', entry })),
+    { kind: 'ollama' },
+    { kind: 'self-hosted' },
+    { kind: 'mock' },
+    { kind: 'later' },
+  ];
+  const labels = choices.map((choice) => {
+    switch (choice.kind) {
+      case 'catalog':
+        return { label: choice.entry.label, hint: choice.entry.hint };
+      case 'ollama':
+        return {
+          label: 'Ollama (local) — free, no key',
+          hint: ollamaDetected
+            ? 'detected on this machine!'
+            : 'install from ollama.com, then `ollama pull <model>`',
+        };
+      case 'self-hosted':
+        return {
+          label: 'Self-hosted / your own model',
+          hint: 'vLLM · TGI · an internal Qwen/Llama gateway — your endpoint, key optional',
+        };
+      case 'mock':
+        return { label: 'Mock', hint: 'offline / tests only — NOT a real model' };
+      case 'later':
+        return { label: 'Configure later' };
+    }
+  });
+
   const index = await deps.ui.select(
-    'How should Excalibur call models?  (Excalibur is free — bring your own key, or run your own / a local model)',
-    [
-      {
-        label: 'Ollama (local) — free, no key',
-        hint: ollamaDetected
-          ? 'detected on this machine!'
-          : 'install from ollama.com, then `ollama pull <model>`',
-      },
-      {
-        label: 'Kimi K2 (Moonshot) — recommended',
-        hint: 'best quality · paid · your MOONSHOT_API_KEY',
-      },
-      { label: 'Free hosted tier (Gemini / Groq)', hint: 'free · your own free signup key' },
-      {
-        label: 'Self-hosted / your own model',
-        hint: 'vLLM · TGI · an internal Qwen/Llama gateway — your endpoint, key optional',
-      },
-      { label: 'OpenAI', hint: 'BYOK · https://api.openai.com/v1' },
-      { label: 'Anthropic (Claude)', hint: 'BYOK' },
-      { label: 'OpenRouter', hint: 'BYOK · https://openrouter.ai/api/v1' },
-      { label: 'Mock', hint: 'offline / tests only — NOT a real model' },
-      { label: 'Configure later' },
-    ],
+    'Which model provider? (Excalibur is free — use your subscription or API key, or run a local/own model)',
+    labels,
     { yes: false, defaultIndex: 0 },
   );
+  const choice = choices[index] ?? { kind: 'later' };
 
-  switch (index) {
-    case 0: {
+  switch (choice.kind) {
+    case 'catalog': {
+      const entry = choice.entry;
+      if (entry.subscription !== undefined) {
+        // Subscription-first ordering (OSS individual devs mostly pay a subscription).
+        const how = await deps.ui.select(
+          `How do you use ${entry.label}?`,
+          [
+            { label: 'Subscription', hint: subscriptionHint(entry) },
+            {
+              label: 'API key',
+              hint: 'pay-per-token · full native Excalibur (auto-pairs a good + fast model)',
+            },
+          ],
+          { yes: false, defaultIndex: 0 },
+        );
+        return how === 0 ? setupSubscription(deps, entry) : setupApiKeyRail(deps, entry);
+      }
+      return setupApiKeyRail(deps, entry);
+    }
+    case 'ollama': {
       const model = await deps.ui.ask('Ollama model name [llama3]:', { defaultAnswer: 'llama3' });
       deps.ui.info(
         'Saved. Excalibur will use your local Ollama at http://localhost:11434 (no key, no cost). ' +
-          'Make sure Ollama is running and the model is pulled (`ollama pull <model>`).',
+          'Make sure Ollama is running and the model is pulled (`ollama pull <model>`). ' +
+          'Ghost-text needs a fast second model, so it stays off in single-model mode.',
       );
       return single('ollama', { type: 'ollama', baseUrl: 'http://localhost:11434', model });
     }
-    case 1: {
-      const model = await deps.ui.ask('Kimi model [kimi-k2.7-code]:', {
-        defaultAnswer: 'kimi-k2.7-code',
-      });
-      const apiKeyEnv = await askEnvVarName(deps, 'MOONSHOT_API_KEY', options.yes);
-      announceSaved(deps, apiKeyEnv);
-      return single('kimi', {
-        type: 'openai-compatible',
-        baseUrl: 'https://api.moonshot.ai/v1',
-        apiKeyEnv,
-        model,
-        contextWindow: 262144,
-      });
-    }
-    case 2: {
-      const which = await deps.ui.select(
-        'Which free tier? (you bring your own free signup key)',
-        [
-          {
-            label: 'Google Gemini (Flash)',
-            hint: 'free tier · aistudio.google.com → GEMINI_API_KEY',
-          },
-          { label: 'Groq', hint: 'free tier · console.groq.com → GROQ_API_KEY' },
-        ],
-        { yes: false, defaultIndex: 0 },
-      );
-      if (which === 0) {
-        const model = await deps.ui.ask('Gemini model [gemini-2.0-flash]:', {
-          defaultAnswer: 'gemini-2.0-flash',
-        });
-        const apiKeyEnv = await askEnvVarName(deps, 'GEMINI_API_KEY', options.yes);
-        announceSaved(deps, apiKeyEnv);
-        return single('gemini', {
-          type: 'openai-compatible',
-          baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-          apiKeyEnv,
-          model,
-        });
-      }
-      const model = await deps.ui.ask('Groq model [llama-3.3-70b-versatile]:', {
-        defaultAnswer: 'llama-3.3-70b-versatile',
-      });
-      const apiKeyEnv = await askEnvVarName(deps, 'GROQ_API_KEY', options.yes);
-      announceSaved(deps, apiKeyEnv);
-      return single('groq', {
-        type: 'openai-compatible',
-        baseUrl: 'https://api.groq.com/openai/v1',
-        apiKeyEnv,
-        model,
-      });
-    }
-    case 3: {
-      // Self-hosted / own infra: vLLM, TGI, SGLang, an internal Qwen/Llama
-      // gateway — any OpenAI-compatible endpoint. Auth optional (keyless).
+    case 'self-hosted': {
+      // vLLM, TGI, SGLang, an internal Qwen/Llama gateway — any OpenAI-compatible
+      // endpoint. Auth optional (keyless). This is the main path for Qwen run on
+      // your own / private infra.
       const baseUrl = await deps.ui.ask('Your endpoint base URL [http://localhost:8000/v1]:', {
         defaultAnswer: 'http://localhost:8000/v1',
       });
       const model = await deps.ui.ask(
         'Model name served by your endpoint [Qwen/Qwen2.5-Coder-32B-Instruct]:',
-        {
-          defaultAnswer: 'Qwen/Qwen2.5-Coder-32B-Instruct',
-        },
+        { defaultAnswer: 'Qwen/Qwen2.5-Coder-32B-Instruct' },
       );
       const apiKeyEnv = await askEnvVarNameOptional(deps, 'LLM_API_KEY');
       deps.ui.info(
@@ -234,30 +349,9 @@ export async function promptProviderSetup(
       }
       return single('self-hosted', config);
     }
-    case 4: {
-      const baseUrl = await deps.ui.ask('Base URL [https://api.openai.com/v1]:', {
-        defaultAnswer: 'https://api.openai.com/v1',
-      });
-      const apiKeyEnv = await askEnvVarName(deps, 'OPENAI_API_KEY', options.yes);
-      announceSaved(deps, apiKeyEnv);
-      return single('openai', { type: 'openai-compatible', baseUrl, apiKeyEnv });
-    }
-    case 5: {
-      const apiKeyEnv = await askEnvVarName(deps, 'ANTHROPIC_API_KEY', options.yes);
-      announceSaved(deps, apiKeyEnv);
-      return single('anthropic', { type: 'anthropic', apiKeyEnv });
-    }
-    case 6: {
-      const apiKeyEnv = await askEnvVarName(deps, 'OPENROUTER_API_KEY', options.yes);
-      announceSaved(deps, apiKeyEnv);
-      return single('openrouter', {
-        type: 'openai-compatible',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        apiKeyEnv,
-      });
-    }
-    case 7:
+    case 'mock':
       return MOCK_ONLY;
+    case 'later':
     default:
       return null;
   }

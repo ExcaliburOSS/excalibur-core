@@ -41,20 +41,31 @@ export const providerConfigSchema = z.object({
 });
 export type ProviderConfig = z.infer<typeof providerConfigSchema>;
 
-/** The `providers:` section: a well-known `default` key plus named provider entries. */
-export type ProvidersSection = { default?: string } & Record<string, ProviderConfig>;
+/**
+ * The `providers:` section: well-known ROLE POINTERS plus named provider entries.
+ * `default` names the main model; `cheap` names the fast/low-cost provider used
+ * for latency- or volume-sensitive roles (ghost-text, context compaction). Role
+ * pointers are NOT providers — each is the NAME of a configured provider.
+ */
+export type ProvidersSection = { default?: string; cheap?: string } & Record<
+  string,
+  ProviderConfig
+>;
+
+/** Keys in the providers section that point to a provider rather than BEING one. */
+export const RESERVED_PROVIDER_KEYS: readonly string[] = ['default', 'cheap'];
 
 const providersSectionSchema = z
   .record(z.unknown())
   .superRefine((value, ctx) => {
     const providerNames: string[] = [];
     for (const [key, entry] of Object.entries(value)) {
-      if (key === 'default') {
+      if (key === 'default' || key === 'cheap') {
         if (typeof entry !== 'string' || entry.trim().length === 0) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            path: ['default'],
-            message: 'providers.default must be the name of a configured provider',
+            path: [key],
+            message: `providers.${key} must be the name of a configured provider`,
           });
         }
         continue;
@@ -87,6 +98,18 @@ const providersSectionSchema = z
         code: z.ZodIssueCode.custom,
         path: ['default'],
         message: `providers.default points to "${defaultName}", which is not a configured provider`,
+      });
+    }
+    const cheapName = value['cheap'];
+    if (
+      typeof cheapName === 'string' &&
+      cheapName.trim().length > 0 &&
+      !providerNames.includes(cheapName)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['cheap'],
+        message: `providers.cheap points to "${cheapName}", which is not a configured provider`,
       });
     }
   })

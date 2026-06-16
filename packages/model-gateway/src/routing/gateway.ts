@@ -1,14 +1,9 @@
 import { ProviderError } from '@excalibur/shared';
 import { computeCostCents, estimateTokens } from '../cost/cost';
 import { createProvider, type CreateProviderDeps } from '../providers/create-provider';
+import { RESERVED_PROVIDER_KEYS } from '../providers/providers-file';
 import type { ProviderConfig, ProvidersFileConfig } from '../providers/providers-file';
-import type {
-  ChatDelta,
-  ChatInput,
-  ChatOutput,
-  ChatUsage,
-  ModelProviderAdapter,
-} from '../types';
+import type { ChatDelta, ChatInput, ChatOutput, ChatUsage, ModelProviderAdapter } from '../types';
 
 /**
  * Model gateway (Build Contract §4.3): resolves the provider by explicit name
@@ -41,9 +36,11 @@ export class ModelGateway {
     this.deps = deps;
   }
 
-  /** Named provider entries (the `default` pointer is not a provider). */
+  /** Named provider entries (the `default`/`cheap` role pointers are not providers). */
   private providerNames(): string[] {
-    return Object.keys(this.config.providers).filter((key) => key !== 'default');
+    return Object.keys(this.config.providers).filter(
+      (key) => !RESERVED_PROVIDER_KEYS.includes(key),
+    );
   }
 
   private resolveProviderName(explicit?: string): string {

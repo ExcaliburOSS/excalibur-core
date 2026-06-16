@@ -82,8 +82,7 @@ providers:
     outputCostPerMillionTokensCents: 1500
 `),
     );
-    const providers: Record<string, { inputCostPerMillionTokensCents?: number }> =
-      config.providers;
+    const providers: Record<string, { inputCostPerMillionTokensCents?: number }> = config.providers;
     expect(providers['paid']?.inputCostPerMillionTokensCents).toBe(300);
   });
 
@@ -146,9 +145,7 @@ providers:
   });
 
   it('throws ConfigValidationError when the file does not exist', () => {
-    expect(() => loadProvidersFile(join(tempDir, 'nope.yaml'))).toThrowError(
-      ConfigValidationError,
-    );
+    expect(() => loadProvidersFile(join(tempDir, 'nope.yaml'))).toThrowError(ConfigValidationError);
     expect(() => loadProvidersFile(join(tempDir, 'nope.yaml'))).toThrowError(/Cannot read/);
   });
 });
@@ -176,5 +173,44 @@ describe('resolveApiKey', () => {
 
   it('returns null when no apiKeyEnv is configured', () => {
     expect(resolveApiKey({})).toBeNull();
+  });
+});
+
+describe('cheap role pointer (good+fast auto-pair)', () => {
+  const PAIR_YAML = `
+providers:
+  default: anthropic
+  cheap: anthropic-fast
+  anthropic:
+    type: anthropic
+    apiKeyEnv: ANTHROPIC_API_KEY
+    model: claude-opus-4-8
+  anthropic-fast:
+    type: anthropic
+    apiKeyEnv: ANTHROPIC_API_KEY
+    model: claude-haiku-4-5
+`;
+
+  it('accepts a `cheap` pointer to a configured provider', () => {
+    const config = loadProvidersFile(writeProvidersYaml(PAIR_YAML));
+    const section: { default?: string; cheap?: string } = config.providers;
+    expect(section.default).toBe('anthropic');
+    expect(section.cheap).toBe('anthropic-fast');
+    // The cheap pointer is NOT itself a provider entry.
+    const names = Object.keys(config.providers).filter((k) => k !== 'default' && k !== 'cheap');
+    expect(names.sort()).toEqual(['anthropic', 'anthropic-fast']);
+  });
+
+  it('rejects a `cheap` pointer to a missing provider', () => {
+    const dangling = `
+providers:
+  default: anthropic
+  cheap: nope
+  anthropic:
+    type: anthropic
+    apiKeyEnv: ANTHROPIC_API_KEY
+`;
+    expect(() => loadProvidersFile(writeProvidersYaml(dangling))).toThrow(ConfigValidationError);
+    expect(() => loadProvidersFile(writeProvidersYaml(dangling))).toThrow(/cheap/);
   });
 });

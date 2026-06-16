@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createTestCli, makeTempRepo, removeDir, writeMockProviders } from '../test-utils';
 
@@ -37,5 +39,31 @@ describe('models list', () => {
     const cli = createTestCli({ cwd: repo });
     await cli.run('models', 'list');
     expect(cli.stdout()).toContain('models setup');
+  });
+
+  it('lists both members of a good+fast pair and never treats `cheap` as a provider', async () => {
+    const repo = tempRepo(false);
+    const dir = join(repo, '.excalibur', 'models');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'providers.yaml'),
+      [
+        'providers:',
+        '  default: main',
+        '  cheap: fast',
+        '  main:',
+        '    type: mock',
+        '  fast:',
+        '    type: mock',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const cli = createTestCli({ cwd: repo });
+    await cli.run('models', 'list', '--json');
+    const rows = JSON.parse(cli.stdout()) as Array<{ name: string; default: boolean }>;
+    const names = rows.map((r) => r.name).sort();
+    expect(names).toEqual(['fast', 'main']); // the `cheap`/`default` pointers are not rows
+    expect(rows.find((r) => r.default)?.name).toBe('main');
   });
 });

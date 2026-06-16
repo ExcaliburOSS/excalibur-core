@@ -16,6 +16,7 @@ import {
   CORE_PROVIDER_FACTORIES,
   DEFAULT_PROVIDERS_CONFIG,
   ModelGateway,
+  RESERVED_PROVIDER_KEYS,
   loadProvidersFile,
   redactSecrets,
   type ChatInput,
@@ -49,9 +50,9 @@ export function providersFilePath(repoRoot: string): string {
   return join(repoRoot, EXCALIBUR_DIR, 'models', 'providers.yaml');
 }
 
-/** Named provider entries (the `default` pointer is not a provider). */
+/** Named provider entries (the `default`/`cheap` role pointers are not providers). */
 export function providerNames(config: ProvidersFileConfig): string[] {
-  return Object.keys(config.providers).filter((key) => key !== 'default');
+  return Object.keys(config.providers).filter((key) => !RESERVED_PROVIDER_KEYS.includes(key));
 }
 
 export function defaultProviderName(config: ProvidersFileConfig): string {
@@ -299,10 +300,13 @@ export async function readUserSuppliedFile(
     );
   }
   if (decision.requiresConfirmation) {
-    const proceed = await deps.ui.confirm(`Read "${relPath}" into the prompt? (${decision.reason})`, {
-      yes: options.yes,
-      defaultYes: false,
-    });
+    const proceed = await deps.ui.confirm(
+      `Read "${relPath}" into the prompt? (${decision.reason})`,
+      {
+        yes: options.yes,
+        defaultYes: false,
+      },
+    );
     if (!proceed) {
       throw new CliUsageError(`Declined to read "${relPath}".`);
     }
@@ -360,7 +364,10 @@ export function deriveNeighborQuery(relPath: string, content: string): string {
   const importRe = /import\s+(?:type\s+)?\{([^}]+)\}/g;
   while ((match = importRe.exec(content)) !== null) {
     for (const part of (match[1] ?? '').split(',')) {
-      const name = part.trim().split(/\s+as\s+/)[0]?.trim();
+      const name = part
+        .trim()
+        .split(/\s+as\s+/)[0]
+        ?.trim();
       if (name !== undefined && name.length > 0) {
         identifiers.add(name);
       }
