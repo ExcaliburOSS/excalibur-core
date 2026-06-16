@@ -31,6 +31,7 @@ import {
 } from '../lib/context';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
+import { REWIND_SENTINEL } from '../ui';
 import { CLI_VERSION } from '../program';
 import { renderWelcome, type WelcomeContext } from './welcome';
 import {
@@ -232,6 +233,18 @@ export async function runInteractiveSession(
       const line = await editor.question(pc.cyan('› '));
       if (line === null) {
         break; // EOF / Ctrl-D
+      }
+      // Esc-Esc at the prompt opens the rewind time-machine over the latest run
+      // (same flow as `/rewind`, no id). The scrubber drives its own question()
+      // reads; a missing-runs error is surfaced without breaking the session.
+      if (line === REWIND_SENTINEL) {
+        try {
+          await handleReplayCommand(deps, runtime, undefined, (prompt) => editor.question(prompt));
+        } catch (error) {
+          deps.ui.error(error instanceof Error ? error.message : String(error));
+        }
+        printStatusLine(deps, runtime);
+        continue;
       }
       const text = line.trim();
       sawSigintAtPrompt = false;
@@ -946,7 +959,7 @@ function handleSlashCommand(
       deps.ui.write('  /loop [--every s] [--times n] <prompt>  re-run periodically until ESC');
       deps.ui.write('  /discovery <idea>  clarify an ambiguous idea before building');
       deps.ui.write(
-        '  /rewind [id]   rewind a run step-by-step (time-machine; defaults to latest)',
+        '  /rewind [id]   rewind a run step-by-step (time-machine; defaults to latest) · Esc-Esc',
       );
       deps.ui.write(
         '  /changes [id]  show the full changed-file list for a run (defaults to latest)',

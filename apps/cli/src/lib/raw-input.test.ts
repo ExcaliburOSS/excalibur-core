@@ -8,7 +8,7 @@ import {
   type ParsedKey,
   type RawInputState,
 } from './raw-input';
-import { Ui } from '../ui';
+import { REWIND_SENTINEL, Ui } from '../ui';
 
 /**
  * The raw-input reducer is PURE, so it is tested without a TTY by feeding
@@ -100,6 +100,41 @@ describe('reduceKey (pure state machine)', () => {
     const r = reduceKey(prompt({ buffer: 'half-typed', cursor: 9, mode: 'turn' }), key({ name: 'escape' }));
     expect(r.action).toEqual({ type: 'none' });
     expect(r.state.buffer).toBe('');
+  });
+
+  it('Esc-Esc at the prompt: first ESC primes, a second consecutive ESC opens rewind', () => {
+    // First ESC at the prompt clears the line AND primes the repeat.
+    const first = reduceKey(prompt({ buffer: 'draft', cursor: 5 }), key({ name: 'escape' }));
+    expect(first.action).toEqual({ type: 'none' });
+    expect(first.state.buffer).toBe('');
+    expect(first.state.escapePrimed).toBe(true);
+    // Second consecutive ESC → rewind, and priming is consumed.
+    const second = reduceKey(first.state, key({ name: 'escape' }));
+    expect(second.action).toEqual({ type: 'rewind' });
+    expect(second.state.escapePrimed).toBe(false);
+  });
+
+  it('Esc-Esc requires CONSECUTIVE escapes: any key between clears the priming', () => {
+    const primed = reduceKey(prompt(), key({ name: 'escape' })).state;
+    expect(primed.escapePrimed).toBe(true);
+    // A printable key between the two escapes clears priming…
+    const typed = reduceKey(primed, key({ name: 'x', sequence: 'x' }));
+    expect(typed.state.escapePrimed).toBe(false);
+    // …so the next ESC is a fresh FIRST press (clear + re-prime), not a rewind.
+    const next = reduceKey(typed.state, key({ name: 'escape' }));
+    expect(next.action).toEqual({ type: 'none' });
+    expect(next.state.escapePrimed).toBe(true);
+  });
+
+  it('ESC never primes/rewinds on a mid-turn confirm (mode === turn)', () => {
+    // A confirm mid-turn is awaiting with mode 'turn': ESC clears, never primes.
+    const confirm = prompt({ buffer: 'y', cursor: 1, mode: 'turn' });
+    const first = reduceKey(confirm, key({ name: 'escape' }));
+    expect(first.action).toEqual({ type: 'none' });
+    expect(first.state.escapePrimed).toBe(false);
+    // Even a forced-primed turn-mode state does not rewind (gated on mode prompt).
+    const second = reduceKey({ ...confirm, escapePrimed: true }, key({ name: 'escape' }));
+    expect(second.action).toEqual({ type: 'none' });
   });
 
   it('while NOT awaiting, ordinary keys are ignored (no queue yet in Slice 1)', () => {
@@ -287,6 +322,19 @@ describe('raw editor shell (fake TTY)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('Esc-Esc at the prompt resolves the read with the rewind sentinel', async () => {
+    const stdin = fakeTty();
+    const out = memOut();
+    const ui = new Ui({ stdin, stdout: out as unknown as NodeJS.WritableStream, interactive: true });
+    const editor = ui.openLineEditor();
+    opened.push(editor);
+
+    const pending = editor.question('› '); // a live prompt is awaiting input
+    stdin.emit('keypress', '', { name: 'escape' }); // first ESC → clears + primes
+    stdin.emit('keypress', '', { name: 'escape' }); // second ESC → rewind
+    await expect(pending).resolves.toBe(REWIND_SENTINEL);
   });
 
   it('routes ESC during a turn to the onEscape handler', () => {

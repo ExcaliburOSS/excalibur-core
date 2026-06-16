@@ -28,6 +28,14 @@ export interface UiOptions {
   interactive?: boolean;
 }
 
+/**
+ * Out-of-band line value the raw editor resolves a pending prompt with when the
+ * user presses Esc-Esc — the REPL recognizes it and opens the rewind
+ * time-machine instead of treating it as typed text. It carries a NUL byte, so
+ * it is UNFORGEABLE from typed/pasted input (the reducer rejects control bytes).
+ */
+export const REWIND_SENTINEL = `${String.fromCharCode(0)}__excalibur_rewind__`;
+
 export interface AskOptions {
   /** Skip the prompt and take the default (the `--yes` flag). */
   yes?: boolean;
@@ -467,6 +475,17 @@ export class Ui {
             while (waiters.length > 0) {
               waiters.shift()?.(null);
             }
+            return;
+          }
+          case 'rewind': {
+            // Esc-Esc at the prompt: resolve the pending read with the rewind
+            // sentinel so the REPL opens the time-machine (which then drives its
+            // own question() reads). A rewind only fires while awaiting, so a
+            // waiter exists; drop harmlessly if somehow not.
+            cancelSuggest();
+            out.write('\n');
+            currentPrompt = null;
+            waiters.shift()?.(REWIND_SENTINEL);
             return;
           }
           case 'sigint':

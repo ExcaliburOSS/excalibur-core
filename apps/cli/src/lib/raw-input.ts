@@ -62,12 +62,21 @@ export interface RawInputState {
    * the input buffer (ESC must never resolve a read to null / exit the REPL).
    */
   awaiting: boolean;
+  /**
+   * True for exactly one keystroke after a FIRST ESC at the prompt: a second
+   * consecutive ESC (nothing typed between) opens the rewind time-machine —
+   * Claude Code's Esc-Esc. Set only at the prompt (never a mid-turn confirm) and
+   * cleared by any non-ESC key; the {@link reduceKey} wrapper enforces the
+   * one-keystroke lifetime.
+   */
+  escapePrimed: boolean;
 }
 
 /** What a keystroke asks the shell to do. */
 export type RawAction =
   | { type: 'submit'; line: string } // Enter at the prompt → resolve question()
   | { type: 'abort' } // ESC while a turn is in flight → cancel it
+  | { type: 'rewind' } // Esc-Esc at the prompt → open the rewind time-machine
   | { type: 'eof' } // Ctrl-D on an empty buffer → null (EOF)
   | { type: 'sigint' } // Ctrl-C → the SIGINT handler (cancel / exit)
   | { type: 'none' };
@@ -83,6 +92,7 @@ export function initialRawState(history: string[] = []): RawInputState {
     ghost: '',
     mode: 'prompt',
     awaiting: false,
+    escapePrimed: false,
   };
 }
 
@@ -115,8 +125,28 @@ function clamp(n: number, lo: number, hi: number): number {
 /**
  * The pure reducer: given the current state and a decoded key, return the next
  * state and the action the shell must take. Never mutates its input.
+ *
+ * Wraps {@link reduceKeyInner} to enforce the one-keystroke lifetime of
+ * `escapePrimed`: it is set only by a first prompt-ESC and consumed by the
+ * rewind it triggers — ANY other key clears it, so two ESCs must be CONSECUTIVE
+ * to open the time-machine.
  */
-export function reduceKey(state: RawInputState, key: ParsedKey): { state: RawInputState; action: RawAction } {
+export function reduceKey(
+  state: RawInputState,
+  key: ParsedKey,
+): { state: RawInputState; action: RawAction } {
+  const result = reduceKeyInner(state, key);
+  const isEscape = key.name === 'escape' && key.ctrl !== true && key.meta !== true;
+  if (!isEscape && result.state.escapePrimed) {
+    return { state: { ...result.state, escapePrimed: false }, action: result.action };
+  }
+  return result;
+}
+
+function reduceKeyInner(
+  state: RawInputState,
+  key: ParsedKey,
+): { state: RawInputState; action: RawAction } {
   // Any edit clears the ghost by default (the shell recomputes it); a case that
   // wants to keep/accept the ghost sets it explicitly.
   const keep = (next: Partial<RawInputState>): { state: RawInputState; action: RawAction } => ({
@@ -211,8 +241,28 @@ export function reduceKey(state: RawInputState, key: ParsedKey): { state: RawInp
     case 'down':
       return historyNext(state);
     case 'escape':
-      // At the prompt, ESC clears the line (it must NEVER resolve null / exit).
-      return keep({ buffer: '', cursor: 0, historyIndex: -1, draft: '', ghost: '' });
+      // A second consecutive ESC at the prompt (nothing typed between) opens the
+      // rewind time-machine — Claude Code's Esc-Esc. The first ESC clears the
+      // line and PRIMES the repeat; priming happens ONLY at the prompt, never on
+      // a mid-turn confirm (mode === 'turn'). ESC must NEVER resolve null / exit.
+      if (state.mode === 'prompt' && state.escapePrimed) {
+        return {
+          state: { ...state, buffer: '', cursor: 0, historyIndex: -1, draft: '', ghost: '', escapePrimed: false },
+          action: { type: 'rewind' },
+        };
+      }
+      return {
+        state: {
+          ...state,
+          buffer: '',
+          cursor: 0,
+          historyIndex: -1,
+          draft: '',
+          ghost: '',
+          escapePrimed: state.mode === 'prompt',
+        },
+        action: NONE,
+      };
     default:
       break;
   }
