@@ -40,6 +40,7 @@ import {
   type AgentTurnDeps,
   type AgentTurnResult,
 } from './agent-turn';
+import { runGoalLoop } from './goal-loop';
 
 const execFileAsync = promisify(execFile);
 
@@ -290,6 +291,11 @@ export async function runInteractiveSession(
             printStatusLine(deps, runtime);
             continue;
           }
+          if (input.name === 'goal') {
+            await handleGoalCommand(deps, runtime, input.argv.join(' '), beginTurn, endTurn);
+            printStatusLine(deps, runtime);
+            continue;
+          }
           const result = handleSlashCommand(deps, runtime, input.name);
           if (result === 'exit') {
             break;
@@ -364,6 +370,7 @@ const GHOST_COMMANDS = [
   'fork',
   'undo',
   'compact',
+  'goal',
   'model',
   'clear',
   'exit',
@@ -623,6 +630,79 @@ async function handlePlanCommand(
   }
 }
 
+/** Hard iteration cap for `/goal` (anti-runaway; overridable later via config). */
+const GOAL_MAX_ITERATIONS = 6;
+
+/**
+ * `/goal <objective>` — the autonomous loop. Works toward the objective ACROSS
+ * iterations (each a real, gated, replayable agent turn) until a cheap-model
+ * evaluator confirms it is done, the iteration cap is hit, or ESC cancels.
+ * Records the user goal, the final outcome and a status line; auto-compaction
+ * keeps long loops within context.
+ */
+async function handleGoalCommand(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  goal: string,
+  beginTurn: () => AbortController,
+  endTurn: () => void,
+): Promise<void> {
+  const objective = goal.trim();
+  if (objective.length === 0) {
+    deps.ui.warn(
+      'Usage: /goal <objective> — Excalibur works toward it across turns until an evaluator says it is done.',
+    );
+    return;
+  }
+  const seed = sessionSeed(runtime); // prior context, before recording this turn
+  const safe = redactSecrets(objective);
+  runtime.store.appendPromptHistory(`/goal ${safe}`);
+  runtime.store.appendTurn(runtime.session.id, {
+    role: 'user',
+    kind: 'message',
+    text: `/goal ${safe}`,
+  });
+
+  const ctrl = beginTurn();
+  try {
+    const cheap = loadGatewayContext(runtime.repoRoot).cheapProviderName ?? undefined;
+    const result = await runGoalLoop(agentTurnDeps(deps, runtime, ctrl.signal), objective, {
+      maxIterations: GOAL_MAX_ITERATIONS,
+      signal: ctrl.signal,
+      seed,
+      ...(cheap !== undefined ? { evaluatorProvider: cheap } : {}),
+      onIteration: (n, verdict) =>
+        deps.ui.info(
+          `  goal · iteration ${n}/${GOAL_MAX_ITERATIONS}: ${verdict.done ? 'DONE' : 'continue'} — ${verdict.reason}`,
+        ),
+    });
+    endTurn();
+    const summary =
+      result.status === 'done'
+        ? `Goal achieved in ${result.iterations} iteration(s).`
+        : result.status === 'max-iterations'
+          ? `Stopped at the ${result.iterations}-iteration cap${result.lastReason ? ` — ${result.lastReason}` : ''}. Refine the goal, or run /goal again to continue.`
+          : result.status === 'aborted'
+            ? `Goal loop cancelled after ${result.iterations} iteration(s).`
+            : `Goal loop stopped (evaluator unavailable) after ${result.iterations} iteration(s).`;
+    deps.ui.info(summary);
+    const last = result.results.at(-1);
+    if (last !== undefined) {
+      recordAssistantTurn(deps, runtime, last);
+    }
+    runtime.store.appendTurn(runtime.session.id, { role: 'system', kind: 'status', text: summary });
+  } catch (error) {
+    endTurn();
+    const reason = error instanceof Error ? error.message : String(error);
+    deps.ui.error(reason);
+    runtime.store.appendTurn(runtime.session.id, {
+      role: 'system',
+      kind: 'status',
+      text: `error: ${reason}`,
+    });
+  }
+}
+
 /**
  * `!<command>` — real shell passthrough. Runs the command in the repo root,
  * streams its (truncated, redacted) output, and records a status turn. Output
@@ -680,6 +760,9 @@ function handleSlashCommand(
       deps.ui.write(pc.bold('Excalibur interactive session — commands'));
       deps.ui.write('  /help          show this help');
       deps.ui.write('  /plan <task>   plan first (read-only) → approve → execute');
+      deps.ui.write(
+        '  /goal <objective>  work toward it across turns until an evaluator says done',
+      );
       deps.ui.write('  /discovery <idea>  clarify an ambiguous idea before building');
       deps.ui.write(
         '  /rewind [id]   rewind a run step-by-step (time-machine; defaults to latest)',
