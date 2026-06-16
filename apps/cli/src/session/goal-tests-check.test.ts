@@ -22,6 +22,8 @@ describe('runConfiguredTestsCheck', () => {
     expect(runConfiguredTestsCheck(process.cwd(), '   ', undefined)).toBeUndefined();
   });
 
+  // Generous timeouts: these spawn a real `node` process, which can be slow to
+  // start under full-suite parallelism (other files spawn processes too).
   it('passes when the command exits 0', async () => {
     const check = runConfiguredTestsCheck(
       process.cwd(),
@@ -32,7 +34,7 @@ describe('runConfiguredTestsCheck', () => {
     const result = await check!();
     expect(result.passed).toBe(true);
     expect(result.detail).toContain('passed');
-  });
+  }, 30_000);
 
   it('fails (never throws) when the command exits non-zero', async () => {
     const check = runConfiguredTestsCheck(
@@ -43,5 +45,5 @@ describe('runConfiguredTestsCheck', () => {
     const result = await check!();
     expect(result.passed).toBe(false);
     expect(result.detail).toContain('failed');
-  });
+  }, 30_000);
 });
