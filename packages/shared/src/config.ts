@@ -89,8 +89,12 @@ export const compactionConfigSchema = z.object({
   reserveTokens: z.number().int().positive().default(16384),
   /** Tokens of the recent tail preserved verbatim (cut only at turn limits). */
   keepRecentTokens: z.number().int().positive().default(20000),
-  /** Which model summarizes: `active` | `cheap` | a concrete model id. */
-  summarizerModel: z.string().min(1).default('cheap'),
+  /**
+   * Which model summarizes: `active` (the main session model — the DEFAULT,
+   * since the summary becomes durable context so quality matters most), `cheap`
+   * (opt-in: the fast pairing model for lower cost/latency), or a concrete id.
+   */
+  summarizerModel: z.string().min(1).default('active'),
   /** Prune stale tool outputs before summarizing. */
   pruneToolOutputs: z.boolean().default(true),
 });
@@ -101,7 +105,7 @@ export const DEFAULT_COMPACTION_CONFIG: CompactionConfig = {
   enabled: true,
   reserveTokens: 16384,
   keepRecentTokens: 20000,
-  summarizerModel: 'cheap',
+  summarizerModel: 'active',
   pruneToolOutputs: true,
 };
 

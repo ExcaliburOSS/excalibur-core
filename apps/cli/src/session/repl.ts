@@ -547,10 +547,11 @@ function compactionContextWindow(repoRoot: string, providerName: string): number
 }
 
 /**
- * Builds the M2 real-model summarizer routed to the FAST `cheap` provider (low
- * cost + latency), or `undefined` when there is no real model to summarize with
- * (no gateway, or a mock provider) — in which case the caller uses the offline
- * deterministic default. `summarizerModel: 'active'` pins the main model instead.
+ * Builds the M2 real-model summarizer, or `undefined` when there is no real
+ * model to summarize with (no gateway, or a mock provider) — in which case the
+ * caller uses the offline deterministic default. The summary becomes the
+ * session's DURABLE context, so it defaults to the main (quality) model; only
+ * `summarizerModel: 'cheap'` opts into the fast pairing model for cost/latency.
  */
 function buildCompactionSummarizer(
   runtime: SessionRuntime,
@@ -562,9 +563,9 @@ function buildCompactionSummarizer(
       return undefined;
     }
     const provider =
-      config.summarizerModel === 'active'
-        ? gateway.providerName
-        : (gateway.cheapProviderName ?? gateway.providerName);
+      config.summarizerModel === 'cheap'
+        ? (gateway.cheapProviderName ?? gateway.providerName)
+        : gateway.providerName;
     const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[provider]
       ?.type;
     if (providerType === 'mock') {
