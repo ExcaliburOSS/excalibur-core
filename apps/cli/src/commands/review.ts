@@ -4,9 +4,11 @@ import type { CliDeps } from '../deps';
 import {
   buildNeighborContext,
   deriveNeighborQuery,
+  loadConfigContext,
   readUserSuppliedFile,
   redactDiff,
 } from '../lib/context';
+import { diagnosticsContextSource, runDiagnostics } from '../lib/diagnostics';
 import { filesAffectedFromDiff, runInteractionCommand } from '../lib/interactions';
 
 /**
@@ -25,12 +27,19 @@ export function registerReviewCommand(program: Command, deps: CliDeps): void {
     .argument('[path]', 'file to review (defaults to the local diff)')
     .option('--diff', 'review the local working-tree diff')
     .option('--no-context', 'skip neighbor-context retrieval')
+    .option('--diagnostics', 'run the repo typecheck and anchor the review on its real errors')
     .option('--no-stream', 'disable live streaming of the answer')
     .option('-y, --yes', 'skip prompts and accept safe defaults')
     .action(
       async (
         relPath: string | undefined,
-        options: { diff?: boolean; context?: boolean; stream?: boolean; yes?: boolean },
+        options: {
+          diff?: boolean;
+          context?: boolean;
+          diagnostics?: boolean;
+          stream?: boolean;
+          yes?: boolean;
+        },
       ) => {
         let prompt: string;
         let input: string;
@@ -66,6 +75,25 @@ export function registerReviewCommand(program: Command, deps: CliDeps): void {
           input = 'Review the local working-tree diff';
           if (retrieve) {
             additionalSources = await neighborContextForChangedFiles(deps, redactedDiff);
+          }
+        }
+
+        // Real compiler diagnostics (M3): run the repo typecheck and anchor the
+        // review on its real errors (opt-in — typecheck can be slow).
+        if (options.diagnostics === true) {
+          const typecheck = loadConfigContext(deps.cwd()).config.commands?.typecheck;
+          if (typecheck === undefined) {
+            deps.ui.warn('No typecheck command configured — skipping diagnostics.');
+          } else {
+            deps.ui.info(`Running diagnostics: ${typecheck}…`);
+            const result = runDiagnostics(deps.cwd(), typecheck);
+            const source = diagnosticsContextSource(result);
+            if (source !== null) {
+              additionalSources = [...additionalSources, source];
+              deps.ui.warn(`Typecheck reported ${result.diagnostics.length || 'some'} error(s) — anchoring the review on them.`);
+            } else if (result.ok === true) {
+              deps.ui.success('Typecheck is clean.');
+            }
           }
         }
 
