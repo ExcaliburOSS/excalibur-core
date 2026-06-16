@@ -19,6 +19,7 @@ export * from './transport/retry';
 export * from './transport/timeout';
 export * from './errors/provider-errors';
 export * from './cost/token-accounting';
+export * from './cost/token-accountant';
 export * from './providers/base-http-provider';
 export * from './providers/anthropic-provider';
 export * from './providers/openai-compatible-provider';

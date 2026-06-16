@@ -35,6 +35,7 @@ export const excaliburEventTypeSchema = z.enum([
   'policy_decision',
   'error',
   'artifact_created',
+  'compaction',
 ]);
 export type ExcaliburEventType = z.infer<typeof excaliburEventTypeSchema>;
 

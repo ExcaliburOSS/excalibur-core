@@ -14,11 +14,7 @@ export {
 } from './config/load-config';
 
 // Extension host
-export {
-  createExtensionHost,
-  workflowCatalog,
-  type WorkflowCatalogEntry,
-} from './extensions/host';
+export { createExtensionHost, workflowCatalog, type WorkflowCatalogEntry } from './extensions/host';
 
 // Init
 export {
@@ -93,6 +89,9 @@ export {
   type ForkPlan,
   type UndoPlan,
 } from './replay/fork';
+
+// Context compaction (plan §"Compactación de contexto") — the M-Shell offline slice
+export * from './compaction';
 
 // Local artifact stores (ONB-8)
 export {
