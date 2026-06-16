@@ -2,12 +2,7 @@ import { loadAnnotations, loadReplay } from '@excalibur/core';
 import type { Command } from 'commander';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
-import {
-  printLinearSummary,
-  printStateAt,
-  resolveRun,
-  runScrubber,
-} from '../lib/replay-scrubber';
+import { printLinearSummary, printStateAt, resolveRun, runScrubber } from '../lib/replay-scrubber';
 
 interface ReplayOptions {
   print?: boolean;
@@ -15,10 +10,11 @@ interface ReplayOptions {
 }
 
 /**
- * `excalibur replay [id]` — the time-machine. Rewinds a run like a video:
+ * `excalibur rewind [id]` — the time-machine (alias: `replay`). Rewinds a run:
  * scrub step-by-step, semantic-jump (next edit / test / command / failure /
  * approval / phase), EXPLAIN at the cursor (mock offline, real provider live),
- * view the accumulated diff and pin annotations. Defaults to the latest run.
+ * view the accumulated diff, pin annotations, and `f`/`u` to fork or undo from
+ * a point. Defaults to the latest run.
  *
  * Interactive on a TTY (a readline scrubber). NON-INTERACTIVE — when stdin is
  * not a TTY, or `--print` / `--at <n>` is given — it prints a static linear
@@ -27,8 +23,11 @@ interface ReplayOptions {
  */
 export function registerReplayCommand(program: Command, deps: CliDeps): void {
   program
-    .command('replay')
-    .description('rewind a run step-by-step — replay · inspect · explain · annotate (the time-machine)')
+    .command('rewind')
+    .alias('replay')
+    .description(
+      'rewind a run step-by-step — step · inspect · explain · fork · undo (the time-machine)',
+    )
     .argument('[id]', 'run id (defaults to the latest run)')
     .option('--print', 'print a static linear summary of every step and exit (non-interactive)')
     .option('--at <n>', 'print the reconstructed state at step n (1-based) and exit')

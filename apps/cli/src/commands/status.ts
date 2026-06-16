@@ -72,7 +72,7 @@ export function registerStatusCommand(program: Command, deps: CliDeps): void {
               run.record.startedAt,
             ]),
         );
-        deps.ui.info('Rewind any run like a video: excalibur replay <id>');
+        deps.ui.info('Rewind any run like a video: excalibur rewind <id>');
       }
       deps.ui.write();
       deps.ui.info(
@@ -85,7 +85,9 @@ export function registerStatusCommand(program: Command, deps: CliDeps): void {
         deps.ui.heading('Useful next steps:');
         deps.ui.write('  - Share team standards: excalibur init --team');
         deps.ui.write('  - Add custom instructions under .excalibur/instructions/');
-        deps.ui.write('  - Tighten rules for sensitive paths in .excalibur/config.yaml (autonomy.paths)');
+        deps.ui.write(
+          '  - Tighten rules for sensitive paths in .excalibur/config.yaml (autonomy.paths)',
+        );
         deps.ui.write('  - Connect GitHub Issues and work items (arrives in M4)');
       }
     });

@@ -16,7 +16,12 @@ import type { AutonomyLevel } from '@excalibur/shared';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
-import { chatWithGuidance, loadConfigContext, loadGatewayContext, streamWithGuidance } from './context';
+import {
+  chatWithGuidance,
+  loadConfigContext,
+  loadGatewayContext,
+  streamWithGuidance,
+} from './context';
 import { runForkTurn, runUndo, type AgentTurnDeps } from '../session/agent-turn';
 
 /**
@@ -55,19 +60,15 @@ function formatCost(costCents: number | null): string {
 /** The header: run id · title · workflow · autonomy · status · total cost. */
 function renderHeader(deps: CliDeps, model: ReplayModel): void {
   const { run, steps } = model;
-  const totalCost = steps.length > 0 ? steps[steps.length - 1]?.costCentsSoFar ?? null : null;
-  deps.ui.heading(`⏮  Replay ${run.id} — ${run.title}`);
+  const totalCost = steps.length > 0 ? (steps[steps.length - 1]?.costCentsSoFar ?? null) : null;
+  deps.ui.heading(`⏮  Rewind ${run.id} — ${run.title}`);
   deps.ui.info(
     `${run.workflow} · L${run.autonomyLevel} · ${run.status} · ${steps.length} steps · total ${formatCost(totalCost)}`,
   );
 }
 
 /** Renders the position line + the current step + a few surrounding events. */
-function renderStep(
-  deps: CliDeps,
-  model: ManagedReplay,
-  cursor: number,
-): void {
+function renderStep(deps: CliDeps, model: ManagedReplay, cursor: number): void {
   const state = reconstructStateAt(model.replay, cursor);
   const step = state.step;
   const total = model.replay.steps.length;
@@ -89,12 +90,18 @@ function renderStep(
   // Inline annotations pinned to this step (resurface on revisit).
   const pinned = model.annotations.filter((annotation) => annotation.stepIndex === cursor);
   for (const annotation of pinned) {
-    deps.ui.write(`  ${pc.yellow('📌')} ${pc.yellow(annotation.note)} ${pc.dim(`(${annotation.at})`)}`);
+    deps.ui.write(
+      `  ${pc.yellow('📌')} ${pc.yellow(annotation.note)} ${pc.dim(`(${annotation.at})`)}`,
+    );
   }
 }
 
 /** A static, linear summary of every step (the non-TTY / `--print` view). */
-export function printLinearSummary(deps: CliDeps, replay: ReplayModel, annotations: Annotation[]): void {
+export function printLinearSummary(
+  deps: CliDeps,
+  replay: ReplayModel,
+  annotations: Annotation[],
+): void {
   renderHeader(deps, replay);
   if (replay.steps.length === 0) {
     deps.ui.info('No events recorded for this run.');
@@ -129,7 +136,9 @@ export function printStateAt(
   const state = reconstructStateAt(replay, at);
   const step = state.step;
   deps.ui.write();
-  deps.ui.write(`${pc.bold(`step ${step.index + 1}/${replay.steps.length}`)} · ${state.phaseName ?? 'no phase'}`);
+  deps.ui.write(
+    `${pc.bold(`step ${step.index + 1}/${replay.steps.length}`)} · ${state.phaseName ?? 'no phase'}`,
+  );
   deps.ui.write(`  → ${step.summary}`);
   deps.ui.info(`  cost so far: ${formatCost(state.costCentsSoFar)}`);
   if (state.recentEvents.length > 0) {
@@ -143,7 +152,11 @@ export function printStateAt(
   }
   deps.ui.write();
   deps.ui.write(pc.dim('--- accumulated diff at cursor ---'));
-  deps.ui.write(state.accumulatedDiff.length > 0 ? state.accumulatedDiff : pc.dim('(no diff reconstructable at this point)'));
+  deps.ui.write(
+    state.accumulatedDiff.length > 0
+      ? state.accumulatedDiff
+      : pc.dim('(no diff reconstructable at this point)'),
+  );
 }
 
 /** Replay state held in memory during an interactive scrub. */
@@ -157,7 +170,10 @@ function renderControls(deps: CliDeps): void {
   deps.ui.info(
     'controls: n/p step · ⏎ next phase · e edit · t test · c command · x failure · a approval · ' +
       'g <n> goto · 0/$ first/last · d diff · ? explain · pin <note> · ' +
-      pc.bold('f fork') + ' · ' + pc.bold('u undo') + ' · q quit',
+      pc.bold('f fork') +
+      ' · ' +
+      pc.bold('u undo') +
+      ' · q quit',
   );
 }
 
@@ -196,7 +212,9 @@ async function forkFromCursor(
       autonomyLevel,
     };
     const result = await runForkTurn(turn, { sourceRunId: runId, atStep: cursor, instruction });
-    deps.ui.info(`Fork ${result.forkRunId} created — replay it: excalibur replay ${result.forkRunId}`);
+    deps.ui.info(
+      `Fork ${result.forkRunId} created — replay it: excalibur replay ${result.forkRunId}`,
+    );
   } catch (error) {
     deps.ui.error(error instanceof Error ? error.message : String(error));
   }
@@ -213,7 +231,8 @@ async function explainAtCursor(deps: CliDeps, model: ManagedReplay, cursor: numb
     .map((step) => `${step.index + 1}. ${step.summary}`)
     .join('\n');
 
-  const phaseLine = state.phaseName !== null ? `Active phase: ${state.phaseName}.` : 'No active phase.';
+  const phaseLine =
+    state.phaseName !== null ? `Active phase: ${state.phaseName}.` : 'No active phase.';
   const diffBlock =
     state.accumulatedDiff.length > 0
       ? `\n\nAccumulated diff so far:\n\`\`\`diff\n${state.accumulatedDiff}\n\`\`\``
@@ -243,7 +262,9 @@ async function explainAtCursor(deps: CliDeps, model: ManagedReplay, cursor: numb
   deps.ui.write(pc.bold(`Why step ${cursor + 1}? ${state.step.summary}`));
   deps.ui.write();
   if (deps.ui.isInteractive()) {
-    await streamWithGuidance(deps, gatewayContext, chatInput, (chunk) => deps.ui.streamChunk(chunk));
+    await streamWithGuidance(deps, gatewayContext, chatInput, (chunk) =>
+      deps.ui.streamChunk(chunk),
+    );
     deps.ui.write();
     deps.ui.write();
   } else {
@@ -434,7 +455,14 @@ export async function runScrubber(
         // a new instruction live, reusing the cached prefix (zero re-spend). The
         // cursor (0-based) IS the fork point. runForkTurn renders its own
         // progress + receipt; we just redraw the source step afterward.
-        await forkFromCursor(deps, options, runId, repoRoot, cursor, model.replay.run.autonomyLevel);
+        await forkFromCursor(
+          deps,
+          options,
+          runId,
+          repoRoot,
+          cursor,
+          model.replay.run.autonomyLevel,
+        );
         renderStep(deps, model, cursor);
         moved = false;
         break;

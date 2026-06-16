@@ -32,7 +32,7 @@ describe('program registration (Build Contract §4.9)', () => {
       'run',
       'status',
       'logs',
-      'replay',
+      'rewind',
       'apply',
       'branch',
       'reject',
@@ -59,7 +59,15 @@ describe('program registration (Build Contract §4.9)', () => {
 
   it('registers the extensions subcommands', () => {
     const names = subcommandNames(program, 'extensions');
-    for (const expected of ['list', 'validate', 'doctor', 'enable', 'disable', 'install', 'create']) {
+    for (const expected of [
+      'list',
+      'validate',
+      'doctor',
+      'enable',
+      'disable',
+      'install',
+      'create',
+    ]) {
       expect(names).toContain(expected);
     }
   });
@@ -79,7 +87,9 @@ describe('program registration (Build Contract §4.9)', () => {
   });
 
   it('registers workflows/methodologies/models subcommands', () => {
-    expect(subcommandNames(program, 'workflows')).toEqual(expect.arrayContaining(['list', 'explain']));
+    expect(subcommandNames(program, 'workflows')).toEqual(
+      expect.arrayContaining(['list', 'explain']),
+    );
     expect(subcommandNames(program, 'methodologies')).toEqual(expect.arrayContaining(['list']));
     expect(subcommandNames(program, 'models')).toEqual(expect.arrayContaining(['list', 'setup']));
   });
@@ -102,7 +112,14 @@ describe('program registration (Build Contract §4.9)', () => {
 
   it('pins the discovery command flags', () => {
     const flags = optionFlags(program, 'discovery');
-    for (const expected of ['--type', '--from-file', '--from-linear', '--from-jira', '--from-github-issue', '--yes']) {
+    for (const expected of [
+      '--type',
+      '--from-file',
+      '--from-linear',
+      '--from-jira',
+      '--from-github-issue',
+      '--yes',
+    ]) {
       expect(flags).toContain(expected);
     }
   });
@@ -114,8 +131,12 @@ describe('program registration (Build Contract §4.9)', () => {
     const skills = program.commands.find((command) => command.name() === 'skills') as Command;
     const enable = skills.commands.find((command) => command.name() === 'enable') as Command;
     expect(enable.options.map((option) => option.long)).toContain('--accept-risk');
-    const instructions = program.commands.find((command) => command.name() === 'instructions') as Command;
-    const importCommand = instructions.commands.find((command) => command.name() === 'import') as Command;
+    const instructions = program.commands.find(
+      (command) => command.name() === 'instructions',
+    ) as Command;
+    const importCommand = instructions.commands.find(
+      (command) => command.name() === 'import',
+    ) as Command;
     expect(importCommand.options.map((option) => option.long)).toContain('--include-global');
   });
 

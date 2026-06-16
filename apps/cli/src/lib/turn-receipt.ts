@@ -125,7 +125,9 @@ function metricsLine(summary: TurnSummary): string {
   const { metrics } = summary;
   if (metrics.files > 0) {
     const fileWord = metrics.files === 1 ? 'file' : 'files';
-    parts.push(`${metrics.files} ${fileWord} · ${formatPairStat(metrics.insertions, metrics.deletions)}`);
+    parts.push(
+      `${metrics.files} ${fileWord} · ${formatPairStat(metrics.insertions, metrics.deletions)}`,
+    );
   }
   const check = primaryCheck(summary.checks);
   if (check !== null) {
@@ -143,8 +145,16 @@ function metricsLine(summary: TurnSummary): string {
 
 /** An aligned changed-file row: `M  src/x.ts        +12 −3`. */
 function fileRow(file: ChangedFile): string {
-  const glyph = file.status === 'added' ? pc.green('A') : file.status === 'deleted' ? pc.red('D') : pc.yellow('M');
-  const path = file.path.length > PATH_COLUMN ? `…${file.path.slice(-(PATH_COLUMN - 1))}` : file.path.padEnd(PATH_COLUMN);
+  const glyph =
+    file.status === 'added'
+      ? pc.green('A')
+      : file.status === 'deleted'
+        ? pc.red('D')
+        : pc.yellow('M');
+  const path =
+    file.path.length > PATH_COLUMN
+      ? `…${file.path.slice(-(PATH_COLUMN - 1))}`
+      : file.path.padEnd(PATH_COLUMN);
   const stat = formatPairStat(file.insertions, file.deletions);
   return `   ${glyph}  ${path}  ${stat}`;
 }
@@ -208,7 +218,9 @@ export function renderTurnReceipt(
 
     if (summary.nextHint !== null) {
       ui.write();
-      ui.write(`   ${pc.cyan('→')} ${renderNextHint(summary.nextHint)}${pc.dim('     /changes · /replay')}`);
+      ui.write(
+        `   ${pc.cyan('→')} ${renderNextHint(summary.nextHint)}${pc.dim('     /changes · /rewind')}`,
+      );
     }
   }
 

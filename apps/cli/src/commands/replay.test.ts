@@ -4,12 +4,7 @@ import { join } from 'node:path';
 import { RunManager } from '@excalibur/core';
 import { createEvent, type ExcaliburEvent } from '@excalibur/shared';
 import { runInteractiveSession } from '../session/repl';
-import {
-  createInteractiveCli,
-  createTestCli,
-  makeTempRepo,
-  removeDir,
-} from '../test-utils';
+import { createInteractiveCli, createTestCli, makeTempRepo, removeDir } from '../test-utils';
 
 /**
  * Offline tests for the time-machine (`excalibur replay` + `/replay`). A run with
@@ -51,26 +46,72 @@ beforeAll(() => {
 
   const events: ExcaliburEvent[] = [
     createEvent({ runId, type: 'run_started', payload: { title: 'Fix duplicated release' } }),
-    createEvent({ runId, type: 'phase_started', payload: { name: 'Implement', type: 'agent_work' }, phaseId: PHASE_IMPL }),
+    createEvent({
+      runId,
+      type: 'phase_started',
+      payload: { name: 'Implement', type: 'agent_work' },
+      phaseId: PHASE_IMPL,
+    }),
     createEvent({
       runId,
       type: 'model_call',
-      payload: { model: 'mock-model', kind: 'patch', inputTokens: 1200, outputTokens: 340, costCents: 5 },
+      payload: {
+        model: 'mock-model',
+        kind: 'patch',
+        inputTokens: 1200,
+        outputTokens: 340,
+        costCents: 5,
+      },
       phaseId: PHASE_IMPL,
     }),
-    createEvent({ runId, type: 'file_write', payload: { path: 'src/release.ts', diff: SAMPLE_DIFF }, phaseId: PHASE_IMPL }),
-    createEvent({ runId, type: 'phase_completed', payload: { name: 'Implement', status: 'completed' }, phaseId: PHASE_IMPL }),
-    createEvent({ runId, type: 'phase_started', payload: { name: 'Verify', type: 'command_group' }, phaseId: PHASE_VERIFY }),
-    createEvent({ runId, type: 'command_completed', payload: { command: 'npm test', exitCode: 0 }, phaseId: PHASE_VERIFY }),
-    createEvent({ runId, type: 'test_result', payload: { status: 'failed', commands: ['npm test'] }, phaseId: PHASE_VERIFY }),
+    createEvent({
+      runId,
+      type: 'file_write',
+      payload: { path: 'src/release.ts', diff: SAMPLE_DIFF },
+      phaseId: PHASE_IMPL,
+    }),
+    createEvent({
+      runId,
+      type: 'phase_completed',
+      payload: { name: 'Implement', status: 'completed' },
+      phaseId: PHASE_IMPL,
+    }),
+    createEvent({
+      runId,
+      type: 'phase_started',
+      payload: { name: 'Verify', type: 'command_group' },
+      phaseId: PHASE_VERIFY,
+    }),
+    createEvent({
+      runId,
+      type: 'command_completed',
+      payload: { command: 'npm test', exitCode: 0 },
+      phaseId: PHASE_VERIFY,
+    }),
+    createEvent({
+      runId,
+      type: 'test_result',
+      payload: { status: 'failed', commands: ['npm test'] },
+      phaseId: PHASE_VERIFY,
+    }),
     createEvent({
       runId,
       type: 'patch_generated',
       payload: { diff: SAMPLE_DIFF, filesAffected: ['src/release.ts'], artifact: 'diff.patch' },
       phaseId: PHASE_VERIFY,
     }),
-    createEvent({ runId, type: 'approval_requested', payload: { question: 'Apply the generated patch?' }, phaseId: PHASE_VERIFY }),
-    createEvent({ runId, type: 'phase_completed', payload: { name: 'Verify', status: 'completed' }, phaseId: PHASE_VERIFY }),
+    createEvent({
+      runId,
+      type: 'approval_requested',
+      payload: { question: 'Apply the generated patch?' },
+      phaseId: PHASE_VERIFY,
+    }),
+    createEvent({
+      runId,
+      type: 'phase_completed',
+      payload: { name: 'Verify', status: 'completed' },
+      phaseId: PHASE_VERIFY,
+    }),
     createEvent({ runId, type: 'run_completed', payload: { status: 'completed' } }),
   ];
   for (const event of events) {
@@ -87,7 +128,7 @@ describe('excalibur replay — non-interactive (--print / --at)', () => {
     await cli.run('replay', runId, '--print');
     const stdout = cli.stdout();
 
-    expect(stdout).toContain(`Replay ${runId}`);
+    expect(stdout).toContain(`Rewind ${runId}`);
     expect(stdout).toContain('Fix duplicated release');
     expect(stdout).toContain('structured-feature');
     // A step per event, with summaries.
@@ -111,7 +152,7 @@ describe('excalibur replay — non-interactive (--print / --at)', () => {
   it('defaults to the latest run when no id is given', async () => {
     const cli = createTestCli({ cwd: repo });
     await cli.run('replay', '--print');
-    expect(cli.stdout()).toContain(`Replay ${runId}`);
+    expect(cli.stdout()).toContain(`Rewind ${runId}`);
   });
 
   it('--at <n> prints the reconstructed state at step n (1-based)', async () => {
@@ -155,7 +196,7 @@ describe('excalibur replay — interactive scrubber (scripted stdin)', () => {
 
     const stdout = cli.stdout();
     // Header + controls.
-    expect(stdout).toContain(`Replay ${runId}`);
+    expect(stdout).toContain(`Rewind ${runId}`);
     expect(stdout).toContain('controls:');
     // The failure jump lands on the failed test_result (step 8/12).
     expect(stdout).toContain('step 8/12');
@@ -173,7 +214,11 @@ describe('excalibur replay — interactive scrubber (scripted stdin)', () => {
     const annotationsFile = join(repo, '.excalibur', 'runs', runId, 'annotations.jsonl');
     expect(existsSync(annotationsFile)).toBe(true);
     const annotation = JSON.parse(readFileSync(annotationsFile, 'utf8').trim());
-    expect(annotation).toMatchObject({ stepIndex: 7, note: 'this is where tests break', at: '2026-06-14T12:00:00.000Z' });
+    expect(annotation).toMatchObject({
+      stepIndex: 7,
+      note: 'this is where tests break',
+      at: '2026-06-14T12:00:00.000Z',
+    });
   });
 
   it('g <n> goes to a step and revisiting shows the inline annotation', async () => {
@@ -207,17 +252,26 @@ describe('/replay in a session', () => {
 
     expect(code).toBe(0);
     const stdout = cli.stdout();
-    expect(stdout).toContain(`Replay ${runId}`);
+    expect(stdout).toContain(`Rewind ${runId}`);
     expect(stdout).toContain('wrote src/release.ts');
     // Returned to the session and closed gracefully.
     expect(stdout).toContain('Goodbye.');
   });
 
-  it('/help lists /replay', async () => {
+  it('/help lists /rewind', async () => {
     const cli = createInteractiveCli({ cwd: repo });
     cli.send('/help');
     cli.send('/exit');
     await runInteractiveSession(cli.deps, {});
-    expect(cli.stdout()).toContain('/replay');
+    expect(cli.stdout()).toContain('/rewind');
+  });
+
+  it('`rewind` (primary name) and `replay` (alias) both work', async () => {
+    const cli = createTestCli({ cwd: repo });
+    await cli.run('rewind', runId, '--print');
+    expect(cli.stdout()).toContain(`Rewind ${runId}`);
+    cli.reset();
+    await cli.run('replay', runId, '--print'); // back-compat alias
+    expect(cli.stdout()).toContain(`Rewind ${runId}`);
   });
 });

@@ -255,7 +255,7 @@ export async function runInteractiveSession(
             printStatusLine(deps, runtime);
             continue;
           }
-          if (input.name === 'replay') {
+          if (input.name === 'rewind' || input.name === 'replay') {
             await handleReplayCommand(deps, runtime, input.argv[0], (prompt) =>
               editor.question(prompt),
             );
@@ -345,6 +345,7 @@ const GHOST_COMMANDS = [
   'help',
   'plan',
   'discovery',
+  'rewind',
   'replay',
   'changes',
   'fork',
@@ -587,7 +588,7 @@ function handleSlashCommand(
       deps.ui.write('  /plan <task>   plan first (read-only) → approve → execute');
       deps.ui.write('  /discovery <idea>  clarify an ambiguous idea before building');
       deps.ui.write(
-        '  /replay [id]   rewind a run step-by-step (time-machine; defaults to latest)',
+        '  /rewind [id]   rewind a run step-by-step (time-machine; defaults to latest)',
       );
       deps.ui.write(
         '  /changes [id]  show the full changed-file list for a run (defaults to latest)',
@@ -720,13 +721,13 @@ function handleChangesCommand(deps: CliDeps, id: string | undefined): void {
     deps.ui.write(`  ${changeGlyph(file.status)}  ${file.path}${stat}`);
   }
   deps.ui.write();
-  deps.ui.write('  Full diff: excalibur changes --diff   ·   rewind: /replay');
+  deps.ui.write('  Full diff: excalibur changes --diff   ·   rewind: /rewind');
 }
 
 /**
  * `/fork <instruction>` — fork the latest run from its LAST step, reusing the
  * cached prefix, and run the new instruction live in an isolated worktree (the
- * user's tree is untouched). To fork from an EARLIER step, use `/replay` →
+ * user's tree is untouched). To fork from an EARLIER step, use `/rewind` →
  * scrub to the step → `f`. Returns the execution result to record, or null.
  */
 async function handleForkCommand(
