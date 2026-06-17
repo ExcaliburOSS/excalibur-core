@@ -43,6 +43,10 @@ export interface Phase {
   detail?: string;
   /** Streamed events, shown only while the phase is the active one. */
   events?: PhaseEvent[];
+  /** Wall-clock duration of the phase (set once it completes/fails). */
+  durationMs?: number;
+  /** Model cost attributed to this phase (sum of its `model_call`s). */
+  costCents?: number;
 }
 
 export interface ApprovalPrompt {

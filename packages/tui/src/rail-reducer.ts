@@ -71,6 +71,7 @@ export function reduceRail(
 ): RailModel {
   const phases: Phase[] = [];
   const phaseById = new Map<string, Phase>();
+  const phaseStartMs = new Map<string, number>();
   let runId = '';
   let title = '';
   let done = false;
@@ -88,6 +89,13 @@ export function reduceRail(
   const pushEvent = (phase: Phase | undefined, ev: PhaseEvent): void => {
     if (phase === undefined) return;
     (phase.events ??= []).push(ev);
+  };
+  // Stamps a phase's wall-clock duration from its start to the current event.
+  const setDuration = (phase: Phase): void => {
+    const start = phaseStartMs.get(phase.id);
+    if (start !== undefined && lastTs !== undefined && phase.durationMs === undefined) {
+      phase.durationMs = Math.max(0, lastTs - start);
+    }
   };
 
   for (const event of events) {
@@ -109,14 +117,17 @@ export function reduceRail(
           prev.state = 'completed';
         }
         const phase: Phase = { id, name: str(p, 'name') || id, state: 'running', events: [] };
+        if (prev !== undefined) setDuration(prev); // prev just rolled to completed
         phases.push(phase);
         phaseById.set(id, phase);
+        if (!Number.isNaN(ts)) phaseStartMs.set(id, ts);
         break;
       }
       case 'phase_completed': {
         const ph = phaseFor(event);
         if (ph !== undefined) {
           ph.state = 'completed';
+          setDuration(ph);
           const detail = str(p, 'detail');
           if (detail.length > 0) ph.detail = detail;
         }
@@ -138,19 +149,29 @@ export function reduceRail(
       case 'error': {
         errored = true;
         const ph = phaseFor(event);
-        if (ph !== undefined) ph.state = 'failed';
+        if (ph !== undefined) {
+          ph.state = 'failed';
+          setDuration(ph);
+        }
         pushEvent(ph, { text: str(p, 'message') || 'error', tone: 'warn' });
         break;
       }
       case 'run_completed':
         done = true;
         for (const ph of phases) {
-          if (ph.state === 'running' || ph.state === 'waiting') ph.state = 'completed';
+          if (ph.state === 'running' || ph.state === 'waiting') {
+            ph.state = 'completed';
+            setDuration(ph);
+          }
         }
         break;
       case 'model_call': {
         const c = p['costCents'];
-        if (typeof c === 'number') costCents += c;
+        if (typeof c === 'number') {
+          costCents += c;
+          const ph = phaseFor(event);
+          if (ph !== undefined) ph.costCents = (ph.costCents ?? 0) + c;
+        }
         break;
       }
       default: {

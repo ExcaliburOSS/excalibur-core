@@ -12,8 +12,8 @@ exports[`golden: renderPlanCard > truecolor dark 1`] = `
 `;
 
 exports[`golden: renderRail > tier=ansi16 mode=dark 1`] = `
-" ESC[92m✓ESC[0m ESC[90mContext           ESC[0mESC[90m  1 fileESC[0m
- ESC[96m⠋ESC[0m ESC[37mImplementESC[0m
+" ESC[92m✓ESC[0m ESC[90mContext           ESC[0mESC[90m  1 file · 2sESC[0m
+ ESC[96m⠋ESC[0m ESC[37mImplement         ESC[0mESC[90m  $0.07ESC[0m
  ESC[90m│ESC[0m   ESC[96m✎ESC[0m ESC[96mwrite src/webhook.tsESC[0m
  ESC[90m│ESC[0m   ESC[93m±ESC[0m ESC[93mpatch generatedESC[0mESC[90m  +2 −1 · 1 fileESC[0m
  ESC[90m│ESC[0m   ESC[90m❯ESC[0m ESC[90m$ pnpm testESC[0m
@@ -23,8 +23,8 @@ exports[`golden: renderRail > tier=ansi16 mode=dark 1`] = `
 `;
 
 exports[`golden: renderRail > tier=ansi16 mode=light 1`] = `
-" ESC[32m✓ESC[0m ESC[90mContext           ESC[0mESC[90m  1 fileESC[0m
- ESC[34m⠋ESC[0m ESC[30mImplementESC[0m
+" ESC[32m✓ESC[0m ESC[90mContext           ESC[0mESC[90m  1 file · 2sESC[0m
+ ESC[34m⠋ESC[0m ESC[30mImplement         ESC[0mESC[90m  $0.07ESC[0m
  ESC[37m│ESC[0m   ESC[34m✎ESC[0m ESC[34mwrite src/webhook.tsESC[0m
  ESC[37m│ESC[0m   ESC[31m±ESC[0m ESC[31mpatch generatedESC[0mESC[90m  +2 −1 · 1 fileESC[0m
  ESC[37m│ESC[0m   ESC[90m❯ESC[0m ESC[90m$ pnpm testESC[0m
@@ -34,8 +34,8 @@ exports[`golden: renderRail > tier=ansi16 mode=light 1`] = `
 `;
 
 exports[`golden: renderRail > tier=ansi256 mode=dark 1`] = `
-" ESC[38;5;79m✓ESC[0m ESC[38;5;145mContext           ESC[0mESC[38;5;145m  1 fileESC[0m
- ESC[38;5;81m⠋ESC[0m ESC[38;5;231mImplementESC[0m
+" ESC[38;5;79m✓ESC[0m ESC[38;5;145mContext           ESC[0mESC[38;5;145m  1 file · 2sESC[0m
+ ESC[38;5;81m⠋ESC[0m ESC[38;5;231mImplement         ESC[0mESC[38;5;145m  $0.07ESC[0m
  ESC[38;5;59m│ESC[0m   ESC[38;5;81m✎ESC[0m ESC[38;5;81mwrite src/webhook.tsESC[0m
  ESC[38;5;59m│ESC[0m   ESC[38;5;221m±ESC[0m ESC[38;5;221mpatch generatedESC[0mESC[38;5;145m  +2 −1 · 1 fileESC[0m
  ESC[38;5;59m│ESC[0m   ESC[38;5;145m❯ESC[0m ESC[38;5;145m$ pnpm testESC[0m
@@ -45,8 +45,8 @@ exports[`golden: renderRail > tier=ansi256 mode=dark 1`] = `
 `;
 
 exports[`golden: renderRail > tier=ansi256 mode=light 1`] = `
-" ESC[38;5;29m✓ESC[0m ESC[38;5;60mContext           ESC[0mESC[38;5;60m  1 fileESC[0m
- ESC[38;5;27m⠋ESC[0m ESC[38;5;16mImplementESC[0m
+" ESC[38;5;29m✓ESC[0m ESC[38;5;60mContext           ESC[0mESC[38;5;60m  1 file · 2sESC[0m
+ ESC[38;5;27m⠋ESC[0m ESC[38;5;16mImplement         ESC[0mESC[38;5;60m  $0.07ESC[0m
  ESC[38;5;195m│ESC[0m   ESC[38;5;27m✎ESC[0m ESC[38;5;27mwrite src/webhook.tsESC[0m
  ESC[38;5;195m│ESC[0m   ESC[38;5;130m±ESC[0m ESC[38;5;130mpatch generatedESC[0mESC[38;5;60m  +2 −1 · 1 fileESC[0m
  ESC[38;5;195m│ESC[0m   ESC[38;5;60m❯ESC[0m ESC[38;5;60m$ pnpm testESC[0m
@@ -56,8 +56,8 @@ exports[`golden: renderRail > tier=ansi256 mode=light 1`] = `
 `;
 
 exports[`golden: renderRail > tier=none mode=dark 1`] = `
-" ✓ Context             1 file
- ⠋ Implement
+" ✓ Context             1 file · 2s
+ ⠋ Implement           $0.07
  │   ✎ write src/webhook.ts
  │   ± patch generated  +2 −1 · 1 file
  │   ❯ $ pnpm test
@@ -67,8 +67,8 @@ exports[`golden: renderRail > tier=none mode=dark 1`] = `
 `;
 
 exports[`golden: renderRail > tier=none mode=light 1`] = `
-" ✓ Context             1 file
- ⠋ Implement
+" ✓ Context             1 file · 2s
+ ⠋ Implement           $0.07
  │   ✎ write src/webhook.ts
  │   ± patch generated  +2 −1 · 1 file
  │   ❯ $ pnpm test
@@ -78,8 +78,8 @@ exports[`golden: renderRail > tier=none mode=light 1`] = `
 `;
 
 exports[`golden: renderRail > tier=truecolor mode=dark 1`] = `
-" ESC[38;2;90;209;138m✓ESC[0m ESC[38;2;139;148;158mContext           ESC[0mESC[38;2;139;148;158m  1 fileESC[0m
- ESC[38;2;91;200;255m⠋ESC[0m ESC[38;2;230;237;243mImplementESC[0m
+" ESC[38;2;90;209;138m✓ESC[0m ESC[38;2;139;148;158mContext           ESC[0mESC[38;2;139;148;158m  1 file · 2sESC[0m
+ ESC[38;2;91;200;255m⠋ESC[0m ESC[38;2;230;237;243mImplement         ESC[0mESC[38;2;139;148;158m  $0.07ESC[0m
  ESC[38;2;58;64;72m│ESC[0m   ESC[38;2;91;200;255m✎ESC[0m ESC[38;2;91;200;255mwrite src/webhook.tsESC[0m
  ESC[38;2;58;64;72m│ESC[0m   ESC[38;2;242;201;76m±ESC[0m ESC[38;2;242;201;76mpatch generatedESC[0mESC[38;2;139;148;158m  +2 −1 · 1 fileESC[0m
  ESC[38;2;58;64;72m│ESC[0m   ESC[38;2;139;148;158m❯ESC[0m ESC[38;2;139;148;158m$ pnpm testESC[0m
@@ -89,8 +89,8 @@ exports[`golden: renderRail > tier=truecolor mode=dark 1`] = `
 `;
 
 exports[`golden: renderRail > tier=truecolor mode=light 1`] = `
-" ESC[38;2;26;127;55m✓ESC[0m ESC[38;2;99;108;118mContext           ESC[0mESC[38;2;99;108;118m  1 fileESC[0m
- ESC[38;2;9;105;218m⠋ESC[0m ESC[38;2;31;35;40mImplementESC[0m
+" ESC[38;2;26;127;55m✓ESC[0m ESC[38;2;99;108;118mContext           ESC[0mESC[38;2;99;108;118m  1 file · 2sESC[0m
+ ESC[38;2;9;105;218m⠋ESC[0m ESC[38;2;31;35;40mImplement         ESC[0mESC[38;2;99;108;118m  $0.07ESC[0m
  ESC[38;2;208;215;222m│ESC[0m   ESC[38;2;9;105;218m✎ESC[0m ESC[38;2;9;105;218mwrite src/webhook.tsESC[0m
  ESC[38;2;208;215;222m│ESC[0m   ESC[38;2;154;103;0m±ESC[0m ESC[38;2;154;103;0mpatch generatedESC[0mESC[38;2;99;108;118m  +2 −1 · 1 fileESC[0m
  ESC[38;2;208;215;222m│ESC[0m   ESC[38;2;99;108;118m❯ESC[0m ESC[38;2;99;108;118m$ pnpm testESC[0m

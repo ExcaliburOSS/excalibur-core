@@ -108,16 +108,25 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
   const lines: string[] = [];
 
   model.phases.forEach((phase, index) => {
-    const detail = phase.detail !== undefined && phase.detail.length > 0 ? `  ${phase.detail}` : '';
+    // The trailing annotation: detail, then per-phase duration + cost (the DX
+    // battery — neither CC nor OpenCode shows per-phase timing/cost). Cost is
+    // shown only when it rounds to ≥ 1¢ so sub-cent phases stay quiet.
+    const parts: string[] = [];
+    if (phase.detail !== undefined && phase.detail.length > 0) parts.push(phase.detail);
+    if (phase.durationMs !== undefined) parts.push(formatElapsed(phase.durationMs));
+    if (phase.costCents !== undefined && phase.costCents >= 0.5) {
+      parts.push(formatCents(phase.costCents));
+    }
+    const annotation = parts.length > 0 ? `  ${parts.join(' · ')}` : '';
     const isActive = index === active;
     const glyphCol = c(stateChar(phase, frame), stateHex(phase.state, palette));
     // One accent, lots of dim: the active phase name reads in normal text, the
-    // rest dim back so the live node pops. Pad only when a detail column follows
+    // rest dim back so the live node pops. Pad only when an annotation follows
     // (otherwise trailing padding would be trapped inside the colour wrap and
     // survive trimEnd — keeping the stripped form identical to the plain one).
-    const paddedName = detail.length > 0 ? phase.name.padEnd(NAME_WIDTH) : phase.name;
+    const paddedName = annotation.length > 0 ? phase.name.padEnd(NAME_WIDTH) : phase.name;
     const name = c(paddedName, isActive ? palette.text : palette.muted);
-    const detailCol = detail.length > 0 ? c(detail, palette.muted) : '';
+    const detailCol = annotation.length > 0 ? c(annotation, palette.muted) : '';
     lines.push(` ${glyphCol} ${name}${detailCol}`.trimEnd());
     // Only the active phase expands its event stream; completed ones collapse.
     if (isActive) {

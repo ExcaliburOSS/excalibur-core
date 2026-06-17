@@ -56,6 +56,12 @@ describe('reduceRail', () => {
     expect(rail.status.costCents).toBe(3);
     expect(rail.status.model).toBe('qwen');
     expect(rail.status.elapsedMs).toBeGreaterThan(0);
+    // Per-phase duration + cost (DX battery): Context ran 2s (its events span
+    // 2s), Implement ran 6s and carries the model_call's 3¢.
+    expect(rail.phases[0]?.durationMs).toBe(2000);
+    expect(rail.phases[1]?.durationMs).toBe(6000);
+    expect(rail.phases[1]?.costCents).toBe(3);
+    expect(rail.phases[0]?.costCents).toBeUndefined(); // Context made no model call
   });
 
   it('marks the active phase waiting on an approval, and clears it on approve', () => {
