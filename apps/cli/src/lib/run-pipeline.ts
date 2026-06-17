@@ -19,7 +19,7 @@ import {
   type RunRecord,
   type Translator,
 } from '@excalibur/shared';
-import type { WorkflowDefinition } from '@excalibur/workflow-schema';
+import { getDefaultWorkflow, type WorkflowDefinition } from '@excalibur/workflow-schema';
 import {
   detectColorTier,
   detectThemeSync,
@@ -61,6 +61,8 @@ export interface RunTaskOptions {
   diagnostics?: boolean;
   /** Hard per-run budget ceiling in US dollars (`--budget`); overrides config. */
   budgetUsd?: number;
+  /** Internal: this IS the diagnostics-repair run — do not trigger another (recursion guard). */
+  internalRepair?: boolean;
 }
 
 /** Distinct path-like mentions in a task — a rough pre-plan "affected modules" proxy. */
@@ -472,8 +474,61 @@ export async function runTask(
   deps.ui.info(deps.t('run-pipeline.artifacts', { dir: run.dir }));
   deps.ui.info(deps.t('run-pipeline.inspectWith', { id: run.id }));
 
+  // P1.10 — self-correction against REAL compiler diagnostics. With --diagnostics,
+  // after the run, typecheck the result; if errors remain, run ONE bounded repair
+  // pass (a real agentic run on the actual tsc output) and re-check. Runs on a
+  // FAILED run too — a run failed by the claim ledger's `no_type_errors` is
+  // exactly when a repair is wanted. Opt-in + recursion-guarded; the repair sees
+  // real errors, never hallucinated ones. (A cancelled run is left alone.)
+  if (
+    options.diagnostics === true &&
+    options.internalRepair !== true &&
+    record.status !== 'cancelled'
+  ) {
+    await selfCorrectWithDiagnostics(deps, repoRoot, config, task, options);
+  }
+
   if (options.sync === true) {
     await pushLatestRun(deps, run.id);
   }
   return record;
+}
+
+/** One bounded diagnostics-driven repair pass (P1.10). */
+async function selfCorrectWithDiagnostics(
+  deps: CliDeps,
+  repoRoot: string,
+  config: { commands?: { typecheck?: string } },
+  task: string,
+  options: RunTaskOptions,
+): Promise<void> {
+  const typecheck = config.commands?.typecheck;
+  const before = runDiagnostics(repoRoot, typecheck);
+  if (!before.ran) {
+    deps.ui.info(deps.t('diagnostics.noTypecheck'));
+    return;
+  }
+  if (before.ok === true) {
+    deps.ui.success(deps.t('diagnostics.cleanAfter'));
+    return;
+  }
+  deps.ui.warn(deps.t('diagnostics.repairing', { count: before.diagnostics.length || 0 }));
+  const repairTask =
+    `Fix these REAL compiler errors from \`${typecheck}\` (change only what is needed; do not touch unrelated code):\n\n` +
+    `${before.output}\n\nOriginal task for context: ${task}`;
+  // Recursion-guarded real agentic run. `structured` drives the REAL read+write
+  // agent loop (agent_work) — fast-fix's one-shot chat patch can't reliably edit
+  // an existing file. Auto-approve so it is non-interactive.
+  await runTask(deps, repairTask, {
+    style: 'structured',
+    yes: true,
+    internalRepair: true,
+    ...(options.budgetUsd !== undefined ? { budgetUsd: options.budgetUsd } : {}),
+  });
+  const after = runDiagnostics(repoRoot, typecheck);
+  if (after.ok === true) {
+    deps.ui.success(deps.t('diagnostics.repaired'));
+  } else {
+    deps.ui.warn(deps.t('diagnostics.stillErrors', { count: after.diagnostics.length || 0 }));
+  }
 }
