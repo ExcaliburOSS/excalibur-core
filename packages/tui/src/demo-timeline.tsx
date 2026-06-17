@@ -202,6 +202,8 @@ function App(): ReactElement {
         safety: 'standard-safe',
         push: false,
         model: 'qwen',
+        inputTokens: 0,
+        outputTokens: 0,
       }}
       spinnerFrame={state.spinnerFrame}
       approval={state.approval}

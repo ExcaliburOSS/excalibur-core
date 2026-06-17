@@ -19,7 +19,7 @@ exports[`golden: renderRail > tier=ansi16 mode=dark 1`] = `
  ESC[90m│ESC[0m   ESC[90m❯ESC[0m ESC[90m$ pnpm testESC[0m
  ESC[90m│ESC[0m   ESC[92m↳ESC[0m ESC[92mexit 0ESC[0m
  ESC[90m────────────────────────────────────────────────ESC[0m
-  ESC[96mL3ESC[0m · ESC[90mstandard-safeESC[0m · ESC[90m$0.07ESC[0m · ESC[90m9sESC[0m · ESC[90mno pushESC[0m · ESC[96mqwenESC[0m"
+  ESC[96mL3ESC[0m · ESC[90mstandard-safeESC[0m · ESC[90m$0.07ESC[0m · ESC[90m3.2k↑ 540↓ESC[0m · ESC[90m9sESC[0m · ESC[90mno pushESC[0m · ESC[96mqwenESC[0m"
 `;
 
 exports[`golden: renderRail > tier=ansi16 mode=light 1`] = `
@@ -30,7 +30,7 @@ exports[`golden: renderRail > tier=ansi16 mode=light 1`] = `
  ESC[37m│ESC[0m   ESC[90m❯ESC[0m ESC[90m$ pnpm testESC[0m
  ESC[37m│ESC[0m   ESC[32m↳ESC[0m ESC[32mexit 0ESC[0m
  ESC[37m────────────────────────────────────────────────ESC[0m
-  ESC[34mL3ESC[0m · ESC[90mstandard-safeESC[0m · ESC[90m$0.07ESC[0m · ESC[90m9sESC[0m · ESC[90mno pushESC[0m · ESC[34mqwenESC[0m"
+  ESC[34mL3ESC[0m · ESC[90mstandard-safeESC[0m · ESC[90m$0.07ESC[0m · ESC[90m3.2k↑ 540↓ESC[0m · ESC[90m9sESC[0m · ESC[90mno pushESC[0m · ESC[34mqwenESC[0m"
 `;
 
 exports[`golden: renderRail > tier=ansi256 mode=dark 1`] = `
@@ -41,7 +41,7 @@ exports[`golden: renderRail > tier=ansi256 mode=dark 1`] = `
  ESC[38;5;59m│ESC[0m   ESC[38;5;145m❯ESC[0m ESC[38;5;145m$ pnpm testESC[0m
  ESC[38;5;59m│ESC[0m   ESC[38;5;79m↳ESC[0m ESC[38;5;79mexit 0ESC[0m
  ESC[38;5;59m────────────────────────────────────────────────ESC[0m
-  ESC[38;5;81mL3ESC[0m · ESC[38;5;145mstandard-safeESC[0m · ESC[38;5;145m$0.07ESC[0m · ESC[38;5;145m9sESC[0m · ESC[38;5;145mno pushESC[0m · ESC[38;5;81mqwenESC[0m"
+  ESC[38;5;81mL3ESC[0m · ESC[38;5;145mstandard-safeESC[0m · ESC[38;5;145m$0.07ESC[0m · ESC[38;5;145m3.2k↑ 540↓ESC[0m · ESC[38;5;145m9sESC[0m · ESC[38;5;145mno pushESC[0m · ESC[38;5;81mqwenESC[0m"
 `;
 
 exports[`golden: renderRail > tier=ansi256 mode=light 1`] = `
@@ -52,7 +52,7 @@ exports[`golden: renderRail > tier=ansi256 mode=light 1`] = `
  ESC[38;5;195m│ESC[0m   ESC[38;5;60m❯ESC[0m ESC[38;5;60m$ pnpm testESC[0m
  ESC[38;5;195m│ESC[0m   ESC[38;5;29m↳ESC[0m ESC[38;5;29mexit 0ESC[0m
  ESC[38;5;195m────────────────────────────────────────────────ESC[0m
-  ESC[38;5;27mL3ESC[0m · ESC[38;5;60mstandard-safeESC[0m · ESC[38;5;60m$0.07ESC[0m · ESC[38;5;60m9sESC[0m · ESC[38;5;60mno pushESC[0m · ESC[38;5;27mqwenESC[0m"
+  ESC[38;5;27mL3ESC[0m · ESC[38;5;60mstandard-safeESC[0m · ESC[38;5;60m$0.07ESC[0m · ESC[38;5;60m3.2k↑ 540↓ESC[0m · ESC[38;5;60m9sESC[0m · ESC[38;5;60mno pushESC[0m · ESC[38;5;27mqwenESC[0m"
 `;
 
 exports[`golden: renderRail > tier=none mode=dark 1`] = `
@@ -63,7 +63,7 @@ exports[`golden: renderRail > tier=none mode=dark 1`] = `
  │   ❯ $ pnpm test
  │   ↳ exit 0
  ────────────────────────────────────────────────
-  L3 · standard-safe · $0.07 · 9s · no push · qwen"
+  L3 · standard-safe · $0.07 · 3.2k↑ 540↓ · 9s · no push · qwen"
 `;
 
 exports[`golden: renderRail > tier=none mode=light 1`] = `
@@ -74,7 +74,7 @@ exports[`golden: renderRail > tier=none mode=light 1`] = `
  │   ❯ $ pnpm test
  │   ↳ exit 0
  ────────────────────────────────────────────────
-  L3 · standard-safe · $0.07 · 9s · no push · qwen"
+  L3 · standard-safe · $0.07 · 3.2k↑ 540↓ · 9s · no push · qwen"
 `;
 
 exports[`golden: renderRail > tier=truecolor mode=dark 1`] = `
@@ -85,7 +85,7 @@ exports[`golden: renderRail > tier=truecolor mode=dark 1`] = `
  ESC[38;2;58;64;72m│ESC[0m   ESC[38;2;139;148;158m❯ESC[0m ESC[38;2;139;148;158m$ pnpm testESC[0m
  ESC[38;2;58;64;72m│ESC[0m   ESC[38;2;90;209;138m↳ESC[0m ESC[38;2;90;209;138mexit 0ESC[0m
  ESC[38;2;58;64;72m────────────────────────────────────────────────ESC[0m
-  ESC[38;2;91;200;255mL3ESC[0m · ESC[38;2;139;148;158mstandard-safeESC[0m · ESC[38;2;139;148;158m$0.07ESC[0m · ESC[38;2;139;148;158m9sESC[0m · ESC[38;2;139;148;158mno pushESC[0m · ESC[38;2;91;200;255mqwenESC[0m"
+  ESC[38;2;91;200;255mL3ESC[0m · ESC[38;2;139;148;158mstandard-safeESC[0m · ESC[38;2;139;148;158m$0.07ESC[0m · ESC[38;2;139;148;158m3.2k↑ 540↓ESC[0m · ESC[38;2;139;148;158m9sESC[0m · ESC[38;2;139;148;158mno pushESC[0m · ESC[38;2;91;200;255mqwenESC[0m"
 `;
 
 exports[`golden: renderRail > tier=truecolor mode=light 1`] = `
@@ -96,5 +96,5 @@ exports[`golden: renderRail > tier=truecolor mode=light 1`] = `
  ESC[38;2;208;215;222m│ESC[0m   ESC[38;2;99;108;118m❯ESC[0m ESC[38;2;99;108;118m$ pnpm testESC[0m
  ESC[38;2;208;215;222m│ESC[0m   ESC[38;2;26;127;55m↳ESC[0m ESC[38;2;26;127;55mexit 0ESC[0m
  ESC[38;2;208;215;222m────────────────────────────────────────────────ESC[0m
-  ESC[38;2;9;105;218mL3ESC[0m · ESC[38;2;99;108;118mstandard-safeESC[0m · ESC[38;2;99;108;118m$0.07ESC[0m · ESC[38;2;99;108;118m9sESC[0m · ESC[38;2;99;108;118mno pushESC[0m · ESC[38;2;9;105;218mqwenESC[0m"
+  ESC[38;2;9;105;218mL3ESC[0m · ESC[38;2;99;108;118mstandard-safeESC[0m · ESC[38;2;99;108;118m$0.07ESC[0m · ESC[38;2;99;108;118m3.2k↑ 540↓ESC[0m · ESC[38;2;99;108;118m9sESC[0m · ESC[38;2;99;108;118mno pushESC[0m · ESC[38;2;9;105;218mqwenESC[0m"
 `;

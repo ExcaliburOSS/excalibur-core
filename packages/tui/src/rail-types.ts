@@ -60,6 +60,10 @@ export interface RunStatus {
   safety: string;
   push: boolean;
   model: string;
+  /** Total input tokens across the run's model calls. */
+  inputTokens: number;
+  /** Total output tokens across the run's model calls. */
+  outputTokens: number;
 }
 
 /** The reduced state of a run — everything the rail needs to render. */

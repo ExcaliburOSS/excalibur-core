@@ -77,6 +77,8 @@ export function reduceRail(
   let done = false;
   let errored = false;
   let costCents = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
   let approval: ApprovalPrompt | undefined;
   let firstTs: number | undefined;
   let lastTs: number | undefined;
@@ -172,6 +174,8 @@ export function reduceRail(
           const ph = phaseFor(event);
           if (ph !== undefined) ph.costCents = (ph.costCents ?? 0) + c;
         }
+        if (typeof p['inputTokens'] === 'number') inputTokens += p['inputTokens'];
+        if (typeof p['outputTokens'] === 'number') outputTokens += p['outputTokens'];
         break;
       }
       default: {
@@ -189,6 +193,8 @@ export function reduceRail(
     safety: options.safety ?? 'standard-safe',
     push: options.push ?? false,
     model: options.model ?? 'mock',
+    inputTokens,
+    outputTokens,
   };
   return {
     runId,

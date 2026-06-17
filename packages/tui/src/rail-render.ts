@@ -4,6 +4,7 @@ import {
   eventGlyph,
   formatCents,
   formatElapsed,
+  formatTokens,
   getColors,
   glyph,
   spinnerFrames,
@@ -150,12 +151,17 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
     );
   }
 
-  // Pinned status line.
+  // Pinned status line: autonomy · safety · cost · [tokens] · elapsed · push ·
+  // model. Tokens (in↑/out↓) appear only once the run has made a model call.
   const s = model.status;
   const autonomy = model.autonomyLabel.length > 0 ? `${c(model.autonomyLabel, palette.accent)} · ` : '';
+  const tokens =
+    s.inputTokens + s.outputTokens > 0
+      ? `${c(`${formatTokens(s.inputTokens)}↑ ${formatTokens(s.outputTokens)}↓`, palette.muted)} · `
+      : '';
   lines.push(` ${c('─'.repeat(48), palette.rail)}`);
   lines.push(
-    `  ${autonomy}${c(s.safety, palette.muted)} · ${c(formatCents(s.costCents), palette.muted)} · ${c(
+    `  ${autonomy}${c(s.safety, palette.muted)} · ${c(formatCents(s.costCents), palette.muted)} · ${tokens}${c(
       formatElapsed(s.elapsedMs),
       palette.muted,
     )} · ${c(s.push ? 'push' : 'no push', palette.muted)} · ${c(s.model, palette.accent)}`,

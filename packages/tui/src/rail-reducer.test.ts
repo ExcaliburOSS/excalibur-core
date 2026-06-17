@@ -28,7 +28,7 @@ describe('reduceRail', () => {
       ev('file_read', { path: 'src/a.ts' }, 'p-context'),
       ev('phase_completed', { detail: '1 file' }, 'p-context'),
       ev('phase_started', { name: 'Implement' }, 'p-impl'),
-      ev('model_call', { model: 'qwen', costCents: 3 }, 'p-impl'),
+      ev('model_call', { model: 'qwen', costCents: 3, inputTokens: 1200, outputTokens: 340 }, 'p-impl'),
       ev('file_write', { path: 'src/a.ts' }, 'p-impl'),
       ev('command_started', { command: 'pnpm test' }, 'p-impl'),
       ev('command_completed', { exitCode: 0 }, 'p-impl'),
@@ -56,6 +56,8 @@ describe('reduceRail', () => {
     expect(rail.status.costCents).toBe(3);
     expect(rail.status.model).toBe('qwen');
     expect(rail.status.elapsedMs).toBeGreaterThan(0);
+    expect(rail.status.inputTokens).toBe(1200);
+    expect(rail.status.outputTokens).toBe(340);
     // Per-phase duration + cost (DX battery): Context ran 2s (its events span
     // 2s), Implement ran 6s and carries the model_call's 3¢.
     expect(rail.phases[0]?.durationMs).toBe(2000);

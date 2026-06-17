@@ -158,6 +158,13 @@ export function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+/** Compact token count: 1234 → "1.2k", 980 → "980", 1_500_000 → "1.5M". */
+export function formatTokens(n: number): string {
+  if (n < 1000) return `${n}`;
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
 export function formatElapsed(ms: number): string {
   // Sub-second runs (e.g. a fast Groq call) get one decimal so they never floor
   // to a misleading "0s".

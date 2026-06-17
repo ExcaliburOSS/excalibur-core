@@ -21,7 +21,15 @@ const model = (over: Partial<RailModel> = {}): RailModel => ({
     },
     { id: 'c', name: 'Verify', state: 'pending' },
   ],
-  status: { elapsedMs: 64_000, costCents: 18, safety: 'standard-safe', push: false, model: 'qwen' },
+  status: {
+    elapsedMs: 64_000,
+    costCents: 18,
+    safety: 'standard-safe',
+    push: false,
+    model: 'qwen',
+    inputTokens: 0,
+    outputTokens: 0,
+  },
   done: false,
   errored: false,
   ...over,
@@ -89,6 +97,25 @@ describe('renderRail', () => {
   it('tier none is byte-identical to omitting the option', () => {
     const m = model();
     expect(renderRail(m, { tier: 'none' })).toEqual(renderRail(m));
+  });
+
+  it('shows in↑/out↓ tokens on the status line only when there are any', () => {
+    const without = renderRail(model());
+    expect(without[without.length - 1]).not.toContain('↑');
+    const withTokens = renderRail(
+      model({
+        status: {
+          elapsedMs: 1000,
+          costCents: 5,
+          safety: 'standard-safe',
+          push: false,
+          model: 'qwen',
+          inputTokens: 3200,
+          outputTokens: 540,
+        },
+      }),
+    );
+    expect(withTokens[withTokens.length - 1]).toContain('3.2k↑ 540↓');
   });
 
   it('prepends a per-tool glyph when an event carries a kind', () => {
