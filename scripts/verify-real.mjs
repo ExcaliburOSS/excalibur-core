@@ -214,6 +214,35 @@ await scenario('swarm — fans out independent subtasks', () => {
   assert(/Swarm|lanes|merge/i.test(out), 'swarm should render the lanes panel');
 });
 
+await scenario('swarm — LIVE lanes render on a TTY (pty, real parallel agents)', () => {
+  if (!hasExpect()) {
+    console.log('(skipped: `expect` not available to drive the pty)');
+    return;
+  }
+  const dir = freshRepo();
+  const task =
+    'create two independent files: docs/alpha.md describing module Alpha, and docs/beta.md describing module Beta';
+  const exp = join(tmpdir(), `exc-swarm-live.exp`);
+  writeFileSync(
+    exp,
+    [`set timeout 220`, `spawn node ${CLI} swarm "${task}" --apply -y`, `expect eof`].join('\n'),
+  );
+  let out = '';
+  try {
+    out = execFileSync('expect', [exp], {
+      cwd: dir,
+      env: { ...env, EXCALIBUR_FORCE_COLOR: '1' },
+      encoding: 'utf8',
+      timeout: 240000,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (e) {
+    out = `${e.stdout ?? ''}${e.stderr ?? ''}`;
+  }
+  assert(/Swarm|lanes|merge/i.test(out), 'the live lanes panel should render on a pty');
+  assert(out.includes('\x1b[?2026h'), 'live frames must be wrapped in DEC 2026 synchronized output');
+});
+
 await scenario('discovery — clarifies an idea with deterministic scoring', () => {
   const dir = freshRepo();
   const { out } = exc(dir, ['discovery', 'Add AI contract-renewal reminders', '--yes']);
