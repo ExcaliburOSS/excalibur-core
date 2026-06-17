@@ -12,6 +12,7 @@ import { registerExtensionsCommand } from './commands/extensions';
 import { registerInitCommand } from './commands/init';
 import { registerInstructionsCommand } from './commands/instructions';
 import { registerInsightsCommand } from './commands/insights';
+import { registerServeCommand } from './commands/serve';
 import { registerLoginCommands } from './commands/login';
 import { registerLogsCommand } from './commands/logs';
 import { registerMethodologiesCommand } from './commands/methodologies';
@@ -65,6 +66,7 @@ export function buildProgram(overrides: Partial<CliDeps> = {}): Command {
   registerStatusCommand(program, deps);
   registerLogsCommand(program, deps);
   registerInsightsCommand(program, deps);
+  registerServeCommand(program, deps);
   registerReplayCommand(program, deps);
   registerChangesCommand(program, deps);
   registerThemeCommand(program, deps);
