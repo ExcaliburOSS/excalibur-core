@@ -38,6 +38,7 @@ import {
 import { runDiscoveryFlow } from '../commands/discovery';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
 import { buildSessionLog, formatSessionLog } from '../lib/session-log';
+import { buildStartupContext } from '../lib/startup-context';
 import { setAutoApprove } from '../lib/config-file';
 import { LOG_SENTINEL, REWIND_SENTINEL } from '../ui';
 import { CLI_VERSION } from '../program';
@@ -148,6 +149,11 @@ export async function runInteractiveSession(
   const gateway = loadGatewayContext(repoRoot);
   const store = new SessionStore(repoRoot);
 
+  // PROACTIVE startup context: read the repo's state BEFORE creating a new
+  // session (so `latest` is the PRIOR one) — last activity, active plan, memory.
+  // Surfaced after the welcome; the user never needs `--continue`.
+  const startup = buildStartupContext(deps.t, repoRoot, store);
+
   // Resume / continue / create the session. A resumed session must belong to
   // THIS repo: a session dir copied in from elsewhere would misalign every
   // relative path and artifact reference, so we refuse it rather than silently
@@ -196,6 +202,38 @@ export async function runInteractiveSession(
   // Welcome banner (two-column frame + cyberpunk sword) + status line.
   deps.ui.write(renderWelcome(buildWelcomeContext(deps, repoRoot, runtime.model)));
   deps.ui.write();
+
+  // Proactively surface what Excalibur already knows about this repo, and OFFER
+  // to resume the last session (no `--continue` needed). Only when this is a
+  // fresh launch (not an explicit --resume/--continue) on a real TTY.
+  for (const line of startup.lines) {
+    deps.ui.info(line);
+  }
+  if (startup.lines.length > 0) {
+    deps.ui.write();
+  }
+  if (
+    options.resume === undefined &&
+    options.continue !== true &&
+    startup.latest !== null &&
+    startup.latest.id !== session.id &&
+    deps.ui.isInteractive() &&
+    deps.ui.isOutputTty()
+  ) {
+    const turns = store
+      .readTranscript(startup.latest.id)
+      .filter((turn) => turn.kind === 'message').length;
+    const resume = await deps.ui.confirm(deps.t('repl.resume-offer', { turns }), {
+      defaultYes: true,
+    });
+    if (resume) {
+      runtime.session =
+        startup.latest.metadata.status === 'closed'
+          ? store.updateMetadata(startup.latest.id, { status: 'active' })
+          : startup.latest;
+      replayTranscript(deps, store, runtime.session);
+    }
+  }
 
   // Minimum-friction auto-accept: ask ONCE (when never chosen) whether Excalibur
   // may edit/run without prompting, then PERSIST the answer so it never asks

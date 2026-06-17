@@ -605,6 +605,10 @@ export const ES: Catalog = {
 
   // auto-accept (approval UX)
   "agent-turn.auto_enabled": "Modo Auto ACTIVADO — Excalibur editará y ejecutará sin preguntar (guardado). Cámbialo con /auto.",
+  "repl.context-last": "↳ Lo último: {what}",
+  "repl.context-plan": "↳ Plan activo: {task}",
+  "repl.context-memory": "↳ Recordando {count} decisión(es) sobre este repo.",
+  "repl.resume-offer": "¿Retomar tu última sesión ({turns} turno(s))?",
   "repl.auto-setup-prompt": "¿Permitir que Excalibur edite ficheros y ejecute comandos automáticamente (sin pedir aprobación)?",
   "repl.auto-enabled": "Auto-aceptar ACTIVADO — Excalibur editará y ejecutará sin preguntar (guardado). Cámbialo con /auto.",
   "repl.auto-disabled": "Auto-aceptar DESACTIVADO — Excalibur pregunta antes de editar (elige «siempre» para dejar de preguntar, o /auto).",
