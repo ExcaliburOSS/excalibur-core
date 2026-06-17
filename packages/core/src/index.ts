@@ -78,6 +78,7 @@ export {
   type MeshVerdict,
   type MeshResult,
 } from './verification/verification-mesh';
+export { runVerificationMesh, type RunMeshInput } from './verification/verification-runner';
 export {
   runSwarm,
   type RunSwarmOptions,
