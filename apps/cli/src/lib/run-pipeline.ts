@@ -3,11 +3,13 @@ import {
   RunManager,
   classifyTaskIntent,
   createExtensionHost,
+  estimateRun,
   executeLocalRun,
   planAgentAllocation,
   selectWorkflow,
   workflowCatalog,
   type AdditionalContextSource,
+  type RunEstimate,
   type TaskIntent,
 } from '@excalibur/core';
 import { analyzeRepository } from '@excalibur/context-engine';
@@ -63,6 +65,19 @@ export interface RunTaskOptions {
   budgetUsd?: number;
   /** Internal: this IS the diagnostics-repair run — do not trigger another (recursion guard). */
   internalRepair?: boolean;
+}
+
+/** Formats a {@link RunEstimate} as the plan card's one-line forecast. */
+function formatEstimate(deps: CliDeps, est: RunEstimate): string {
+  const cost = `~$${(est.estCostCents / 100).toFixed(2)}`;
+  const secs = Math.round(est.estDurationMs / 1000);
+  const eta = secs < 60 ? `~${secs}s` : `~${Math.floor(secs / 60)}m${String(secs % 60).padStart(2, '0')}s`;
+  const files = deps.t('run-pipeline.estimateFiles', { count: est.blastRadius });
+  const basis =
+    est.basedOnRuns > 0
+      ? deps.t('run-pipeline.estimateFromRuns', { count: est.basedOnRuns })
+      : deps.t('run-pipeline.estimateHeuristic');
+  return `${cost} · ${eta} · ${files} ${basis}`;
 }
 
 /** Distinct path-like mentions in a task — a rough pre-plan "affected modules" proxy. */
@@ -270,13 +285,25 @@ export async function runTask(
     // the allocator does, explainably. Shown only when it sizes to >1 — and
     // honestly: the parallel fan-out itself executes in a later milestone, so
     // this run still uses a single agent.
+    const affectedUnits = estimateAffectedUnits(task);
     const allocation = planAgentAllocation({
       taskType: intent.taskType,
       sensitive: intent.sensitive,
-      affectedUnits: estimateAffectedUnits(task),
+      affectedUnits,
       ...(options.agents !== undefined ? { requested: options.agents } : {}),
       ...(options.maxAgents !== undefined ? { maxAgents: options.maxAgents } : {}),
     });
+
+    // PRE-FLIGHT ESTIMATE (differentiator #2): forecast cost + ETA from the
+    // repo's own run history (heuristic on a cold start) so the gate is informed,
+    // not blind. With a budget cap, warn BEFORE spending a token if it won't fit.
+    const estimate = estimateRun(repoRoot, {
+      workflow: choice.workflowId,
+      taskType: intent.taskType,
+      affectedUnits,
+    });
+    const overBudget =
+      options.budgetUsd !== undefined && estimate.estCostCents > options.budgetUsd * 100;
 
     // The PLAN card: one bordered, gated node in the rail's visual language
     // (vs CC's markdown lost in scrollback). Workflow + autonomy header, a
@@ -295,6 +322,7 @@ export async function runTask(
         ...(allocation.agentCount > 1
           ? { swarmReason: `${allocation.reason} (fan-out lands in a later milestone)` }
           : {}),
+        estimate: formatEstimate(deps, estimate),
         ...(intent.sensitive ? { sensitiveAreas: intent.sensitiveAreas } : {}),
         gate: deps.t('run-pipeline.gate'),
       },
@@ -304,6 +332,14 @@ export async function runTask(
       deps.ui.write(line);
     }
     deps.ui.write(safetyLine(deps.t, config));
+    if (overBudget) {
+      deps.ui.warn(
+        deps.t('run-pipeline.estimateOverBudget', {
+          cost: `$${(estimate.estCostCents / 100).toFixed(2)}`,
+          budget: `$${(options.budgetUsd as number).toFixed(2)}`,
+        }),
+      );
+    }
     deps.ui.info(deps.t('run-pipeline.reason', { reason: choice.reason }));
 
     const answer = await deps.ui.ask(deps.t('run-pipeline.runPromptGate'), {

@@ -25,6 +25,8 @@ export interface PlanCardModel {
   phases: PlanPhase[];
   /** The allocator's explanation, shown only when it sizes to >1 agent. */
   swarmReason?: string;
+  /** Pre-flight forecast line, e.g. "~$0.02 · ~45s · 2 files (from 6 runs)". */
+  estimate?: string;
   /** Sensitive areas the run touches (rendered as a warn line). */
   sensitiveAreas?: string[];
   /** The gate hint, e.g. "[Enter] run · [m] mode · [c] cancel". */
@@ -73,6 +75,9 @@ export function renderPlanCard(model: PlanCardModel, options: RenderPlanCardOpti
     lines.push(row(`${c(glyph.pending, palette.muted)} ${name}${type}${optional}`));
   }
 
+  if (model.estimate !== undefined && model.estimate.length > 0) {
+    lines.push(row(c(`estimate · ${model.estimate}`, palette.muted)));
+  }
   if (model.swarmReason !== undefined && model.swarmReason.length > 0) {
     lines.push(row(c(`swarm · ${model.swarmReason}`, palette.accent)));
   }

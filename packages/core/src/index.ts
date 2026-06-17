@@ -117,6 +117,9 @@ export {
   type CollectInsightsOptions,
 } from './insights/insights';
 
+// Pre-flight estimate (dry-run forecast — plan differentiator #2)
+export { estimateRun, type RunEstimate, type EstimateInput } from './insights/estimate';
+
 // Turn receipt (post-turn summary derived from the event stream)
 export {
   buildTurnSummary,
