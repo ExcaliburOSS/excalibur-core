@@ -9,7 +9,7 @@ export function registerWeeklyPlanCommand(program: Command, deps: CliDeps): void
     .description('summarize the week and draft a lightweight plan')
     .action(() => {
       const repoRoot = deps.cwd();
-      const markdown = generateWeeklyPlan({ repoRoot, runManager: new RunManager(repoRoot) });
+      const markdown = generateWeeklyPlan({ repoRoot, runManager: new RunManager(repoRoot), locale: deps.locale });
       deps.ui.write(markdown);
       const path = writeReport(repoRoot, weeklyPlanFileName(), markdown);
       deps.ui.info(deps.t('weekly-plan.saved', { path }));

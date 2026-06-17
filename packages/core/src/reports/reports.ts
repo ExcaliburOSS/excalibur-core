@@ -1,5 +1,6 @@
 import { join } from 'node:path';
-import type { LocalRun } from '@excalibur/shared';
+import type { LocalRun, Locale, Translator } from '@excalibur/shared';
+import { makeReportTranslator } from './report-catalog';
 import { EXCALIBUR_DIR } from '../config/load-config';
 import { listRecentCommits, type GitCommit } from '../git/git';
 import { writeFileEnsured } from '../internal/fs-utils';
@@ -16,6 +17,12 @@ export interface ReportInput {
   repoRoot: string;
   runManager: RunManager;
   now?: Date;
+  /**
+   * Active chrome locale for the report prose (plan §"Idioma"). The CLI passes
+   * `deps.locale`; core renders the report in en/es from its own catalog.
+   * Defaults to `en`.
+   */
+  locale?: Locale;
 }
 
 function pad(value: number): string {
@@ -51,17 +58,31 @@ function startOfDay(now: Date): Date {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
-function describeRun(run: LocalRun): string {
-  const level = `L${run.record.autonomyLevel}`;
-  return `- ${run.id} — ${run.record.title} (${run.record.workflow}, ${level}) — ${run.record.status}`;
+function describeRun(t: Translator, run: LocalRun): string {
+  return t('report.run-line', {
+    id: run.id,
+    title: run.record.title,
+    workflow: run.record.workflow,
+    level: `L${run.record.autonomyLevel}`,
+    status: run.record.status,
+  });
 }
 
-function describePatch(patch: LocalPatch): string {
-  return `- ${patch.id} — ${patch.metadata.command} (${patch.metadata.workflow ?? 'no workflow'}) — ${patch.metadata.status}`;
+function describePatch(t: Translator, patch: LocalPatch): string {
+  return t('report.patch-line', {
+    id: patch.id,
+    command: patch.metadata.command,
+    workflow: patch.metadata.workflow ?? t('report.no-workflow'),
+    status: patch.metadata.status,
+  });
 }
 
-function describeCommit(commit: GitCommit): string {
-  return `- ${commit.hash.slice(0, 7)} ${commit.subject} (${commit.author})`;
+function describeCommit(t: Translator, commit: GitCommit): string {
+  return t('report.commit-line', {
+    hash: commit.hash.slice(0, 7),
+    subject: commit.subject,
+    author: commit.author,
+  });
 }
 
 function section(title: string, lines: string[], emptyText: string): string {
@@ -91,19 +112,20 @@ export function generateDailyReport(input: ReportInput): string {
     .filter((patch) => new Date(patch.metadata.createdAt) >= since);
 
   const commits = listRecentCommits(input.repoRoot, sinceIso);
+  const t = makeReportTranslator(input.locale);
 
   return [
-    `# Daily Report — ${isoDate(now)}`,
+    t('report.daily-title', { date: isoDate(now) }),
     '',
-    section('Completed runs', completed.map(describeRun), 'No completed runs today.'),
+    section(t('report.completed-runs'), completed.map((r) => describeRun(t, r)), t('report.no-completed-today')),
     '',
-    section('Failed runs', failed.map(describeRun), 'No failed runs today.'),
+    section(t('report.failed-runs'), failed.map((r) => describeRun(t, r)), t('report.no-failed-today')),
     '',
-    section('Patches', patches.map(describePatch), 'No patches generated today.'),
+    section(t('report.patches'), patches.map((p) => describePatch(t, p)), t('report.no-patches-today')),
     '',
-    section('Commits', commits.map(describeCommit), 'No commits today.'),
+    section(t('report.commits'), commits.map((c) => describeCommit(t, c)), t('report.no-commits-today')),
     '',
-    section('Pending', pending.map(describeRun), 'Nothing pending.'),
+    section(t('report.pending'), pending.map((r) => describeRun(t, r)), t('report.nothing-pending')),
     '',
   ].join('\n');
 }
@@ -130,33 +152,38 @@ export function generateWeeklyPlan(input: ReportInput): string {
 
   const commits = listRecentCommits(input.repoRoot, sinceIso);
 
+  const t = makeReportTranslator(input.locale);
   const planLines: string[] = [];
   for (const run of pending) {
-    planLines.push(`- Resume ${run.id} — ${run.record.title} (${run.record.status}).`);
+    planLines.push(t('report.plan-resume', { id: run.id, title: run.record.title, status: run.record.status }));
   }
   for (const run of failed) {
-    planLines.push(`- Revisit failed run ${run.id} — ${run.record.title}.`);
+    planLines.push(t('report.plan-revisit', { id: run.id, title: run.record.title }));
   }
   for (const patch of openPatches) {
-    planLines.push(`- Review and apply (or reject) patch ${patch.id}.`);
+    planLines.push(t('report.plan-review-patch', { id: patch.id }));
   }
 
   return [
-    `# Weekly Plan — ${year}-W${pad(week)}`,
+    t('report.weekly-title', { week: `${year}-W${pad(week)}` }),
     '',
     section(
-      'Last week',
+      t('report.last-week'),
       [
-        `- Runs: ${weekRuns.length} total, ${completed.length} completed, ${failed.length} failed.`,
-        `- Commits: ${commits.length}.`,
-        `- Patches: ${allPatches.length} total, ${openPatches.length} open.`,
+        t('report.runs-summary', {
+          total: weekRuns.length,
+          completed: completed.length,
+          failed: failed.length,
+        }),
+        t('report.commits-summary', { count: commits.length }),
+        t('report.patches-summary', { total: allPatches.length, open: openPatches.length }),
       ],
-      'No activity recorded.',
+      t('report.no-activity'),
     ),
     '',
-    section('Completed runs', completed.map(describeRun), 'No completed runs last week.'),
+    section(t('report.completed-runs'), completed.map((r) => describeRun(t, r)), t('report.no-completed-week')),
     '',
-    section('Plan for next week', planLines, 'Nothing carried over — plan new work.'),
+    section(t('report.plan-next-week'), planLines, t('report.nothing-carried')),
     '',
   ].join('\n');
 }

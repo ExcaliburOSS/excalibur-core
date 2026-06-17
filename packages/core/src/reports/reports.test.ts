@@ -87,6 +87,18 @@ describe('reports', () => {
     expect(markdown).toContain('_Nothing pending._');
   });
 
+  it('renders the daily report in Spanish when locale is es', () => {
+    const markdown = generateDailyReport({
+      repoRoot: makeTempDir(),
+      runManager: new RunManager(makeTempDir()),
+      locale: 'es',
+    });
+    expect(markdown).toContain('# Informe diario —');
+    expect(markdown).toContain('## Ejecuciones completadas');
+    expect(markdown).toContain('_No hay ejecuciones completadas hoy._');
+    expect(markdown).toContain('_Nada pendiente._');
+  });
+
   it('generates a weekly plan with carried-over work', () => {
     seedActivity();
     const markdown = generateWeeklyPlan({ repoRoot, runManager });
