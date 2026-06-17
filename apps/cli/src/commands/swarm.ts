@@ -1,4 +1,11 @@
 import { applyPatch, getGitInfo, planAgentAllocation } from '@excalibur/core';
+import {
+  detectColorTier,
+  detectThemeSync,
+  parseDiffStat,
+  renderLanes,
+  type LaneModel,
+} from '@excalibur/tui';
 import type { Command } from 'commander';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
@@ -73,20 +80,42 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
         autonomyAutoApprove: true, // a parallel batch can't prompt per-lane
       });
 
-      deps.ui.write();
-      deps.ui.heading('Lanes:');
-      for (const lane of result.lanes) {
+      // The SWARM LANES panel: concurrent sub-rails branching off the swarm node
+      // and converging on a fan-in merge node — the visual payoff of the
+      // allocator (vs the one-at-a-time agent stacks of CC/OpenCode).
+      const conflictIds = new Set(result.conflicts.map((c) => c.id));
+      const laneModels: LaneModel[] = result.lanes.map((lane) => {
         const subtask = lanes.find((s) => s.id === lane.id);
-        const status = lane.failed ? '✗' : lane.diff.trim().length > 0 ? '±' : '·';
-        const cost = lane.result?.costCents != null ? ` · $${(lane.result.costCents / 100).toFixed(2)}` : '';
-        deps.ui.write(`  ${status} ${subtask?.title ?? lane.id}${cost}${lane.failed ? ` — ${lane.error ?? 'failed'}` : ''}`);
-      }
-      if (result.conflicts.length > 0) {
-        deps.ui.warn(
-          `${result.conflicts.length} lane(s) conflicted on merge and were left out: ${result.conflicts
-            .map((c) => c.id)
-            .join(', ')}.`,
-        );
+        const hasChanges = lane.diff.trim().length > 0;
+        const state: LaneModel['state'] = lane.failed
+          ? 'failed'
+          : conflictIds.has(lane.id)
+            ? 'conflict'
+            : hasChanges
+              ? 'done'
+              : 'empty';
+        return {
+          id: lane.id,
+          title: subtask?.title ?? lane.id,
+          state,
+          ...(lane.result?.toolCalls !== undefined ? { toolCalls: lane.result.toolCalls } : {}),
+          ...(hasChanges ? { diff: parseDiffStat(lane.diff) } : {}),
+          ...(lane.result?.costCents != null ? { costCents: lane.result.costCents } : {}),
+          ...(lane.failed
+            ? { detail: lane.error ?? 'failed' }
+            : conflictIds.has(lane.id)
+              ? { detail: 'merge conflict' }
+              : {}),
+        };
+      });
+      const applied = laneModels.filter((l) => l.state === 'done').length;
+
+      deps.ui.write();
+      for (const line of renderLanes(
+        { lanes: laneModels, applied, conflicts: result.conflicts.length },
+        { tier: detectColorTier(), mode: detectThemeSync() ?? 'dark' },
+      )) {
+        deps.ui.write(line);
       }
 
       if (result.mergedDiff.trim().length === 0) {

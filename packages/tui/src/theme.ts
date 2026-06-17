@@ -61,6 +61,7 @@ type GlyphSet = {
   failed: string;
   railV: string;
   branch: string;
+  branchMid: string;
   sub: string;
   bar: string;
   barEmpty: string;
@@ -80,6 +81,7 @@ const unicode: GlyphSet = {
   failed: '✗',
   railV: '│',
   branch: '└',
+  branchMid: '├',
   sub: '·',
   bar: '█',
   barEmpty: '░',
@@ -99,6 +101,7 @@ const asciiSet: GlyphSet = {
   failed: 'x',
   railV: '|',
   branch: '`-',
+  branchMid: '|-',
   sub: '-',
   bar: '#',
   barEmpty: '.',

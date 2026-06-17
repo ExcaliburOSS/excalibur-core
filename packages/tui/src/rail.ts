@@ -15,6 +15,13 @@ export {
 } from './rail-plan.js';
 export { detectColorTier, paint, stripAnsi, type ColorTier } from './color.js';
 export { parseDiffStat, formatDiffStat, type DiffStat } from './diff-stat.js';
+export {
+  renderLanes,
+  type LaneModel,
+  type LaneState,
+  type LanesModel,
+  type RenderLanesOptions,
+} from './rail-lanes.js';
 export { detectThemeSync, type ThemeMode } from './theme.js';
 export type {
   ApprovalPrompt,
