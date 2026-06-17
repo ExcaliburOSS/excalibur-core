@@ -178,12 +178,22 @@ const uiSectionSchema = z
   })
   .optional();
 
+/** Adversarial Verification Mesh policy (proportional by default; governable here). */
+const verificationSectionSchema = z
+  .object({
+    /** off = never · auto = proportional to risk (default) · always = ≥1 lens on any change. */
+    mesh: z.enum(['off', 'auto', 'always']).optional(),
+  })
+  .optional();
+
 const baseExcaliburConfigSchema = z.object({
   version: z.number().int().optional(),
   /** Spoken UI locale for generated chrome/prose (`en`|`es`); auto-detected when absent. */
   language: z.string().optional(),
   /** TUI presentation (theme preset, flavour). */
   ui: uiSectionSchema,
+  /** Adversarial Verification Mesh policy. */
+  verification: verificationSectionSchema,
   project: projectSectionSchema.optional(),
   /** Top-level canonical commands; `project.commands` is normalized into it. */
   commands: commandsConfigSchema.optional(),

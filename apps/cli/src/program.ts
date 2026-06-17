@@ -22,6 +22,7 @@ import { registerReplayCommand } from './commands/replay';
 import { registerChangesCommand } from './commands/changes';
 import { registerThemeCommand } from './commands/theme';
 import { registerPlansCommand } from './commands/plans';
+import { registerVerifyCommand } from './commands/verify';
 import { registerForkCommand, registerUndoCommand } from './commands/fork';
 import { registerReviewCommand } from './commands/review';
 import { registerRunCommand } from './commands/run';
@@ -66,6 +67,7 @@ export function buildProgram(overrides: Partial<CliDeps> = {}): Command {
   registerChangesCommand(program, deps);
   registerThemeCommand(program, deps);
   registerPlansCommand(program, deps);
+  registerVerifyCommand(program, deps);
   registerForkCommand(program, deps);
   registerUndoCommand(program, deps);
   registerApplyCommand(program, deps);
