@@ -22,9 +22,19 @@ function ev(
 }
 
 /** A sink that records every raw write, for asserting control sequences. */
-function fakeSink(): { writeRaw: (t: string) => void; all: () => string } {
+function fakeSink(): {
+  writeRaw: (t: string) => void;
+  all: () => string;
+  chunks: () => string[];
+  last: () => string;
+} {
   const chunks: string[] = [];
-  return { writeRaw: (t): void => void chunks.push(t), all: (): string => chunks.join('') };
+  return {
+    writeRaw: (t): void => void chunks.push(t),
+    all: (): string => chunks.join(''),
+    chunks: (): string[] => [...chunks],
+    last: (): string => chunks[chunks.length - 1] ?? '',
+  };
 }
 
 const opts = (over = {}): ConstructorParameters<typeof LiveRail>[1] => ({
@@ -88,6 +98,38 @@ describe('LiveRail', () => {
     // Resume repaints, now including the accumulated event.
     rail.resume();
     expect(stripAnsi(sink.all())).toContain('write a.ts');
+  });
+
+  it('wraps frames in DEC 2026 synchronized output for flicker-free atomic paint', () => {
+    const sink = fakeSink();
+    const rail = new LiveRail(sink, opts());
+    rail.start();
+    rail.push(ev('phase_started', { name: 'Analyze' }, 'p1'));
+    const out = sink.all();
+    expect(out).toContain('\x1b[?2026h'); // begin synchronized update
+    expect(out).toContain('\x1b[?2026l'); // end synchronized update
+  });
+
+  it('can disable synchronized output via sync:false (graceful for odd terminals)', () => {
+    const sink = fakeSink();
+    const rail = new LiveRail(sink, opts({ sync: false }));
+    rail.start();
+    rail.push(ev('phase_started', { name: 'Analyze' }, 'p1'));
+    expect(sink.all()).not.toContain('\x1b[?2026');
+  });
+
+  it('differential redraw: a bottom-only change does NOT repaint the stable top', () => {
+    const sink = fakeSink();
+    const rail = new LiveRail(sink, opts());
+    rail.start();
+    rail.push(ev('run_started', { title: 'UNIQUE_TITLE_TOKEN' }));
+    rail.push(ev('phase_started', { name: 'Analyze' }, 'p1'));
+    // A later event that only advances the bottom (a tool action under the
+    // active phase) must NOT rewrite the header that carries the title.
+    rail.push(ev('file_write', { path: 'z.ts' }, 'p1'));
+    const lastFrame = stripAnsi(sink.last());
+    expect(lastFrame).toContain('write z.ts'); // the change WAS painted
+    expect(lastFrame).not.toContain('UNIQUE_TITLE_TOKEN'); // the stable top was NOT
   });
 
   it('ignores events after stop', () => {

@@ -24,6 +24,14 @@ import {
 const HIDE_CURSOR = '\x1b[?25l';
 const SHOW_CURSOR = '\x1b[?25h';
 
+// DEC 2026 synchronized output: the terminal BUFFERS everything between BEGIN
+// and END and presents the frame ATOMICALLY, so the clear→reprint is never
+// shown half-done → zero tearing/flicker. Terminals that don't support it
+// silently ignore the private-mode set (graceful degradation), so we emit it
+// unconditionally — the same approach Ghostty/Kitty/Ink use.
+const SYNC_BEGIN = '\x1b[?2026h';
+const SYNC_END = '\x1b[?2026l';
+
 export interface LiveRailSink {
   /** Writes raw bytes with NO added newline (ANSI control + content). */
   writeRaw(text: string): void;
@@ -36,6 +44,8 @@ export interface LiveRailOptions {
   reduce: ReduceRailOptions;
   /** Animate the spinner on a timer between events (default true). */
   animate?: boolean;
+  /** Wrap frames in DEC 2026 synchronized output for zero flicker (default true). */
+  sync?: boolean;
   /** Wall-clock source for the ticking elapsed (injectable for tests). */
   now?: () => number;
   /** Localized rail status words (i18n) forwarded to `renderRail`. */
@@ -45,6 +55,8 @@ export interface LiveRailOptions {
 export class LiveRail {
   private readonly events: ExcaliburEvent[] = [];
   private lastLineCount = 0;
+  /** The lines of the last painted frame, for differential (changed-only) redraw. */
+  private prevLines: string[] = [];
   private frame = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
@@ -86,6 +98,7 @@ export class LiveRail {
     }
     this.paused = true;
     this.lastLineCount = 0; // the next frame starts a new block below the prompt
+    this.prevLines = []; // forget the old frame — resume repaints whole
     this.sink.writeRaw(`${SHOW_CURSOR}\n`);
   }
 
@@ -114,7 +127,14 @@ export class LiveRail {
     this.sink.writeRaw(SHOW_CURSOR);
   }
 
-  /** Builds the current frame and writes it as an in-place redraw. */
+  /**
+   * Builds the current frame and writes it as a FLICKER-FREE in-place redraw:
+   * the whole frame is wrapped in DEC 2026 synchronized output (atomic present)
+   * AND only the lines that actually changed are repainted — we find the first
+   * line that differs from the last frame and repaint from there down, so the
+   * stable top (header + completed phases) is never cleared or rewritten. An
+   * identical frame is skipped entirely. Cursor is parked one line below the rail.
+   */
   private render(): void {
     this.frame += 1;
     const now = this.options.now ?? Date.now;
@@ -125,10 +145,37 @@ export class LiveRail {
       spinnerFrame: this.frame,
       ...(this.options.labels !== undefined ? { labels: this.options.labels } : {}),
     });
-    // Move up over the previous frame and clear everything from there down, then
-    // reprint. Leaves the cursor parked one line below the rail.
-    const moveUp = this.lastLineCount > 0 ? `\x1b[${this.lastLineCount}A\x1b[0J` : '';
-    this.sink.writeRaw(`${moveUp}${lines.join('\n')}\n`);
+    const begin = this.options.sync !== false ? SYNC_BEGIN : '';
+    const end = this.options.sync !== false ? SYNC_END : '';
+
+    // Fresh block (first frame / after pause): write it whole.
+    if (this.lastLineCount === 0) {
+      this.sink.writeRaw(`${begin}${lines.join('\n')}\n${end}`);
+      this.prevLines = lines;
+      this.lastLineCount = lines.length;
+      return;
+    }
+
+    // Find the first line that changed from the last frame.
+    let from = 0;
+    const common = Math.min(this.prevLines.length, lines.length);
+    while (from < common && this.prevLines[from] === lines[from]) {
+      from += 1;
+    }
+    // Identical frame → nothing to do (skip the write; no redundant repaint).
+    if (from === lines.length && lines.length === this.prevLines.length) {
+      return;
+    }
+
+    // Move up from the parked line (row = lastLineCount) to the first changed
+    // row, clear from there to end of screen (handles a shrunk rail), reprint the
+    // tail. `\x1b[0A` is ambiguous (≈ 1A), so omit the move when already at `from`.
+    const upBy = this.lastLineCount - from;
+    const up = upBy > 0 ? `\x1b[${upBy}A` : '';
+    const tail = lines.slice(from);
+    const body = tail.join('\n');
+    this.sink.writeRaw(`${begin}${up}\r\x1b[0J${body}${tail.length > 0 ? '\n' : ''}${end}`);
+    this.prevLines = lines;
     this.lastLineCount = lines.length;
   }
 }
