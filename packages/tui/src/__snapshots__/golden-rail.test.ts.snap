@@ -1,0 +1,100 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden: renderPlanCard > truecolor dark 1`] = `
+" ESC[38;2;58;64;72m┌─ ESC[0mESC[38;2;230;237;243mFast Fix ESC[0mESC[38;2;58;64;72m──────────────────────────────────────────ESC[0m
+ ESC[38;2;58;64;72m│ESC[0m ESC[38;2;139;148;158mL3 — Implement in Branch · fast-fixESC[0m
+ ESC[38;2;58;64;72m│ESC[0m ESC[38;2;139;148;158m○ESC[0m ESC[38;2;230;237;243mAnalyze         ESC[0mESC[38;2;139;148;158massistant_interactionESC[0m
+ ESC[38;2;58;64;72m│ESC[0m ESC[38;2;139;148;158m○ESC[0m ESC[38;2;230;237;243mPatch           ESC[0mESC[38;2;139;148;158mpatch_generationESC[0m
+ ESC[38;2;58;64;72m│ESC[0m ESC[38;2;139;148;158m○ESC[0m ESC[38;2;230;237;243mVerify          ESC[0mESC[38;2;139;148;158mcommand_groupESC[0mESC[38;2;139;148;158m  (optional)ESC[0m
+ ESC[38;2;58;64;72m│ESC[0m ESC[38;2;91;200;255mswarm · Sized to 2 agentsESC[0m
+ ESC[38;2;58;64;72m│ESC[0m ESC[38;2;242;201;76m⚑ESC[0m ESC[38;2;230;237;243m[Enter] run · [m] mode · [c] cancelESC[0m
+ ESC[38;2;58;64;72m└────────────────────────────────────────────────────ESC[0m"
+`;
+
+exports[`golden: renderRail > tier=ansi16 mode=dark 1`] = `
+" ESC[92m✓ESC[0m ESC[90mContext           ESC[0mESC[90m  1 fileESC[0m
+ ESC[96m⠋ESC[0m ESC[37mImplementESC[0m
+ ESC[90m│ESC[0m   ESC[96m✎ESC[0m ESC[96mwrite src/webhook.tsESC[0m
+ ESC[90m│ESC[0m   ESC[93m±ESC[0m ESC[93mpatch generatedESC[0mESC[90m  +2 −1 · 1 fileESC[0m
+ ESC[90m│ESC[0m   ESC[90m❯ESC[0m ESC[90m$ pnpm testESC[0m
+ ESC[90m│ESC[0m   ESC[92m↳ESC[0m ESC[92mexit 0ESC[0m
+ ESC[90m────────────────────────────────────────────────ESC[0m
+  ESC[96mL3ESC[0m · ESC[90mstandard-safeESC[0m · ESC[90m$0.07ESC[0m · ESC[90m9sESC[0m · ESC[90mno pushESC[0m · ESC[96mqwenESC[0m"
+`;
+
+exports[`golden: renderRail > tier=ansi16 mode=light 1`] = `
+" ESC[32m✓ESC[0m ESC[90mContext           ESC[0mESC[90m  1 fileESC[0m
+ ESC[34m⠋ESC[0m ESC[30mImplementESC[0m
+ ESC[37m│ESC[0m   ESC[34m✎ESC[0m ESC[34mwrite src/webhook.tsESC[0m
+ ESC[37m│ESC[0m   ESC[31m±ESC[0m ESC[31mpatch generatedESC[0mESC[90m  +2 −1 · 1 fileESC[0m
+ ESC[37m│ESC[0m   ESC[90m❯ESC[0m ESC[90m$ pnpm testESC[0m
+ ESC[37m│ESC[0m   ESC[32m↳ESC[0m ESC[32mexit 0ESC[0m
+ ESC[37m────────────────────────────────────────────────ESC[0m
+  ESC[34mL3ESC[0m · ESC[90mstandard-safeESC[0m · ESC[90m$0.07ESC[0m · ESC[90m9sESC[0m · ESC[90mno pushESC[0m · ESC[34mqwenESC[0m"
+`;
+
+exports[`golden: renderRail > tier=ansi256 mode=dark 1`] = `
+" ESC[38;5;79m✓ESC[0m ESC[38;5;145mContext           ESC[0mESC[38;5;145m  1 fileESC[0m
+ ESC[38;5;81m⠋ESC[0m ESC[38;5;231mImplementESC[0m
+ ESC[38;5;59m│ESC[0m   ESC[38;5;81m✎ESC[0m ESC[38;5;81mwrite src/webhook.tsESC[0m
+ ESC[38;5;59m│ESC[0m   ESC[38;5;221m±ESC[0m ESC[38;5;221mpatch generatedESC[0mESC[38;5;145m  +2 −1 · 1 fileESC[0m
+ ESC[38;5;59m│ESC[0m   ESC[38;5;145m❯ESC[0m ESC[38;5;145m$ pnpm testESC[0m
+ ESC[38;5;59m│ESC[0m   ESC[38;5;79m↳ESC[0m ESC[38;5;79mexit 0ESC[0m
+ ESC[38;5;59m────────────────────────────────────────────────ESC[0m
+  ESC[38;5;81mL3ESC[0m · ESC[38;5;145mstandard-safeESC[0m · ESC[38;5;145m$0.07ESC[0m · ESC[38;5;145m9sESC[0m · ESC[38;5;145mno pushESC[0m · ESC[38;5;81mqwenESC[0m"
+`;
+
+exports[`golden: renderRail > tier=ansi256 mode=light 1`] = `
+" ESC[38;5;29m✓ESC[0m ESC[38;5;60mContext           ESC[0mESC[38;5;60m  1 fileESC[0m
+ ESC[38;5;27m⠋ESC[0m ESC[38;5;16mImplementESC[0m
+ ESC[38;5;195m│ESC[0m   ESC[38;5;27m✎ESC[0m ESC[38;5;27mwrite src/webhook.tsESC[0m
+ ESC[38;5;195m│ESC[0m   ESC[38;5;130m±ESC[0m ESC[38;5;130mpatch generatedESC[0mESC[38;5;60m  +2 −1 · 1 fileESC[0m
+ ESC[38;5;195m│ESC[0m   ESC[38;5;60m❯ESC[0m ESC[38;5;60m$ pnpm testESC[0m
+ ESC[38;5;195m│ESC[0m   ESC[38;5;29m↳ESC[0m ESC[38;5;29mexit 0ESC[0m
+ ESC[38;5;195m────────────────────────────────────────────────ESC[0m
+  ESC[38;5;27mL3ESC[0m · ESC[38;5;60mstandard-safeESC[0m · ESC[38;5;60m$0.07ESC[0m · ESC[38;5;60m9sESC[0m · ESC[38;5;60mno pushESC[0m · ESC[38;5;27mqwenESC[0m"
+`;
+
+exports[`golden: renderRail > tier=none mode=dark 1`] = `
+" ✓ Context             1 file
+ ⠋ Implement
+ │   ✎ write src/webhook.ts
+ │   ± patch generated  +2 −1 · 1 file
+ │   ❯ $ pnpm test
+ │   ↳ exit 0
+ ────────────────────────────────────────────────
+  L3 · standard-safe · $0.07 · 9s · no push · qwen"
+`;
+
+exports[`golden: renderRail > tier=none mode=light 1`] = `
+" ✓ Context             1 file
+ ⠋ Implement
+ │   ✎ write src/webhook.ts
+ │   ± patch generated  +2 −1 · 1 file
+ │   ❯ $ pnpm test
+ │   ↳ exit 0
+ ────────────────────────────────────────────────
+  L3 · standard-safe · $0.07 · 9s · no push · qwen"
+`;
+
+exports[`golden: renderRail > tier=truecolor mode=dark 1`] = `
+" ESC[38;2;90;209;138m✓ESC[0m ESC[38;2;139;148;158mContext           ESC[0mESC[38;2;139;148;158m  1 fileESC[0m
+ ESC[38;2;91;200;255m⠋ESC[0m ESC[38;2;230;237;243mImplementESC[0m
+ ESC[38;2;58;64;72m│ESC[0m   ESC[38;2;91;200;255m✎ESC[0m ESC[38;2;91;200;255mwrite src/webhook.tsESC[0m
+ ESC[38;2;58;64;72m│ESC[0m   ESC[38;2;242;201;76m±ESC[0m ESC[38;2;242;201;76mpatch generatedESC[0mESC[38;2;139;148;158m  +2 −1 · 1 fileESC[0m
+ ESC[38;2;58;64;72m│ESC[0m   ESC[38;2;139;148;158m❯ESC[0m ESC[38;2;139;148;158m$ pnpm testESC[0m
+ ESC[38;2;58;64;72m│ESC[0m   ESC[38;2;90;209;138m↳ESC[0m ESC[38;2;90;209;138mexit 0ESC[0m
+ ESC[38;2;58;64;72m────────────────────────────────────────────────ESC[0m
+  ESC[38;2;91;200;255mL3ESC[0m · ESC[38;2;139;148;158mstandard-safeESC[0m · ESC[38;2;139;148;158m$0.07ESC[0m · ESC[38;2;139;148;158m9sESC[0m · ESC[38;2;139;148;158mno pushESC[0m · ESC[38;2;91;200;255mqwenESC[0m"
+`;
+
+exports[`golden: renderRail > tier=truecolor mode=light 1`] = `
+" ESC[38;2;26;127;55m✓ESC[0m ESC[38;2;99;108;118mContext           ESC[0mESC[38;2;99;108;118m  1 fileESC[0m
+ ESC[38;2;9;105;218m⠋ESC[0m ESC[38;2;31;35;40mImplementESC[0m
+ ESC[38;2;208;215;222m│ESC[0m   ESC[38;2;9;105;218m✎ESC[0m ESC[38;2;9;105;218mwrite src/webhook.tsESC[0m
+ ESC[38;2;208;215;222m│ESC[0m   ESC[38;2;154;103;0m±ESC[0m ESC[38;2;154;103;0mpatch generatedESC[0mESC[38;2;99;108;118m  +2 −1 · 1 fileESC[0m
+ ESC[38;2;208;215;222m│ESC[0m   ESC[38;2;99;108;118m❯ESC[0m ESC[38;2;99;108;118m$ pnpm testESC[0m
+ ESC[38;2;208;215;222m│ESC[0m   ESC[38;2;26;127;55m↳ESC[0m ESC[38;2;26;127;55mexit 0ESC[0m
+ ESC[38;2;208;215;222m────────────────────────────────────────────────ESC[0m
+  ESC[38;2;9;105;218mL3ESC[0m · ESC[38;2;99;108;118mstandard-safeESC[0m · ESC[38;2;99;108;118m$0.07ESC[0m · ESC[38;2;99;108;118m9sESC[0m · ESC[38;2;99;108;118mno pushESC[0m · ESC[38;2;9;105;218mqwenESC[0m"
+`;
