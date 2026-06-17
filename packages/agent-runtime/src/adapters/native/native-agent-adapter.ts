@@ -721,6 +721,11 @@ function toolEventPayload(
       (args['command'] as string | undefined) ?? (name === 'run_tests' ? '(detected test)' : '');
     base['command'] = command;
     base['exitCode'] = ok ? 0 : 1;
+    // A PERMISSION-DENIED command never ran → flag it `denied` so downstream
+    // consumers (e.g. the claim ledger) don't read exit 1 as a real failure.
+    if (!ok && /^permission denied/i.test(result.trim())) {
+      base['denied'] = true;
+    }
   }
   if (name === 'create_branch') {
     base['branch'] = String(args['name'] ?? '');

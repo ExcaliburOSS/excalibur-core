@@ -553,6 +553,72 @@ describe('executeLocalRun', () => {
     ).toBe(true);
   });
 
+  it('does NOT refute the tests_pass claim when only a NON-test command (lint) fails', async () => {
+    // Regression: the `tests pass` claim must come from the test command's own
+    // exit code, not a conflated test+lint+build aggregate.
+    execFileSync('git', ['init', '-q'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.email', 'test@excalibur.local'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.name', 'Excalibur Test'], { cwd: repoRoot });
+    const definition = getDefaultWorkflow('fast-fix');
+    const run = runManager.createRun({
+      title: 'Fix duplicated webhook handling in src/escrow/escrow.service.ts',
+      autonomyLevel: 3,
+      workflow: 'fast-fix',
+      executionStyle: 'fast',
+    });
+    const record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      definition: definition!,
+      gateway,
+      adapter,
+      // test passes ('true'), lint FAILS ('false') — the run must still complete
+      // and the tests_pass claim must be VERIFIED, not refuted.
+      config: { commands: { test: 'true', lint: 'false' }, models: { default: 'mock' } },
+    });
+    expect(record.status).toBe('completed');
+    const claim = runManager
+      .readEvents(run.id)
+      .find((e) => e.type === 'claim' && e.payload['kind'] === 'tests_pass');
+    expect(claim?.payload['status']).toBe('verified');
+  });
+
+  it('a DENIED command does not flip test_result to failed nor block the run', async () => {
+    // permissions.tools.run_command:false → every configured command is denied
+    // (never ran). A denied command is not failure evidence; the run completes.
+    execFileSync('git', ['init', '-q'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.email', 'test@excalibur.local'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.name', 'Excalibur Test'], { cwd: repoRoot });
+    const definition = getDefaultWorkflow('fast-fix');
+    const run = runManager.createRun({
+      title: 'Fix duplicated webhook handling in src/escrow/escrow.service.ts',
+      autonomyLevel: 3,
+      workflow: 'fast-fix',
+      executionStyle: 'fast',
+    });
+    const record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      definition: definition!,
+      gateway,
+      adapter,
+      config: {
+        commands: { test: 'true', typecheck: 'true' },
+        models: { default: 'mock' },
+        permissions: { tools: { run_command: false }, allowedCommands: [] },
+      },
+    });
+    expect(record.status).toBe('completed');
+    const events = runManager.readEvents(run.id);
+    const testResult = events.find((e) => e.type === 'test_result');
+    expect(testResult?.payload['status']).not.toBe('failed'); // denied ≠ failed
+    // No tests_pass claim refutation from a never-run command.
+    const tp = events.find((e) => e.type === 'claim' && e.payload['kind'] === 'tests_pass');
+    expect(tp?.payload['status']).not.toBe('refuted');
+  });
+
   it('does NOT cap when no budget is configured (the default)', async () => {
     // A run with no budgetCents + no config.budget completes normally (the
     // existing fast-fix happy path still holds — the cap is opt-in).

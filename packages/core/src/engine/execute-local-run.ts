@@ -208,9 +208,7 @@ class LocalRunExecution {
   // --- Claim-ledger evidence, accumulated from the event stream ---------------
   /** Combined assistant text (the model's claims are parsed from this). */
   private claimText = '';
-  /** Test outcome from command_group / test_result, or null if none ran. */
-  private testsPassed: boolean | null = null;
-  /** Last exit code per command (to verify typecheck/build claims). */
+  /** Last exit code per command that ACTUALLY ran (verifies test/typecheck/build claims). */
   private readonly commandExits = new Map<string, number>();
 
   constructor(input: ExecuteLocalRunInput) {
@@ -238,10 +236,6 @@ class LocalRunExecution {
       if (typeof content === 'string' && content.length > 0) {
         this.claimText += `${content}\n`;
       }
-    } else if (event.type === 'test_result') {
-      const status = p['status'];
-      if (status === 'passed') this.testsPassed = true;
-      else if (status === 'failed') this.testsPassed = false;
     } else if (event.type === 'command_completed') {
       // A denied/skipped command is NOT evidence of failure — it never ran.
       if (p['denied'] === true || p['skipped'] === true) {
@@ -496,7 +490,8 @@ class LocalRunExecution {
       // ask → confirm (auto-approved only when non-interactive).
       const decision = permissions.checkCommand(command);
       if (!decision.allowed) {
-        allPassed = false;
+        // A DENIED command never ran → it is NOT evidence of failure (same
+        // invariant the claim ledger honours). Do not flip the aggregate.
         this.emit('command_completed', { command, exitCode: -1, denied: true }, phase.id);
         logLines.push(`$ ${command}\n[denied] ${decision.reason}`);
         continue;
@@ -745,7 +740,10 @@ class LocalRunExecution {
         return exit === undefined ? null : exit === 0;
       };
       const evidence: ClaimEvidence = {
-        testsPassed: this.testsPassed,
+        // Derive each from the EXACT configured command's own exit code (denied/
+        // skipped commands are excluded) — never from a conflated test+lint+build
+        // aggregate, so a lint failure can't refute the `tests pass` claim.
+        testsPassed: commandFor(this.input.config.commands?.test),
         typecheckPassed: commandFor(this.input.config.commands?.typecheck),
         buildPassed: commandFor(this.input.config.commands?.build),
         diff: this.collectedDiff,
