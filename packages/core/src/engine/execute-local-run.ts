@@ -423,18 +423,32 @@ class LocalRunExecution {
         const inputTokens = event.payload['inputTokens'];
         const outputTokens = event.payload['outputTokens'];
         const model = event.payload['model'];
+        const cost = typeof event.payload['costCents'] === 'number'
+          ? (event.payload['costCents'] as number)
+          : null;
         if (typeof inputTokens === 'number' && typeof outputTokens === 'number') {
           this.input.runManager.appendModelCall(this.run.id, {
             provider: this.input.config.models?.default ?? 'mock',
             model: typeof model === 'string' ? model : 'mock-model',
             inputTokens,
             outputTokens,
-            costCents:
-              typeof event.payload['costCents'] === 'number'
-                ? (event.payload['costCents'] as number)
-                : null,
+            costCents: cost,
             timestamp: new Date().toISOString(),
           });
+        }
+        // HARD BUDGET CAP also covers the AGENT loop (the dominant cost): accrue
+        // each iteration's spend and ABORT the loop the moment the ceiling is hit
+        // — otherwise an agent_work-heavy run could blow past the cap unseen.
+        this.spentCents += cost ?? 0;
+        if (this.budgetCapCents !== null && this.spentCents >= this.budgetCapCents) {
+          this.emit('policy_decision', {
+            kind: 'budget',
+            decision: 'deny',
+            message: `Budget cap $${(this.budgetCapCents / 100).toFixed(2)} reached ($${(this.spentCents / 100).toFixed(2)} spent) — stopping the agent loop.`,
+            spentCents: this.spentCents,
+            capCents: this.budgetCapCents,
+          }, phase.id);
+          throw new BudgetExceededError(this.spentCents, this.budgetCapCents);
         }
       }
     }
@@ -818,6 +832,12 @@ class LocalRunExecution {
             lastError = null;
             break;
           } catch (error) {
+            // The hard budget cap is NON-RECOVERABLE: never retry it (the next
+            // call would just re-deny) and never let `onFailure` swallow it —
+            // it must always end the run. "Excalibur STOPS, it doesn't track."
+            if (error instanceof BudgetExceededError) {
+              throw error;
+            }
             lastError = error;
           }
         }

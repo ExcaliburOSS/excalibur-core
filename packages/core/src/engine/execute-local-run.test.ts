@@ -449,6 +449,110 @@ describe('executeLocalRun', () => {
     expect(String(err?.payload['message'])).toContain('Budget cap');
   });
 
+  it('STOPS inside the agent loop at the budget cap (agent_work spend counts too)', async () => {
+    // Regression for the review finding: the cap must count agent_work model
+    // spend, not only the engine's own chat() phases. Text phases cost 0 so the
+    // cap is reached ONLY via the agent loop's model_call accrual.
+    execFileSync('git', ['init', '-q'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.email', 'test@excalibur.local'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.name', 'Excalibur Test'], { cwd: repoRoot });
+
+    class AgentCostGateway {
+      chat(input: ChatInput): Promise<ChatOutput> {
+        if (input.tools !== undefined && input.tools.length > 0) {
+          // Each agent iteration costs 1 cent → trips the 1-cent cap immediately.
+          return Promise.resolve({
+            content: '',
+            model: 'mock-model',
+            usage: { inputTokens: 8, outputTokens: 4 },
+            costCents: 1,
+            finishReason: 'tool_calls',
+            toolCalls: [
+              { id: 'w', name: 'write_file', arguments: { path: 'src/a.ts', content: 'export const a = 1;\n' } },
+            ],
+          });
+        }
+        // Text phases (context/spec/plan) are free, so they never trip the cap.
+        return Promise.resolve({
+          content: 'ok',
+          model: 'mock-model',
+          usage: { inputTokens: 4, outputTokens: 4 },
+          costCents: 0,
+          finishReason: 'stop',
+        });
+      }
+    }
+
+    const definition = getDefaultWorkflow('structured-feature');
+    const run = runManager.createRun({
+      title: 'Implement a feature',
+      autonomyLevel: 4,
+      workflow: 'structured-feature',
+      methodology: 'spec-driven',
+      executionStyle: 'structured',
+    });
+    const record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      definition: definition!,
+      gateway: new AgentCostGateway() as unknown as ModelGateway,
+      adapter,
+      config: { ...config, permissions: { tools: { write_file: true }, allowedCommands: [] } },
+      budgetCents: 1,
+    });
+
+    expect(record.status).toBe('failed');
+    const events = runManager.readEvents(run.id);
+    const deny = events.find(
+      (e) => e.type === 'policy_decision' && e.payload['kind'] === 'budget',
+    );
+    expect(deny).toBeDefined();
+    expect(events.find((e) => e.type === 'error' && e.payload['code'] === 'budget_exceeded')).toBeDefined();
+  });
+
+  it('a budget cap is non-recoverable even with onFailure:continue phases', async () => {
+    // The cap must never be swallowed by a phase's onFailure policy.
+    class CostlyGateway {
+      chat(): Promise<ChatOutput> {
+        return Promise.resolve({
+          content: 'ok',
+          model: 'mock-model',
+          usage: { inputTokens: 5, outputTokens: 5 },
+          costCents: 1,
+          finishReason: 'stop',
+        });
+      }
+    }
+    // A custom workflow whose phases are onFailure:'continue' — the cap must still
+    // end the run, not be recovered.
+    const base = getDefaultWorkflow('fast-fix')!;
+    const definition = {
+      ...base,
+      phases: base.phases.map((p) => ({ ...p, onFailure: 'continue' as const })),
+    };
+    const run = runManager.createRun({
+      title: 'tweak',
+      autonomyLevel: 3,
+      workflow: 'fast-fix',
+      executionStyle: 'fast',
+    });
+    const record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      definition,
+      gateway: new CostlyGateway() as unknown as ModelGateway,
+      adapter,
+      config,
+      budgetCents: 1,
+    });
+    expect(record.status).toBe('failed');
+    expect(
+      runManager.readEvents(run.id).some((e) => e.type === 'error' && e.payload['code'] === 'budget_exceeded'),
+    ).toBe(true);
+  });
+
   it('does NOT cap when no budget is configured (the default)', async () => {
     // A run with no budgetCents + no config.budget completes normally (the
     // existing fast-fix happy path still holds — the cap is opt-in).
