@@ -7,6 +7,8 @@
  */
 export { reduceRail, type ReduceRailOptions } from './rail-reducer.js';
 export { renderRail, type RenderRailOptions } from './rail-render.js';
+export { renderTodos, type RenderTodosOptions } from './rail-todos.js';
+export type { TodoItem } from './rail-types.js';
 export {
   renderPlanCard,
   type PlanCardModel,

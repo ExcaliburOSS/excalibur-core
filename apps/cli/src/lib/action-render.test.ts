@@ -48,6 +48,26 @@ describe('ActionRenderer (live per-action view)', () => {
     expect(out).toContain('3 lines');
   });
 
+  it('renders update_tasks as the checklist band (not a generic tool block)', () => {
+    const out = render([
+      ev('tool_call', { tool: 'update_tasks', arguments: { tasks: [] } }),
+      ev('task_update', {
+        tool: 'update_tasks',
+        tasks: [
+          { id: 'task-1', text: 'Add validation', status: 'completed' },
+          { id: 'task-2', text: 'Wire it up', status: 'in_progress' },
+          { id: 'task-3', text: 'Write a test', status: 'pending' },
+        ],
+      }),
+    ]);
+    expect(out).toContain('Tasks  1/3');
+    expect(out).toContain('Add validation');
+    expect(out).toContain('Wire it up');
+    expect(out).toContain('Write a test');
+    // The generic "update_tasks" call header is suppressed in favour of the band.
+    expect(out).not.toContain('update_tasks');
+  });
+
   it('renders an apply_patch with a +/− diff gutter from the call arguments', () => {
     const out = render([
       ev('tool_call', { tool: 'apply_patch', arguments: { diff: DIFF } }),

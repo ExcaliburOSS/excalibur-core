@@ -4,8 +4,10 @@ import {
   detectThemeSync,
   getColors,
   paint,
+  renderTodos,
   type ColorTier,
   type Palette,
+  type TodoItem,
 } from '@excalibur/tui';
 import type { CliDeps } from '../deps';
 
@@ -203,10 +205,37 @@ export class ActionRenderer {
       case 'tool_call':
         if (this.isResult(event)) {
           this.renderResult(event); // a git_diff result rides as a tool_call event
+        } else if ((s(event, 'tool') || s(event, 'name')) === 'update_tasks') {
+          // Don't announce the checklist tool as a generic call — the
+          // `task_update` event that follows renders the proper band.
+          this.dropNarration();
         } else {
           this.startCall(event);
         }
         return;
+      case 'task_update': {
+        // The live checklist: render the proper band (not a bare tool block).
+        this.dropNarration();
+        const raw = Array.isArray(event.payload['tasks'])
+          ? (event.payload['tasks'] as unknown[])
+          : [];
+        const todos: TodoItem[] = raw.map((item) => {
+          const tk = (item ?? {}) as { text?: unknown; status?: unknown };
+          return {
+            text: typeof tk.text === 'string' ? tk.text : '',
+            status:
+              tk.status === 'in_progress' || tk.status === 'completed' ? tk.status : 'pending',
+          };
+        });
+        for (const line of renderTodos(todos, {
+          tier: this.tier,
+          mode: detectThemeSync() ?? 'dark',
+          label: this.t('rail.tasks'),
+        })) {
+          this.ui.write(line);
+        }
+        return;
+      }
       case 'file_read':
       case 'file_write':
       case 'command_completed':
