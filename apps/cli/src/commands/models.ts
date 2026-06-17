@@ -17,7 +17,7 @@ import { promptProviderSetup, writeProvidersFile } from '../lib/provider-setup';
  */
 async function runConnectionTest(deps: CliDeps): Promise<void> {
   const context = loadGatewayContext(deps.cwd());
-  requireConfiguredModel(context); // refuses with setup guidance when unconfigured
+  requireConfiguredModel(context, deps.t); // refuses with setup guidance when unconfigured
   const config = context.providers.providers[context.providerName];
   const modelLabel =
     config?.model !== undefined && config.model.length > 0 ? ` (${config.model})` : '';

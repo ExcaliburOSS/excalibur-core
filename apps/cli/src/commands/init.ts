@@ -175,7 +175,7 @@ export function registerInitCommand(program: Command, deps: CliDeps): void {
         }
       }
 
-      deps.ui.write(safetyLine({}));
+      deps.ui.write(safetyLine(deps.t, {}));
 
       deps.ui.heading(deps.t('init.created'));
       for (const relPath of result.written) {

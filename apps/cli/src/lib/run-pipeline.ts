@@ -16,6 +16,7 @@ import {
   type ExcaliburEvent,
   type ExecutionStyle,
   type RunRecord,
+  type Translator,
 } from '@excalibur/shared';
 import type { WorkflowDefinition } from '@excalibur/workflow-schema';
 import {
@@ -71,72 +72,69 @@ function defaultLevelForStyle(style: ExecutionStyle): AutonomyLevel {
   return style === 'careful' ? 4 : 3;
 }
 
-/** Compact terminal line for one streamed run event. */
-export function describeEvent(event: ExcaliburEvent): string | null {
+/** Compact terminal line for one streamed run event (non-TTY/CI fallback). */
+export function describeEvent(t: Translator, event: ExcaliburEvent): string | null {
   const payload = event.payload;
   const str = (key: string): string => {
     const value = payload[key];
     return typeof value === 'string' ? value : '';
   };
+  // "(simulated)" is the M1 phase-engine marker; the real native loop omits it.
+  const sim = payload['simulated'] === true ? t('event.simulated') : '';
   switch (event.type) {
     case 'run_started':
-      return pc.bold('▶ run started');
+      return pc.bold(t('event.run-started'));
     case 'workflow_selected':
-      return pc.dim(`  workflow: ${str('workflow') || str('workflowId')}`);
+      return pc.dim(t('event.workflow', { workflow: str('workflow') || str('workflowId') }));
     case 'methodology_selected':
-      return pc.dim(`  methodology: ${str('methodology') || str('methodologyId')}`);
+      return pc.dim(t('event.methodology', { methodology: str('methodology') || str('methodologyId') }));
     case 'phase_started':
-      return pc.cyan(`▶ ${str('name') || str('phaseId') || event.phaseId || 'phase'}`);
+      return pc.cyan(t('event.phase-started', { name: str('name') || str('phaseId') || event.phaseId || 'phase' }));
     case 'phase_completed':
-      return pc.green(`✓ ${str('name') || str('phaseId') || event.phaseId || 'phase'} completed`);
+      return pc.green(t('event.phase-completed', { name: str('name') || str('phaseId') || event.phaseId || 'phase' }));
     case 'assistant_message':
-      return pc.dim('  assistant message');
+      return pc.dim(t('event.assistant-message'));
     case 'model_call':
-      return pc.dim(`  model call (${str('model') || 'mock'})`);
+      return pc.dim(t('event.model-call', { model: str('model') || 'mock' }));
     case 'tool_call':
-      return pc.dim(`  tool: ${str('tool') || str('name')}`);
+      return pc.dim(t('event.tool-call', { tool: str('tool') || str('name') }));
     case 'file_read':
-      return pc.dim(`  read ${str('path')}`);
+      return pc.dim(t('event.file-read', { path: str('path') }));
     case 'file_write':
-      // Derive "(simulated)" from the payload — the real native loop writes for
-      // real (no flag); only the M1 phase engine sets simulated:true. Hardcoding
-      // it lied about real writes.
-      return pc.dim(`  write ${str('path')}${payload['simulated'] === true ? ' (simulated)' : ''}`);
+      return pc.dim(t('event.file-write', { path: str('path'), sim }));
     case 'command_started':
-      return pc.dim(`  $ ${str('command')}${payload['simulated'] === true ? ' (simulated)' : ''}`);
+      return pc.dim(t('event.command-started', { command: str('command'), sim }));
     case 'command_completed': {
-      // Surface the result (previously dropped → the user never saw exit codes).
       const exit = typeof payload['exitCode'] === 'number' ? (payload['exitCode'] as number) : null;
       if (exit === null) {
         return null;
       }
-      const tail = payload['simulated'] === true ? ' (simulated)' : '';
       return exit === 0
-        ? pc.dim(`  ⎿ exit 0${tail}`)
-        : pc.red(`  ⎿ exit ${exit}${tail}`);
+        ? pc.dim(t('event.exit-ok', { sim }))
+        : pc.red(t('event.exit-fail', { exit, sim }));
     }
     case 'test_result':
-      return pc.green(`  tests: ${str('status') || 'passed'}${payload['simulated'] === true ? ' (simulated)' : ''}`);
+      return pc.green(t('event.test-result', { status: str('status') || 'passed', sim }));
     case 'patch_generated':
-      return pc.yellow('  ± patch generated');
+      return pc.yellow(t('event.patch-generated'));
     case 'patch_applied':
-      return pc.yellow(`  ± patch applied${payload['simulated'] === true ? ' (simulated)' : ''}`);
+      return pc.yellow(t('event.patch-applied', { sim }));
     case 'branch_created':
-      return pc.yellow(`  branch: ${str('branch')}`);
+      return pc.yellow(t('event.branch-created', { branch: str('branch') }));
     case 'approval_requested':
-      return pc.yellow('  approval requested');
+      return pc.yellow(t('event.approval-requested'));
     case 'approval_approved':
-      return pc.green('  approval granted');
+      return pc.green(t('event.approval-approved'));
     case 'approval_rejected':
-      return pc.red('  approval rejected');
+      return pc.red(t('event.approval-rejected'));
     case 'artifact_created':
-      return pc.dim(`  artifact: ${str('fileName') || str('path')}`);
+      return pc.dim(t('event.artifact-created', { name: str('fileName') || str('path') }));
     case 'error':
-      return pc.red(`  error: ${str('message')}`);
+      return pc.red(t('event.error', { message: str('message') }));
     case 'run_completed':
-      return pc.bold(`■ run completed (${str('status') || 'completed'})`);
+      return pc.bold(t('event.run-completed', { status: str('status') || 'completed' }));
     default:
-      return pc.dim(`  ${event.type}`);
+      return pc.dim(t('event.unknown', { type: event.type }));
   }
 }
 
@@ -274,14 +272,14 @@ export async function runTask(
           ? { swarmReason: `${allocation.reason} (fan-out lands in a later milestone)` }
           : {}),
         ...(intent.sensitive ? { sensitiveAreas: intent.sensitiveAreas } : {}),
-        gate: '[Enter] run · [m] mode · [c] cancel',
+        gate: deps.t('run-pipeline.gate'),
       },
       { tier, mode },
     );
     for (const line of planCard) {
       deps.ui.write(line);
     }
-    deps.ui.write(safetyLine(config));
+    deps.ui.write(safetyLine(deps.t, config));
     deps.ui.info(deps.t('run-pipeline.reason', { reason: choice.reason }));
 
     const answer = await deps.ui.ask(deps.t('run-pipeline.runPromptGate'), {
@@ -322,7 +320,7 @@ export async function runTask(
   }
 
   const gatewayContext = loadGatewayContext(repoRoot);
-  requireConfiguredModel(gatewayContext); // no mock fallback: a real LLM is required
+  requireConfiguredModel(gatewayContext, deps.t); // no mock fallback: a real LLM is required
   // Resolve the methodology deliberately, not by id collision (§4.6 treats
   // methodology as an independent input). Each methodology declares the
   // workflow it drives via `defaultWorkflow`, which is the correct linkage
@@ -389,7 +387,7 @@ export async function runTask(
         liveRail.push(event);
         return;
       }
-      const line = describeEvent(event);
+      const line = describeEvent(deps.t, event);
       if (line !== null) {
         deps.ui.write(line);
       }

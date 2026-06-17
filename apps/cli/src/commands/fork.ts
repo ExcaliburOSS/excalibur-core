@@ -59,7 +59,7 @@ export function registerForkCommand(program: Command, deps: CliDeps): void {
 
       const { config } = loadConfigContext(deps.cwd());
       const gateway = loadGatewayContext(deps.cwd());
-      requireConfiguredModel(gateway); // no mock fallback: a real LLM is required
+      requireConfiguredModel(gateway, deps.t); // no mock fallback: a real LLM is required
       const turn: AgentTurnDeps = {
         deps,
         repoRoot: deps.cwd(),

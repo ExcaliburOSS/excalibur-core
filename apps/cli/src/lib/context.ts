@@ -25,7 +25,12 @@ import {
   type ModelGatewayDeps,
   type ProvidersFileConfig,
 } from '@excalibur/model-gateway';
-import { ProviderError, type ExcaliburConfig, type InstructionSource } from '@excalibur/shared';
+import {
+  ProviderError,
+  type ExcaliburConfig,
+  type InstructionSource,
+  type Translator,
+} from '@excalibur/shared';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
 
@@ -135,13 +140,9 @@ export function loadGatewayContext(repoRoot: string): GatewayContext {
  * `type: mock`). Call this right after {@link loadGatewayContext} in any command
  * or shell turn that will actually call the model.
  */
-export function requireConfiguredModel(context: GatewayContext): void {
+export function requireConfiguredModel(context: GatewayContext, t: Translator): void {
   if (!context.configured) {
-    throw new CliUsageError(
-      'No LLM provider is configured — Excalibur needs a real model. ' +
-        'Run `excalibur models setup` to connect one (OpenAI, Anthropic, Groq, Ollama, …). ' +
-        '(A mock provider exists only for offline/tests, via an explicit `type: mock` in providers.yaml.)',
-    );
+    throw new CliUsageError(t('context.noProvider'));
   }
 }
 
@@ -150,14 +151,14 @@ export function loadConfigContext(repoRoot: string): LoadedExcaliburConfig {
 }
 
 /** The active safety preset line printed by init/run/patch (onboarding §5). */
-export function safetyLine(config: ExcaliburConfig): string {
+export function safetyLine(t: Translator, config: ExcaliburConfig): string {
   const presetId = config.safety?.preset ?? DEFAULT_SAFETY_PRESET_ID;
   const preset = SAFETY_PRESETS[presetId];
   const description =
     preset !== undefined
-      ? 'No files will be modified without approval.'
-      : `Unknown preset — falling back to ${DEFAULT_SAFETY_PRESET_ID} rules.`;
-  return `Safety: ${presetId} — ${description}`;
+      ? t('context.safetyOk')
+      : t('context.safetyUnknown', { preset: DEFAULT_SAFETY_PRESET_ID });
+  return t('context.safetyLine', { preset: presetId, description });
 }
 
 export interface GuidedChatResult {
@@ -183,16 +184,16 @@ const FALLBACK_CODES = new Set(['provider_not_found', 'provider_not_implemented'
  * silent runtime substitute).
  */
 export async function chatWithGuidance(
-  _deps: CliDeps,
+  deps: CliDeps,
   context: GatewayContext,
   input: ChatInput,
 ): Promise<GuidedChatResult> {
-  requireConfiguredModel(context);
+  requireConfiguredModel(context, deps.t);
   try {
     const output = await context.gateway.chat(input);
     return { output, provider: context.providerName };
   } catch (error) {
-    throw guidanceError(context, error);
+    throw guidanceError(context, error, deps.t);
   }
 }
 
@@ -201,11 +202,10 @@ export async function chatWithGuidance(
  * becomes a setup hint; every other failure (auth/rate-limit/network/…) is
  * surfaced unchanged so the user fixes the real cause. NEVER returns a mock.
  */
-function guidanceError(context: GatewayContext, error: unknown): unknown {
+function guidanceError(context: GatewayContext, error: unknown, t: Translator): unknown {
   if (error instanceof ProviderError && FALLBACK_CODES.has(error.code)) {
     return new CliUsageError(
-      `Provider "${context.providerName}" is not usable: ${error.message}. ` +
-        'Run `excalibur models setup` to configure a working LLM provider.',
+      t('context.providerUnusable', { provider: context.providerName, error: error.message }),
     );
   }
   return error;
@@ -226,12 +226,12 @@ export interface StreamedChatResult {
  * {@link requireConfiguredModel}.
  */
 export async function streamWithGuidance(
-  _deps: CliDeps,
+  deps: CliDeps,
   context: GatewayContext,
   input: ChatInput,
   onDelta: (text: string) => void,
 ): Promise<StreamedChatResult> {
-  requireConfiguredModel(context);
+  requireConfiguredModel(context, deps.t);
   let sawDelta = false;
   try {
     const gen = context.gateway.streamWithUsage(input);
@@ -252,7 +252,7 @@ export async function streamWithGuidance(
     if (sawDelta) {
       throw error;
     }
-    throw guidanceError(context, error);
+    throw guidanceError(context, error, deps.t);
   }
 }
 

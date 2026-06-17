@@ -107,7 +107,7 @@ function approvalDefaultYes(level: AutonomyLevel): boolean {
 
 /** Renders one streamed agent event to the terminal (reuses the run renderer). */
 function renderEvent(deps: CliDeps, event: ExcaliburEvent): void {
-  const line = describeEvent(event);
+  const line = describeEvent(deps.t, event);
   if (line !== null) {
     deps.ui.write(line);
   }
@@ -197,7 +197,7 @@ async function driveLoop(
   // message (and it never re-arms). Listener removed in the finally below.
   const onAbort = (): void => spinner.cancel();
   turn.signal?.addEventListener('abort', onAbort);
-  const gerund = gerundForRole(options.role);
+  const gerund = deps.t(gerundForRole(options.role));
   const spinnerText = (activity: string | null): string => {
     const label = activity ?? gerund;
     const cost = costCents !== null ? ` · $${(costCents / 100).toFixed(2)}` : '';
@@ -311,19 +311,20 @@ async function driveLoop(
 }
 
 /** Present-continuous label for the model "thinking" between tool calls, by role. */
+/** The i18n key for a role's transient spinner gerund; translated at the call site. */
 function gerundForRole(role: AgentRole): string {
   switch (role) {
     case 'planner':
-      return 'Planning…';
+      return 'agent-turn.gerund-planner';
     case 'architect':
-      return 'Designing…';
+      return 'agent-turn.gerund-architect';
     case 'reviewer':
     case 'security':
-      return 'Reviewing…';
+      return 'agent-turn.gerund-reviewer';
     case 'tester':
-      return 'Writing tests…';
+      return 'agent-turn.gerund-tester';
     default:
-      return 'Working…';
+      return 'agent-turn.gerund-default';
   }
 }
 

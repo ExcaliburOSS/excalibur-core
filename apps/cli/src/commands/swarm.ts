@@ -38,7 +38,7 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
       }
       const maxAgents = parseMaxAgents(options.maxAgents);
       const gateway = loadGatewayContext(repoRoot);
-      requireConfiguredModel(gateway); // a swarm of mock agents is pointless
+      requireConfiguredModel(gateway, deps.t); // a swarm of mock agents is pointless
       const { config } = loadConfigContext(repoRoot);
 
       deps.ui.info(deps.t('swarm.decomposing'));

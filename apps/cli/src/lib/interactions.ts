@@ -169,7 +169,7 @@ export async function generatePatch(deps: CliDeps, task: string): Promise<LocalP
       autonomy: AUTONOMY_LEVEL_LABELS[defaults.autonomyLevel],
     }),
   );
-  deps.ui.info(safetyLine(config));
+  deps.ui.info(safetyLine(deps.t, config));
 
   const effective = await buildEffectiveContext(deps, repoRoot, {
     workflowId: defaults.workflow,

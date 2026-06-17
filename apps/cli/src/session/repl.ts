@@ -516,7 +516,7 @@ function agentTurnDeps(deps: CliDeps, runtime: SessionRuntime, signal: AbortSign
   // that holds the auth), so a subscription-only user with no providers.yaml can
   // still run — skip the model guard for it.
   if (agentUsesGateway(runtime.config)) {
-    requireConfiguredModel(gateway);
+    requireConfiguredModel(gateway, deps.t);
   }
   return {
     deps,
@@ -1326,7 +1326,7 @@ function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
   });
   const cost = `$${(status.costCents / 100).toFixed(2)}`;
   deps.ui.info(
-    `${status.autonomy} · ${status.workflow} · ${status.model} · ${cost} · ${safetyLine(runtime.config)}`,
+    `${status.autonomy} · ${status.workflow} · ${status.model} · ${cost} · ${safetyLine(deps.t, runtime.config)}`,
   );
 }
 

@@ -3,8 +3,11 @@ import { join } from 'node:path';
 import type { ChatDelta, ChatInput, ChatOutput } from '@excalibur/model-gateway';
 import { ProviderError } from '@excalibur/shared';
 import { afterEach, describe, expect, it } from 'vitest';
+import { buildCliTranslator } from '../i18n';
 import type { CliDeps } from '../deps';
 import { makeTempRepo, removeDir } from '../test-utils';
+
+const t = buildCliTranslator('en');
 import {
   chatWithGuidance,
   loadGatewayContext,
@@ -33,7 +36,7 @@ function repoWithProviders(yaml: string): string {
   return repo;
 }
 
-interface RecordingDeps extends Pick<CliDeps, 'ui'> {
+interface RecordingDeps extends Pick<CliDeps, 'ui' | 't'> {
   warnings: string[];
 }
 
@@ -44,7 +47,7 @@ function recordingDeps(): RecordingDeps {
       warnings.push(text);
     },
   } as unknown as CliDeps['ui'];
-  return { ui, warnings };
+  return { ui, warnings, t };
 }
 
 const input: ChatInput = { messages: [{ role: 'user', content: 'hello' }] };
@@ -129,7 +132,7 @@ describe('loadGatewayContext real-provider wiring', () => {
     const context = loadGatewayContext(repo);
     expect(context.configured).toBe(false);
     // A model command must refuse with setup guidance, not run the mock.
-    expect(() => requireConfiguredModel(context)).toThrow(/models setup/);
+    expect(() => requireConfiguredModel(context, t)).toThrow(/models setup/);
   });
 
   it('is CONFIGURED when a providers.yaml explicitly sets type: mock (offline/tests)', () => {
@@ -137,7 +140,7 @@ describe('loadGatewayContext real-provider wiring', () => {
     tempRepos.push(repo);
     const context = loadGatewayContext(repo);
     expect(context.configured).toBe(true);
-    expect(() => requireConfiguredModel(context)).not.toThrow();
+    expect(() => requireConfiguredModel(context, t)).not.toThrow();
   });
 });
 
