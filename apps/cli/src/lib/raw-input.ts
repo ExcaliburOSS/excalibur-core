@@ -77,6 +77,7 @@ export type RawAction =
   | { type: 'submit'; line: string } // Enter at the prompt → resolve question()
   | { type: 'abort' } // ESC while a turn is in flight → cancel it
   | { type: 'rewind' } // Esc-Esc at the prompt → open the rewind time-machine
+  | { type: 'open_log' } // ↓ on the empty live line → open the Session Log
   | { type: 'eof' } // Ctrl-D on an empty buffer → null (EOF)
   | { type: 'sigint' } // Ctrl-C → the SIGINT handler (cancel / exit)
   | { type: 'none' };
@@ -292,6 +293,12 @@ function historyPrev(state: RawInputState): { state: RawInputState; action: RawA
 /** ↓ — move toward the live draft; past the newest entry restores the draft. */
 function historyNext(state: RawInputState): { state: RawInputState; action: RawAction } {
   if (state.historyIndex === -1) {
+    // ↓ on the EMPTY live line opens the Session Log (the down-into-history
+    // gesture; the slot was a no-op). A non-empty draft keeps the no-op so a
+    // half-typed prompt is never interrupted. Only at the prompt, never mid-turn.
+    if (state.mode === 'prompt' && state.buffer.length === 0) {
+      return { state, action: { type: 'open_log' } };
+    }
     return { state, action: NONE };
   }
   const historyIndex = state.historyIndex - 1;

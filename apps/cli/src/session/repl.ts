@@ -39,7 +39,7 @@ import { runDiscoveryFlow } from '../commands/discovery';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
 import { buildSessionLog, formatSessionLog } from '../lib/session-log';
 import { setAutoApprove } from '../lib/config-file';
-import { REWIND_SENTINEL } from '../ui';
+import { LOG_SENTINEL, REWIND_SENTINEL } from '../ui';
 import { CLI_VERSION } from '../program';
 import { renderWelcome, type WelcomeContext } from './welcome';
 import {
@@ -283,6 +283,12 @@ export async function runInteractiveSession(
         } catch (error) {
           deps.ui.error(error instanceof Error ? error.message : String(error));
         }
+        printStatusLine(deps, runtime);
+        continue;
+      }
+      // ↓ on the empty live line opens the Session Log (same flow as `/log`).
+      if (line === LOG_SENTINEL) {
+        await handleLogCommand(deps, runtime, (prompt) => editor.question(prompt));
         printStatusLine(deps, runtime);
         continue;
       }

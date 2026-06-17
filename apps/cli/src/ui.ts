@@ -35,6 +35,8 @@ export interface UiOptions {
  * it is UNFORGEABLE from typed/pasted input (the reducer rejects control bytes).
  */
 export const REWIND_SENTINEL = `${String.fromCharCode(0)}__excalibur_rewind__`;
+/** Resolves a pending read when ↓ opens the Session Log (NUL-prefixed → never a real line). */
+export const LOG_SENTINEL = `${String.fromCharCode(0)}__excalibur_log__`;
 
 export interface AskOptions {
   /** Skip the prompt and take the default (the `--yes` flag). */
@@ -520,6 +522,16 @@ export class Ui {
             out.write('\n');
             currentPrompt = null;
             waiters.shift()?.(REWIND_SENTINEL);
+            return;
+          }
+          case 'open_log': {
+            // ↓ on the empty live line: resolve the pending read with the log
+            // sentinel so the REPL opens the Session Log (which drives its own
+            // question() reads). Mirrors the rewind path.
+            cancelSuggest();
+            out.write('\n');
+            currentPrompt = null;
+            waiters.shift()?.(LOG_SENTINEL);
             return;
           }
           case 'sigint':

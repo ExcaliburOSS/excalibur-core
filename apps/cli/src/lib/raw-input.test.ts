@@ -89,6 +89,18 @@ describe('reduceKey (pure state machine)', () => {
     expect(s.historyIndex).toBe(-1);
   });
 
+  it('↓ on the EMPTY live line opens the Session Log (the down-into-history gesture)', () => {
+    const s = prompt({ buffer: '', cursor: 0, history: ['prev'] });
+    const { action } = reduceKey(s, key({ name: 'down' }));
+    expect(action).toEqual({ type: 'open_log' });
+  });
+
+  it('↓ with a half-typed draft stays a no-op (never interrupts the draft)', () => {
+    const s = prompt({ buffer: 'dr', cursor: 2, history: ['prev'] });
+    const { action } = reduceKey(s, key({ name: 'down' }));
+    expect(action.type).toBe('none');
+  });
+
   it('ESC: aborts a turn when NOT awaiting; clears the buffer when awaiting', () => {
     // not awaiting + mode turn → abort
     const turn = { ...initialRawState(), mode: 'turn' as const, awaiting: false };
