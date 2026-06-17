@@ -578,4 +578,13 @@ export const ES: Catalog = {
   "event.run-completed": "■ ejecución completada ({status})",
   "event.unknown": "  {type}",
   "event.simulated": " (simulado)",
+
+  // rail (tui labels, i18n)
+  "rail.push": "push",
+  "rail.noPush": "sin push",
+  "rail.swarm": "Swarm",
+  "rail.lanes": "carriles",
+  "rail.merge": "fusión",
+  "rail.applied": "aplicados",
+  "rail.conflict": "conflicto",
 };

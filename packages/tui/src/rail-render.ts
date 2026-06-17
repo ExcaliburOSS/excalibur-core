@@ -101,6 +101,11 @@ export interface RenderRailOptions {
    * phase and the reader wants the full structured history.
    */
   expandAll?: boolean;
+  /**
+   * Localized status words (i18n). English defaults keep the golden snapshots +
+   * the pure form byte-identical; the CLI passes translated labels.
+   */
+  labels?: { push?: string; noPush?: string };
 }
 
 /** Renders the rail model to an array of text lines. */
@@ -171,7 +176,7 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
     `  ${autonomy}${c(s.safety, palette.muted)} · ${c(formatCents(s.costCents), palette.muted)} · ${tokens}${c(
       formatElapsed(s.elapsedMs),
       palette.muted,
-    )} · ${c(s.push ? 'push' : 'no push', palette.muted)} · ${c(s.model, palette.accent)}`,
+    )} · ${c(s.push ? (options.labels?.push ?? 'push') : (options.labels?.noPush ?? 'no push'), palette.muted)} · ${c(s.model, palette.accent)}`,
   );
   return lines;
 }

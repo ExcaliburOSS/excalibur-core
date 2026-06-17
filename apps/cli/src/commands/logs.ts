@@ -73,6 +73,7 @@ export function registerLogsCommand(program: Command, deps: CliDeps): void {
         tier: detectColorTier(),
         mode: detectThemeSync() ?? 'dark',
         expandAll: true,
+        labels: { push: deps.t('rail.push'), noPush: deps.t('rail.noPush') },
       })) {
         deps.ui.write(line);
       }

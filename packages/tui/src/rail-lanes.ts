@@ -39,6 +39,11 @@ export interface RenderLanesOptions {
   mode?: ThemeMode;
   /** Lane title column width (default 22). */
   titleWidth?: number;
+  /**
+   * Localized header/footer words (i18n). English defaults keep the snapshots +
+   * pure form byte-identical; the CLI passes translated labels.
+   */
+  labels?: { swarm?: string; lanes?: string; merge?: string; applied?: string; conflict?: string };
 }
 
 function laneGlyphHex(state: LaneState, palette: Palette): { g: string; hex: string } {
@@ -65,10 +70,16 @@ export function renderLanes(model: LanesModel, options: RenderLanesOptions = {})
   const titleWidth = options.titleWidth ?? 22;
   const c = (text: string, hex: string): string =>
     tier === 'none' ? text : paint(text, hex, tier);
+  const L = options.labels ?? {};
+  const swarmWord = L.swarm ?? 'Swarm';
+  const lanesWord = L.lanes ?? 'lanes';
+  const mergeWord = L.merge ?? 'merge';
+  const appliedWord = L.applied ?? 'applied';
+  const conflictWord = L.conflict ?? 'conflict';
 
   const lines: string[] = [];
   lines.push(
-    ` ${c(eventGlyph.branch, palette.accent)} ${c(`Swarm · ${model.lanes.length} lanes`, palette.text)}`,
+    ` ${c(eventGlyph.branch, palette.accent)} ${c(`${swarmWord} · ${model.lanes.length} ${lanesWord}`, palette.text)}`,
   );
 
   model.lanes.forEach((lane, index) => {
@@ -98,10 +109,10 @@ export function renderLanes(model: LanesModel, options: RenderLanesOptions = {})
     lines.push(` ${connector} ${badge} ${title} ${statsCol}${detail}`.trimEnd());
   });
 
-  const conflictPart = model.conflicts > 0 ? ` · ${model.conflicts} conflict` : '';
+  const conflictPart = model.conflicts > 0 ? ` · ${model.conflicts} ${conflictWord}` : '';
   lines.push(
     ` ${c(eventGlyph.tool, palette.accent)} ${c(
-      `merge · ${model.applied} applied${conflictPart}`,
+      `${mergeWord} · ${model.applied} ${appliedWord}${conflictPart}`,
       model.conflicts > 0 ? palette.warn : palette.muted,
     )}`,
   );

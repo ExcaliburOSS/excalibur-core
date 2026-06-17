@@ -357,8 +357,12 @@ export async function runTask(
     model: gatewayContext.providerName,
     push: options.sync === true,
   };
+  const railLabels = { push: deps.t('rail.push'), noPush: deps.t('rail.noPush') };
   const liveRail = deps.ui.isOutputTty()
-    ? new LiveRail({ writeRaw: (t) => deps.ui.writeRaw(t) }, { tier, mode, reduce: reduceOpts })
+    ? new LiveRail(
+        { writeRaw: (t) => deps.ui.writeRaw(t) },
+        { tier, mode, reduce: reduceOpts, labels: railLabels },
+      )
     : null;
 
   deps.ui.write();
@@ -403,6 +407,7 @@ export async function runTask(
     for (const line of renderRail(reduceRail(runManager.readEvents(run.id), reduceOpts), {
       tier,
       mode,
+      labels: railLabels,
     })) {
       deps.ui.write(line);
     }

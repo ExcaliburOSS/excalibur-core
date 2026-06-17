@@ -38,6 +38,8 @@ export interface LiveRailOptions {
   animate?: boolean;
   /** Wall-clock source for the ticking elapsed (injectable for tests). */
   now?: () => number;
+  /** Localized rail status words (i18n) forwarded to `renderRail`. */
+  labels?: { push?: string; noPush?: string };
 }
 
 export class LiveRail {
@@ -121,6 +123,7 @@ export class LiveRail {
       tier: this.options.tier,
       mode: this.options.mode,
       spinnerFrame: this.frame,
+      ...(this.options.labels !== undefined ? { labels: this.options.labels } : {}),
     });
     // Move up over the previous frame and clear everything from there down, then
     // reprint. Leaves the cursor parked one line below the rail.
