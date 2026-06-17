@@ -127,6 +127,10 @@ export const ES: Catalog = {
   "apply.no-files": "no se detectaron archivos",
 
   // changes
+  "theme.heading": "Temas del TUI (→ = actual):",
+  "theme.usage": "Elige uno con `excalibur theme <nombre>` (se guarda en .excalibur/config.yaml).",
+  "theme.unknown": "Tema desconocido «{name}». Elige uno de: {names}.",
+  "theme.set": "Tema cambiado a {name} (guardado). Reinicia el shell para verlo en todas partes.",
   "changes.heading": "Cambios · {runId}",
   "changes.noFileChanges": "  No se registraron cambios de archivos para esta ejecución.",
   "changes.diffstat": "  {files} archivo{plural} · +{insertions} −{deletions}",
