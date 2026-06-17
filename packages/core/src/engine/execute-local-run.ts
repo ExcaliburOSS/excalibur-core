@@ -255,6 +255,20 @@ class LocalRunExecution {
       phase: { id: phase.id, name: phase.name, type: phase.type },
       config: this.input.config,
       gateway: this.input.gateway,
+      // Forward a tool-level confirmer mirroring the PHASE policy: with an
+      // interactive `confirm` the agent prompts per mutating tool; without one
+      // (--yes / non-interactive) it AUTO-APPROVES — matching the auto-approve
+      // used for phase gates. Previously no confirmer was passed, so the
+      // adapter's safe default DECLINED every write/command and `run` could
+      // never actually mutate the tree. Blocked paths stay hard-denied at the
+      // tool-execution layer regardless.
+      confirm:
+        this.input.confirm !== undefined
+          ? (req): Promise<boolean> =>
+              this.input.confirm!(
+                req.detail !== undefined ? `${req.reason} (${req.detail})` : req.reason,
+              )
+          : (): Promise<boolean> => Promise.resolve(true),
     });
 
     for await (const event of stream) {
