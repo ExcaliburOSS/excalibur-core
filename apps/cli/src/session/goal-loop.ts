@@ -105,7 +105,8 @@ async function evaluateWithModel(
       },
     ],
     maxTokens: 160,
-    temperature: 0,
+    // No `temperature` — reasoning models (e.g. kimi-k2.7-code) reject it with
+    // HTTP 400; omitting it keeps the evaluator provider-agnostic.
     ...(signal !== undefined ? { signal } : {}),
     metadata: { kind: 'goal-eval' },
   });

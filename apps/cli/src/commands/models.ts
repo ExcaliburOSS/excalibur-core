@@ -33,7 +33,8 @@ async function runConnectionTest(deps: CliDeps): Promise<void> {
     const { output } = await chatWithGuidance(deps, context, {
       messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
       maxTokens: 16,
-      temperature: 0,
+      // No `temperature` — a reasoning model (e.g. kimi-k2.7-code) 400s on it,
+      // which would make the connection test wrongly report a broken provider.
     });
     const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
     const reply = output.content.trim().replace(/\s+/g, ' ').slice(0, 60);

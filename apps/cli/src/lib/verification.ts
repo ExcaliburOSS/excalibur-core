@@ -81,7 +81,8 @@ async function verifyLens(lens: MeshLens, input: RunMeshInput): Promise<MeshVerd
       { role: 'user', content: `CHANGE (unified diff):\n${redactSecrets(input.diff)}` },
     ],
     maxTokens: 700,
-    temperature: 0,
+    // NB: no `temperature` — reasoning models (e.g. kimi-k2.7-code) reject it
+    // with HTTP 400; omitting it keeps the verifier provider-agnostic.
     ...(input.signal !== undefined ? { signal: input.signal } : {}),
     metadata: { kind: `mesh-${lens}` },
   });
