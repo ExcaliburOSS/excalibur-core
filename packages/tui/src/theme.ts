@@ -21,6 +21,13 @@ export interface Palette {
   text: string;
   muted: string;
   rail: string;
+  /** Diff line foregrounds + faint row backgrounds + the brighter word-level highlight. */
+  diffAddFg: string;
+  diffDelFg: string;
+  diffAddBg: string;
+  diffDelBg: string;
+  diffAddWordBg: string;
+  diffDelWordBg: string;
 }
 
 /** Tuned for dark backgrounds (bright text, vivid accents). */
@@ -34,6 +41,13 @@ export const darkColors: Palette = {
   text: '#E6EDF3',
   muted: '#8B949E',
   rail: '#3A4048',
+  // GitHub-dark-like diff tints: faint row bg + a brighter word-level bg.
+  diffAddFg: '#7EE2A8',
+  diffDelFg: '#FF8A8A',
+  diffAddBg: '#12351F',
+  diffDelBg: '#3A1414',
+  diffAddWordBg: '#1F6F3D',
+  diffDelWordBg: '#7A2222',
 };
 
 /** Tuned for light backgrounds (dark text, deeper accents — GitHub-light-like). */
@@ -47,6 +61,13 @@ export const lightColors: Palette = {
   text: '#1F2328',
   muted: '#636C76',
   rail: '#D0D7DE',
+  // GitHub-light-like diff tints.
+  diffAddFg: '#1A7F37',
+  diffDelFg: '#CF222E',
+  diffAddBg: '#E6FFEC',
+  diffDelBg: '#FFEBE9',
+  diffAddWordBg: '#ABF2BC',
+  diffDelWordBg: '#FFC1BC',
 };
 
 export function getColors(mode: ThemeMode): Palette {

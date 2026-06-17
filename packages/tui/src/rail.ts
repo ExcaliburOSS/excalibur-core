@@ -15,8 +15,17 @@ export {
   type PlanPhase,
   type RenderPlanCardOptions,
 } from './rail-plan.js';
-export { detectColorTier, paint, stripAnsi, type ColorTier } from './color.js';
+export { detectColorTier, paint, paintBg, stripAnsi, type ColorTier } from './color.js';
 export { parseDiffStat, formatDiffStat, type DiffStat } from './diff-stat.js';
+export {
+  parseUnifiedDiff,
+  renderDiff,
+  type DiffFile,
+  type DiffHunk,
+  type DiffLine,
+  type DiffLineKind,
+  type RenderDiffOptions,
+} from './diff-view.js';
 export {
   renderLanes,
   type LaneModel,

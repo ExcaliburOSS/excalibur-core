@@ -159,6 +159,39 @@ export function paint(text: string, hex: string, tier: ColorTier): string {
   return seq === '' ? text : `${seq}${text}${RESET}`;
 }
 
+/** The SGR BACKGROUND introducer for a hex colour at a given tier (no reset). */
+export function bgSequence(hex: string, tier: ColorTier): string {
+  if (tier === 'none') {
+    return '';
+  }
+  const rgb = hexToRgb(hex);
+  if (rgb === null) {
+    return '';
+  }
+  switch (tier) {
+    case 'truecolor':
+      return `\x1b[48;2;${rgb.r};${rgb.g};${rgb.b}m`;
+    case 'ansi256':
+      return `\x1b[48;5;${rgbToAnsi256(rgb)}m`;
+    case 'ansi16':
+      // Background SGR = foreground code + 10 (30→40, 90→100).
+      return `\x1b[${rgbToAnsi16(rgb) + 10}m`;
+  }
+}
+
+/**
+ * Paints `text` with a background tint (and optional foreground), downsampled to
+ * `tier`. At tier `none` the text is returned untouched (byte-identical plain).
+ */
+export function paintBg(text: string, bgHex: string, tier: ColorTier, fgHex?: string): string {
+  const bg = bgSequence(bgHex, tier);
+  if (bg === '') {
+    return text;
+  }
+  const fg = fgHex !== undefined ? fgSequence(fgHex, tier) : '';
+  return `${bg}${fg}${text}${RESET}`;
+}
+
 /** Strips SGR escape sequences — used by snapshot tests to compare plain text. */
 export function stripAnsi(text: string): string {
   // eslint-disable-next-line no-control-regex
