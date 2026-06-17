@@ -18,9 +18,10 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
     .description('run independent subtasks of a task as parallel agents (M3, isolated worktrees)')
     .argument('<task...>', 'the task to fan out')
     .option('--max-agents <n>', 'hard ceiling on the number of parallel agents')
+    .option('--retries <n>', 're-dispatch a failed lane up to N times (grader/rubric retry)')
     .option('--apply', 'apply the merged changes to your working tree without prompting')
     .option('-y, --yes', 'skip prompts and accept safe defaults')
-    .action(async (taskWords: string[], options: { maxAgents?: string; apply?: boolean; yes?: boolean }) => {
+    .action(async (taskWords: string[], options: { maxAgents?: string; retries?: string; apply?: boolean; yes?: boolean }) => {
       const task = taskWords.join(' ').trim();
       if (task.length === 0) {
         throw new CliUsageError(deps.t('swarm.taskEmpty'));
@@ -30,6 +31,7 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
         throw new CliUsageError(deps.t('swarm.needsGitRepo'));
       }
       const maxAgents = parseMaxAgents(options.maxAgents);
+      const retries = parseRetries(options.retries);
       const gateway = loadGatewayContext(repoRoot);
       requireConfiguredModel(gateway, deps.t); // a swarm of mock agents is pointless
       const { config } = loadConfigContext(repoRoot);
@@ -41,6 +43,7 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
         { gateway: gateway.gateway, providerName: gateway.providerName, config },
         {
           ...(maxAgents !== undefined ? { maxAgents } : {}),
+          ...(retries !== undefined ? { retries } : {}),
           ...(options.apply === true ? { apply: true } : {}),
           ...(options.yes === true ? { yes: true } : {}),
         },
@@ -53,6 +56,15 @@ function parseMaxAgents(value: string | undefined): number | undefined {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isInteger(parsed) || parsed < 1) {
     throw new CliUsageError(`--max-agents must be a positive integer (got "${value}").`);
+  }
+  return parsed;
+}
+
+function parseRetries(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new CliUsageError(`--retries must be a non-negative integer (got "${value}").`);
   }
   return parsed;
 }

@@ -120,6 +120,38 @@ describe('runSwarm', () => {
     }
   });
 
+  it('RE-DISPATCHES a transiently-failing lane up to maxAttempts (grader/rubric retry)', async () => {
+    const repo = initRepo();
+    try {
+      const attempts = new Map<string, number>();
+      const result = await runSwarm(
+        repo,
+        [lane('flaky'), lane('hopeless')],
+        ({ lane: l, worktreePath }) => {
+          const n = (attempts.get(l.id) ?? 0) + 1;
+          attempts.set(l.id, n);
+          if (l.id === 'flaky' && n < 2) {
+            throw new Error('transient blip');
+          }
+          if (l.id === 'hopeless') {
+            throw new Error('always fails');
+          }
+          writeFileSync(join(worktreePath, 'flaky.ts'), 'ok\n', 'utf8');
+          return Promise.resolve(null);
+        },
+        { maxAttempts: 2 },
+      );
+      // 'flaky' failed once then SUCCEEDED on the retry; 'hopeless' exhausted both.
+      expect(attempts.get('flaky')).toBe(2);
+      expect(attempts.get('hopeless')).toBe(2);
+      expect(result.lanes.find((l) => l.id === 'flaky')?.failed).toBe(false);
+      expect(result.lanes.find((l) => l.id === 'hopeless')?.failed).toBe(true);
+      expect(result.mergedDiff).toContain('flaky.ts');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
   it('respects the concurrency cap (never more lanes in flight than allowed)', async () => {
     const repo = initRepo();
     try {

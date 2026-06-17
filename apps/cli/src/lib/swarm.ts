@@ -119,6 +119,7 @@ export function executeSwarm(
   context: { gateway: ModelGateway; config: ExcaliburConfig; autonomyAutoApprove: boolean },
   options: {
     maxConcurrency?: number;
+    maxAttempts?: number;
     signal?: AbortSignal;
     onLane?: (progress: SwarmLaneProgress) => void;
   } = {},
@@ -126,6 +127,7 @@ export function executeSwarm(
   const byId = new Map(subtasks.map((s) => [s.id, s]));
   const swarmOptions = {
     ...(options.maxConcurrency !== undefined ? { maxConcurrency: options.maxConcurrency } : {}),
+    ...(options.maxAttempts !== undefined ? { maxAttempts: options.maxAttempts } : {}),
     ...(options.onLane !== undefined ? { onLane: options.onLane } : {}),
   };
   return runSwarm(
@@ -172,6 +174,8 @@ export interface SwarmFlowOptions {
   apply?: boolean;
   /** Skip prompts and accept safe defaults. */
   yes?: boolean;
+  /** Re-dispatch a failed lane up to this many times (grader/rubric retry). */
+  retries?: number;
   /** Cancels the in-flight swarm (ESC / Ctrl-C). */
   signal?: AbortSignal;
 }
@@ -259,6 +263,9 @@ export async function runSwarmFlow(
       gateway: ctx.gateway,
       config: ctx.config,
       autonomyAutoApprove: true, // a parallel batch can't prompt per-lane
+      ...(options.retries !== undefined && options.retries > 0
+        ? { maxAttempts: options.retries + 1 }
+        : {}),
       ...signalOpt,
       ...(live !== null ? { onLane: (p: SwarmLaneProgress) => live.update(p) } : {}),
     });

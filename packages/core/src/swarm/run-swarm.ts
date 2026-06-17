@@ -93,6 +93,13 @@ export interface RunSwarmOptions {
    * post-run. Best-effort: a throwing callback never breaks the swarm.
    */
   onLane?: (progress: SwarmLaneProgress) => void;
+  /**
+   * Max attempts per lane (default 1 = no retry). The grader/rubric "re-dispatch"
+   * pattern: a lane whose runner THROWS (a transient model/network error, a
+   * flaky tool) is retried up to this many times in its own worktree before it
+   * is marked failed. A lane that succeeds is never retried.
+   */
+  maxAttempts?: number;
 }
 
 /** Fires a lane-progress callback, swallowing any error (never breaks the swarm). */
@@ -160,27 +167,34 @@ export async function runSwarm<T>(
 
   try {
     // 2. RUN (parallel — the slow agent work, bounded by maxConcurrency).
+    const maxAttempts = Math.max(1, options.maxAttempts ?? 1);
     const runResults = await pool(
       setups.map((setup) => async (): Promise<{ failed: boolean; error?: string; result?: T }> => {
-        emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'started' });
-        try {
-          const result = await runner({
-            lane: setup.lane,
-            worktreePath: setup.worktreePath,
-            branch: setup.branch,
-            index: setup.index,
-          });
-          emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled' });
-          return { failed: false, result };
-        } catch (error) {
-          emitLane(options.onLane, {
-            index: setup.index,
-            id: setup.lane.id,
-            phase: 'settled',
-            failed: true,
-          });
-          return { failed: true, error: error instanceof Error ? error.message : String(error) };
+        let lastError = '';
+        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'started' });
+          try {
+            const result = await runner({
+              lane: setup.lane,
+              worktreePath: setup.worktreePath,
+              branch: setup.branch,
+              index: setup.index,
+            });
+            emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled' });
+            return { failed: false, result };
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : String(error);
+            // Re-dispatch on a non-final attempt; the worktree persists so the
+            // retry runs against the lane's own isolated tree.
+          }
         }
+        emitLane(options.onLane, {
+          index: setup.index,
+          id: setup.lane.id,
+          phase: 'settled',
+          failed: true,
+        });
+        return { failed: true, error: lastError };
       }),
       options.maxConcurrency ?? setups.length,
     );
