@@ -1,7 +1,28 @@
+import { existsSync, readFileSync } from 'node:fs';
 import * as os from 'node:os';
+import { join } from 'node:path';
 import type { Locale, Translator } from '@excalibur/shared';
+import { parse as parseYaml } from 'yaml';
 import { buildCliTranslator, detectCliLocale } from './i18n';
 import { Ui, createUi } from './ui';
+
+/**
+ * Best-effort read of `.excalibur/config.yaml`'s `language` field, so a repo can
+ * pin the chrome locale (e.g. `language: es`) without an env var. Never throws —
+ * a missing/invalid config just falls through to env-based detection.
+ */
+function readConfigLanguage(cwd: string): string | undefined {
+  try {
+    const path = join(cwd, '.excalibur', 'config.yaml');
+    if (!existsSync(path)) {
+      return undefined;
+    }
+    const parsed = parseYaml(readFileSync(path, 'utf8')) as { language?: unknown } | null;
+    return typeof parsed?.language === 'string' ? parsed.language : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Injectable CLI dependencies. Commands never read process state directly:
@@ -30,12 +51,14 @@ export interface CliDeps {
 
 export function defaultDeps(overrides: Partial<CliDeps> = {}): CliDeps {
   const env = overrides.env ?? process.env;
-  // Env-based locale auto-detection; a repo's config `language` refines this for
-  // surfaces that load config (the interactive session rebuilds its translator).
-  const locale = overrides.locale ?? detectCliLocale(env);
+  const cwd = overrides.cwd ?? ((): string => process.cwd());
+  // Locale precedence (plan §"Idioma"): EXCALIBUR_LANG > repo config `language`
+  // > OS LC_*/LANG > en. The repo's config.yaml is read best-effort so a project
+  // can pin its locale without an env var.
+  const locale = overrides.locale ?? detectCliLocale(env, readConfigLanguage(cwd()));
   return {
     ui: overrides.ui ?? createUi(),
-    cwd: overrides.cwd ?? ((): string => process.cwd()),
+    cwd,
     homeDir: overrides.homeDir ?? ((): string => os.homedir()),
     env,
     includeUserGlobal: overrides.includeUserGlobal ?? true,
