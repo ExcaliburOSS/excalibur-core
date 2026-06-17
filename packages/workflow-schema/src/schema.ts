@@ -36,8 +36,14 @@ export interface WorkflowPhase {
   required?: boolean;
   /** Declarative sugar: `optional: true` is normalized to `required: false`. */
   optional?: boolean;
-  /** Number of agents working the phase (agent_work phases). */
-  agents?: number;
+  /**
+   * Swarm sizing for the phase: `'auto'` (default when absent) lets
+   * `planAgentAllocation` size it; a number is an explicit override/cap. The
+   * developer never has to fix the count.
+   */
+  agents?: 'auto' | number;
+  /** Fan-out/fan-in for agent_work phases (`'sequential'` default). */
+  parallelism?: 'sequential' | 'parallel';
   /** Whether the phase should run in an isolated branch/worktree. */
   worktree?: boolean;
   modifiesFiles?: boolean;
@@ -60,7 +66,13 @@ const workflowPhaseObjectSchema = z.object({
   role: agentRoleSchema.optional(),
   required: z.boolean().optional(),
   optional: z.boolean().optional(),
-  agents: z.number().int().min(1).optional(),
+  // Swarm sizing: the developer never fixes the count — `'auto'` (the default
+  // when absent) lets `planAgentAllocation` size the swarm; a number is an
+  // explicit override/cap (plan §"Asignación automática de agentes").
+  agents: z.union([z.literal('auto'), z.number().int().min(1)]).optional(),
+  // Fan-out/fan-in for agent_work phases: `parallel` runs the sized swarm in
+  // isolated worktrees and merges; `sequential` (default) runs one at a time.
+  parallelism: z.enum(['sequential', 'parallel']).optional(),
   worktree: z.boolean().optional(),
   modifiesFiles: z.boolean().optional(),
   commands: z.array(z.string().min(1)).optional(),

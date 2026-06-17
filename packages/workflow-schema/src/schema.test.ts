@@ -33,6 +33,19 @@ describe('workflowPhaseSchema', () => {
     expect(phase.optional).toBe(true);
   });
 
+  it("accepts agents: 'auto' (swarm auto-sizing) and a numeric override + parallelism", () => {
+    const auto = workflowPhaseSchema.parse({ ...minimalPhase, agents: 'auto', parallelism: 'parallel' });
+    expect(auto.agents).toBe('auto');
+    expect(auto.parallelism).toBe('parallel');
+    const capped = workflowPhaseSchema.parse({ ...minimalPhase, agents: 3 });
+    expect(capped.agents).toBe(3);
+  });
+
+  it('rejects agents: 0 and an unknown parallelism', () => {
+    expect(() => workflowPhaseSchema.parse({ ...minimalPhase, agents: 0 })).toThrow();
+    expect(() => workflowPhaseSchema.parse({ ...minimalPhase, parallelism: 'concurrent' })).toThrow();
+  });
+
   it('keeps an explicit required: false', () => {
     const phase = workflowPhaseSchema.parse({ ...minimalPhase, required: false });
     expect(phase.required).toBe(false);
