@@ -53,6 +53,15 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
     expect(html).toContain('EXCALIBUR');
     expect(html).toContain('/api/runs'); // the embedded client calls the API
     expect(html).toContain('/api/insights');
+    // Stored-XSS guard: untrusted fields (run titles, agent event text) MUST be
+    // escaped before innerHTML, and a CSP limits exfiltration as defense-in-depth.
+    expect(html).toContain('const esc=');
+    expect(html).toContain('esc(record.title)');
+    expect(html).toContain('esc(e.text');
+    expect(html).toContain('esc(r.workflow)');
+    expect(html).toContain('Content-Security-Policy');
+    // No raw (unescaped) interpolation of the untrusted run title remains.
+    expect(html).not.toContain("'<p class=title>'+record.title");
     // The dashboard is behind the token too.
     expect((await fetch(`${base}/`)).status).toBe(401);
   });

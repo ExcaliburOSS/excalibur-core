@@ -41,6 +41,10 @@ tr.run.sel{background:#0f1622;outline:1px solid var(--accent)}
 const SCRIPT = `
 const tok=new URLSearchParams(location.search).get('token')||'';
 const q=p=>p+(p.includes('?')?'&':'?')+'token='+encodeURIComponent(tok);
+// Escape EVERY interpolated value before it reaches innerHTML — run titles and
+// agent-emitted event text (file paths, shell commands) are untrusted and
+// persist to disk; without this they'd execute in this token-holding origin.
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const cents=c=>'$'+((c||0)/100).toFixed(2);
 const toks=n=>n<1000?n+'':n<1e6?(n/1e3).toFixed(1)+'k':(n/1e6).toFixed(1)+'M';
 async function j(p){const r=await fetch(q(p));if(!r.ok)throw new Error(r.status+' '+p);return r.json()}
@@ -55,21 +59,21 @@ async function load(){
   const {runs}=await j('/api/runs');
   if(!runs.length){document.getElementById('runs').innerHTML='<p class=empty>No runs yet. Try: excalibur run "…"</p>';return}
   document.getElementById('runs').innerHTML='<table><thead><tr><th>run</th><th>status</th><th>workflow</th><th>model</th></tr></thead><tbody>'+
-   runs.slice().reverse().map(r=>'<tr class=run data-id="'+r.id+'"><td>'+r.id.replace('run_','')+'</td><td class="'+r.status+'"><span class=dot></span>'+r.status+'</td><td>'+r.workflow+'</td><td>'+(r.model||'—')+'</td></tr>').join('')+'</tbody></table>';
-  document.querySelectorAll('tr.run').forEach(tr=>tr.onclick=()=>{document.querySelectorAll('tr.run').forEach(x=>x.classList.remove('sel'));tr.classList.add('sel');detail(tr.dataset.id)});
+   runs.slice().reverse().map(r=>'<tr class=run data-id="'+esc(r.id)+'"><td>'+esc(String(r.id).replace('run_',''))+'</td><td class="'+esc(r.status)+'"><span class=dot></span>'+esc(r.status)+'</td><td>'+esc(r.workflow)+'</td><td>'+esc(r.model||'—')+'</td></tr>').join('')+'</tbody></table>';
+  document.querySelectorAll('tr.run').forEach(tr=>tr.onclick=()=>{document.querySelectorAll('tr.run').forEach(x=>x.classList.remove('sel'));tr.classList.add('sel');detail(tr.getAttribute('data-id'))});
   detail(runs[runs.length-1].id);
  }catch(e){document.getElementById('runs').innerHTML='<p class=err>'+e.message+' — is the token right?</p>'}
 }
 async function detail(id){
  try{
-  const {record,rail}=await j('/api/runs/'+id);
+  const {record,rail}=await j('/api/runs/'+encodeURIComponent(id));
   const s=rail.status||{};
-  let h='<p class=title>'+record.title+'</p><p class=sub>'+id+' · '+cents(s.costCents)+' · '+toks(s.inputTokens||0)+'↑ '+toks(s.outputTokens||0)+'↓ · '+(rail.errored?'<span class=failed>errored</span>':record.status)+'</p>';
+  let h='<p class=title>'+esc(record.title)+'</p><p class=sub>'+esc(id)+' · '+cents(s.costCents)+' · '+toks(s.inputTokens||0)+'↑ '+toks(s.outputTokens||0)+'↓ · '+(rail.errored?'<span class=failed>errored</span>':esc(record.status))+'</p>';
   h+=(rail.phases||[]).map(p=>{
    const ms=p.durationMs!=null?' · '+(p.durationMs/1000).toFixed(1)+'s':'';
    const cc=p.costCents!=null?' · '+cents(p.costCents):'';
-   const evs=(p.events||[]).map(e=>'<div class=ev>'+(e.text||'')+(e.note?' '+e.note:'')+'</div>').join('');
-   return '<div class="phase '+p.state+'"><div class=nm>'+p.name+'</div><div class=meta>'+p.state+ms+cc+'</div>'+evs+'</div>';
+   const evs=(p.events||[]).map(e=>'<div class=ev>'+esc(e.text||'')+(e.note?' '+esc(e.note):'')+'</div>').join('');
+   return '<div class="phase '+esc(p.state)+'"><div class=nm>'+esc(p.name)+'</div><div class=meta>'+esc(p.state)+ms+cc+'</div>'+evs+'</div>';
   }).join('')||'<p class=empty>No phases recorded.</p>';
   document.getElementById('detail').innerHTML=h;
  }catch(e){document.getElementById('detail').innerHTML='<p class=err>'+e.message+'</p>'}
@@ -81,6 +85,7 @@ load();setInterval(load,4000);
 export function dashboardHtml(): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self'">
 <title>Excalibur</title><style>${STYLE}</style></head>
 <body>
 <header><h1><span class="sw">▌</span> EXCALIBUR</h1><span class="sub">local run dashboard · read-only</span></header>
