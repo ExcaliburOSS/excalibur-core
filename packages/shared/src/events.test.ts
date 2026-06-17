@@ -5,6 +5,7 @@ import {
   excaliburEventTypeSchema,
   parseEventsJsonl,
   serializeEventLine,
+  verificationPayloadSchema,
   type ExcaliburEvent,
 } from './events';
 
@@ -39,14 +40,48 @@ describe('createEvent', () => {
     expect(attributed.sessionId).toBe('sess_1');
   });
 
-  it('supports all 25 pinned event types', () => {
-    expect(excaliburEventTypeSchema.options).toHaveLength(25);
+  it('supports all 26 pinned event types', () => {
+    expect(excaliburEventTypeSchema.options).toHaveLength(26);
     expect(excaliburEventTypeSchema.options).toContain('compaction'); // the 24th (context compaction)
     expect(excaliburEventTypeSchema.options).toContain('task_update'); // the 25th (in-session checklist)
+    expect(excaliburEventTypeSchema.options).toContain('verification'); // the 26th (mesh verdict)
     for (const type of excaliburEventTypeSchema.options) {
       const event = createEvent({ runId: 'run_1', type, payload: {} });
       expect(excaliburEventSchema.safeParse(event).success).toBe(true);
     }
+  });
+});
+
+describe('verificationPayloadSchema', () => {
+  it('validates a blocked Verification Mesh verdict with issues', () => {
+    const parsed = verificationPayloadSchema.safeParse({
+      blocked: true,
+      lenses: ['correctness', 'security'],
+      summary: 'Verification mesh (2 lens) — 1 high (BLOCKING).',
+      issues: [
+        { lens: 'security', severity: 'high', file: 'src/a.ts', problem: 'eval', fix: 'parse' },
+      ],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('accepts a clean verdict (no issues) and rejects a bad severity', () => {
+    expect(
+      verificationPayloadSchema.safeParse({
+        blocked: false,
+        lenses: ['correctness'],
+        summary: 'clean',
+        issues: [],
+      }).success,
+    ).toBe(true);
+    expect(
+      verificationPayloadSchema.safeParse({
+        blocked: false,
+        lenses: [],
+        summary: 'x',
+        issues: [{ lens: 'correctness', severity: 'critical', problem: 'p' }],
+      }).success,
+    ).toBe(false);
   });
 });
 

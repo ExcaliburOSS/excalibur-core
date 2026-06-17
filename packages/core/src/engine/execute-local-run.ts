@@ -596,12 +596,15 @@ class LocalRunExecution {
         'verification.md',
         meshMarkdown(this.run.id, result),
       );
-      if (result.blocked) {
-        this.emit('error', { message: result.summary, code: 'verification_blocked' });
-        return true;
-      }
-      this.emit('test_result', { status: 'passed', verification: true, lenses: result.lensesRun });
-      return false;
+      // First-class `verification` event (#26): replayable/forkable/auditable
+      // verdict; Enterprise maps it to its own audit type. blocked === gated.
+      this.emit('verification', {
+        blocked: result.blocked,
+        lenses: result.lensesRun,
+        issues: result.issues,
+        summary: result.summary,
+      });
+      return result.blocked;
     } catch {
       // Mesh/model failure → we could not verify; never block on that.
       return false;

@@ -256,6 +256,13 @@ export class ActionRenderer {
       case 'error':
         this.closeWithResult(`    ${this.c(this.g('⎿', 'L'), this.palette.danger)} ${this.c(this.t('action-render.error', { message: s(event, 'message') }), this.palette.danger)}`);
         return;
+      case 'verification': {
+        this.dropNarration();
+        const blocked = event.payload['blocked'] === true;
+        const hex = blocked ? this.palette.danger : this.palette.success;
+        this.ui.write(`  ${this.c(this.g('⚖', '!'), hex)} ${this.c(s(event, 'summary'), hex)}`.trimEnd());
+        return;
+      }
       default:
         return; // run_started/completed, phase_completed, *_selected → not actions
     }

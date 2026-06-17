@@ -37,6 +37,7 @@ export const excaliburEventTypeSchema = z.enum([
   'artifact_created',
   'compaction',
   'task_update',
+  'verification',
 ]);
 export type ExcaliburEventType = z.infer<typeof excaliburEventTypeSchema>;
 
@@ -68,6 +69,31 @@ export type TaskItem = z.infer<typeof taskItemSchema>;
  */
 export const taskUpdatePayloadSchema = z.object({ tasks: z.array(taskItemSchema) });
 export type TaskUpdatePayload = z.infer<typeof taskUpdatePayloadSchema>;
+
+/** A single adversarial finding within a `verification` event. */
+export const verificationIssueSchema = z.object({
+  lens: z.string(),
+  severity: z.enum(['high', 'medium', 'low']),
+  file: z.string().optional(),
+  problem: z.string(),
+  fix: z.string().optional(),
+});
+export type VerificationIssue = z.infer<typeof verificationIssueSchema>;
+
+/**
+ * Payload of a `verification` event (event #26): the verdict of the adversarial
+ * Verification Mesh over a run's diff. A first-class event (not overloaded onto
+ * `error`/`test_result`) so the verdict is replayable, forkable and auditable,
+ * and Enterprise can map it to its own audit type. `blocked: true` means a
+ * surviving HIGH-severity issue gated the run from `completed` (→ needs-fix).
+ */
+export const verificationPayloadSchema = z.object({
+  blocked: z.boolean(),
+  lenses: z.array(z.string()),
+  issues: z.array(verificationIssueSchema),
+  summary: z.string(),
+});
+export type VerificationPayload = z.infer<typeof verificationPayloadSchema>;
 
 export interface CreateEventInput {
   runId: string | null;

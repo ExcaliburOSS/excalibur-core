@@ -139,6 +139,10 @@ export function describeEvent(t: Translator, event: ExcaliburEvent): string | nu
       return pc.dim(t('event.artifact-created', { name: str('fileName') || str('path') }));
     case 'error':
       return pc.red(t('event.error', { message: str('message') }));
+    case 'verification':
+      return payload['blocked'] === true
+        ? pc.red(t('event.verification-blocked', { summary: str('summary') }))
+        : pc.green(t('event.verification-passed', { summary: str('summary') }));
     case 'run_completed':
       return pc.bold(t('event.run-completed', { status: str('status') || 'completed' }));
     default:

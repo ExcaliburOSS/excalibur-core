@@ -592,6 +592,8 @@ export const ES: Catalog = {
   "event.approval-rejected": "  aprobación rechazada",
   "event.artifact-created": "  artefacto: {name}",
   "event.error": "  error: {message}",
+  "event.verification-passed": "  ⚖ verificación: {summary}",
+  "event.verification-blocked": "  ⚖ verificación BLOQUEADA: {summary}",
   "event.run-completed": "■ ejecución completada ({status})",
   "event.unknown": "  {type}",
   "event.simulated": " (simulado)",

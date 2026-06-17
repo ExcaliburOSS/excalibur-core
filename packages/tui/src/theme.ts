@@ -242,6 +242,7 @@ const unicodeEventGlyph: Record<PhaseEventKind, string> = {
   patch: '±',
   branch: '⎇',
   compaction: '≡',
+  verification: '⚖',
   error: '✗',
 };
 
@@ -255,6 +256,7 @@ const asciiEventGlyph: Record<PhaseEventKind, string> = {
   patch: '%',
   branch: 'Y',
   compaction: '#',
+  verification: '!',
   error: 'x',
 };
 

@@ -128,6 +128,34 @@ describe('reduceRail', () => {
     expect(rail.phases[0]?.events?.[0]?.text).toContain('TS2345');
   });
 
+  it('folds a blocked verification verdict into errored + a warn node', () => {
+    const blocked = reduceRail([
+      ev('phase_started', { name: 'Review' }, 'p1'),
+      ev('phase_completed', {}, 'p1'),
+      ev(
+        'verification',
+        { blocked: true, lenses: ['correctness'], summary: '1 high (BLOCKING).', issues: [] },
+        'p1',
+      ),
+      ev('run_completed', { status: 'failed' }),
+    ]);
+    expect(blocked.errored).toBe(true);
+    const node = blocked.phases[0]?.events?.find((e) => e.kind === 'verification');
+    expect(node?.tone).toBe('warn');
+    expect(node?.text).toContain('BLOCKING');
+  });
+
+  it('a clean verification verdict does NOT error the run (success node)', () => {
+    const passed = reduceRail([
+      ev('phase_started', { name: 'Review' }, 'p1'),
+      ev('verification', { blocked: false, lenses: ['correctness'], summary: 'clean.', issues: [] }, 'p1'),
+      ev('run_completed', { status: 'completed' }),
+    ]);
+    expect(passed.errored).toBe(false);
+    const node = passed.phases[0]?.events?.find((e) => e.kind === 'verification');
+    expect(node?.tone).toBe('success');
+  });
+
   it('a PREFIX of the stream reduces to a consistent in-progress rail (scrub = live)', () => {
     const full = [
       ev('run_started', { title: 't' }),

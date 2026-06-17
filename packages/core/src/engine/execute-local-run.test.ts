@@ -353,11 +353,11 @@ describe('executeLocalRun', () => {
     // The gate flips a would-be `completed` run to `failed` (needs-fix).
     expect(record.status).toBe('failed');
     const events = runManager.readEvents(run.id);
-    const blocked = events.find(
-      (event) => event.type === 'error' && event.payload['code'] === 'verification_blocked',
-    );
-    expect(blocked).toBeDefined();
-    expect(String(blocked?.payload['message'])).toContain('BLOCKING');
+    const verdict = events.find((event) => event.type === 'verification');
+    expect(verdict).toBeDefined();
+    expect(verdict?.payload['blocked']).toBe(true);
+    expect(String(verdict?.payload['summary'])).toContain('BLOCKING');
+    expect(Array.isArray(verdict?.payload['issues'])).toBe(true);
 
     // The verdict is persisted as a replayable/auditable artifact.
     const verification = readFileSync(join(run.dir, 'verification.md'), 'utf8');

@@ -188,6 +188,18 @@ export function reduceRail(
         });
         break;
       }
+      case 'verification': {
+        // The adversarial mesh verdict. A blocked verdict gated the run, so the
+        // whole run reads as errored even though every phase finished cleanly.
+        const blocked = p['blocked'] === true;
+        if (blocked) errored = true;
+        pushEvent(phaseFor(event), {
+          text: str(p, 'summary') || (blocked ? 'verification blocked' : 'verification passed'),
+          tone: blocked ? 'warn' : 'success',
+          kind: 'verification',
+        });
+        break;
+      }
       case 'model_call': {
         const c = p['costCents'];
         if (typeof c === 'number') {
