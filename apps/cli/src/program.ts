@@ -11,6 +11,7 @@ import { registerExplainCommand } from './commands/explain';
 import { registerExtensionsCommand } from './commands/extensions';
 import { registerInitCommand } from './commands/init';
 import { registerInstructionsCommand } from './commands/instructions';
+import { registerInsightsCommand } from './commands/insights';
 import { registerLoginCommands } from './commands/login';
 import { registerLogsCommand } from './commands/logs';
 import { registerMethodologiesCommand } from './commands/methodologies';
@@ -63,6 +64,7 @@ export function buildProgram(overrides: Partial<CliDeps> = {}): Command {
   registerSwarmCommand(program, deps);
   registerStatusCommand(program, deps);
   registerLogsCommand(program, deps);
+  registerInsightsCommand(program, deps);
   registerReplayCommand(program, deps);
   registerChangesCommand(program, deps);
   registerThemeCommand(program, deps);

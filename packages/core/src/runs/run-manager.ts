@@ -140,6 +140,26 @@ export class RunManager {
     return content === null ? [] : parseEventsJsonl(content);
   }
 
+  /** Parsed `model-calls.jsonl` lines (cost/token ledger). Tolerant: skips bad lines. */
+  readModelCalls(runId: string): ModelCallLine[] {
+    const dir = this.dirFor(runId);
+    const content = readTextIfExists(join(dir, MODEL_CALLS_FILE));
+    if (content === null) {
+      return [];
+    }
+    const calls: ModelCallLine[] = [];
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (trimmed.length === 0) continue;
+      try {
+        calls.push(JSON.parse(trimmed) as ModelCallLine);
+      } catch {
+        // tolerant: a truncated last line never breaks insights
+      }
+    }
+    return calls;
+  }
+
   // --- internals -------------------------------------------------------------
 
   private dirFor(runId: string): string {

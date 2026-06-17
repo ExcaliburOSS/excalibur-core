@@ -94,6 +94,17 @@ export {
 // Runs
 export { RunManager, type CreateRunInput, type ModelCallLine } from './runs/run-manager';
 
+// Insights (cross-run lens — plan P2.5)
+export {
+  aggregateInsights,
+  collectInsights,
+  type RunInsight,
+  type InsightsReport,
+  type CountCost,
+  type DayBucket,
+  type CollectInsightsOptions,
+} from './insights/insights';
+
 // Turn receipt (post-turn summary derived from the event stream)
 export {
   buildTurnSummary,

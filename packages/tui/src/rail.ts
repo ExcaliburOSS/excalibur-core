@@ -35,6 +35,8 @@ export {
 } from './rail-lanes.js';
 export {
   detectThemeSync,
+  formatCents,
+  formatTokens,
   getColors,
   paletteFor,
   THEME_NAMES,
