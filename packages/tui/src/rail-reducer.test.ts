@@ -75,6 +75,17 @@ describe('reduceRail', () => {
     expect(approved.approval).toBeUndefined();
   });
 
+  it('folds a patch_generated diff into a diffstat note on the patch node', () => {
+    const diff = `diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1,2 @@\n-x\n+y\n+z\n`;
+    const rail = reduceRail([
+      ev('phase_started', { name: 'Patch' }, 'p1'),
+      ev('patch_generated', { diff }, 'p1'),
+    ]);
+    const patchEvent = rail.phases[0]?.events?.[0];
+    expect(patchEvent?.kind).toBe('patch');
+    expect(patchEvent?.note).toBe('+2 −1 · 1 file');
+  });
+
   it('marks the phase failed + errored on an error event', () => {
     const rail = reduceRail([
       ev('phase_started', { name: 'Verify' }, 'p1'),

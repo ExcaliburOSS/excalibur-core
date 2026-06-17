@@ -14,6 +14,7 @@ export {
   type RenderPlanCardOptions,
 } from './rail-plan.js';
 export { detectColorTier, paint, stripAnsi, type ColorTier } from './color.js';
+export { parseDiffStat, formatDiffStat, type DiffStat } from './diff-stat.js';
 export { detectThemeSync, type ThemeMode } from './theme.js';
 export type {
   ApprovalPrompt,

@@ -1,4 +1,5 @@
 import type { ExcaliburEvent } from '@excalibur/shared';
+import { formatDiffStat, parseDiffStat } from './diff-stat.js';
 import type { ApprovalPrompt, Phase, PhaseEvent, RailModel, RunStatus } from './rail-types.js';
 
 /**
@@ -43,8 +44,15 @@ function railEventFor(event: ExcaliburEvent): PhaseEvent | null {
     }
     case 'test_result':
       return { text: `tests ${str(p, 'status') || 'passed'}`, tone: 'success', kind: 'test' };
-    case 'patch_generated':
-      return { text: 'patch generated', tone: 'warn', kind: 'patch' };
+    case 'patch_generated': {
+      const note = formatDiffStat(parseDiffStat(str(p, 'diff')));
+      return {
+        text: 'patch generated',
+        tone: 'warn',
+        kind: 'patch',
+        ...(note.length > 0 ? { note } : {}),
+      };
+    }
     case 'patch_applied':
       return { text: 'patch applied', tone: 'warn', kind: 'patch' };
     case 'branch_created':
