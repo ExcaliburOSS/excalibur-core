@@ -65,6 +65,7 @@ export {
   type SwarmConflict,
   type SwarmLane,
   type SwarmLaneContext,
+  type SwarmLaneProgress,
   type SwarmLaneResult,
   type SwarmLaneRunner,
   type SwarmResult,

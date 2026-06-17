@@ -1,5 +1,10 @@
 import { NativeAgentAdapter } from '@excalibur/agent-runtime';
-import { runSwarm, type Subtask, type SwarmResult } from '@excalibur/core';
+import {
+  runSwarm,
+  type Subtask,
+  type SwarmLaneProgress,
+  type SwarmResult,
+} from '@excalibur/core';
 import type { GatewayChatInput, ModelGateway } from '@excalibur/model-gateway';
 import type { ExcaliburConfig, ExcaliburEvent } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
@@ -101,11 +106,17 @@ export function executeSwarm(
   repoRoot: string,
   subtasks: ReadonlyArray<SwarmSubtask>,
   context: { gateway: ModelGateway; config: ExcaliburConfig; autonomyAutoApprove: boolean },
-  options: { maxConcurrency?: number; signal?: AbortSignal } = {},
+  options: {
+    maxConcurrency?: number;
+    signal?: AbortSignal;
+    onLane?: (progress: SwarmLaneProgress) => void;
+  } = {},
 ): Promise<SwarmResult<SwarmLaneSummary>> {
   const byId = new Map(subtasks.map((s) => [s.id, s]));
-  const swarmOptions =
-    options.maxConcurrency !== undefined ? { maxConcurrency: options.maxConcurrency } : {};
+  const swarmOptions = {
+    ...(options.maxConcurrency !== undefined ? { maxConcurrency: options.maxConcurrency } : {}),
+    ...(options.onLane !== undefined ? { onLane: options.onLane } : {}),
+  };
   return runSwarm(
     repoRoot,
     subtasks.map((s) => ({ id: s.id, instruction: s.instruction })),

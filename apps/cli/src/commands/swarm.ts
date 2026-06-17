@@ -1,7 +1,13 @@
-import { applyPatch, getGitInfo, planAgentAllocation } from '@excalibur/core';
+import {
+  applyPatch,
+  getGitInfo,
+  planAgentAllocation,
+  type SwarmLaneProgress,
+} from '@excalibur/core';
 import {
   detectColorTier,
   detectThemeSync,
+  paletteFor,
   parseDiffStat,
   renderLanes,
   type LaneModel,
@@ -10,6 +16,7 @@ import type { Command } from 'commander';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
 import { loadConfigContext, loadGatewayContext, requireConfiguredModel } from '../lib/context';
+import { LiveLanes } from '../lib/live-lanes';
 import { asAllocationSubtasks, decomposeTask, executeSwarm } from '../lib/swarm';
 
 /**
@@ -74,11 +81,33 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
       }
 
       deps.ui.info(deps.t('swarm.running'));
+      const tier = detectColorTier();
+      const mode = detectThemeSync() ?? 'dark';
+      const palette = paletteFor(config.ui?.theme ?? 'auto', mode);
+      const railLabels = {
+        swarm: deps.t('rail.swarm'),
+        lanes: deps.t('rail.lanes'),
+        merge: deps.t('rail.merge'),
+        applied: deps.t('rail.applied'),
+        conflict: deps.t('rail.conflict'),
+      };
+      // LIVE: each lane lights up empty → running → done/failed as its agent works
+      // (flicker-free, parallel). On a non-TTY we skip it and just print the final
+      // panel (scriptable).
+      const live = deps.ui.isOutputTty()
+        ? new LiveLanes(
+            { writeRaw: (t) => deps.ui.writeRaw(t) },
+            { tier, mode, palette, labels: railLabels, lanes: lanes.map((s) => ({ id: s.id, title: s.title })) },
+          )
+        : null;
+      live?.start();
       const result = await executeSwarm(deps, repoRoot, lanes, {
         gateway: gateway.gateway,
         config,
         autonomyAutoApprove: true, // a parallel batch can't prompt per-lane
+        ...(live !== null ? { onLane: (p: SwarmLaneProgress) => live.update(p) } : {}),
       });
+      live?.finish(); // erase the live panel; the final detailed panel prints below
 
       // The SWARM LANES panel: concurrent sub-rails branching off the swarm node
       // and converging on a fan-in merge node — the visual payoff of the
@@ -113,17 +142,7 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
       deps.ui.write();
       for (const line of renderLanes(
         { lanes: laneModels, applied, conflicts: result.conflicts.length },
-        {
-          tier: detectColorTier(),
-          mode: detectThemeSync() ?? 'dark',
-          labels: {
-            swarm: deps.t('rail.swarm'),
-            lanes: deps.t('rail.lanes'),
-            merge: deps.t('rail.merge'),
-            applied: deps.t('rail.applied'),
-            conflict: deps.t('rail.conflict'),
-          },
-        },
+        { tier, mode, palette, labels: railLabels },
       )) {
         deps.ui.write(line);
       }

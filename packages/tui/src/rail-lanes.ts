@@ -37,6 +37,8 @@ export interface LanesModel {
 export interface RenderLanesOptions {
   tier?: ColorTier;
   mode?: ThemeMode;
+  /** Explicit palette (a named theme preset); wins over `mode` when provided. */
+  palette?: Palette;
   /** Lane title column width (default 22). */
   titleWidth?: number;
   /**
@@ -68,7 +70,7 @@ function formatCost(costCents: number | null | undefined): string {
 /** Renders the swarm lanes panel to text lines. */
 export function renderLanes(model: LanesModel, options: RenderLanesOptions = {}): string[] {
   const tier: ColorTier = options.tier ?? 'none';
-  const palette = getColors(options.mode ?? 'dark');
+  const palette = options.palette ?? getColors(options.mode ?? 'dark');
   const titleWidth = options.titleWidth ?? 22;
   const c = (text: string, hex: string): string =>
     tier === 'none' ? text : paint(text, hex, tier);
