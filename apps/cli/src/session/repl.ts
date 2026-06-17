@@ -152,8 +152,10 @@ export async function runInteractiveSession(
     session = store.getSession(options.resume);
     if (session.metadata.repoRoot !== repoRoot) {
       throw new CliUsageError(
-        `Session ${session.id} belongs to ${session.metadata.repoRoot}, not this repository. ` +
-          'Start a new session here, or resume it from its own repo.',
+        deps.t('repl.resume-wrong-repo', {
+          id: session.id,
+          repoRoot: session.metadata.repoRoot,
+        }),
       );
     }
     replayTranscript(deps, store, session);
@@ -221,7 +223,7 @@ export async function runInteractiveSession(
     inFlight.abort();
     endTurn();
     deps.ui.write();
-    deps.ui.info('Cancelled. Back to the prompt.');
+    deps.ui.info(deps.t('repl.cancelled-back-to-prompt'));
     return true;
   };
 
@@ -234,7 +236,7 @@ export async function runInteractiveSession(
     } else {
       sawSigintAtPrompt = true;
       deps.ui.write();
-      deps.ui.info('Press Ctrl-C again to exit.');
+      deps.ui.info(deps.t('repl.ctrl-c-again'));
     }
   });
   // ESC (raw editor only; a no-op on the line editor) cancels an in-flight turn.
@@ -377,7 +379,10 @@ export async function runInteractiveSession(
       let asGoal = false;
       if (goalIntent.isGoal) {
         asGoal = await deps.ui.confirm(
-          `That reads as a goal to complete ("${goalIntent.signal}…"). Pursue it across turns until an evaluator says it's done (max ${GOAL_MAX_ITERATIONS})?`,
+          deps.t('repl.goal-offer', {
+            signal: goalIntent.signal,
+            max: GOAL_MAX_ITERATIONS,
+          }),
           { defaultYes: true },
         );
       }
@@ -558,7 +563,7 @@ async function recordAssistantTurn(
 function handleRememberCommand(deps: CliDeps, runtime: SessionRuntime, text: string): void {
   const statement = text.trim();
   if (statement.length === 0) {
-    deps.ui.warn('Usage: /remember <a decision, rejection, risk or convention to remember>');
+    deps.ui.warn(deps.t('repl.remember-usage'));
     return;
   }
   const subjectPaths = [...new Set(statement.match(/[\w.-]+(?:\/[\w.-]+)+/g) ?? [])];
@@ -569,12 +574,14 @@ function handleRememberCommand(deps: CliDeps, runtime: SessionRuntime, text: str
       subjectPaths,
       sourceRunId: runtime.session.id,
     });
-    deps.ui.success(
-      `Remembered (${node.type}${subjectPaths.length > 0 ? ` · ${subjectPaths.join(', ')}` : ''}). ` +
-        'Future runs touching these paths will be primed with it.',
-    );
+    const detail = `${node.type}${subjectPaths.length > 0 ? ` · ${subjectPaths.join(', ')}` : ''}`;
+    deps.ui.success(deps.t('repl.remember-saved', { detail }));
   } catch (error) {
-    deps.ui.warn(`Could not save memory: ${error instanceof Error ? error.message : String(error)}`);
+    deps.ui.warn(
+      deps.t('repl.remember-failed', {
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+    );
   }
 }
 
@@ -679,20 +686,32 @@ async function runCompaction(
     }
     if (record === null) {
       if (opts.manual) {
-        deps.ui.info('Nothing to compact yet — the recent context already fits.');
+        deps.ui.info(deps.t('repl.compact-nothing'));
       }
       return;
     }
     runtime.store.appendCompaction(runtime.session.id, record);
     const n = record.details.summarizedEntryIds.length;
-    const verb = opts.manual ? 'Compacted' : 'Auto-compacted';
     deps.ui.info(
-      `${verb} ${n} earlier turn(s) → summary · ${record.tokensBefore}→${record.tokensAfter} tokens. ` +
-        'Full detail stays in the run history.',
+      opts.manual
+        ? deps.t('repl.compacted-manual', {
+            n,
+            before: record.tokensBefore,
+            after: record.tokensAfter,
+          })
+        : deps.t('repl.compacted-auto', {
+            n,
+            before: record.tokensBefore,
+            after: record.tokensAfter,
+          }),
     );
   } catch (error) {
     if (opts.manual) {
-      deps.ui.warn(`Compaction failed: ${error instanceof Error ? error.message : String(error)}`);
+      deps.ui.warn(
+        deps.t('repl.compaction-failed', {
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      );
     }
   }
 }
@@ -757,7 +776,7 @@ async function handlePlanCommand(
   newController: () => AbortController,
 ): Promise<void> {
   if (task.trim().length === 0) {
-    deps.ui.warn('Usage: /plan <task>. Describe what you want planned.');
+    deps.ui.warn(deps.t('repl.plan-usage'));
     return;
   }
   const seed = sessionSeed(runtime); // prior context, before recording this turn
@@ -846,7 +865,7 @@ async function executeGoalLoop(
     ? runConfiguredTestsCheck(runtime.repoRoot, runtime.config.commands?.test, signal)
     : undefined;
   if (deterministicCheck !== undefined) {
-    deps.ui.info(`  goal · done-gate: \`${runtime.config.commands?.test ?? ''}\` must pass`);
+    deps.ui.info(deps.t('repl.goal-done-gate', { test: runtime.config.commands?.test ?? '' }));
   }
   const result = await runGoalLoop(agentTurnDeps(deps, runtime, signal), objective, {
     maxIterations: GOAL_MAX_ITERATIONS,
@@ -856,17 +875,25 @@ async function executeGoalLoop(
     ...(deterministicCheck !== undefined ? { deterministicCheck } : {}),
     onIteration: (n, verdict) =>
       deps.ui.info(
-        `  goal · iteration ${n}/${GOAL_MAX_ITERATIONS}: ${verdict.done ? 'DONE' : 'continue'} — ${verdict.reason}`,
+        deps.t('repl.goal-iteration', {
+          n,
+          max: GOAL_MAX_ITERATIONS,
+          status: verdict.done ? deps.t('repl.goal-done') : deps.t('repl.goal-continue'),
+          reason: verdict.reason,
+        }),
       ),
   });
   const summary =
     result.status === 'done'
-      ? `Goal achieved in ${result.iterations} iteration(s).`
+      ? deps.t('repl.goal-achieved', { iterations: result.iterations })
       : result.status === 'max-iterations'
-        ? `Stopped at the ${result.iterations}-iteration cap${result.lastReason ? ` — ${result.lastReason}` : ''}. Refine the goal, or run /goal again to continue.`
+        ? deps.t('repl.goal-max-iterations', {
+            iterations: result.iterations,
+            reason: result.lastReason ? ` — ${result.lastReason}` : '',
+          })
         : result.status === 'aborted'
-          ? `Goal loop cancelled after ${result.iterations} iteration(s).`
-          : `Goal loop stopped (evaluator unavailable) after ${result.iterations} iteration(s).`;
+          ? deps.t('repl.goal-cancelled', { iterations: result.iterations })
+          : deps.t('repl.goal-evaluator-unavailable', { iterations: result.iterations });
   deps.ui.info(summary);
   const last = result.results.at(-1);
   if (last !== undefined) {
@@ -888,9 +915,7 @@ async function handleGoalCommand(
 ): Promise<void> {
   const objective = goal.trim();
   if (objective.length === 0) {
-    deps.ui.warn(
-      'Usage: /goal <objective> — Excalibur works toward it across turns until an evaluator says it is done.',
-    );
+    deps.ui.warn(deps.t('repl.goal-usage'));
     return;
   }
   const seed = sessionSeed(runtime); // prior context, before recording this turn
@@ -958,9 +983,7 @@ async function handleLoopCommand(
 ): Promise<void> {
   const { everySeconds, times, prompt } = parseLoopArgs(argv);
   if (prompt.trim().length === 0) {
-    deps.ui.warn(
-      'Usage: /loop [--every <sec>] [--times <n>] <prompt> — re-runs it periodically until ESC.',
-    );
+    deps.ui.warn(deps.t('repl.loop-usage'));
     return;
   }
   const safe = redactSecrets(prompt);
@@ -970,9 +993,7 @@ async function handleLoopCommand(
     kind: 'message',
     text: `/loop ${safe}`,
   });
-  deps.ui.info(
-    `Looping every ${everySeconds}s, up to ${times}× — press ESC to stop. (recurrence, not completion)`,
-  );
+  deps.ui.info(deps.t('repl.loop-start', { every: everySeconds, times }));
 
   const ctrl = beginTurn();
   try {
@@ -981,7 +1002,7 @@ async function handleLoopCommand(
       times,
       signal: ctrl.signal,
       run: async (iteration) => {
-        deps.ui.info(`  loop · iteration ${iteration}/${times}`);
+        deps.ui.info(deps.t('repl.loop-iteration', { iteration, times }));
         const seed = sessionSeed(runtime); // each pass carries the (compacted) prior context
         const turnResult = await runAgentTurn(
           agentTurnDeps(deps, runtime, ctrl.signal),
@@ -993,8 +1014,8 @@ async function handleLoopCommand(
     });
     const summary =
       result.status === 'completed'
-        ? `Loop completed ${result.iterations} iteration(s).`
-        : `Loop cancelled after ${result.iterations} iteration(s).`;
+        ? deps.t('repl.loop-completed', { iterations: result.iterations })
+        : deps.t('repl.loop-cancelled', { iterations: result.iterations });
     deps.ui.info(summary);
     runtime.store.appendTurn(runtime.session.id, { role: 'system', kind: 'status', text: summary });
   } catch (error) {
@@ -1021,7 +1042,7 @@ async function runShellPassthrough(
   command: string,
 ): Promise<void> {
   if (command.length === 0) {
-    deps.ui.warn('Empty shell command.');
+    deps.ui.warn(deps.t('repl.shell-empty'));
     return;
   }
   deps.ui.write(pc.dim(`$ ${command}`));
@@ -1047,7 +1068,7 @@ async function runShellPassthrough(
     if (output.length > 0) {
       deps.ui.write(output.length > 4000 ? `${output.slice(0, 4000)}…` : output);
     }
-    deps.ui.warn(`Command failed (exit ${e.code ?? 1}).`);
+    deps.ui.warn(deps.t('repl.shell-failed', { code: e.code ?? 1 }));
     runtime.store.appendTurn(runtime.session.id, {
       role: 'system',
       kind: 'status',
@@ -1064,45 +1085,33 @@ function handleSlashCommand(
 ): 'exit' | 'continue' {
   switch (name) {
     case 'help':
-      deps.ui.write(pc.bold('Excalibur interactive session — commands'));
-      deps.ui.write('  /help          show this help');
-      deps.ui.write('  /plan <task>   plan first (read-only) → approve → execute');
-      deps.ui.write(
-        '  /goal <objective>  work toward it across turns until an evaluator says done',
-      );
-      deps.ui.write('  /loop [--every s] [--times n] <prompt>  re-run periodically until ESC');
-      deps.ui.write('  /discovery <idea>  clarify an ambiguous idea before building');
-      deps.ui.write(
-        '  /rewind [id]   rewind a run step-by-step (time-machine; defaults to latest) · Esc-Esc',
-      );
-      deps.ui.write(
-        '  /changes [id]  show the full changed-file list for a run (defaults to latest)',
-      );
-      deps.ui.write(
-        '  /fork <instr>  fork the latest run (reuse its cached context) and run <instr> live',
-      );
-      deps.ui.write('  /undo          revert the working tree by undoing the latest run (gated)');
-      deps.ui.write('  /compact       condense older turns into a summary (frees context)');
-      deps.ui.write('  /remember <x>  save a decision/risk/convention; future runs touching those paths are primed');
-      deps.ui.write('  /model         show the active provider/model');
-      deps.ui.write('  /clear         clear the screen (keeps the session)');
-      deps.ui.write('  /exit, /quit   close the session and leave');
+      deps.ui.write(pc.bold(deps.t('repl.help-title')));
+      deps.ui.write(deps.t('repl.help-help'));
+      deps.ui.write(deps.t('repl.help-plan'));
+      deps.ui.write(deps.t('repl.help-goal'));
+      deps.ui.write(deps.t('repl.help-loop'));
+      deps.ui.write(deps.t('repl.help-discovery'));
+      deps.ui.write(deps.t('repl.help-rewind'));
+      deps.ui.write(deps.t('repl.help-changes'));
+      deps.ui.write(deps.t('repl.help-fork'));
+      deps.ui.write(deps.t('repl.help-undo'));
+      deps.ui.write(deps.t('repl.help-compact'));
+      deps.ui.write(deps.t('repl.help-remember'));
+      deps.ui.write(deps.t('repl.help-model'));
+      deps.ui.write(deps.t('repl.help-clear'));
+      deps.ui.write(deps.t('repl.help-exit'));
       deps.ui.write('');
-      deps.ui.write(pc.dim('Type anything else in plain words (any language) — the model decides'));
-      deps.ui.write(pc.dim('whether to answer (read-only) or edit/run, governed by your autonomy'));
-      deps.ui.write(
-        pc.dim('level. Tool actions ask for inline approval. `!cmd` runs a shell command.'),
-      );
+      deps.ui.write(pc.dim(deps.t('repl.help-freeform-1')));
+      deps.ui.write(pc.dim(deps.t('repl.help-freeform-2')));
+      deps.ui.write(pc.dim(deps.t('repl.help-freeform-3')));
       return 'continue';
     case 'model': {
       const gateway = loadGatewayContext(runtime.repoRoot);
-      deps.ui.write(`Provider: ${gateway.providerName}`);
+      deps.ui.write(deps.t('repl.model-provider', { provider: gateway.providerName }));
       deps.ui.write(
         gateway.providersPath !== null
-          ? `Config: ${gateway.providersPath}`
-          : pc.dim(
-              'Using the built-in mock provider (no providers.yaml — the zero-config default).',
-            ),
+          ? deps.t('repl.model-config', { path: gateway.providersPath })
+          : pc.dim(deps.t('repl.model-mock')),
       );
       return 'continue';
     }
@@ -1115,7 +1124,7 @@ function handleSlashCommand(
     case 'quit':
       return 'exit';
     default:
-      deps.ui.warn(`Unknown command: /${name}. Try /help.`);
+      deps.ui.warn(deps.t('repl.unknown-command', { name }));
       return 'continue';
   }
 }
@@ -1131,7 +1140,7 @@ async function handleDiscoveryCommand(
   idea: string,
 ): Promise<void> {
   if (idea.trim().length === 0) {
-    deps.ui.warn('Usage: /discovery <idea>. Describe the idea to clarify before building.');
+    deps.ui.warn(deps.t('repl.discovery-usage'));
     return;
   }
   const safeText = redactSecrets(idea);
@@ -1190,14 +1199,24 @@ function handleChangesCommand(deps: CliDeps, id: string | undefined): void {
     return;
   }
   const summary = buildTurnSummary(loadReplay(deps.cwd(), runId));
-  deps.ui.heading(`Changes · ${runId}`);
+  deps.ui.heading(deps.t('repl.changes-heading', { runId }));
   if (summary.changedFiles.length === 0) {
-    deps.ui.write('  No file changes recorded for this run.');
+    deps.ui.write(deps.t('repl.changes-none'));
     return;
   }
   const { metrics } = summary;
   deps.ui.write(
-    `  ${metrics.files} file${metrics.files === 1 ? '' : 's'} · +${metrics.insertions} −${metrics.deletions}`,
+    metrics.files === 1
+      ? deps.t('repl.changes-metrics-one', {
+          files: metrics.files,
+          insertions: metrics.insertions,
+          deletions: metrics.deletions,
+        })
+      : deps.t('repl.changes-metrics-many', {
+          files: metrics.files,
+          insertions: metrics.insertions,
+          deletions: metrics.deletions,
+        }),
   );
   deps.ui.write();
   for (const file of summary.changedFiles) {
@@ -1208,7 +1227,7 @@ function handleChangesCommand(deps: CliDeps, id: string | undefined): void {
     deps.ui.write(`  ${changeGlyph(file.status)}  ${file.path}${stat}`);
   }
   deps.ui.write();
-  deps.ui.write('  Full diff: excalibur changes --diff   ·   rewind: /rewind');
+  deps.ui.write(deps.t('repl.changes-footer'));
 }
 
 /**
@@ -1225,9 +1244,7 @@ async function handleForkCommand(
 ): Promise<AgentTurnResult | null> {
   const instruction = argv.join(' ').trim();
   if (instruction.length === 0) {
-    deps.ui.warn(
-      'Usage: /fork <instruction> — continue the latest run with a new instruction (reusing its cached context).',
-    );
+    deps.ui.warn(deps.t('repl.fork-usage'));
     return null;
   }
   let runId: string;
@@ -1273,9 +1290,6 @@ async function handleUndoCommand(deps: CliDeps): Promise<void> {
   }
 }
 
-/** Reprints the StatusLine: autonomy · workflow · model · cost · safety. */
-const WHATS_NEW = 'Model-first agent loop in the shell, inline approvals, plan-mode.';
-
 /** Parses the owner/org from a git remote URL (https or ssh); '' when unknown. */
 function repoOwnerFromRemote(remoteUrl: string | null): string {
   if (remoteUrl === null) return '';
@@ -1289,9 +1303,7 @@ function buildWelcomeContext(deps: CliDeps, repoRoot: string, model: string): We
   const gitInfo = getGitInfo(repoRoot);
   const name = (identity.name ?? '').split(/\s+/)[0] || 'there';
   const hasDiff = getLocalDiff(repoRoot).trim().length > 0;
-  const tip = hasDiff
-    ? 'You have uncommitted changes — try “review the working diff”.'
-    : 'Describe what you want in plain words — the model decides how to act (ask, edit, run).';
+  const tip = hasDiff ? deps.t('repl.welcome-tip-diff') : deps.t('repl.welcome-tip-default');
   return {
     version: CLI_VERSION,
     name,
@@ -1299,7 +1311,7 @@ function buildWelcomeContext(deps: CliDeps, repoRoot: string, model: string): We
     org: repoOwnerFromRemote(gitInfo.remoteUrl),
     user: identity.email ?? '',
     tip,
-    whatsNew: WHATS_NEW,
+    whatsNew: deps.t('repl.welcome-whats-new'),
     width: process.stdout.columns || 80,
     unicode: deps.env['EXCALIBUR_ASCII'] === undefined,
   };
@@ -1321,7 +1333,7 @@ function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
 /** Replays a compact transcript summary when resuming a session. */
 function replayTranscript(deps: CliDeps, store: SessionStore, session: LocalSession): void {
   const turns = store.readTranscript(session.id).filter((turn) => turn.kind === 'message');
-  deps.ui.info(`Resuming session ${session.id} (${turns.length} message turns).`);
+  deps.ui.info(deps.t('repl.resuming', { id: session.id, turns: turns.length }));
   const recent = turns.slice(-6);
   for (const turn of recent) {
     const who = turn.role === 'user' ? pc.cyan('you') : pc.green('ai ');
@@ -1336,6 +1348,6 @@ function closeSession(deps: CliDeps, runtime: SessionRuntime): void {
   runtime.store.updateMetadata(runtime.session.id, { status: 'closed' });
   const now = new Date();
   deps.ui.write();
-  deps.ui.info(`Session ${runtime.session.id} closed (just now · ${now.toISOString()}).`);
-  deps.ui.write('Goodbye.');
+  deps.ui.info(deps.t('repl.closed', { id: runtime.session.id, timestamp: now.toISOString() }));
+  deps.ui.write(deps.t('repl.goodbye'));
 }

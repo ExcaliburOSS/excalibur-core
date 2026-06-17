@@ -209,8 +209,16 @@ async function driveLoop(
   const confirm = async (req: ConfirmationRequest): Promise<boolean> => {
     spinner.stop(); // clear the transient line before the (permanent) prompt
     const detail = req.detail !== undefined ? ` (${req.detail})` : '';
-    deps.ui.write(pc.yellow(`  ⚠ ${req.tool} needs approval: ${req.reason}${detail}`));
-    return deps.ui.confirm('  Allow this action?', {
+    deps.ui.write(
+      pc.yellow(
+        deps.t('agent-turn.tool_needs_approval', {
+          tool: req.tool,
+          reason: req.reason,
+          detail,
+        }),
+      ),
+    );
+    return deps.ui.confirm(deps.t('agent-turn.allow_action'), {
       defaultYes: options.approvalDefaultYes,
     });
   };
@@ -367,9 +375,15 @@ export async function runAgentTurn(
   runManager.updateRecord(run.id, { status: 'running' });
 
   turn.deps.ui.info(
-    `→ agent · ${role === 'planner' ? 'answer (read-only)' : 'act'} · L${turn.autonomyLevel}`,
+    turn.deps.t('agent-turn.agent_header', {
+      mode:
+        role === 'planner'
+          ? turn.deps.t('agent-turn.mode_answer')
+          : turn.deps.t('agent-turn.mode_act'),
+      level: turn.autonomyLevel,
+    }),
   );
-  turn.deps.ui.info(`Run ${run.id} → ${run.dir}`);
+  turn.deps.ui.info(turn.deps.t('agent-turn.run_dir', { id: run.id, dir: run.dir }));
 
   const result = await driveLoop(turn, adapter, runManager, run, generateId('sess'), {
     role,
@@ -426,8 +440,8 @@ export async function runPlanTurn(
   // --- 1. Plan pass (planner role, read-only) ------------------------------
   const planRun = createTurnRun(runManager, task, turn.autonomyLevel, turn.providerName, 'plan');
   runManager.updateRecord(planRun.id, { status: 'running' });
-  turn.deps.ui.info(`→ plan · planner (read-only) · L${turn.autonomyLevel}`);
-  turn.deps.ui.info(`Run ${planRun.id} → ${planRun.dir}`);
+  turn.deps.ui.info(turn.deps.t('agent-turn.plan_header', { level: turn.autonomyLevel }));
+  turn.deps.ui.info(turn.deps.t('agent-turn.run_dir', { id: planRun.id, dir: planRun.dir }));
 
   const planResult = await driveLoop(turn, adapter, runManager, planRun, generateId('sess'), {
     role: 'planner',
@@ -440,7 +454,7 @@ export async function runPlanTurn(
 
   // Present the plan.
   turn.deps.ui.write();
-  turn.deps.ui.heading('Plan');
+  turn.deps.ui.heading(turn.deps.t('agent-turn.plan_heading'));
   turn.deps.ui.write(planResult.finalText);
   turn.deps.ui.write();
 
@@ -456,9 +470,7 @@ export async function runPlanTurn(
   // --- 2. Gate -------------------------------------------------------------
   // Non-interactive: present + stop (never execute a plan blind in CI/piped).
   if (!turn.deps.ui.isInteractive()) {
-    turn.deps.ui.info(
-      'Plan ready. Re-run with approval to execute (non-interactive: not executing).',
-    );
+    turn.deps.ui.info(turn.deps.t('agent-turn.plan_non_interactive'));
     return {
       gate: 'cancel',
       planText: planResult.finalText,
@@ -467,7 +479,7 @@ export async function runPlanTurn(
     };
   }
 
-  const answer = (await turn.deps.ui.ask('[approve / edit / cancel]', { defaultAnswer: 'cancel' }))
+  const answer = (await turn.deps.ui.ask(turn.deps.t('agent-turn.plan_gate_prompt'), { defaultAnswer: 'cancel' }))
     .trim()
     .toLowerCase();
   const gate: PlanGate =
@@ -478,11 +490,11 @@ export async function runPlanTurn(
         : 'cancel';
 
   if (gate === 'edit') {
-    turn.deps.ui.info('Edit the task and re-plan.');
+    turn.deps.ui.info(turn.deps.t('agent-turn.plan_edit'));
     return { gate, planText: planResult.finalText, execution: null, planRunId: planRun.id };
   }
   if (gate === 'cancel') {
-    turn.deps.ui.info('Plan cancelled. Nothing was changed.');
+    turn.deps.ui.info(turn.deps.t('agent-turn.plan_cancelled'));
     return { gate, planText: planResult.finalText, execution: null, planRunId: planRun.id };
   }
 
@@ -496,8 +508,8 @@ export async function runPlanTurn(
   );
   runManager.updateRecord(execRun.id, { status: 'running' });
   turn.deps.ui.write();
-  turn.deps.ui.info(`→ execute · implementer · L${turn.autonomyLevel}`);
-  turn.deps.ui.info(`Run ${execRun.id} → ${execRun.dir}`);
+  turn.deps.ui.info(turn.deps.t('agent-turn.execute_header', { level: turn.autonomyLevel }));
+  turn.deps.ui.info(turn.deps.t('agent-turn.run_dir', { id: execRun.id, dir: execRun.dir }));
 
   const execResult = await driveLoop(turn, adapter, runManager, execRun, generateId('sess'), {
     role: 'implementer',
@@ -651,10 +663,7 @@ export async function runForkTurn(
   try {
     if (plan.baseDiff.trim().length > 0) {
       if (plan.baseDiff.includes('[REDACTED]')) {
-        deps.ui.warn(
-          'The reconstructed base contains [REDACTED] where a secret was scrubbed at capture — ' +
-            'fill those in before relying on the forked worktree.',
-        );
+        deps.ui.warn(deps.t('agent-turn.fork_redacted'));
       }
       const check = checkPatchApplies(worktreePath, plan.baseDiff);
       applyPatch(worktreePath, plan.baseDiff, check.applies ? undefined : { threeway: true });
@@ -666,12 +675,19 @@ export async function runForkTurn(
 
     const cachedTokens = plan.cachedTokens.input + plan.cachedTokens.output;
     deps.ui.info(
-      `⑂ fork of ${plan.source.runId} @ step ${plan.source.atStep + 1}/${plan.source.totalSteps}`,
+      deps.t('agent-turn.fork_header', {
+        runId: plan.source.runId,
+        step: plan.source.atStep + 1,
+        total: plan.source.totalSteps,
+      }),
     );
     deps.ui.info(
-      `Reused ${cachedTokens} cached tokens (${fmtCost(plan.cachedCostCents)}) — only the new instruction runs live.`,
+      deps.t('agent-turn.fork_reused', {
+        tokens: cachedTokens,
+        cost: fmtCost(plan.cachedCostCents),
+      }),
     );
-    deps.ui.info(`Worktree ${worktreePath} · branch ${branch}`);
+    deps.ui.info(deps.t('agent-turn.fork_worktree', { worktree: worktreePath, branch }));
 
     // Drive ONLY the live suffix: the implementer executes the new instruction
     // with the cached prefix seeded, inside the reconstructed worktree.
@@ -732,7 +748,7 @@ export async function runUndo(
   const plan = planUndo(repoRoot, runId, atStep);
 
   if (plan.fullDiff.trim().length === 0) {
-    deps.ui.info(`Run ${runId} recorded no file changes — nothing to undo.`);
+    deps.ui.info(deps.t('agent-turn.undo_no_changes', { runId }));
     return;
   }
 
@@ -740,21 +756,24 @@ export async function runUndo(
   const canReverse = checkPatchApplies(repoRoot, plan.fullDiff, { reverse: true });
   if (!canReverse.applies) {
     throw new CliUsageError(
-      `Cannot undo: the run's changes do not reverse-apply cleanly to your working tree ` +
-        `(${canReverse.reason ?? 'diverged'}). The tree has changed since the run; resolve it first.`,
+      deps.t('agent-turn.undo_cannot_reverse', { reason: canReverse.reason ?? 'diverged' }),
     );
   }
 
   deps.ui.warn(
-    `This reverts your working tree to run ${runId}'s state at step ${plan.atStep + 1}/${plan.totalSteps}.`,
+    deps.t('agent-turn.undo_warn', {
+      runId,
+      step: plan.atStep + 1,
+      total: plan.totalSteps,
+    }),
   );
   // Always confirm unless `-y`: `confirm` returns its default (false) when
   // non-interactive, so a piped/non-TTY undo ABORTS rather than silently
   // mutating the tree.
   if (options.yes !== true) {
-    const ok = await deps.ui.confirm('Proceed?', { defaultYes: false });
+    const ok = await deps.ui.confirm(deps.t('agent-turn.undo_proceed'), { defaultYes: false });
     if (!ok) {
-      deps.ui.info('Undo cancelled. Nothing was changed.');
+      deps.ui.info(deps.t('agent-turn.undo_cancelled'));
       return;
     }
   }
@@ -763,7 +782,7 @@ export async function runUndo(
   applyPatch(repoRoot, plan.fullDiff, { reverse: true });
 
   if (plan.targetDiff.trim().length === 0) {
-    deps.ui.info(pc.green("✓ Working tree reverted — the run's changes were undone."));
+    deps.ui.info(pc.green(deps.t('agent-turn.undo_reverted_full')));
     return;
   }
 
@@ -773,10 +792,12 @@ export async function runUndo(
   if (!canReapply.applies) {
     applyPatch(repoRoot, plan.fullDiff);
     throw new CliUsageError(
-      `Could not reconstruct step ${plan.atStep + 1} (${canReapply.reason ?? 'no clean apply'}). ` +
-        `Your working tree was left UNCHANGED.`,
+      deps.t('agent-turn.undo_cannot_reapply', {
+        step: plan.atStep + 1,
+        reason: canReapply.reason ?? 'no clean apply',
+      }),
     );
   }
   applyPatch(repoRoot, plan.targetDiff);
-  deps.ui.info(pc.green(`✓ Working tree reverted to step ${plan.atStep + 1}.`));
+  deps.ui.info(pc.green(deps.t('agent-turn.undo_reverted_step', { step: plan.atStep + 1 })));
 }

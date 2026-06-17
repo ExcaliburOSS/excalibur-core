@@ -60,28 +60,28 @@ export function registerInstructionsCommand(program: Command, deps: CliDeps): vo
       const global = sources.filter((source) => source.scope === 'user_global');
 
       if (project.length > 0) {
-        deps.ui.heading('Project instructions (used automatically):');
+        deps.ui.heading(deps.t('instructions.scanProjectHeading'));
         for (const source of project) deps.ui.success(`  ${source.path} (${source.format})`);
       }
       if (skills.length > 0) {
-        deps.ui.heading('Detected skills (review before enabling):');
+        deps.ui.heading(deps.t('instructions.scanSkillsHeading'));
         for (const source of skills) deps.ui.warn(`  ${source.path} (${source.trustLevel})`);
       }
       if (global.length > 0) {
-        deps.ui.heading('Personal/global instructions (referenced locally only, never copied):');
+        deps.ui.heading(deps.t('instructions.scanGlobalHeading'));
         for (const source of global) deps.ui.warn(`  ${source.path}`);
       }
       if (context.length > 0) {
-        deps.ui.heading('Project documentation (context):');
+        deps.ui.heading(deps.t('instructions.scanContextHeading'));
         for (const source of context.filter((s) => s.scope !== 'user_global')) {
           deps.ui.info(`  ${source.path}`);
         }
       }
       if (sources.length === 0) {
-        deps.ui.info('No instruction sources detected.');
+        deps.ui.info(deps.t('instructions.noneDetected'));
       }
       deps.ui.write();
-      deps.ui.info('Manage them with: excalibur instructions list|enable|disable|import');
+      deps.ui.info(deps.t('instructions.scanManageHint'));
     });
 
   instructions
@@ -95,7 +95,7 @@ export function registerInstructionsCommand(program: Command, deps: CliDeps): vo
         return;
       }
       if (sources.length === 0) {
-        deps.ui.info('No instruction sources detected.');
+        deps.ui.info(deps.t('instructions.noneDetected'));
         return;
       }
       deps.ui.table(
@@ -119,10 +119,21 @@ export function registerInstructionsCommand(program: Command, deps: CliDeps): vo
       const repoRoot = deps.cwd();
       const source = findSourceById(await scanSources(deps, repoRoot), id);
       deps.ui.heading(`${source.id} — ${source.title ?? basename(source.path)}`);
-      deps.ui.write(`Path: ${source.path}`);
-      deps.ui.write(`Format: ${source.format} · Kind: ${source.kind} · Scope: ${source.scope}`);
-      deps.ui.write(`Trust: ${displayTrust(source)} · Enabled: ${source.enabled ? 'yes' : 'no'}`);
-      deps.ui.write(`Content hash: ${source.contentHash}`);
+      deps.ui.write(deps.t('instructions.inspectPath', { path: source.path }));
+      deps.ui.write(
+        deps.t('instructions.inspectFormat', {
+          format: source.format,
+          kind: source.kind,
+          scope: source.scope,
+        }),
+      );
+      deps.ui.write(
+        deps.t('instructions.inspectTrust', {
+          trust: displayTrust(source),
+          enabled: source.enabled ? 'yes' : 'no',
+        }),
+      );
+      deps.ui.write(deps.t('instructions.inspectContentHash', { hash: source.contentHash }));
       const absPath = absolutePathOf(deps, repoRoot, source);
       if (existsSync(absPath)) {
         const content = redactSecrets(readFileSync(absPath, 'utf8'));
@@ -130,7 +141,7 @@ export function registerInstructionsCommand(program: Command, deps: CliDeps): vo
         deps.ui.write();
         deps.ui.write(pc.dim(preview));
         if (content.split('\n').length > 12) {
-          deps.ui.info('… (truncated)');
+          deps.ui.info(deps.t('instructions.truncated'));
         }
       }
     });
@@ -143,7 +154,7 @@ export function registerInstructionsCommand(program: Command, deps: CliDeps): vo
       const repoRoot = deps.cwd();
       const source = findSourceById(await scanSources(deps, repoRoot), id);
       upsertSourceRef(repoRoot, 'instructions', { ...configRef(source), enabled: true });
-      deps.ui.success(`Instruction source "${id}" enabled in ${EXCALIBUR_DIR}/config.yaml.`);
+      deps.ui.success(deps.t('instructions.enabled', { id, dir: EXCALIBUR_DIR }));
     });
 
   instructions
@@ -154,7 +165,7 @@ export function registerInstructionsCommand(program: Command, deps: CliDeps): vo
       const repoRoot = deps.cwd();
       const source = findSourceById(await scanSources(deps, repoRoot), id);
       upsertSourceRef(repoRoot, 'instructions', { ...configRef(source), enabled: false });
-      deps.ui.success(`Instruction source "${id}" disabled in ${EXCALIBUR_DIR}/config.yaml.`);
+      deps.ui.success(deps.t('instructions.disabled', { id, dir: EXCALIBUR_DIR }));
     });
 
   instructions
@@ -170,26 +181,23 @@ export function registerInstructionsCommand(program: Command, deps: CliDeps): vo
       if (source.scope === 'user_global' && options.includeGlobal !== true) {
         // ISD §3/§7: user-global files are NEVER copied into the repository
         // without explicit consent — bare --yes is not enough.
-        throw new CliUsageError(
-          `"${id}" is a personal user-global source (${source.path}). ` +
-            'Importing it copies personal context into the repository — re-run with --include-global if you really want that.',
-        );
+        throw new CliUsageError(deps.t('instructions.importGlobalBlocked', { id, path: source.path }));
       }
 
       // For user-global sources --include-global is the explicit consent
       // (guarded above); the [Y/n] prompt still shows on interactive runs.
       const confirmed = await deps.ui.confirm(
-        `Copy ${source.path} into ${EXCALIBUR_DIR}/instructions/?`,
+        deps.t('instructions.importConfirm', { path: source.path, dir: EXCALIBUR_DIR }),
         { yes: options.yes === true || options.includeGlobal === true, defaultYes: true },
       );
       if (!confirmed) {
-        deps.ui.info('Import cancelled.');
+        deps.ui.info(deps.t('instructions.importCancelled'));
         return;
       }
 
       const absPath = absolutePathOf(deps, repoRoot, source);
       if (!existsSync(absPath)) {
-        throw new CliUsageError(`Source file is missing on disk: ${source.path}`);
+        throw new CliUsageError(deps.t('instructions.sourceMissing', { path: source.path }));
       }
       const targetDir = join(repoRoot, EXCALIBUR_DIR, 'instructions');
       mkdirSync(targetDir, { recursive: true });
@@ -200,9 +208,9 @@ export function registerInstructionsCommand(program: Command, deps: CliDeps): vo
         copyFileSync(absPath, target);
       } else {
         writeFileSync(target, content, 'utf8');
-        deps.ui.warn('Secrets found in the source were redacted in the imported copy.');
+        deps.ui.warn(deps.t('instructions.importRedacted'));
       }
-      deps.ui.success(`Imported ${source.path} → ${target}`);
+      deps.ui.success(deps.t('instructions.imported', { path: source.path, target }));
     });
 
   instructions
@@ -226,20 +234,20 @@ export function registerInstructionsCommand(program: Command, deps: CliDeps): vo
         const absPath = absolutePathOf(deps, repoRoot, source);
         if (!existsSync(absPath)) {
           problems += 1;
-          deps.ui.error(`MISSING  ${source.path}`);
+          deps.ui.error(deps.t('instructions.doctorMissing', { path: source.path }));
           continue;
         }
         const recorded = previous[source.path];
         if (recorded !== undefined && recorded !== source.contentHash) {
-          deps.ui.warn(`CHANGED  ${source.path} (content hash differs from the last scan)`);
+          deps.ui.warn(deps.t('instructions.doctorChanged', { path: source.path }));
         } else {
-          deps.ui.success(`OK       ${source.path}`);
+          deps.ui.success(deps.t('instructions.doctorOk', { path: source.path }));
         }
       }
       for (const path of Object.keys(previous)) {
         if (!sources.some((source) => source.path === path)) {
           problems += 1;
-          deps.ui.error(`MISSING  ${path} (recorded in the last scan, no longer detected)`);
+          deps.ui.error(deps.t('instructions.doctorMissingRecorded', { path }));
         }
       }
 
@@ -252,7 +260,7 @@ export function registerInstructionsCommand(program: Command, deps: CliDeps): vo
       writeFileSync(lockPath, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
 
       if (problems === 0) {
-        deps.ui.success('All instruction sources are reachable.');
+        deps.ui.success(deps.t('instructions.doctorAllReachable'));
       }
     });
 }

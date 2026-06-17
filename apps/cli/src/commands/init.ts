@@ -82,7 +82,7 @@ export function registerInitCommand(program: Command, deps: CliDeps): void {
     .option('-y, --yes', 'skip prompts and accept safe defaults')
     .action(async (options: InitOptions) => {
       if (options.team === true && options.full === true) {
-        throw new CliUsageError('Use either --team or --full, not both.');
+        throw new CliUsageError(deps.t('init.teamFullConflict'));
       }
       const mode: InitMode = options.full === true ? 'full' : options.team === true ? 'team' : 'minimal';
       const yes = options.yes === true;
@@ -123,7 +123,7 @@ export function registerInitCommand(program: Command, deps: CliDeps): void {
       deps.ui.write();
 
       if (mode === 'team') {
-        const versionInGit = await deps.ui.confirm('Version Excalibur config in Git?', {
+        const versionInGit = await deps.ui.confirm(deps.t('init.versionInGit'), {
           yes,
           defaultYes: true,
         });
@@ -132,7 +132,7 @@ export function registerInitCommand(program: Command, deps: CliDeps): void {
           const current = existsSync(gitignore) ? readFileSync(gitignore, 'utf8') : '';
           if (!current.split('\n').includes(`${EXCALIBUR_DIR}/`)) {
             appendFileSync(gitignore, `${current.endsWith('\n') || current === '' ? '' : '\n'}${EXCALIBUR_DIR}/\n`, 'utf8');
-            deps.ui.info(`Added ${EXCALIBUR_DIR}/ to .gitignore.`);
+            deps.ui.info(deps.t('init.addedToGitignore', { dir: EXCALIBUR_DIR }));
           }
         }
       }

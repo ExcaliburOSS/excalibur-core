@@ -51,7 +51,7 @@ export function registerExtensionsCommand(program: Command, deps: CliDeps): void
         return;
       }
 
-      deps.ui.heading('Extensions:');
+      deps.ui.heading(deps.t('extensions.list_extensions_heading'));
       deps.ui.table(
         ['ID', 'NAME', 'VERSION', 'KIND', 'SOURCE', 'STATUS'],
         loaded.map((extension) => [
@@ -64,7 +64,7 @@ export function registerExtensionsCommand(program: Command, deps: CliDeps): void
         ]),
       );
       deps.ui.write();
-      deps.ui.heading('Contributions:');
+      deps.ui.heading(deps.t('extensions.list_contributions_heading'));
       deps.ui.table(
         ['KIND', 'ID', 'EXTENSION', 'SOURCE'],
         contributions.map((contribution) => [
@@ -96,13 +96,13 @@ export function registerExtensionsCommand(program: Command, deps: CliDeps): void
         }
         if (report.errors.length === 0) {
           deps.ui.success(
-            `${report.checked.length} file(s) validated — everything looks good.`,
+            deps.t('extensions.validate_ok', { count: report.checked.length }),
           );
         }
       }
       if (report.errors.length > 0) {
         throw new CliUsageError(
-          `extensions validate found ${report.errors.length} invalid file(s).`,
+          deps.t('extensions.validate_invalid', { count: report.errors.length }),
         );
       }
     });
@@ -125,19 +125,24 @@ export function registerExtensionsCommand(program: Command, deps: CliDeps): void
         if (extension.manifest.kind !== 'declarative' && extension.dir !== null) {
           const entrypoint = extension.manifest.entrypoint;
           if (entrypoint === undefined) {
-            issues.push('missing entrypoint declaration');
+            issues.push(deps.t('extensions.doctor_missing_entrypoint'));
           } else if (!existsSync(join(extension.dir, entrypoint))) {
-            issues.push(`entrypoint ${entrypoint} not built yet — run its build first`);
+            issues.push(deps.t('extensions.doctor_entrypoint_not_built', { entrypoint }));
           }
         }
         issues.push(...validatePermissions(extension.manifest));
         if (issues.length > 0) {
           problems += issues.length;
           for (const issue of issues) {
-            deps.ui.warn(`${extension.manifest.id}: ${issue}`);
+            deps.ui.warn(deps.t('extensions.doctor_issue', { id: extension.manifest.id, issue }));
           }
         } else {
-          deps.ui.success(`${extension.manifest.id} (${extension.source}) loaded cleanly`);
+          deps.ui.success(
+            deps.t('extensions.doctor_loaded_cleanly', {
+              id: extension.manifest.id,
+              source: extension.source,
+            }),
+          );
         }
       }
       for (const warning of registry.contributions.warnings()) {
@@ -147,7 +152,7 @@ export function registerExtensionsCommand(program: Command, deps: CliDeps): void
         throw new ExcaliburError('extensions doctor found load errors.', 'extensions_doctor_failed');
       }
       if (problems === 0) {
-        deps.ui.success('All extensions are healthy.');
+        deps.ui.success(deps.t('extensions.doctor_all_healthy'));
       }
     });
 
@@ -157,7 +162,7 @@ export function registerExtensionsCommand(program: Command, deps: CliDeps): void
     .argument('<id>', 'extension id')
     .action((id: string) => {
       setExtensionEnabled(deps.cwd(), id, true);
-      deps.ui.success(`Extension "${id}" enabled in ${EXCALIBUR_DIR}/extensions.yaml.`);
+      deps.ui.success(deps.t('extensions.enabled', { id, dir: EXCALIBUR_DIR }));
     });
 
   extensions
@@ -166,7 +171,7 @@ export function registerExtensionsCommand(program: Command, deps: CliDeps): void
     .argument('<id>', 'extension id')
     .action((id: string) => {
       setExtensionEnabled(deps.cwd(), id, false);
-      deps.ui.success(`Extension "${id}" disabled in ${EXCALIBUR_DIR}/extensions.yaml.`);
+      deps.ui.success(deps.t('extensions.disabled', { id, dir: EXCALIBUR_DIR }));
     });
 
   extensions
@@ -179,15 +184,12 @@ export function registerExtensionsCommand(program: Command, deps: CliDeps): void
       const source = resolve(repoRoot, sourcePath);
       if (!existsSync(source)) {
         // npm specs land in M8 — be honest instead of guessing.
-        deps.ui.warn(
-          `"${sourcePath}" is not a local directory. Installing extensions from npm arrives in M8 — ` +
-            'until then, pass a local folder containing excalibur.extension.yaml.',
-        );
+        deps.ui.warn(deps.t('extensions.install_not_local_dir', { path: sourcePath }));
         return;
       }
       const manifestPath = join(source, 'excalibur.extension.yaml');
       if (!existsSync(manifestPath)) {
-        throw new CliUsageError(`${sourcePath} has no excalibur.extension.yaml manifest.`);
+        throw new CliUsageError(deps.t('extensions.install_no_manifest', { path: sourcePath }));
       }
       const manifest = loadManifest(manifestPath);
       for (const warning of validatePermissions(manifest)) {
@@ -196,21 +198,25 @@ export function registerExtensionsCommand(program: Command, deps: CliDeps): void
       const target = join(repoRoot, EXCALIBUR_DIR, 'extensions', manifest.id);
       if (existsSync(target)) {
         throw new CliUsageError(
-          `Extension "${manifest.id}" is already installed at ${target}. Remove it first to reinstall.`,
+          deps.t('extensions.install_already_installed', { id: manifest.id, target }),
         );
       }
       const confirmed = await deps.ui.confirm(
-        `Install extension "${manifest.id}" (${manifest.kind}) into ${EXCALIBUR_DIR}/extensions/?`,
+        deps.t('extensions.install_confirm', {
+          id: manifest.id,
+          kind: manifest.kind,
+          dir: EXCALIBUR_DIR,
+        }),
         { yes: options.yes, defaultYes: true },
       );
       if (!confirmed) {
-        deps.ui.info('Install cancelled.');
+        deps.ui.info(deps.t('extensions.install_cancelled'));
         return;
       }
       mkdirSync(join(repoRoot, EXCALIBUR_DIR, 'extensions'), { recursive: true });
       cpSync(source, target, { recursive: true });
-      deps.ui.success(`Installed "${manifest.id}" → ${target}`);
-      deps.ui.info('Run `excalibur extensions validate` to verify it.');
+      deps.ui.success(deps.t('extensions.install_done', { id: manifest.id, target }));
+      deps.ui.info(deps.t('extensions.install_validate_hint'));
     });
 
   extensions
@@ -226,15 +232,15 @@ export function registerExtensionsCommand(program: Command, deps: CliDeps): void
           ? resolve(repoRoot, options.dir)
           : join(repoRoot, EXCALIBUR_DIR, 'extensions');
       const result = scaffoldExtension(targetDir, type, name);
-      deps.ui.success(`Scaffolded ${result.kind} extension "${name}" → ${result.dir}`);
+      deps.ui.success(
+        deps.t('extensions.create_scaffolded', { kind: result.kind, name, dir: result.dir }),
+      );
       for (const file of result.files) {
         deps.ui.write(`  + ${file}`);
       }
       if (result.kind === 'programmatic') {
-        deps.ui.info(
-          'Programmatic extensions load their COMPILED entrypoint: run `npm install && npm run build` inside the folder first.',
-        );
+        deps.ui.info(deps.t('extensions.create_programmatic_hint'));
       }
-      deps.ui.info('Validate with: excalibur extensions validate');
+      deps.ui.info(deps.t('extensions.create_validate_hint'));
     });
 }

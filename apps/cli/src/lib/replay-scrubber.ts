@@ -47,7 +47,7 @@ export function resolveRun(deps: CliDeps, runId: string | undefined): { id: stri
   const manager = new RunManager(deps.cwd());
   const run = runId !== undefined ? manager.getRun(runId) : manager.latestRun();
   if (run === null) {
-    throw new CliUsageError('No local runs yet. Start one with: excalibur run "<task>"');
+    throw new CliUsageError(deps.t('replay-scrubber.noLocalRuns'));
   }
   return { id: run.id };
 }
@@ -61,9 +61,15 @@ function formatCost(costCents: number | null): string {
 function renderHeader(deps: CliDeps, model: ReplayModel): void {
   const { run, steps } = model;
   const totalCost = steps.length > 0 ? (steps[steps.length - 1]?.costCentsSoFar ?? null) : null;
-  deps.ui.heading(`⏮  Rewind ${run.id} — ${run.title}`);
+  deps.ui.heading(deps.t('replay-scrubber.header', { id: run.id, title: run.title }));
   deps.ui.info(
-    `${run.workflow} · L${run.autonomyLevel} · ${run.status} · ${steps.length} steps · total ${formatCost(totalCost)}`,
+    deps.t('replay-scrubber.headerMeta', {
+      workflow: run.workflow,
+      level: run.autonomyLevel,
+      status: run.status,
+      count: steps.length,
+      cost: formatCost(totalCost),
+    }),
   );
 }
 
@@ -72,11 +78,14 @@ function renderStep(deps: CliDeps, model: ManagedReplay, cursor: number): void {
   const state = reconstructStateAt(model.replay, cursor);
   const step = state.step;
   const total = model.replay.steps.length;
-  const phase = step.phaseName !== null ? `phase ${step.phaseName}` : 'no phase';
+  const phase =
+    step.phaseName !== null
+      ? deps.t('replay-scrubber.phaseNamed', { name: step.phaseName })
+      : deps.t('replay-scrubber.noPhase');
 
   deps.ui.write();
   deps.ui.write(
-    `${pc.bold(`step ${cursor + 1}/${total}`)} · ${pc.cyan(phase)} · ${pc.dim(step.event.type)} · ${pc.dim(formatCost(step.costCentsSoFar))}`,
+    `${pc.bold(deps.t('replay-scrubber.stepPosition', { current: cursor + 1, total }))} · ${pc.cyan(phase)} · ${pc.dim(step.event.type)} · ${pc.dim(formatCost(step.costCentsSoFar))}`,
   );
   deps.ui.write(`  ${pc.bold('→')} ${step.summary}`);
 
@@ -104,7 +113,7 @@ export function printLinearSummary(
 ): void {
   renderHeader(deps, replay);
   if (replay.steps.length === 0) {
-    deps.ui.info('No events recorded for this run.');
+    deps.ui.info(deps.t('replay-scrubber.noEvents'));
     return;
   }
   for (const step of replay.steps) {
@@ -118,7 +127,7 @@ export function printLinearSummary(
   }
   deps.ui.write();
   const last = replay.steps[replay.steps.length - 1];
-  deps.ui.info(`Total cost: ${formatCost(last?.costCentsSoFar ?? null)}`);
+  deps.ui.info(deps.t('replay-scrubber.totalCost', { cost: formatCost(last?.costCentsSoFar ?? null) }));
 }
 
 /** Prints the reconstructed state at a single step (the `--at <n>` view). */
@@ -130,19 +139,19 @@ export function printStateAt(
 ): void {
   renderHeader(deps, replay);
   if (replay.steps.length === 0) {
-    deps.ui.info('No events recorded for this run.');
+    deps.ui.info(deps.t('replay-scrubber.noEvents'));
     return;
   }
   const state = reconstructStateAt(replay, at);
   const step = state.step;
   deps.ui.write();
   deps.ui.write(
-    `${pc.bold(`step ${step.index + 1}/${replay.steps.length}`)} · ${state.phaseName ?? 'no phase'}`,
+    `${pc.bold(deps.t('replay-scrubber.stepPosition', { current: step.index + 1, total: replay.steps.length }))} · ${state.phaseName ?? deps.t('replay-scrubber.noPhase')}`,
   );
   deps.ui.write(`  → ${step.summary}`);
-  deps.ui.info(`  cost so far: ${formatCost(state.costCentsSoFar)}`);
+  deps.ui.info(deps.t('replay-scrubber.costSoFar', { cost: formatCost(state.costCentsSoFar) }));
   if (state.recentEvents.length > 0) {
-    deps.ui.write(pc.dim('  recent:'));
+    deps.ui.write(pc.dim(deps.t('replay-scrubber.recent')));
     for (const event of state.recentEvents) {
       deps.ui.write(pc.dim(`    - ${event.type}`));
     }
@@ -151,11 +160,11 @@ export function printStateAt(
     deps.ui.write(`  ${pc.yellow('📌')} ${pc.yellow(annotation.note)}`);
   }
   deps.ui.write();
-  deps.ui.write(pc.dim('--- accumulated diff at cursor ---'));
+  deps.ui.write(pc.dim(deps.t('replay-scrubber.diffHeader')));
   deps.ui.write(
     state.accumulatedDiff.length > 0
       ? state.accumulatedDiff
-      : pc.dim('(no diff reconstructable at this point)'),
+      : pc.dim(deps.t('replay-scrubber.noDiffAtPoint')),
   );
 }
 
@@ -168,12 +177,11 @@ interface ManagedReplay {
 /** Renders the one-line control help. */
 function renderControls(deps: CliDeps): void {
   deps.ui.info(
-    'controls: n/p step · ⏎ next phase · e edit · t test · c command · x failure · a approval · ' +
-      'g <n> goto · 0/$ first/last · d diff · ? explain · pin <note> · ' +
-      pc.bold('f fork') +
+    deps.t('replay-scrubber.controlsLead') +
+      pc.bold(deps.t('replay-scrubber.controlFork')) +
       ' · ' +
-      pc.bold('u undo') +
-      ' · q quit',
+      pc.bold(deps.t('replay-scrubber.controlUndo')) +
+      deps.t('replay-scrubber.controlsTail'),
   );
 }
 
@@ -192,10 +200,10 @@ async function forkFromCursor(
   cursor: number,
   autonomyLevel: AutonomyLevel,
 ): Promise<void> {
-  const answer = await options.question(pc.cyan('fork instruction › '));
+  const answer = await options.question(pc.cyan(deps.t('replay-scrubber.forkPrompt')));
   const instruction = (answer ?? '').trim();
   if (instruction.length === 0) {
-    deps.ui.info('Fork cancelled — no instruction given.');
+    deps.ui.info(deps.t('replay-scrubber.forkCancelled'));
     return;
   }
   try {
@@ -213,7 +221,7 @@ async function forkFromCursor(
     };
     const result = await runForkTurn(turn, { sourceRunId: runId, atStep: cursor, instruction });
     deps.ui.info(
-      `Fork ${result.forkRunId} created — replay it: excalibur replay ${result.forkRunId}`,
+      deps.t('replay-scrubber.forkCreated', { id: result.forkRunId }),
     );
   } catch (error) {
     deps.ui.error(error instanceof Error ? error.message : String(error));
@@ -259,7 +267,9 @@ async function explainAtCursor(deps: CliDeps, model: ManagedReplay, cursor: numb
   const chatInput = { messages, metadata: { kind: 'explain' as const } };
 
   deps.ui.write();
-  deps.ui.write(pc.bold(`Why step ${cursor + 1}? ${state.step.summary}`));
+  deps.ui.write(
+    pc.bold(deps.t('replay-scrubber.whyStep', { step: cursor + 1, summary: state.step.summary })),
+  );
   deps.ui.write();
   if (deps.ui.isInteractive()) {
     await streamWithGuidance(deps, gatewayContext, chatInput, (chunk) =>
@@ -278,11 +288,11 @@ async function explainAtCursor(deps: CliDeps, model: ManagedReplay, cursor: numb
 function showDiff(deps: CliDeps, model: ManagedReplay, cursor: number): void {
   const state = reconstructStateAt(model.replay, cursor);
   deps.ui.write();
-  deps.ui.write(pc.dim('--- accumulated diff at cursor ---'));
+  deps.ui.write(pc.dim(deps.t('replay-scrubber.diffHeader')));
   if (state.accumulatedDiff.length > 0) {
     deps.ui.write(state.accumulatedDiff);
   } else {
-    deps.ui.info('(no diff reconstructable at this point in the run)');
+    deps.ui.info(deps.t('replay-scrubber.noDiffInRun'));
   }
   deps.ui.write();
 }
@@ -291,7 +301,7 @@ function showDiff(deps: CliDeps, model: ManagedReplay, cursor: number): void {
 function jump(deps: CliDeps, model: ManagedReplay, cursor: number, kind: JumpKind): number {
   const next = nextStepOfKind(model.replay, cursor, kind);
   if (next === null) {
-    deps.ui.info(`No further ${kind} step after here.`);
+    deps.ui.info(deps.t('replay-scrubber.noFurtherKind', { kind }));
     return cursor;
   }
   return next;
@@ -301,7 +311,7 @@ function jump(deps: CliDeps, model: ManagedReplay, cursor: number, kind: JumpKin
 function jumpNextPhase(deps: CliDeps, model: ManagedReplay, cursor: number): number {
   const next = nextStepOfKind(model.replay, cursor, 'phase');
   if (next === null) {
-    deps.ui.info('No further phase boundary after here.');
+    deps.ui.info(deps.t('replay-scrubber.noFurtherPhase'));
     return cursor;
   }
   return next;
@@ -332,7 +342,7 @@ export async function runScrubber(
 
   renderHeader(deps, model.replay);
   if (model.replay.steps.length === 0) {
-    deps.ui.info('No events recorded for this run — nothing to replay.');
+    deps.ui.info(deps.t('replay-scrubber.noEventsNothing'));
     return;
   }
   renderControls(deps);
@@ -342,7 +352,7 @@ export async function runScrubber(
   renderStep(deps, model, cursor);
 
   for (;;) {
-    const line = await options.question(pc.cyan('replay › '));
+    const line = await options.question(pc.cyan(deps.t('replay-scrubber.replayPrompt')));
     if (line === null) {
       break; // EOF / Ctrl-D
     }
@@ -407,7 +417,7 @@ export async function runScrubber(
       case 'goto': {
         const target = Number.parseInt(argument, 10);
         if (Number.isNaN(target) || target < 1 || target > model.replay.steps.length) {
-          deps.ui.warn(`Usage: g <n> (1..${model.replay.steps.length}).`);
+          deps.ui.warn(deps.t('replay-scrubber.gotoUsage', { max: model.replay.steps.length }));
           moved = false;
         } else {
           cursor = target - 1;
@@ -435,7 +445,7 @@ export async function runScrubber(
       case 'pin':
       case 'annotate': {
         if (argument.trim().length === 0) {
-          deps.ui.warn('Usage: pin <note> — annotate the current step.');
+          deps.ui.warn(deps.t('replay-scrubber.pinUsage'));
           moved = false;
           break;
         }
@@ -445,7 +455,7 @@ export async function runScrubber(
           at: now(),
         });
         model.annotations.push(annotation);
-        deps.ui.success(`Pinned a note to step ${cursor + 1}.`);
+        deps.ui.success(deps.t('replay-scrubber.pinned', { step: cursor + 1 }));
         moved = false;
         break;
       }
@@ -486,7 +496,7 @@ export async function runScrubber(
         moved = false;
         break;
       default:
-        deps.ui.warn(`Unknown control: ${command}. Type 'h' for controls, 'q' to quit.`);
+        deps.ui.warn(deps.t('replay-scrubber.unknownControl', { command }));
         moved = false;
         break;
     }
