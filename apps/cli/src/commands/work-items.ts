@@ -57,11 +57,15 @@ export function registerWorkItemsCommand(program: Command, deps: CliDeps): void 
     .option('--limit <n>', 'max items', '30')
     .option('--json', 'machine-readable JSON')
     .action(async (options: { repo?: string; state?: string; limit?: string; json?: boolean }) => {
+      const state = options.state ?? 'open';
+      if (state !== 'open' && state !== 'closed' && state !== 'all') {
+        throw new CliUsageError(`--state must be open, closed, or all (got "${state}").`);
+      }
       const provider = providerFor(options.repo);
       const items = await provider.listWorkItems({
         integrationId: 'local',
         limit: Number.parseInt(options.limit ?? '30', 10) || 30,
-        ...(options.state === 'open' || options.state === 'closed' ? { status: options.state } : {}),
+        status: state, // forwarded for all three; 'all' now reaches gh as --state all
       });
       if (options.json === true) {
         deps.ui.json(items);

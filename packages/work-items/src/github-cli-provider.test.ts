@@ -74,7 +74,7 @@ describe('GitHubCliProvider', () => {
     expect(calls[0]).toEqual(['issue', 'comment', '42', '--body', 'On it.', '--repo', 'acme/app']);
   });
 
-  it('closes the issue on a done-like status, reopens otherwise', async () => {
+  it('closes on a terminal status, reopens on open, and NO-OPs a non-terminal status', async () => {
     const verbs: string[] = [];
     const run: GhRunner = vi.fn(async (args) => {
       verbs.push(args[1] as string);
@@ -82,8 +82,22 @@ describe('GitHubCliProvider', () => {
     });
     const p = new GitHubCliProvider(run);
     await p.updateStatus({ integrationId: 'l', externalIdOrKey: '42', status: 'done' });
+    await p.updateStatus({ integrationId: 'l', externalIdOrKey: '42', status: 'open' });
+    // A non-terminal status must NOT issue any gh command (no surprise reopen).
     await p.updateStatus({ integrationId: 'l', externalIdOrKey: '42', status: 'in_progress' });
     expect(verbs).toEqual(['close', 'reopen']);
+  });
+
+  it('forwards --state all so list returns open AND closed', async () => {
+    let captured: string[] = [];
+    const run: GhRunner = vi.fn(async (args) => {
+      captured = args;
+      return '[]';
+    });
+    await new GitHubCliProvider(run).listWorkItems({ integrationId: 'l', status: 'all' });
+    const i = captured.indexOf('--state');
+    expect(i).toBeGreaterThan(-1);
+    expect(captured[i + 1]).toBe('all');
   });
 
   it('validateCredentials reflects `gh auth status` success/failure', async () => {

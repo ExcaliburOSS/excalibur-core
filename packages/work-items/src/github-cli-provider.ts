@@ -117,7 +117,9 @@ export class GitHubCliProvider implements WorkItemProvider {
 
   async listWorkItems(input: ListWorkItemsInput): Promise<NormalizedWorkItem[]> {
     const args = ['issue', 'list', '--json', LIST_FIELDS, '--limit', String(input.limit ?? 30)];
-    if (input.status === 'open' || input.status === 'closed') {
+    // gh supports --state open|closed|all; forward all three (omitting it would
+    // default gh to open-only, silently dropping `all`).
+    if (input.status === 'open' || input.status === 'closed' || input.status === 'all') {
       args.push('--state', input.status);
     }
     if (input.assignee !== undefined) args.push('--assignee', input.assignee);
@@ -142,14 +144,16 @@ export class GitHubCliProvider implements WorkItemProvider {
   }
 
   async updateStatus(input: UpdateWorkItemStatusInput): Promise<void> {
-    // GitHub issues are open/closed; map any "done/closed/resolved" → close.
-    const close = /clos|done|resolv|complete/i.test(input.status);
-    await this.run([
-      'issue',
-      close ? 'close' : 'reopen',
-      input.externalIdOrKey,
-      ...this.repoArgs(),
-    ]);
+    // GitHub issues are only open/closed. Close on a terminal status; reopen ONLY
+    // on an explicit open/reopen status. A non-terminal status (in_progress, todo,
+    // backlog, in review, …) is a NO-OP — it must never flip a closed issue back
+    // open (which would fire 'reopened' webhooks out of nowhere).
+    if (/clos|done|resolv|complete/i.test(input.status)) {
+      await this.run(['issue', 'close', input.externalIdOrKey, ...this.repoArgs()]);
+    } else if (/^(re)?open/i.test(input.status.trim())) {
+      await this.run(['issue', 'reopen', input.externalIdOrKey, ...this.repoArgs()]);
+    }
+    // else: non-terminal status → do nothing.
   }
 
   async linkPullRequest(input: LinkPullRequestInput): Promise<void> {
