@@ -45,6 +45,18 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
   const get = (path: string, token = TOKEN): Promise<Response> =>
     fetch(`${base}${path}${path.includes('?') ? '&' : '?'}token=${token}`);
 
+  it('serves the self-contained web dashboard at / (HTML, token-gated)', async () => {
+    const res = await get('/');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    const html = await res.text();
+    expect(html).toContain('EXCALIBUR');
+    expect(html).toContain('/api/runs'); // the embedded client calls the API
+    expect(html).toContain('/api/insights');
+    // The dashboard is behind the token too.
+    expect((await fetch(`${base}/`)).status).toBe(401);
+  });
+
   it('rejects a request with no/invalid token (401)', async () => {
     const res = await fetch(`${base}/api/runs`);
     expect(res.status).toBe(401);

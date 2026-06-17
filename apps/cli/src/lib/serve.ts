@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { collectInsights, RunManager } from '@excalibur/core';
 import type { ExcaliburEvent } from '@excalibur/shared';
 import { reduceRail } from '@excalibur/tui';
+import { dashboardHtml } from './dashboard';
 
 /**
  * `excalibur serve` (plan P1.12 / the headless-server enabler) — a local,
@@ -31,6 +32,11 @@ interface Json {
   body: unknown;
 }
 
+interface Html {
+  status: number;
+  html: string;
+}
+
 const RUN_ID = /^run_\d{8}_\d{6}(?:_[a-z0-9]+)?$/;
 
 /** Extracts the bearer/query token from a request. */
@@ -42,12 +48,15 @@ function tokenOf(req: IncomingMessage, url: URL): string | null {
   return url.searchParams.get('token');
 }
 
-/** Routes a request to a JSON payload, or null when it is the SSE stream route. */
-function route(repoRoot: string, url: URL): Json | 'sse' | null {
+/** Routes a request to a payload, an HTML page, or 'sse' for the stream route. */
+function route(repoRoot: string, url: URL): Json | Html | 'sse' | null {
   const manager = new RunManager(repoRoot);
   const path = url.pathname.replace(/\/+$/, '') || '/';
 
-  if (path === '/health' || path === '/') {
+  if (path === '/') {
+    return { status: 200, html: dashboardHtml() };
+  }
+  if (path === '/health') {
     return { status: 200, body: { ok: true, service: 'excalibur', repoRoot } };
   }
   if (path === '/api/runs') {
@@ -146,7 +155,7 @@ export function createExcaliburServer(options: ServeOptions): Server {
       res.end(JSON.stringify({ error: 'unauthorized — pass ?token= or Authorization: Bearer' }));
       return;
     }
-    let result: Json | 'sse' | null;
+    let result: Json | Html | 'sse' | null;
     try {
       result = route(options.repoRoot, url);
     } catch (error) {
@@ -162,6 +171,11 @@ export function createExcaliburServer(options: ServeOptions): Server {
     if (result === 'sse') {
       const id = decodeURIComponent(/\/api\/runs\/([^/]+)\/stream$/.exec(url.pathname)?.[1] ?? '');
       streamRun(options.repoRoot, id, res, pollMs);
+      return;
+    }
+    if ('html' in result) {
+      res.writeHead(result.status, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(result.html);
       return;
     }
     res.writeHead(result.status, { 'Content-Type': 'application/json' });
