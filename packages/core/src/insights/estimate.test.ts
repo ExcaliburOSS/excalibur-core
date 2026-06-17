@@ -57,6 +57,28 @@ describe('estimateRun', () => {
     }
   });
 
+  it('selects the most-recently-COMPLETED runs, not the most-recently-started', () => {
+    const repoRoot = makeTempDir();
+    try {
+      const manager = new RunManager(repoRoot);
+      // Created (started) in order A, B, C — but A COMPLETES last. With sampleSize
+      // 2, completion-order selection must pick {A, C}, not start-order {B, C}.
+      const mk = (cost: number, completedAt: string): void => {
+        const run = manager.createRun({ title: 't', autonomyLevel: 3, workflow: 'fast-fix', executionStyle: 'fast' });
+        manager.appendModelCall(run.id, { provider: 'k', model: 'k', inputTokens: 1, outputTokens: 1, costCents: cost, timestamp: completedAt });
+        manager.updateRecord(run.id, { status: 'completed', completedAt });
+      };
+      mk(100, '2026-06-17T13:00:00.000Z'); // A — started first, completed LAST
+      mk(2, '2026-06-17T11:10:00.000Z'); // B — completed earliest
+      mk(4, '2026-06-17T12:05:00.000Z'); // C
+      const est = estimateRun(repoRoot, { workflow: 'fast-fix', taskType: 'bugfix', affectedUnits: 1, sampleSize: 2 });
+      expect(est.basedOnRuns).toBe(2);
+      expect(est.estCostCents).toBeCloseTo(52); // (A 100 + C 4) / 2, NOT (B 2 + C 4)/2 = 3
+    } finally {
+      removeDir(repoRoot);
+    }
+  });
+
   it('ignores runs of other workflows + non-completed runs', () => {
     const repoRoot = makeTempDir();
     try {

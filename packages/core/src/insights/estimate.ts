@@ -51,7 +51,9 @@ export function estimateRun(repoRoot: string, input: EstimateInput): RunEstimate
   const manager = new RunManager(repoRoot);
   const blastRadius = Math.max(1, input.affectedUnits);
 
-  // History: the most recent COMPLETED runs of the same workflow.
+  // History: the most recently COMPLETED runs of the same workflow. listRuns() is
+  // ordered by START time (run id), so sort by completedAt to honour "most recent
+  // completed" — a run started early but finishing late must still count as recent.
   const completed = manager
     .listRuns()
     .filter(
@@ -59,8 +61,9 @@ export function estimateRun(repoRoot: string, input: EstimateInput): RunEstimate
         r.record.workflow === input.workflow &&
         r.record.status === 'completed' &&
         r.record.completedAt !== null,
-    );
-  const recent = completed.slice(-(input.sampleSize ?? 10));
+    )
+    .sort((a, b) => Date.parse(b.record.completedAt as string) - Date.parse(a.record.completedAt as string));
+  const recent = completed.slice(0, input.sampleSize ?? 10);
 
   if (recent.length > 0) {
     let cost = 0;

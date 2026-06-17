@@ -81,7 +81,15 @@ function route(repoRoot: string, url: URL): Json | Html | 'sse' | null {
       return 'sse';
     }
     if (runMatch[2] === '/events') {
-      return { status: 200, body: { events } };
+      // Bound the response: `?after=<index>` pages from a cursor, `?limit` caps
+      // the count (default 5000) so a huge event log can't return one vast body.
+      const after = Math.max(0, Number.parseInt(url.searchParams.get('after') ?? '0', 10) || 0);
+      const limit = Math.min(5000, Math.max(1, Number.parseInt(url.searchParams.get('limit') ?? '5000', 10) || 5000));
+      const slice = events.slice(after, after + limit);
+      return {
+        status: 200,
+        body: { events: slice, total: events.length, nextCursor: after + slice.length },
+      };
     }
     // The run detail: record + the reduced rail (live = scrub = replay = web).
     return {
