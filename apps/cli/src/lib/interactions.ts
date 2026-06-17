@@ -6,8 +6,11 @@ import {
   type AdditionalContextSource,
   type LocalPatch,
 } from '@excalibur/core';
+import { redactSecrets } from '@excalibur/model-gateway';
 import type { ChatMessage } from '@excalibur/model-gateway';
 import { AUTONOMY_LEVEL_LABELS, type AutonomyLevel } from '@excalibur/shared';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { isAbsolute, join, relative } from 'node:path';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import {
@@ -158,6 +161,40 @@ export function filesAffectedFromDiff(diff: string): string[] {
 }
 
 /** Generates and stores a patch proposal; returns the stored artifact. */
+/** Path-like tokens in a task ("src/math.ts", "lib/foo.py"), a rough file-mention proxy. */
+const PATCH_PATH_PATTERN = /\b[\w.-]+(?:\/[\w.-]+)+\b/g;
+/** Never read these into a model prompt, even if the task names them (secrets/keys). */
+const PATCH_BLOCKED = /(^|\/)(\.env|\.git\/|node_modules\/)|\.(pem|key|p12|pfx)$/i;
+/** Per-file content cap injected into the patch prompt. */
+const PATCH_FILE_CAP = 8000;
+
+/**
+ * Gathers the CURRENT contents of files the task names, so the model can emit a
+ * precise unified diff in ONE shot instead of (correctly) asking to read them
+ * first — which is what strong agentic models like Kimi do when handed a blind
+ * "propose a diff" prompt with no file context. Best-effort, redacted, capped;
+ * skips secrets, missing files and oversized blobs.
+ */
+function gatherReferencedFiles(repoRoot: string, task: string): string {
+  const mentioned = [...new Set(task.match(PATCH_PATH_PATTERN) ?? [])];
+  const blocks: string[] = [];
+  for (const rel of mentioned) {
+    if (PATCH_BLOCKED.test(rel) || isAbsolute(rel)) continue;
+    const abs = join(repoRoot, rel);
+    // Stay inside the repo (no ../ escape) and only read real, reasonably-sized files.
+    if (relative(repoRoot, abs).startsWith('..')) continue;
+    try {
+      if (!existsSync(abs) || !statSync(abs).isFile()) continue;
+      const raw = readFileSync(abs, 'utf8');
+      const capped = raw.length > PATCH_FILE_CAP ? `${raw.slice(0, PATCH_FILE_CAP)}\n… (truncated)` : raw;
+      blocks.push(`Current contents of \`${rel}\`:\n\`\`\`\n${redactSecrets(capped)}\n\`\`\``);
+    } catch {
+      // Unreadable file → just skip it (the model can still propose a new file).
+    }
+  }
+  return blocks.join('\n\n');
+}
+
 export async function generatePatch(deps: CliDeps, task: string): Promise<LocalPatch> {
   const repoRoot = deps.cwd();
   const { config } = loadConfigContext(repoRoot);
@@ -180,15 +217,25 @@ export async function generatePatch(deps: CliDeps, task: string): Promise<LocalP
   }
 
   const gatewayContext = loadGatewayContext(repoRoot);
+  // Give the model the current contents of any files the task names, so it can
+  // emit a precise diff in one shot rather than asking to read them first.
+  const fileContext = gatherReferencedFiles(repoRoot, task);
+  const instruction =
+    'You are the Excalibur implementer. Output ONLY a unified diff in a single ```diff ' +
+    'fenced block (git-style, with ---/+++ headers and @@ hunks) that accomplishes the task — ' +
+    'no prose, no questions, do not ask to see files (their current contents are provided ' +
+    'below when relevant). For a new file, diff against /dev/null.';
+  const userContent =
+    fileContext.length > 0 ? `${fileContext}\n\nTask: ${task}` : `Task: ${task}`;
   const messages: ChatMessage[] = [
     {
       role: 'system',
       content:
         effective.instructionsMarkdown.length > 0
-          ? `${effective.instructionsMarkdown}\n\nYou are the Excalibur implementer. Propose a minimal unified diff for the task.`
-          : 'You are the Excalibur implementer. Propose a minimal unified diff for the task.',
+          ? `${effective.instructionsMarkdown}\n\n${instruction}`
+          : instruction,
     },
-    { role: 'user', content: task },
+    { role: 'user', content: userContent },
   ];
   const { output, provider } = await chatWithGuidance(deps, gatewayContext, {
     messages,
