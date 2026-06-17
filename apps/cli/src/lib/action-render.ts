@@ -1,5 +1,12 @@
 import type { ExcaliburEvent } from '@excalibur/shared';
-import pc from 'picocolors';
+import {
+  detectColorTier,
+  detectThemeSync,
+  getColors,
+  paint,
+  type ColorTier,
+  type Palette,
+} from '@excalibur/tui';
 import type { CliDeps } from '../deps';
 
 /**
@@ -149,6 +156,12 @@ export class ActionRenderer {
   private readonly ui: CliDeps['ui'];
   private readonly unicode: boolean;
   private readonly clock: () => number;
+  // The interactive shell shares the rail's colour identity: the same truecolor
+  // accent + semantic palette, downsampled to the terminal's capability, with
+  // light/dark auto-detection. On a non-TTY (CI/tests) the tier is `none`, so
+  // every paint() returns plain text — exactly how picocolors degraded before.
+  private readonly tier: ColorTier;
+  private readonly palette: Palette;
   private pending: PendingCall | null = null;
   private narration: string | null = null;
 
@@ -156,6 +169,13 @@ export class ActionRenderer {
     this.ui = deps.ui;
     this.unicode = options.unicode ?? true;
     this.clock = options.clock ?? ((): number => Date.now());
+    this.tier = detectColorTier(process.env, deps.ui.isOutputTty());
+    this.palette = getColors(detectThemeSync() ?? 'dark');
+  }
+
+  /** Paints `text` in the palette colour, or returns it plain when colour is off. */
+  private c(text: string, hex: string): string {
+    return this.tier === 'none' ? text : paint(text, hex, this.tier);
   }
 
   private g(unicode: string, ascii: string): string {
@@ -167,7 +187,7 @@ export class ActionRenderer {
     switch (event.type) {
       case 'phase_started':
         this.dropNarration();
-        this.ui.write(pc.cyan(`${this.g('▸', '>')} ${s(event, 'name') || 'phase'}`));
+        this.ui.write(this.c(`${this.g('▸', '>')} ${s(event, 'name') || 'phase'}`, this.palette.accent));
         return;
       case 'model_call': {
         const content = s(event, 'content').trim();
@@ -199,11 +219,11 @@ export class ActionRenderer {
       case 'policy_decision':
         if (event.payload['kind'] === 'confirmation' && event.payload['decision'] === 'deny') {
           const msg = s(event, 'message') || 'declined';
-          this.closeWithResult(`    ${pc.yellow(this.g('⎿', 'L'))} ${pc.yellow(msg)}`);
+          this.closeWithResult(`    ${this.c(this.g('⎿', 'L'), this.palette.warn)} ${this.c(msg, this.palette.warn)}`);
         }
         return;
       case 'error':
-        this.closeWithResult(`    ${pc.red(this.g('⎿', 'L'))} ${pc.red(`error: ${s(event, 'message')}`)}`);
+        this.closeWithResult(`    ${this.c(this.g('⎿', 'L'), this.palette.danger)} ${this.c(`error: ${s(event, 'message')}`, this.palette.danger)}`);
         return;
       default:
         return; // run_started/completed, phase_completed, *_selected → not actions
@@ -230,7 +250,7 @@ export class ActionRenderer {
     const verb = verbFor(tool);
     const target = targetFor(tool, args);
     this.pending = { verb, args, startedAtMs: this.clock() };
-    const head = `  ${pc.cyan(this.g('⏺', '*'))} ${verb.padEnd(VERB_WIDTH)} ${pc.dim(target)}`.trimEnd();
+    const head = `  ${this.c(this.g('⏺', '*'), this.palette.accent)} ${verb.padEnd(VERB_WIDTH)} ${this.c(target, this.palette.muted)}`.trimEnd();
     this.ui.write(head);
   }
 
@@ -242,7 +262,7 @@ export class ActionRenderer {
     const args = this.pending?.args ?? {};
 
     if (!ok) {
-      this.closeWithResult(pc.red(`${this.indent()} ${s(event, 'result') || 'failed'}`));
+      this.closeWithResult(this.c(`${this.indent()} ${s(event, 'result') || 'failed'}`, this.palette.danger));
       return;
     }
 
@@ -255,7 +275,7 @@ export class ActionRenderer {
 
   /** The indented result connector (`⎿`). */
   private indent(): string {
-    return `    ${pc.dim(this.g('⎿', 'L'))}`;
+    return `    ${this.c(this.g('⎿', 'L'), this.palette.muted)}`;
   }
 
   /** Builds the result lines for a completed tool. */
@@ -269,22 +289,22 @@ export class ActionRenderer {
     switch (tool) {
       case 'read_file': {
         const lines = countLines(s(event, 'result'));
-        return [`${this.indent()} ${pc.dim(`${lines} line${lines === 1 ? '' : 's'}`)}`];
+        return [`${this.indent()} ${this.c(`${lines} line${lines === 1 ? '' : 's'}`, this.palette.muted)}`];
       }
       case 'list_files': {
         const n = countLines(s(event, 'result'));
-        return [`${this.indent()} ${pc.dim(`${n} entr${n === 1 ? 'y' : 'ies'}`)}`];
+        return [`${this.indent()} ${this.c(`${n} entr${n === 1 ? 'y' : 'ies'}`, this.palette.muted)}`];
       }
       case 'search_code': {
         const n = countLines(s(event, 'result'));
-        return [`${this.indent()} ${pc.dim(`${n} match line${n === 1 ? '' : 'es'}`)}`];
+        return [`${this.indent()} ${this.c(`${n} match line${n === 1 ? '' : 'es'}`, this.palette.muted)}`];
       }
       case 'write_file': {
         const note = s(event, 'result') || 'written';
-        return [`${this.indent()} ${pc.dim(note)}`];
+        return [`${this.indent()} ${this.c(note, this.palette.muted)}`];
       }
       case 'create_branch':
-        return [`${this.indent()} ${pc.dim(`branch ${s(event, 'branch')}`)}`];
+        return [`${this.indent()} ${this.c(`branch ${s(event, 'branch')}`, this.palette.muted)}`];
       case 'run_command':
       case 'run_tests': {
         const exit = typeof event.payload['exitCode'] === 'number' ? (event.payload['exitCode'] as number) : null;
@@ -293,10 +313,10 @@ export class ActionRenderer {
         // the boilerplate banner at the top.
         const tail = tailLines(s(event, 'result'), 2);
         if (tail.length === 0) {
-          return [`${this.indent()} ${pc.dim(meta || 'done')}`];
+          return [`${this.indent()} ${this.c(meta || 'done', this.palette.muted)}`];
         }
-        const first = `${this.indent()} ${tail[0]}${meta ? `   ${pc.dim(meta)}` : ''}`;
-        const rest = tail.slice(1).map((l) => `      ${pc.dim(l)}`);
+        const first = `${this.indent()} ${tail[0]}${meta ? `   ${this.c(meta, this.palette.muted)}` : ''}`;
+        const rest = tail.slice(1).map((l) => `      ${this.c(l, this.palette.muted)}`);
         return [first, ...rest];
       }
       case 'git_diff':
@@ -304,10 +324,10 @@ export class ActionRenderer {
       case 'apply_patch': {
         const diff = typeof args['diff'] === 'string' ? (args['diff'] as string) : '';
         const head = this.diffLines(diff);
-        return head.length > 0 ? head : [`${this.indent()} ${pc.dim('applied')}`];
+        return head.length > 0 ? head : [`${this.indent()} ${this.c('applied', this.palette.muted)}`];
       }
       default:
-        return [`${this.indent()} ${pc.dim(s(event, 'result') || 'done')}`];
+        return [`${this.indent()} ${this.c(s(event, 'result') || 'done', this.palette.muted)}`];
     }
   }
 
@@ -321,7 +341,7 @@ export class ActionRenderer {
       return;
     }
     const label = `${affected.length} file${affected.length === 1 ? '' : 's'} changed`;
-    this.ui.write(`  ${pc.cyan(this.g('⏺', '*'))} ${'Diff'.padEnd(VERB_WIDTH)} ${pc.dim(label)}`.trimEnd());
+    this.ui.write(`  ${this.c(this.g('⏺', '*'), this.palette.accent)} ${'Diff'.padEnd(VERB_WIDTH)} ${this.c(label, this.palette.muted)}`.trimEnd());
     for (const line of this.diffLines(diff)) {
       this.ui.write(line);
     }
@@ -355,16 +375,16 @@ export class ActionRenderer {
         continue;
       }
       if (raw.startsWith('+')) {
-        out.push(`    ${pc.green(raw)}`);
+        out.push(`    ${this.c(raw, this.palette.success)}`);
         shown += 1;
       } else if (raw.startsWith('-')) {
-        out.push(`    ${pc.red(raw)}`);
+        out.push(`    ${this.c(raw, this.palette.danger)}`);
         shown += 1;
       }
       // context lines are skipped to keep the live view tight
     }
     if (hidden > 0) {
-      out.push(pc.dim(`    … +${hidden} more diff lines · /changes`));
+      out.push(this.c(`    … +${hidden} more diff lines · /changes`, this.palette.muted));
     }
     return out;
   }
@@ -372,7 +392,7 @@ export class ActionRenderer {
   /** Prints the model's pending narration (prose said BEFORE a tool call). */
   private flushNarration(): void {
     if (this.narration !== null && this.narration.length > 0) {
-      this.ui.write(pc.dim(`  ${truncateLine(this.narration, 200)}`));
+      this.ui.write(this.c(`  ${truncateLine(this.narration, 200)}`, this.palette.muted));
     }
     this.narration = null;
   }

@@ -22,7 +22,7 @@ export {
   type LanesModel,
   type RenderLanesOptions,
 } from './rail-lanes.js';
-export { detectThemeSync, type ThemeMode } from './theme.js';
+export { detectThemeSync, getColors, type ThemeMode, type Palette } from './theme.js';
 export type {
   ApprovalPrompt,
   Phase,
