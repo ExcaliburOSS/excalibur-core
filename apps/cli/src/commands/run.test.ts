@@ -116,9 +116,19 @@ describe('status / logs', () => {
     expect(parsed.runs.length).toBeGreaterThan(0);
   });
 
-  it('logs prettifies the latest run events', async () => {
+  it('logs renders the latest run as the rail (with a status line)', async () => {
     const cli = createTestCli({ cwd: repo });
     await cli.run('logs');
+    const out = cli.stdout();
+    // The rail status line carries the safety preset and the run's model.
+    expect(out).toContain('standard-safe');
+    // Raw event TYPES are not in the default rail view (they live behind --events).
+    expect(out).not.toContain('run_started');
+  });
+
+  it('logs --events shows the raw event list', async () => {
+    const cli = createTestCli({ cwd: repo });
+    await cli.run('logs', '--events');
     expect(cli.stdout()).toContain('run_started');
     expect(cli.stdout()).toContain('run_completed');
   });

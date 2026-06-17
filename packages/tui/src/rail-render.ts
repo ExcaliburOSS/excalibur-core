@@ -95,6 +95,12 @@ export interface RenderRailOptions {
   tier?: ColorTier;
   /** Light/dark palette selection (defaults to dark). */
   mode?: ThemeMode;
+  /**
+   * Expand EVERY phase's event stream, not just the active one. Used by the
+   * inspect/replay surface (`excalibur logs`) where there is no live "active"
+   * phase and the reader wants the full structured history.
+   */
+  expandAll?: boolean;
 }
 
 /** Renders the rail model to an array of text lines. */
@@ -129,8 +135,9 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
     const name = c(paddedName, isActive ? palette.text : palette.muted);
     const detailCol = annotation.length > 0 ? c(annotation, palette.muted) : '';
     lines.push(` ${glyphCol} ${name}${detailCol}`.trimEnd());
-    // Only the active phase expands its event stream; completed ones collapse.
-    if (isActive) {
+    // The active phase expands its event stream; completed ones collapse —
+    // unless `expandAll` (the inspect/replay surface wants the full history).
+    if (isActive || options.expandAll === true) {
       for (const event of phase.events ?? []) {
         const note = event.note !== undefined && event.note.length > 0 ? `  ${event.note}` : '';
         const hex = toneHex(event.tone, palette);
