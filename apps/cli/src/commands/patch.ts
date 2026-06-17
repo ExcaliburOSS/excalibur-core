@@ -18,12 +18,12 @@ export function registerPatchCommand(program: Command, deps: CliDeps): void {
     .action(async (taskWords: string[], options: { yes?: boolean }) => {
       const task = taskWords.join(' ').trim();
       if (task.length === 0) {
-        throw new CliUsageError('The task must not be empty.');
+        throw new CliUsageError(deps.t('patch.taskEmpty'));
       }
 
       const patch = await generatePatch(deps, task);
 
-      const apply = await deps.ui.confirm('Apply patch to your working tree?', {
+      const apply = await deps.ui.confirm(deps.t('patch.applyConfirm'), {
         yes: options.yes,
         defaultYes: false,
       });
@@ -31,13 +31,19 @@ export function registerPatchCommand(program: Command, deps: CliDeps): void {
         // Real `git apply` (M2) — the same path as `excalibur apply`.
         const { filesAffected } = applyStoredPatch(deps, patch);
         deps.ui.success(
-          `Applied patch ${patch.id} to your working tree (${
-            filesAffected.length > 0 ? filesAffected.join(', ') : 'no files detected'
-          }).`,
+          deps.t('patch.applied', {
+            id: patch.id,
+            files:
+              filesAffected.length > 0
+                ? filesAffected.join(', ')
+                : deps.t('patch.noFilesDetected'),
+          }),
         );
       } else {
         deps.ui.info(
-          `Next: excalibur apply ${patch.id} · excalibur branch ${patch.id} · excalibur reject ${patch.id}`,
+          deps.t('patch.next', {
+            id: patch.id,
+          }),
         );
       }
     });

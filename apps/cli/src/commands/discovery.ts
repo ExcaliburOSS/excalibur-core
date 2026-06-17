@@ -70,11 +70,17 @@ export async function runDiscoveryFlow(deps: CliDeps, flow: DiscoveryFlowInput):
     source: 'cli',
     inputMarkdown: flow.input,
   });
-  deps.ui.info(`Discovery session ${session.id} (${flow.inputType}) → ${session.dir}`);
+  deps.ui.info(
+    deps.t('discovery.sessionCreated', {
+      id: session.id,
+      inputType: flow.inputType,
+      dir: session.dir,
+    }),
+  );
 
   const pack = DISCOVERY_QUESTION_PACKS[flow.inputType];
   deps.ui.write();
-  deps.ui.info('Answer the questions below — press Enter to skip any of them.');
+  deps.ui.info(deps.t('discovery.answerPrompt'));
   for (const question of pack) {
     const answer = await deps.ui.ask(`${pc.bold(question.text)}`, {
       yes: flow.yes,
@@ -95,20 +101,17 @@ export async function runDiscoveryFlow(deps: CliDeps, flow: DiscoveryFlowInput):
   deps.ui.write(card);
 
   if (record.recommendation === 'do_not_build') {
-    deps.ui.warn(
-      'Recommendation: do not build. The evidence collected does not justify this work — ' +
-        'see recommendation.md for the reasons. Nothing further is suggested.',
-    );
+    deps.ui.warn(deps.t('discovery.doNotBuild'));
   } else {
     const steps = nextSteps(record, title);
     if (steps.length > 0) {
-      deps.ui.heading('Suggested next steps:');
+      deps.ui.heading(deps.t('discovery.suggestedNextSteps'));
       for (const step of steps) {
         deps.ui.write(`  ${step}`);
       }
     }
   }
-  deps.ui.info(`Artifacts: ${session.dir}`);
+  deps.ui.info(deps.t('discovery.artifacts', { dir: session.dir }));
 }
 
 /**
@@ -128,10 +131,7 @@ export function registerDiscoveryCommand(program: Command, deps: CliDeps): void 
     .option('-y, --yes', 'skip the questions (recorded as unanswered)')
     .action(async (inputWords: string[], options: DiscoveryOptions) => {
       if (options.fromLinear !== undefined || options.fromJira !== undefined || options.fromGithubIssue !== undefined) {
-        deps.ui.warn(
-          'Work-item Discovery sources (Linear, Jira, GitHub Issues) become available in M4. ' +
-            'Until then, paste the ticket text: excalibur discovery "<text>" --type work_item',
-        );
+        deps.ui.warn(deps.t('discovery.workItemSourcesM4'));
         return;
       }
 
@@ -140,7 +140,10 @@ export function registerDiscoveryCommand(program: Command, deps: CliDeps): void 
         const parsed = discoveryInputTypeSchema.safeParse(options.type);
         if (!parsed.success) {
           throw new CliUsageError(
-            `--type must be one of: ${discoveryInputTypeSchema.options.join(', ')} (got "${options.type}").`,
+            deps.t('discovery.invalidType', {
+              types: discoveryInputTypeSchema.options.join(', '),
+              got: options.type,
+            }),
           );
         }
         inputType = parsed.data;
@@ -151,7 +154,7 @@ export function registerDiscoveryCommand(program: Command, deps: CliDeps): void 
       if (options.fromFile !== undefined) {
         const filePath = join(deps.cwd(), options.fromFile);
         if (!existsSync(filePath)) {
-          throw new CliUsageError(`File not found: ${options.fromFile}`);
+          throw new CliUsageError(deps.t('discovery.fileNotFound', { path: options.fromFile }));
         }
         input = readFileSync(filePath, 'utf8');
         title = `Feedback: ${basename(options.fromFile)}`;
@@ -160,9 +163,7 @@ export function registerDiscoveryCommand(program: Command, deps: CliDeps): void 
         }
       }
       if (input.trim().length === 0) {
-        throw new CliUsageError(
-          'Provide an idea to clarify: excalibur discovery "Add contract renewal reminders"',
-        );
+        throw new CliUsageError(deps.t('discovery.provideIdea'));
       }
 
       await runDiscoveryFlow(deps, {

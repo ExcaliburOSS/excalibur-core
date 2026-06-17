@@ -12,15 +12,12 @@ export function registerCmuxCommand(program: Command, deps: CliDeps): void {
     .description('run Excalibur workflows in CMUX panes (arrives in OSS-10)')
     .allowExcessArguments(true)
     .action(() => {
-      deps.ui.warn(
-        'Honest stub: the CMUX integration activates in milestone OSS-10 — multi-pane sessions ' +
-          '(planner / implementer / reviewer / tests / logs) with artifacts kept in .excalibur/runs/.',
-      );
+      deps.ui.warn(deps.t('cmux.stub'));
       if (isCommandOnPath('cmux', deps.env)) {
-        deps.ui.success('CMUX detected on this machine — you are ready for OSS-10.');
+        deps.ui.success(deps.t('cmux.detected'));
       } else {
-        deps.ui.info('CMUX is not installed. It is optional: every workflow works without it.');
+        deps.ui.info(deps.t('cmux.not-installed'));
       }
-      deps.ui.info('Until then: excalibur run "<task>" executes the same workflows in one terminal.');
+      deps.ui.info(deps.t('cmux.fallback'));
     });
 }

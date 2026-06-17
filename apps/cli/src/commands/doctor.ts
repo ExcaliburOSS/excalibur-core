@@ -49,39 +49,49 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
       // Node version (engines ≥ 22).
       const major = Number.parseInt(process.versions.node.split('.')[0] ?? '0', 10);
       add(
-        'node version',
+        deps.t('doctor.check.nodeVersion'),
         major >= 22 ? 'PASS' : 'FAIL',
-        `v${process.versions.node}${major >= 22 ? '' : ' — Excalibur requires Node ≥ 22'}`,
+        `v${process.versions.node}${major >= 22 ? '' : deps.t('doctor.detail.nodeTooOld')}`,
       );
 
       // Git availability + repository detection.
       const gitVersion = spawnSync('git', ['--version'], { encoding: 'utf8' });
       const gitAvailable = gitVersion.status === 0;
-      add('git available', gitAvailable ? 'PASS' : 'FAIL', gitAvailable ? gitVersion.stdout.trim() : 'git not found on PATH');
+      add(
+        deps.t('doctor.check.gitAvailable'),
+        gitAvailable ? 'PASS' : 'FAIL',
+        gitAvailable ? gitVersion.stdout.trim() : deps.t('doctor.detail.gitNotFound'),
+      );
       if (gitAvailable) {
         const info = getGitInfo(repoRoot);
         add(
-          'git repository',
+          deps.t('doctor.check.gitRepository'),
           info.isRepo ? 'PASS' : 'WARN',
-          info.isRepo ? `branch: ${info.branch ?? '(detached)'}` : 'not a git repository — diffs and branches unavailable',
+          info.isRepo
+            ? deps.t('doctor.detail.gitBranch', { branch: info.branch ?? '(detached)' })
+            : deps.t('doctor.detail.gitNotRepo'),
         );
       }
 
       // .excalibur/ + config validity.
       const excaliburDir = join(repoRoot, EXCALIBUR_DIR);
       if (!existsSync(excaliburDir)) {
-        add('.excalibur/', 'WARN', 'not initialized — run `excalibur init` (defaults still work)');
+        add('.excalibur/', 'WARN', deps.t('doctor.detail.excaliburNotInit'));
       } else {
         try {
           const loaded = loadExcaliburConfig(repoRoot);
-          add('.excalibur/config.yaml', 'PASS', loaded.source === 'file' ? 'valid' : 'missing — defaults active');
+          add(
+            '.excalibur/config.yaml',
+            'PASS',
+            loaded.source === 'file' ? deps.t('doctor.detail.configValid') : deps.t('doctor.detail.configMissing'),
+          );
           const presetId = loaded.config.safety?.preset ?? DEFAULT_SAFETY_PRESET_ID;
           add(
-            'safety preset',
+            deps.t('doctor.check.safetyPreset'),
             SAFETY_PRESETS[presetId] !== undefined ? 'PASS' : 'WARN',
             SAFETY_PRESETS[presetId] !== undefined
-              ? `${presetId} active`
-              : `unknown preset "${presetId}" — falling back to ${DEFAULT_SAFETY_PRESET_ID}`,
+              ? deps.t('doctor.detail.presetActive', { presetId })
+              : deps.t('doctor.detail.presetUnknown', { presetId, fallback: DEFAULT_SAFETY_PRESET_ID }),
           );
 
           // Instruction sources reachable.
@@ -93,11 +103,11 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
             return !existsSync(join(repoRoot, source.path.replace(/^\.\//, '')));
           });
           add(
-            'instruction sources',
+            deps.t('doctor.check.instructionSources'),
             missing.length === 0 ? 'PASS' : 'WARN',
             missing.length === 0
-              ? `${sources.length} configured, all reachable`
-              : `missing: ${missing.map((source) => source.path).join(', ')}`,
+              ? deps.t('doctor.detail.sourcesReachable', { count: sources.length })
+              : deps.t('doctor.detail.sourcesMissing', { paths: missing.map((source) => source.path).join(', ') }),
           );
         } catch (error) {
           add('.excalibur/config.yaml', 'FAIL', describe(error));
@@ -107,11 +117,11 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
       // Providers config + API key env presence.
       const providersPath = providersFilePath(repoRoot);
       if (!existsSync(providersPath)) {
-        add('model providers', 'WARN', 'no providers.yaml — using the built-in mock (run `excalibur models setup`)');
+        add(deps.t('doctor.check.modelProviders'), 'WARN', deps.t('doctor.detail.providersMissing'));
       } else {
         try {
           const providers = loadProvidersFile(providersPath);
-          add('model providers', 'PASS', 'providers.yaml valid');
+          add(deps.t('doctor.check.modelProviders'), 'PASS', deps.t('doctor.detail.providersValid'));
           for (const [name, config] of Object.entries(providers.providers)) {
             if (name === 'default' || typeof config === 'string') {
               continue;
@@ -120,25 +130,25 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
             if (keyEnv !== undefined) {
               const present = typeof deps.env[keyEnv] === 'string' && deps.env[keyEnv] !== '';
               add(
-                `api key env (${name})`,
+                deps.t('doctor.check.apiKeyEnv', { name }),
                 present ? 'PASS' : 'WARN',
-                present ? `${keyEnv} is set` : `${keyEnv} is not set`,
+                present ? deps.t('doctor.detail.keyEnvSet', { keyEnv }) : deps.t('doctor.detail.keyEnvUnset', { keyEnv }),
               );
             }
           }
         } catch (error) {
-          add('model providers', 'FAIL', describe(error));
+          add(deps.t('doctor.check.modelProviders'), 'FAIL', describe(error));
         }
       }
 
       // Detected commands.
       const commands = await detectCommands(repoRoot);
       add(
-        'detected commands',
+        deps.t('doctor.check.detectedCommands'),
         commands.test !== undefined ? 'PASS' : 'WARN',
         Object.entries(commands)
           .map(([key, value]) => `${key}: ${value}`)
-          .join(' / ') || 'none detected — agents cannot verify changes',
+          .join(' / ') || deps.t('doctor.detail.commandsNone'),
       );
 
       // Extension host: catalogs + load errors.
@@ -146,25 +156,31 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
         const registry = await createExtensionHost(repoRoot);
         const workflows = registry.contributions.workflows().length;
         const methodologies = registry.contributions.methodologies().length;
-        add('workflow catalog', workflows > 0 ? 'PASS' : 'FAIL', `${workflows} workflows, ${methodologies} methodologies`);
+        add(
+          deps.t('doctor.check.workflowCatalog'),
+          workflows > 0 ? 'PASS' : 'FAIL',
+          deps.t('doctor.detail.workflowCounts', { workflows, methodologies }),
+        );
         const failed = registry.extensions().filter((extension) => extension.status === 'error');
         // Unbuilt local scaffolds (missing entrypoint) are expected until the
         // user compiles them: WARN here, FAIL only on real load errors.
         const unbuilt = failed.filter((extension) => (extension.error ?? '').includes('entrypoint'));
         const broken = failed.filter((extension) => !(extension.error ?? '').includes('entrypoint'));
         add(
-          'extensions',
+          deps.t('doctor.check.extensions'),
           broken.length > 0 ? 'FAIL' : unbuilt.length > 0 ? 'WARN' : 'PASS',
           failed.length === 0
-            ? `${registry.extensions().length} loaded`
-            : failed.map((extension) => `${extension.manifest.id}: ${extension.error ?? 'load error'}`).join('; '),
+            ? deps.t('doctor.detail.extensionsLoaded', { count: registry.extensions().length })
+            : failed
+                .map((extension) => `${extension.manifest.id}: ${extension.error ?? deps.t('doctor.detail.loadError')}`)
+                .join('; '),
         );
         const warnings = registry.contributions.warnings();
         if (warnings.length > 0) {
-          add('extension warnings', 'WARN', warnings.join('; '));
+          add(deps.t('doctor.check.extensionWarnings'), 'WARN', warnings.join('; '));
         }
       } catch (error) {
-        add('extensions', 'FAIL', describe(error));
+        add(deps.t('doctor.check.extensions'), 'FAIL', describe(error));
       }
 
       // Enterprise credentials (optional).
@@ -173,9 +189,11 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
         env: deps.env as Record<string, string | undefined>,
       });
       add(
-        'enterprise credentials',
+        deps.t('doctor.check.enterpriseCredentials'),
         'PASS',
-        credentials !== null ? `connected to ${credentials.baseUrl}` : 'not configured (optional)',
+        credentials !== null
+          ? deps.t('doctor.detail.credentialsConnected', { baseUrl: credentials.baseUrl })
+          : deps.t('doctor.detail.credentialsNone'),
       );
 
       if (options.json === true) {
@@ -195,7 +213,7 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
       const failed = results.filter((result) => result.status === 'FAIL');
       if (failed.length > 0) {
         // Runtime error → exit code 1 (Build Contract: doctor exits 1 on FAIL).
-        throw new ExcaliburError(`doctor found ${failed.length} failing check(s).`, 'doctor_failed');
+        throw new ExcaliburError(deps.t('doctor.error.failed', { count: failed.length }), 'doctor_failed');
       }
     });
 }

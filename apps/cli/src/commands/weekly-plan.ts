@@ -12,6 +12,6 @@ export function registerWeeklyPlanCommand(program: Command, deps: CliDeps): void
       const markdown = generateWeeklyPlan({ repoRoot, runManager: new RunManager(repoRoot) });
       deps.ui.write(markdown);
       const path = writeReport(repoRoot, weeklyPlanFileName(), markdown);
-      deps.ui.info(`Saved to ${path}`);
+      deps.ui.info(deps.t('weekly-plan.saved', { path }));
     });
 }

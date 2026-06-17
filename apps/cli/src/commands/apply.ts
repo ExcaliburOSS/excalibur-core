@@ -19,19 +19,23 @@ export function registerApplyCommand(program: Command, deps: CliDeps): void {
 
       const confirmed =
         options.yes === true ||
-        (await deps.ui.confirm(`Apply patch ${patch.id} to your working tree?`, {
+        (await deps.ui.confirm(deps.t('apply.confirm', { id: patch.id }), {
           defaultYes: false,
         }));
       if (!confirmed) {
-        deps.ui.info('Apply cancelled.');
+        deps.ui.info(deps.t('apply.cancelled'));
         return;
       }
 
       const { filesAffected } = applyStoredPatch(deps, patch);
       deps.ui.success(
-        `Applied patch ${patch.id} to your working tree (${
-          filesAffected.length > 0 ? filesAffected.join(', ') : 'no files detected'
-        }).`,
+        deps.t('apply.applied', {
+          id: patch.id,
+          files:
+            filesAffected.length > 0
+              ? filesAffected.join(', ')
+              : deps.t('apply.no-files'),
+        }),
       );
     });
 }

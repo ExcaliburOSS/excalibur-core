@@ -33,7 +33,7 @@ export function registerLogsCommand(program: Command, deps: CliDeps): void {
       const runManager = new RunManager(deps.cwd());
       const run = runId !== undefined ? runManager.getRun(runId) : runManager.latestRun();
       if (run === null) {
-        throw new CliUsageError('No local runs yet. Start one with: excalibur run "<task>"');
+        throw new CliUsageError(deps.t('logs.noRuns'));
       }
       const events = runManager.readEvents(run.id);
       if (options.json === true) {
@@ -41,9 +41,15 @@ export function registerLogsCommand(program: Command, deps: CliDeps): void {
         return;
       }
 
-      deps.ui.heading(`${run.id} — ${run.record.title} (${run.record.status})`);
+      deps.ui.heading(
+        deps.t('logs.heading', {
+          id: run.id,
+          title: run.record.title,
+          status: run.record.status,
+        }),
+      );
       if (events.length === 0) {
-        deps.ui.info('No events recorded.');
+        deps.ui.info(deps.t('logs.noEvents'));
         return;
       }
 

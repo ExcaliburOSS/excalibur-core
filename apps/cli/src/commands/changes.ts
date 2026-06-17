@@ -26,13 +26,20 @@ export function registerChangesCommand(program: Command, deps: CliDeps): void {
       const model = loadReplay(repoRoot, runId);
       const summary = buildTurnSummary(model);
 
-      deps.ui.heading(`Changes · ${runId}`);
+      deps.ui.heading(deps.t('changes.heading', { runId }));
       if (summary.changedFiles.length === 0) {
-        deps.ui.write(pc.dim('  No file changes recorded for this run.'));
+        deps.ui.write(pc.dim(deps.t('changes.noFileChanges')));
       } else {
         const { metrics } = summary;
         deps.ui.write(
-          pc.dim(`  ${metrics.files} file${metrics.files === 1 ? '' : 's'} · +${metrics.insertions} −${metrics.deletions}`),
+          pc.dim(
+            deps.t('changes.diffstat', {
+              files: metrics.files,
+              plural: metrics.files === 1 ? '' : 's',
+              insertions: metrics.insertions,
+              deletions: metrics.deletions,
+            }),
+          ),
         );
         deps.ui.write();
         for (const file of summary.changedFiles) {
@@ -49,7 +56,7 @@ export function registerChangesCommand(program: Command, deps: CliDeps): void {
         const diff = last >= 0 ? reconstructStateAt(model, last).accumulatedDiff : '';
         deps.ui.write();
         if (diff.trim().length === 0) {
-          deps.ui.write(pc.dim('  (no unified diff recorded for this run)'));
+          deps.ui.write(pc.dim(deps.t('changes.noUnifiedDiff')));
         } else {
           deps.ui.write(diff);
         }

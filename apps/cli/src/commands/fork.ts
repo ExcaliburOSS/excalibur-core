@@ -22,17 +22,17 @@ function resolveStep(deps: CliDeps, runId: string, at: string | undefined): numb
   const model = loadReplay(deps.cwd(), runId);
   const total = model.steps.length;
   if (total === 0) {
-    throw new CliUsageError(`Run "${runId}" has no recorded steps.`);
+    throw new CliUsageError(deps.t('fork.noSteps', { runId }));
   }
   if (at === undefined) {
     return total - 1; // default to the last step
   }
   if (!/^\d+$/.test(at.trim())) {
-    throw new CliUsageError(`--at must be a whole step number between 1 and ${total} (got "${at}").`);
+    throw new CliUsageError(deps.t('fork.atNotWhole', { total, at }));
   }
   const n = Number.parseInt(at.trim(), 10);
   if (n < 1 || n > total) {
-    throw new CliUsageError(`--at must be a step between 1 and ${total} (got "${at}").`);
+    throw new CliUsageError(deps.t('fork.atOutOfRange', { total, at }));
   }
   return n - 1;
 }
@@ -71,7 +71,7 @@ export function registerForkCommand(program: Command, deps: CliDeps): void {
 
       const result = await runForkTurn(turn, { sourceRunId: runId, atStep, instruction });
       deps.ui.write();
-      deps.ui.info(`Fork ${result.forkRunId} created. Inspect it in its worktree, or replay it: excalibur replay ${result.forkRunId}`);
+      deps.ui.info(deps.t('fork.created', { forkRunId: result.forkRunId }));
     });
 }
 

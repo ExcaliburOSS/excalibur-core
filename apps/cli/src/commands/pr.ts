@@ -23,7 +23,7 @@ export function registerPrCommands(program: Command, deps: CliDeps): void {
       const runManager = new RunManager(repoRoot);
       const run = runId !== undefined ? runManager.getRun(runId) : runManager.latestRun();
       if (run === null) {
-        throw new CliUsageError('No local runs yet. Start one with: excalibur run "<task>"');
+        throw new CliUsageError(deps.t('pr.noRuns'));
       }
 
       const existing = join(run.dir, 'pr-summary.md');
@@ -48,7 +48,7 @@ export function registerPrCommands(program: Command, deps: CliDeps): void {
       });
       runManager.writeArtifact(run.id, 'pr-summary.md', `${output.content}\n`);
       deps.ui.write(output.content);
-      deps.ui.info(`Saved to ${existing}`);
+      deps.ui.info(deps.t('pr.saved', { path: existing }));
     });
 
   program
@@ -56,14 +56,12 @@ export function registerPrCommands(program: Command, deps: CliDeps): void {
     .description('open a pull request via the GitHub CLI (arrives in OSS-9 / M2)')
     .action(() => {
       const ghAvailable = isCommandOnPath('gh', deps.env);
-      deps.ui.warn(
-        'Honest stub: `pr-create` activates in milestone OSS-9 (M2), opening pull requests through the GitHub CLI.',
-      );
+      deps.ui.warn(deps.t('pr.stub'));
       if (ghAvailable) {
-        deps.ui.success('GitHub CLI (gh) detected — you are ready for M2.');
+        deps.ui.success(deps.t('pr.ghDetected'));
       } else {
-        deps.ui.info('GitHub CLI (gh) not found on PATH. Install it from https://cli.github.com to be ready.');
+        deps.ui.info(deps.t('pr.ghMissing'));
       }
-      deps.ui.info('Until then: excalibur pr-summary prints a summary you can paste into a PR.');
+      deps.ui.info(deps.t('pr.untilThen'));
     });
 }

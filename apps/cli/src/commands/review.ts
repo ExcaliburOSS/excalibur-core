@@ -65,7 +65,7 @@ export function registerReviewCommand(program: Command, deps: CliDeps): void {
         } else {
           const diff = getLocalDiff(deps.cwd());
           if (diff.trim().length === 0) {
-            deps.ui.success('Working tree is clean — nothing to review.');
+            deps.ui.success(deps.t('review.cleanTree'));
             return;
           }
           // Redact secrets from the diff before it reaches the prompt or disk —
@@ -83,16 +83,16 @@ export function registerReviewCommand(program: Command, deps: CliDeps): void {
         if (options.diagnostics === true) {
           const typecheck = loadConfigContext(deps.cwd()).config.commands?.typecheck;
           if (typecheck === undefined) {
-            deps.ui.warn('No typecheck command configured — skipping diagnostics.');
+            deps.ui.warn(deps.t('review.noTypecheck'));
           } else {
-            deps.ui.info(`Running diagnostics: ${typecheck}…`);
+            deps.ui.info(deps.t('review.runningDiagnostics', { typecheck }));
             const result = runDiagnostics(deps.cwd(), typecheck);
             const source = diagnosticsContextSource(result);
             if (source !== null) {
               additionalSources = [...additionalSources, source];
-              deps.ui.warn(`Typecheck reported ${result.diagnostics.length || 'some'} error(s) — anchoring the review on them.`);
+              deps.ui.warn(deps.t('review.typecheckErrors', { count: result.diagnostics.length || 'some' }));
             } else if (result.ok === true) {
-              deps.ui.success('Typecheck is clean.');
+              deps.ui.success(deps.t('review.typecheckClean'));
             }
           }
         }

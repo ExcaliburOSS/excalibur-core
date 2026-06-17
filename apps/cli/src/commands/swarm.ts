@@ -30,18 +30,18 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
     .action(async (taskWords: string[], options: { maxAgents?: string; apply?: boolean; yes?: boolean }) => {
       const task = taskWords.join(' ').trim();
       if (task.length === 0) {
-        throw new CliUsageError('The task must not be empty.');
+        throw new CliUsageError(deps.t('swarm.taskEmpty'));
       }
       const repoRoot = deps.cwd();
       if (!getGitInfo(repoRoot).isRepo) {
-        throw new CliUsageError('Swarm needs a git repository — each agent runs in an isolated worktree.');
+        throw new CliUsageError(deps.t('swarm.needsGitRepo'));
       }
       const maxAgents = parseMaxAgents(options.maxAgents);
       const gateway = loadGatewayContext(repoRoot);
       requireConfiguredModel(gateway); // a swarm of mock agents is pointless
       const { config } = loadConfigContext(repoRoot);
 
-      deps.ui.info('Decomposing the task into independent subtasks…');
+      deps.ui.info(deps.t('swarm.decomposing'));
       const subtasks = await decomposeTask(gateway.gateway, task, {
         provider: gateway.providerName,
         ...(maxAgents !== undefined ? { maxSubtasks: maxAgents } : {}),
@@ -56,24 +56,24 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
       const lanes = subtasks.slice(0, allocation.agentCount);
 
       deps.ui.write();
-      deps.ui.heading(`Swarm: ${allocation.reason}`);
+      deps.ui.heading(deps.t('swarm.heading', { reason: allocation.reason }));
       lanes.forEach((subtask, index) => {
         deps.ui.write(`  ${index + 1}. ${subtask.title}`);
       });
       deps.ui.write();
       if (lanes.length === 1) {
-        deps.ui.info('Only one independent unit — this runs as a single agent (no real fan-out).');
+        deps.ui.info(deps.t('swarm.singleUnit'));
       }
 
       const go =
         options.yes === true ||
-        (await deps.ui.confirm(`Run ${lanes.length} agent(s) in parallel?`, { defaultYes: true }));
+        (await deps.ui.confirm(deps.t('swarm.confirmRun', { count: lanes.length }), { defaultYes: true }));
       if (!go) {
-        deps.ui.info('Swarm cancelled.');
+        deps.ui.info(deps.t('swarm.cancelled'));
         return;
       }
 
-      deps.ui.info('Running… each agent works in its own isolated worktree.');
+      deps.ui.info(deps.t('swarm.running'));
       const result = await executeSwarm(deps, repoRoot, lanes, {
         gateway: gateway.gateway,
         config,
@@ -119,7 +119,7 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
       }
 
       if (result.mergedDiff.trim().length === 0) {
-        deps.ui.info('No changes were produced.');
+        deps.ui.info(deps.t('swarm.noChanges'));
         return;
       }
       deps.ui.write();
@@ -127,19 +127,19 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
 
       const apply =
         options.apply === true ||
-        (await deps.ui.confirm('Apply the merged changes to your working tree?', {
+        (await deps.ui.confirm(deps.t('swarm.confirmApply'), {
           yes: options.yes,
           defaultYes: false,
         }));
       if (!apply) {
-        deps.ui.info('Left unapplied. The merged diff is shown above.');
+        deps.ui.info(deps.t('swarm.leftUnapplied'));
         return;
       }
       try {
         applyPatch(repoRoot, result.mergedDiff);
-        deps.ui.success('Applied the merged swarm changes to your working tree.');
+        deps.ui.success(deps.t('swarm.applied'));
       } catch (error) {
-        deps.ui.error(`Could not apply the merged diff: ${error instanceof Error ? error.message : String(error)}`);
+        deps.ui.error(deps.t('swarm.applyFailed', { error: error instanceof Error ? error.message : String(error) }));
       }
     });
 }

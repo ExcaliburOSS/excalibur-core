@@ -119,4 +119,126 @@ export const ES: Catalog = {
   "workflows.phase-approval": "aprobación: {approval}",
   "workflows.phase-confirmation": "requiere confirmación",
   "workflows.artifacts": "Artefactos: {artifacts}",
+
+  // apply
+  "apply.confirm": "¿Aplicar el parche {id} a tu árbol de trabajo?",
+  "apply.cancelled": "Aplicación cancelada.",
+  "apply.applied": "Se aplicó el parche {id} a tu árbol de trabajo ({files}).",
+  "apply.no-files": "no se detectaron archivos",
+
+  // changes
+  "changes.heading": "Cambios · {runId}",
+  "changes.noFileChanges": "  No se registraron cambios de archivos para esta ejecución.",
+  "changes.diffstat": "  {files} archivo{plural} · +{insertions} −{deletions}",
+  "changes.noUnifiedDiff": "  (no se registró ningún diff unificado para esta ejecución)",
+
+  // cmux
+  "cmux.stub": "Stub honesto: la integración con CMUX se activa en el hito OSS-10 — sesiones multipanel (planificador / implementador / revisor / pruebas / registros) con los artefactos guardados en .excalibur/runs/.",
+  "cmux.detected": "CMUX detectado en esta máquina — estás listo para OSS-10.",
+  "cmux.not-installed": "CMUX no está instalado. Es opcional: todos los flujos de trabajo funcionan sin él.",
+  "cmux.fallback": "Mientras tanto: excalibur run \"<task>\" ejecuta los mismos flujos de trabajo en una sola terminal.",
+
+  // discovery
+  "discovery.sessionCreated": "Sesión de Discovery {id} ({inputType}) → {dir}",
+  "discovery.answerPrompt": "Responde las preguntas a continuación — pulsa Enter para omitir cualquiera de ellas.",
+  "discovery.doNotBuild": "Recomendación: no construir. La evidencia recopilada no justifica este trabajo — consulta recommendation.md para conocer los motivos. No se sugiere nada más.",
+  "discovery.suggestedNextSteps": "Próximos pasos sugeridos:",
+  "discovery.artifacts": "Artefactos: {dir}",
+  "discovery.workItemSourcesM4": "Las fuentes de Discovery de tickets (Linear, Jira, GitHub Issues) estarán disponibles en M4. Hasta entonces, pega el texto del ticket: excalibur discovery \"<text>\" --type work_item",
+  "discovery.invalidType": "--type debe ser uno de: {types} (se recibió \"{got}\").",
+  "discovery.fileNotFound": "Archivo no encontrado: {path}",
+  "discovery.provideIdea": "Proporciona una idea para clarificar: excalibur discovery \"Add contract renewal reminders\"",
+
+  // doctor
+  "doctor.check.nodeVersion": "versión de node",
+  "doctor.detail.nodeTooOld": " — Excalibur requiere Node ≥ 22",
+  "doctor.check.gitAvailable": "git disponible",
+  "doctor.detail.gitNotFound": "git no encontrado en el PATH",
+  "doctor.check.gitRepository": "repositorio git",
+  "doctor.detail.gitBranch": "rama: {branch}",
+  "doctor.detail.gitNotRepo": "no es un repositorio git — diffs y ramas no disponibles",
+  "doctor.detail.excaliburNotInit": "no inicializado — ejecuta `excalibur init` (los valores por defecto siguen funcionando)",
+  "doctor.detail.configValid": "válido",
+  "doctor.detail.configMissing": "ausente — valores por defecto activos",
+  "doctor.check.safetyPreset": "preajuste de seguridad",
+  "doctor.detail.presetActive": "{presetId} activo",
+  "doctor.detail.presetUnknown": "preajuste desconocido \"{presetId}\" — recurriendo a {fallback}",
+  "doctor.check.instructionSources": "fuentes de instrucciones",
+  "doctor.detail.sourcesReachable": "{count} configuradas, todas accesibles",
+  "doctor.detail.sourcesMissing": "ausentes: {paths}",
+  "doctor.check.modelProviders": "proveedores de modelos",
+  "doctor.detail.providersMissing": "sin providers.yaml — usando el mock integrado (ejecuta `excalibur models setup`)",
+  "doctor.detail.providersValid": "providers.yaml válido",
+  "doctor.check.apiKeyEnv": "env de clave api ({name})",
+  "doctor.detail.keyEnvSet": "{keyEnv} está definida",
+  "doctor.detail.keyEnvUnset": "{keyEnv} no está definida",
+  "doctor.check.detectedCommands": "comandos detectados",
+  "doctor.detail.commandsNone": "ninguno detectado — los agentes no pueden verificar cambios",
+  "doctor.check.workflowCatalog": "catálogo de flujos de trabajo",
+  "doctor.detail.workflowCounts": "{workflows} flujos de trabajo, {methodologies} metodologías",
+  "doctor.check.extensions": "extensiones",
+  "doctor.detail.extensionsLoaded": "{count} cargadas",
+  "doctor.detail.loadError": "error de carga",
+  "doctor.check.extensionWarnings": "advertencias de extensiones",
+  "doctor.check.enterpriseCredentials": "credenciales empresariales",
+  "doctor.detail.credentialsConnected": "conectado a {baseUrl}",
+  "doctor.detail.credentialsNone": "no configurado (opcional)",
+  "doctor.error.failed": "doctor encontró {count} comprobación(es) fallida(s).",
+
+  // fork
+  "fork.noSteps": "La ejecución \"{runId}\" no tiene pasos registrados.",
+  "fork.atNotWhole": "--at debe ser un número de paso entero entre 1 y {total} (se obtuvo \"{at}\").",
+  "fork.atOutOfRange": "--at debe ser un paso entre 1 y {total} (se obtuvo \"{at}\").",
+  "fork.created": "Bifurcación {forkRunId} creada. Inspecciónala en su worktree, o reprodúcela: excalibur replay {forkRunId}",
+
+  // logs
+  "logs.noRuns": "Aún no hay ejecuciones locales. Inicia una con: excalibur run \"<task>\"",
+  "logs.heading": "{id} — {title} ({status})",
+  "logs.noEvents": "No se registraron eventos.",
+
+  // patch
+  "patch.taskEmpty": "La tarea no puede estar vacía.",
+  "patch.applyConfirm": "¿Aplicar el parche a tu árbol de trabajo?",
+  "patch.applied": "Parche {id} aplicado a tu árbol de trabajo ({files}).",
+  "patch.noFilesDetected": "no se detectaron archivos",
+  "patch.next": "Siguiente: excalibur apply {id} · excalibur branch {id} · excalibur reject {id}",
+
+  // pr
+  "pr.noRuns": "Aún no hay ejecuciones locales. Inicia una con: excalibur run \"<task>\"",
+  "pr.saved": "Guardado en {path}",
+  "pr.stub": "Stub honesto: `pr-create` se activa en el hito OSS-9 (M2), abriendo pull requests a través de la CLI de GitHub.",
+  "pr.ghDetected": "CLI de GitHub (gh) detectada — estás listo para M2.",
+  "pr.ghMissing": "CLI de GitHub (gh) no encontrada en PATH. Instálala desde https://cli.github.com para estar listo.",
+  "pr.untilThen": "Mientras tanto: excalibur pr-summary imprime un resumen que puedes pegar en un PR.",
+
+  // replay
+  "replay.at-must-be-positive": "--at debe ser un número de paso positivo (se recibió \"{at}\").",
+
+  // review
+  "review.cleanTree": "El árbol de trabajo está limpio — no hay nada que revisar.",
+  "review.noTypecheck": "No hay ningún comando de typecheck configurado — se omiten los diagnósticos.",
+  "review.runningDiagnostics": "Ejecutando diagnósticos: {typecheck}…",
+  "review.typecheckErrors": "El typecheck informó {count} error(es) — se ancla la revisión en ellos.",
+  "review.typecheckClean": "El typecheck está limpio.",
+
+  // run
+  "run.task_empty": "La tarea no puede estar vacía.",
+
+  // swarm
+  "swarm.taskEmpty": "La tarea no puede estar vacía.",
+  "swarm.needsGitRepo": "El enjambre necesita un repositorio git: cada agente se ejecuta en un árbol de trabajo aislado.",
+  "swarm.decomposing": "Descomponiendo la tarea en subtareas independientes…",
+  "swarm.heading": "Enjambre: {reason}",
+  "swarm.singleUnit": "Solo una unidad independiente: esto se ejecuta como un único agente (sin paralelismo real).",
+  "swarm.confirmRun": "¿Ejecutar {count} agente(s) en paralelo?",
+  "swarm.cancelled": "Enjambre cancelado.",
+  "swarm.running": "Ejecutando… cada agente trabaja en su propio árbol de trabajo aislado.",
+  "swarm.noChanges": "No se produjeron cambios.",
+  "swarm.confirmApply": "¿Aplicar los cambios fusionados a tu árbol de trabajo?",
+  "swarm.leftUnapplied": "Se dejó sin aplicar. El diff fusionado se muestra arriba.",
+  "swarm.applied": "Se aplicaron los cambios fusionados del enjambre a tu árbol de trabajo.",
+  "swarm.applyFailed": "No se pudo aplicar el diff fusionado: {error}",
+
+  // weekly-plan
+  "weekly-plan.saved": "Guardado en {path}",
 };

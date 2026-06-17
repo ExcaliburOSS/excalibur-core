@@ -123,4 +123,126 @@ export const EN: Catalog = {
   "workflows.phase-approval": "approval: {approval}",
   "workflows.phase-confirmation": "requires confirmation",
   "workflows.artifacts": "Artifacts: {artifacts}",
+
+  // apply
+  "apply.confirm": "Apply patch {id} to your working tree?",
+  "apply.cancelled": "Apply cancelled.",
+  "apply.applied": "Applied patch {id} to your working tree ({files}).",
+  "apply.no-files": "no files detected",
+
+  // changes
+  "changes.heading": "Changes · {runId}",
+  "changes.noFileChanges": "  No file changes recorded for this run.",
+  "changes.diffstat": "  {files} file{plural} · +{insertions} −{deletions}",
+  "changes.noUnifiedDiff": "  (no unified diff recorded for this run)",
+
+  // cmux
+  "cmux.stub": "Honest stub: the CMUX integration activates in milestone OSS-10 — multi-pane sessions (planner / implementer / reviewer / tests / logs) with artifacts kept in .excalibur/runs/.",
+  "cmux.detected": "CMUX detected on this machine — you are ready for OSS-10.",
+  "cmux.not-installed": "CMUX is not installed. It is optional: every workflow works without it.",
+  "cmux.fallback": "Until then: excalibur run \"<task>\" executes the same workflows in one terminal.",
+
+  // discovery
+  "discovery.sessionCreated": "Discovery session {id} ({inputType}) → {dir}",
+  "discovery.answerPrompt": "Answer the questions below — press Enter to skip any of them.",
+  "discovery.doNotBuild": "Recommendation: do not build. The evidence collected does not justify this work — see recommendation.md for the reasons. Nothing further is suggested.",
+  "discovery.suggestedNextSteps": "Suggested next steps:",
+  "discovery.artifacts": "Artifacts: {dir}",
+  "discovery.workItemSourcesM4": "Work-item Discovery sources (Linear, Jira, GitHub Issues) become available in M4. Until then, paste the ticket text: excalibur discovery \"<text>\" --type work_item",
+  "discovery.invalidType": "--type must be one of: {types} (got \"{got}\").",
+  "discovery.fileNotFound": "File not found: {path}",
+  "discovery.provideIdea": "Provide an idea to clarify: excalibur discovery \"Add contract renewal reminders\"",
+
+  // doctor
+  "doctor.check.nodeVersion": "node version",
+  "doctor.detail.nodeTooOld": " — Excalibur requires Node ≥ 22",
+  "doctor.check.gitAvailable": "git available",
+  "doctor.detail.gitNotFound": "git not found on PATH",
+  "doctor.check.gitRepository": "git repository",
+  "doctor.detail.gitBranch": "branch: {branch}",
+  "doctor.detail.gitNotRepo": "not a git repository — diffs and branches unavailable",
+  "doctor.detail.excaliburNotInit": "not initialized — run `excalibur init` (defaults still work)",
+  "doctor.detail.configValid": "valid",
+  "doctor.detail.configMissing": "missing — defaults active",
+  "doctor.check.safetyPreset": "safety preset",
+  "doctor.detail.presetActive": "{presetId} active",
+  "doctor.detail.presetUnknown": "unknown preset \"{presetId}\" — falling back to {fallback}",
+  "doctor.check.instructionSources": "instruction sources",
+  "doctor.detail.sourcesReachable": "{count} configured, all reachable",
+  "doctor.detail.sourcesMissing": "missing: {paths}",
+  "doctor.check.modelProviders": "model providers",
+  "doctor.detail.providersMissing": "no providers.yaml — using the built-in mock (run `excalibur models setup`)",
+  "doctor.detail.providersValid": "providers.yaml valid",
+  "doctor.check.apiKeyEnv": "api key env ({name})",
+  "doctor.detail.keyEnvSet": "{keyEnv} is set",
+  "doctor.detail.keyEnvUnset": "{keyEnv} is not set",
+  "doctor.check.detectedCommands": "detected commands",
+  "doctor.detail.commandsNone": "none detected — agents cannot verify changes",
+  "doctor.check.workflowCatalog": "workflow catalog",
+  "doctor.detail.workflowCounts": "{workflows} workflows, {methodologies} methodologies",
+  "doctor.check.extensions": "extensions",
+  "doctor.detail.extensionsLoaded": "{count} loaded",
+  "doctor.detail.loadError": "load error",
+  "doctor.check.extensionWarnings": "extension warnings",
+  "doctor.check.enterpriseCredentials": "enterprise credentials",
+  "doctor.detail.credentialsConnected": "connected to {baseUrl}",
+  "doctor.detail.credentialsNone": "not configured (optional)",
+  "doctor.error.failed": "doctor found {count} failing check(s).",
+
+  // fork
+  "fork.noSteps": "Run \"{runId}\" has no recorded steps.",
+  "fork.atNotWhole": "--at must be a whole step number between 1 and {total} (got \"{at}\").",
+  "fork.atOutOfRange": "--at must be a step between 1 and {total} (got \"{at}\").",
+  "fork.created": "Fork {forkRunId} created. Inspect it in its worktree, or replay it: excalibur replay {forkRunId}",
+
+  // logs
+  "logs.noRuns": "No local runs yet. Start one with: excalibur run \"<task>\"",
+  "logs.heading": "{id} — {title} ({status})",
+  "logs.noEvents": "No events recorded.",
+
+  // patch
+  "patch.taskEmpty": "The task must not be empty.",
+  "patch.applyConfirm": "Apply patch to your working tree?",
+  "patch.applied": "Applied patch {id} to your working tree ({files}).",
+  "patch.noFilesDetected": "no files detected",
+  "patch.next": "Next: excalibur apply {id} · excalibur branch {id} · excalibur reject {id}",
+
+  // pr
+  "pr.noRuns": "No local runs yet. Start one with: excalibur run \"<task>\"",
+  "pr.saved": "Saved to {path}",
+  "pr.stub": "Honest stub: `pr-create` activates in milestone OSS-9 (M2), opening pull requests through the GitHub CLI.",
+  "pr.ghDetected": "GitHub CLI (gh) detected — you are ready for M2.",
+  "pr.ghMissing": "GitHub CLI (gh) not found on PATH. Install it from https://cli.github.com to be ready.",
+  "pr.untilThen": "Until then: excalibur pr-summary prints a summary you can paste into a PR.",
+
+  // replay
+  "replay.at-must-be-positive": "--at must be a positive step number (got \"{at}\").",
+
+  // review
+  "review.cleanTree": "Working tree is clean — nothing to review.",
+  "review.noTypecheck": "No typecheck command configured — skipping diagnostics.",
+  "review.runningDiagnostics": "Running diagnostics: {typecheck}…",
+  "review.typecheckErrors": "Typecheck reported {count} error(s) — anchoring the review on them.",
+  "review.typecheckClean": "Typecheck is clean.",
+
+  // run
+  "run.task_empty": "The task must not be empty.",
+
+  // swarm
+  "swarm.taskEmpty": "The task must not be empty.",
+  "swarm.needsGitRepo": "Swarm needs a git repository — each agent runs in an isolated worktree.",
+  "swarm.decomposing": "Decomposing the task into independent subtasks…",
+  "swarm.heading": "Swarm: {reason}",
+  "swarm.singleUnit": "Only one independent unit — this runs as a single agent (no real fan-out).",
+  "swarm.confirmRun": "Run {count} agent(s) in parallel?",
+  "swarm.cancelled": "Swarm cancelled.",
+  "swarm.running": "Running… each agent works in its own isolated worktree.",
+  "swarm.noChanges": "No changes were produced.",
+  "swarm.confirmApply": "Apply the merged changes to your working tree?",
+  "swarm.leftUnapplied": "Left unapplied. The merged diff is shown above.",
+  "swarm.applied": "Applied the merged swarm changes to your working tree.",
+  "swarm.applyFailed": "Could not apply the merged diff: {error}",
+
+  // weekly-plan
+  "weekly-plan.saved": "Saved to {path}",
 };

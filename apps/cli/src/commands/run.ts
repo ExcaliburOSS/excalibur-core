@@ -112,7 +112,7 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
     .action(async (taskWords: string[], options: RunOptions) => {
       const task = taskWords.join(' ').trim();
       if (task.length === 0) {
-        throw new CliUsageError('The task must not be empty.');
+        throw new CliUsageError(deps.t('run.task_empty'));
       }
 
       const explicitLevel = parseLevel(options.level);
