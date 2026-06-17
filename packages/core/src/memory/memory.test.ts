@@ -139,6 +139,42 @@ describe('MemoryStore knowledge-compounding loop (P2.12)', () => {
     }
   });
 
+  it('does NOT reinforce two UNSCOPED (path-less) nodes just because their text is similar', () => {
+    const { repoRoot, store: s } = store();
+    try {
+      // Similar (Jaccard ≥ 0.6) but different statements, both with NO subjectPaths.
+      const a = s.capture({ type: 'decision', statement: 'use feature flags for rollouts everywhere' });
+      const b = s.capture({ type: 'decision', statement: 'use feature flags for gradual rollouts' });
+      // They are distinct facts, not a reinforcement — kept separate.
+      expect(b.id).not.toBe(a.id);
+      expect(b.evidenceCount).toBe(1);
+      expect(s.current()).toHaveLength(2);
+    } finally {
+      removeDir(repoRoot);
+    }
+  });
+
+  it('does NOT let a BROAD-ancestor rejection supersede a NARROW-file decision', () => {
+    const { repoRoot, store: s } = store();
+    try {
+      const decision = s.capture({
+        type: 'decision',
+        statement: 'use an ORM in the charge module',
+        subjectPaths: ['src/billing/charge.ts'],
+      });
+      // A rejection scoped to the whole billing dir must NOT wildcard-retire the
+      // narrowly-scoped file decision (strict equal-path match for destructive ops).
+      s.capture({
+        type: 'rejection',
+        statement: 'do not use an ORM in the charge module',
+        subjectPaths: ['src/billing'],
+      });
+      expect(s.current().find((n) => n.id === decision.id)?.status).toBe('active');
+    } finally {
+      removeDir(repoRoot);
+    }
+  });
+
   it('honors an explicit supersedes target', () => {
     const { repoRoot, store: s } = store();
     try {

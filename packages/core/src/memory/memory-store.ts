@@ -211,12 +211,22 @@ function reinforcedConfidence(current: number): number {
   return clamp01(current + (1 - current) * 0.34);
 }
 
-/** Do two subject-path sets overlap? Empty∩empty counts as overlap (both global). */
+/**
+ * Do two subject-path sets overlap STRICTLY ENOUGH for a DESTRUCTIVE compounding
+ * op (reinforce/supersede)? Used only by capture(); retrieve() scoring uses the
+ * looser {@link pathsRelate} prefix match. Strict because reinforce merges nodes
+ * and supersede retires them:
+ *  - an UNSCOPED node (empty paths) never matches — "paths unknown" is NOT "both
+ *    global", so path-less captures don't all collapse/retire each other (#12);
+ *  - matching requires an EXACTLY-equal normalized path, so a broad ancestor
+ *    (`src/billing`) can't wildcard-supersede a narrow file (`src/billing/x.ts`) (#13).
+ */
 function subjectsOverlap(a: ReadonlyArray<string>, b: ReadonlyArray<string>): boolean {
-  if (a.length === 0 && b.length === 0) {
-    return true;
+  if (a.length === 0 || b.length === 0) {
+    return false;
   }
-  return a.some((x) => b.some((y) => pathsRelate(x, y)));
+  const nb = new Set(b.map(normalizePath));
+  return a.some((x) => nb.has(normalizePath(x)));
 }
 
 /** Lowercased alphanumeric tokens (length ≥ 3) of a statement, for similarity. */
