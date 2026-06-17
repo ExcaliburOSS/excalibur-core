@@ -261,11 +261,14 @@ export async function promptProviderSetup(
   }
 
   const ollamaDetected = isCommandOnPath('ollama', deps.env);
+  // NO mock here: the mock is NEVER offered to an interactive user (it would be
+  // user-facing fake functionality). It is reachable only via the explicit
+  // non-interactive `--yes` tests/CI hatch above, or a hand-written
+  // `type: mock` in providers.yaml. Real providers + "configure later" only.
   const choices: ProviderChoice[] = [
     ...PROVIDER_CATALOG.map((entry): ProviderChoice => ({ kind: 'catalog', entry })),
     { kind: 'ollama' },
     { kind: 'self-hosted' },
-    { kind: 'mock' },
     { kind: 'later' },
   ];
   const labels = choices.map((choice) => {
