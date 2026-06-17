@@ -93,4 +93,22 @@ describe('renderDiff', () => {
     // Some 4x/10x background SGR present (40–47 or 100–107).
     expect(/\x1b\[(4[0-7]|10[0-7])m/.test(colored)).toBe(true);
   });
+
+  it('side-by-side: old | new columns with a separator, both versions present', () => {
+    const lines = renderDiff(MOD_DIFF, { tier: 'none', width: 140, layout: 'side-by-side' });
+    const text = lines.join('\n');
+    expect(text).toContain('│'); // column separator
+    // Some single row carries the old text on the left and the new on the right.
+    const row = lines.find((l) => l.includes('return a - b;') && l.includes('return a + b;'));
+    expect(row).toBeDefined();
+    expect(stripAnsi(text)).toBe(text); // plain at tier none
+  });
+
+  it('auto layout: unified when narrow, side-by-side when wide', () => {
+    const narrow = renderDiff(MOD_DIFF, { tier: 'none', width: 60, layout: 'auto' }).join('\n');
+    const wide = renderDiff(MOD_DIFF, { tier: 'none', width: 140, layout: 'auto' }).join('\n');
+    // Narrow stacks del above add (no row has both); wide pairs them on one row.
+    expect(narrow.split('\n').some((l) => l.includes('return a - b;') && l.includes('return a + b;'))).toBe(false);
+    expect(wide.split('\n').some((l) => l.includes('return a - b;') && l.includes('return a + b;'))).toBe(true);
+  });
 });

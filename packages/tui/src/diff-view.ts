@@ -174,13 +174,25 @@ export interface RenderDiffOptions {
   mode?: ThemeMode;
   /** Terminal width; rows are tinted to this width so the bg reaches the edge. */
   width?: number;
+  /**
+   * `unified` (stacked) · `side-by-side` (old | new columns) · `auto` (default):
+   * side-by-side when the terminal is wide enough, else unified. The
+   * width-adaptive layout is the OpenCode-beating lever for wide terminals.
+   */
+  layout?: 'unified' | 'side-by-side' | 'auto';
 }
+
+/** Below this width, side-by-side columns get too cramped → fall back to unified. */
+const SIDE_BY_SIDE_MIN_WIDTH = 120;
 
 /** Renders a unified diff into colour-tiered lines (the diff viewport body). */
 export function renderDiff(diff: string, options: RenderDiffOptions = {}): string[] {
   const tier = options.tier ?? 'none';
   const palette = getColors(options.mode ?? 'dark');
   const width = options.width ?? 80;
+  const layout = options.layout ?? 'auto';
+  const sideBySide =
+    layout === 'side-by-side' || (layout === 'auto' && width >= SIDE_BY_SIDE_MIN_WIDTH);
   const files = parseUnifiedDiff(diff);
   const out: string[] = [];
 
@@ -198,17 +210,97 @@ export function renderDiff(diff: string, options: RenderDiffOptions = {}): strin
       }
     }
     const numW = String(maxNo).length;
-    const gutterW = numW * 2 + 3; // "old new " + a separator space
-    const contentW = Math.max(8, width - gutterW);
 
-    for (const h of file.hunks) {
-      out.push(paint(h.header, palette.accentDim, tier));
-      for (const line of h.lines) {
-        out.push(renderLine(line, { tier, palette, numW, contentW }));
+    if (sideBySide) {
+      for (const h of file.hunks) {
+        out.push(paint(h.header, palette.accentDim, tier));
+        out.push(...renderHunkSideBySide(h, { tier, palette, numW, width }));
+      }
+    } else {
+      const gutterW = numW * 2 + 3; // "old new " + a separator space
+      const contentW = Math.max(8, width - gutterW);
+      for (const h of file.hunks) {
+        out.push(paint(h.header, palette.accentDim, tier));
+        for (const line of h.lines) {
+          out.push(renderLine(line, { tier, palette, numW, contentW }));
+        }
       }
     }
   }
   return out;
+}
+
+interface SbsRow {
+  left: DiffLine | null;
+  right: DiffLine | null;
+}
+
+/** Aligns a hunk's lines into old|new rows: context → both, del/add runs paired. */
+function pairSideBySide(lines: DiffLine[]): SbsRow[] {
+  const rows: SbsRow[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    if (line.kind === 'context') {
+      rows.push({ left: line, right: line });
+      i += 1;
+      continue;
+    }
+    let d = i;
+    while (lines[d]?.kind === 'del') d += 1;
+    let a = d;
+    while (lines[a]?.kind === 'add') a += 1;
+    const dels = lines.slice(i, d);
+    const adds = lines.slice(d, a);
+    const rowCount = Math.max(dels.length, adds.length);
+    for (let k = 0; k < rowCount; k += 1) {
+      rows.push({ left: dels[k] ?? null, right: adds[k] ?? null });
+    }
+    i = a > i ? a : i + 1;
+  }
+  return rows;
+}
+
+function renderHunkSideBySide(
+  hunk: DiffHunk,
+  ctx: { tier: ColorTier; palette: ReturnType<typeof getColors>; numW: number; width: number },
+): string[] {
+  const { tier, palette, numW, width } = ctx;
+  const colW = Math.max(12, Math.floor((width - 3) / 2)); // 3 = " │ " separator
+  const sep = paint(' │ ', palette.rail, tier);
+  return pairSideBySide(hunk.lines).map((row) => {
+    const left = renderCell(row.left, 'left', { tier, palette, numW, colW });
+    const right = renderCell(row.right, 'right', { tier, palette, numW, colW });
+    return `${left}${sep}${right}`;
+  });
+}
+
+/** One side-by-side cell: gutter line number + marker + truncated, tinted content. */
+function renderCell(
+  line: DiffLine | null,
+  side: 'left' | 'right',
+  ctx: { tier: ColorTier; palette: ReturnType<typeof getColors>; numW: number; colW: number },
+): string {
+  const { tier, palette, numW, colW } = ctx;
+  if (line === null) {
+    return ' '.repeat(colW); // empty counterpart of an unpaired add/del
+  }
+  const no = side === 'left' ? line.oldNo : line.newNo;
+  const numStr = (no === null ? '' : String(no)).padStart(numW);
+  const marker = line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' ';
+  const textW = Math.max(1, colW - numW - 2); // "<num> <marker><text>"
+  let text = line.text;
+  if (text.length > textW) {
+    text = `${text.slice(0, Math.max(0, textW - 1))}…`;
+  }
+  const body = `${marker}${text}`.padEnd(textW);
+  const gutter = paint(`${numStr} `, palette.muted, tier);
+  if (line.kind === 'context') {
+    return `${gutter}${paint(body, palette.muted, tier)}`;
+  }
+  const fg = line.kind === 'add' ? palette.diffAddFg : palette.diffDelFg;
+  const bg = line.kind === 'add' ? palette.diffAddBg : palette.diffDelBg;
+  return `${gutter}${paintBg(body, bg, tier, fg)}`;
 }
 
 function renderLine(
