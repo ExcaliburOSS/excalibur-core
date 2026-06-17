@@ -145,6 +145,11 @@ export function describeEvent(t: Translator, event: ExcaliburEvent): string | nu
       return payload['blocked'] === true
         ? pc.red(t('event.verification-blocked', { summary: str('summary') }))
         : pc.green(t('event.verification-passed', { summary: str('summary') }));
+    case 'claim': {
+      const status = str('status');
+      const text = t('event.claim', { statement: str('statement'), status });
+      return status === 'refuted' ? pc.red(text) : status === 'verified' ? pc.green(text) : pc.dim(text);
+    }
     case 'run_completed':
       return pc.bold(t('event.run-completed', { status: str('status') || 'completed' }));
     default:

@@ -477,6 +477,86 @@ describe('executeLocalRun', () => {
     ).toBe(false);
   });
 
+  it('BLOCKS completion (failed) when the diff leaks a secret — claim ledger no_secrets', async () => {
+    // The agent writes a file containing an API key; the claim ledger's secret
+    // scan refutes `no_secrets` → the run must not reach `completed`. The mesh is
+    // made to pass (clean JSON) so this isolates the CLAIM gate.
+    execFileSync('git', ['init', '-q'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.email', 'test@excalibur.local'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.name', 'Excalibur Test'], { cwd: repoRoot });
+
+    class SecretLeakGateway {
+      private wrote = false;
+      chat(input: ChatInput): Promise<ChatOutput> {
+        const kind = typeof input.metadata?.['kind'] === 'string' ? input.metadata['kind'] : '';
+        if (kind.startsWith('mesh-')) {
+          return Promise.resolve({
+            content: '{"clean": true, "issues": []}',
+            model: 'mock-model',
+            usage: { inputTokens: 4, outputTokens: 4 },
+            costCents: 0,
+            finishReason: 'stop',
+          });
+        }
+        if (input.tools !== undefined && input.tools.length > 0 && !this.wrote) {
+          this.wrote = true;
+          return Promise.resolve({
+            content: '',
+            model: 'mock-model',
+            usage: { inputTokens: 8, outputTokens: 4 },
+            costCents: 0,
+            finishReason: 'tool_calls',
+            toolCalls: [
+              {
+                id: 'w1',
+                name: 'write_file',
+                arguments: {
+                  path: 'src/cfg.ts',
+                  content: 'export const apiKey = "sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ012345";\n',
+                },
+              },
+            ],
+          });
+        }
+        return Promise.resolve({
+          content: 'Done — no secrets were introduced.',
+          model: 'mock-model',
+          usage: { inputTokens: 6, outputTokens: 6 },
+          costCents: 0,
+          finishReason: 'stop',
+        });
+      }
+    }
+
+    const definition = getDefaultWorkflow('structured-feature');
+    const run = runManager.createRun({
+      title: 'Add a config module',
+      autonomyLevel: 4,
+      workflow: 'structured-feature',
+      methodology: 'spec-driven',
+      executionStyle: 'structured',
+    });
+    const record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      definition: definition!,
+      gateway: new SecretLeakGateway() as unknown as ModelGateway,
+      adapter,
+      config: { ...config, permissions: { tools: { write_file: true }, allowedCommands: [] } },
+    });
+
+    expect(record.status).toBe('failed');
+    const events = runManager.readEvents(run.id);
+    const noSecrets = events.find(
+      (e) => e.type === 'claim' && e.payload['kind'] === 'no_secrets',
+    );
+    expect(noSecrets?.payload['status']).toBe('refuted');
+    // The model ASSERTED "no secrets" — the ledger caught the lie.
+    expect(noSecrets?.payload['asserted']).toBe(true);
+    expect(existsSync(join(run.dir, 'claims.md'))).toBe(true);
+  });
+
   it('cancels the run when a required human approval is denied', async () => {
     const definition = getDefaultWorkflow('human-gated');
     expect(definition).toBeDefined();

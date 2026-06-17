@@ -200,6 +200,18 @@ export function reduceRail(
         });
         break;
       }
+      case 'claim': {
+        // A claim-ledger verdict. A refuted claim means stated success is false
+        // → the run reads as errored; verified is success, unverified is muted.
+        const status = str(p, 'status');
+        if (status === 'refuted') errored = true;
+        pushEvent(phaseFor(event), {
+          text: `${str(p, 'statement') || 'claim'} — ${status || 'unverified'}`,
+          tone: status === 'refuted' ? 'warn' : status === 'verified' ? 'success' : 'muted',
+          kind: 'claim',
+        });
+        break;
+      }
       case 'model_call': {
         const c = p['costCents'];
         if (typeof c === 'number') {

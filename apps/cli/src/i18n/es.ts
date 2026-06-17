@@ -617,6 +617,7 @@ export const ES: Catalog = {
   "event.error": "  error: {message}",
   "event.verification-passed": "  ⚖ verificación: {summary}",
   "event.verification-blocked": "  ⚖ verificación BLOQUEADA: {summary}",
+  "event.claim": "  ⊨ afirmación: {statement} — {status}",
   "event.run-completed": "■ ejecución completada ({status})",
   "event.unknown": "  {type}",
   "event.simulated": " (simulado)",

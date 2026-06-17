@@ -38,6 +38,7 @@ export const excaliburEventTypeSchema = z.enum([
   'compaction',
   'task_update',
   'verification',
+  'claim',
 ]);
 export type ExcaliburEventType = z.infer<typeof excaliburEventTypeSchema>;
 
@@ -94,6 +95,26 @@ export const verificationPayloadSchema = z.object({
   summary: z.string(),
 });
 export type VerificationPayload = z.infer<typeof verificationPayloadSchema>;
+
+/**
+ * Payload of a `claim` event (event #27): one entry of the CLAIM LEDGER. A claim
+ * the model made (or the run implies) about its work — `tests_pass`,
+ * `no_type_errors`, `no_secrets`, `builds`, `requirement_met` — AUTO-VERIFIED
+ * against real tool evidence (test exit codes, typecheck, a secret scan of the
+ * diff) and stamped verified|refuted|unverified. `asserted` = the model actually
+ * claimed it; a `refuted` + `asserted` claim is the model LYING — that blocks the
+ * run. Evidence-linked + replayable → leapfrogs an LLM-judge grader.
+ */
+export const claimPayloadSchema = z.object({
+  kind: z.string(),
+  statement: z.string(),
+  status: z.enum(['verified', 'refuted', 'unverified']),
+  /** Did the model itself assert this (vs. an implied run-level claim)? */
+  asserted: z.boolean(),
+  /** What was checked + the result (e.g. "test command exit 1"). */
+  evidence: z.string().optional(),
+});
+export type ClaimPayload = z.infer<typeof claimPayloadSchema>;
 
 export interface CreateEventInput {
   runId: string | null;

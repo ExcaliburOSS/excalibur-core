@@ -29,6 +29,12 @@ import { applyPatch, checkPatchApplies } from '../git/git';
 import { planVerificationMesh } from '../verification/verification-mesh';
 import { runVerificationMesh } from '../verification/verification-runner';
 import type { MeshResult } from '../verification/verification-mesh';
+import {
+  buildClaimLedger,
+  ledgerBlocks,
+  summarizeLedger,
+  type ClaimEvidence,
+} from '../claims/claim-ledger';
 import type { RunManager } from '../runs/run-manager';
 
 /**
@@ -128,6 +134,28 @@ function meshMarkdown(runId: string, result: MeshResult): string {
   ].join('\n');
 }
 
+/** Renders the claim ledger as the `claims.md` artifact. */
+function claimsMarkdown(
+  runId: string,
+  verdicts: ReadonlyArray<{ kind: string; statement: string; status: string; asserted: boolean; evidence?: string }>,
+  summary: string,
+): string {
+  const glyph = (status: string): string =>
+    status === 'verified' ? '✓' : status === 'refuted' ? '✗' : '?';
+  return [
+    `# Claim ledger — ${runId}`,
+    '',
+    summary,
+    '',
+    ...verdicts.map(
+      (v) =>
+        `- ${glyph(v.status)} [${v.status}] ${v.statement}${v.asserted ? ' (model asserted)' : ''}` +
+        `${v.evidence !== undefined ? `\n  - evidence: ${v.evidence}` : ''}`,
+    ),
+    '',
+  ].join('\n');
+}
+
 /** Pulls the unified diff out of a ```diff fenced block. */
 function extractUnifiedDiff(content: string): string | null {
   const match = /```diff\r?\n([\s\S]*?)\r?\n?```/.exec(content);
@@ -177,6 +205,13 @@ class LocalRunExecution {
   private spentCents = 0;
   /** Hard budget ceiling in cents, or null for no cap. */
   private readonly budgetCapCents: number | null;
+  // --- Claim-ledger evidence, accumulated from the event stream ---------------
+  /** Combined assistant text (the model's claims are parsed from this). */
+  private claimText = '';
+  /** Test outcome from command_group / test_result, or null if none ran. */
+  private testsPassed: boolean | null = null;
+  /** Last exit code per command (to verify typecheck/build claims). */
+  private readonly commandExits = new Map<string, number>();
 
   constructor(input: ExecuteLocalRunInput) {
     this.input = input;
@@ -192,6 +227,32 @@ class LocalRunExecution {
   private forward(event: ExcaliburEvent): void {
     this.input.runManager.appendEvent(this.run.id, event);
     this.input.onEvent?.(event);
+    this.captureClaimEvidence(event);
+  }
+
+  /** Folds an event into the claim-ledger evidence (assistant text + tool outcomes). */
+  private captureClaimEvidence(event: ExcaliburEvent): void {
+    const p = event.payload;
+    if (event.type === 'assistant_message') {
+      const content = p['content'];
+      if (typeof content === 'string' && content.length > 0) {
+        this.claimText += `${content}\n`;
+      }
+    } else if (event.type === 'test_result') {
+      const status = p['status'];
+      if (status === 'passed') this.testsPassed = true;
+      else if (status === 'failed') this.testsPassed = false;
+    } else if (event.type === 'command_completed') {
+      // A denied/skipped command is NOT evidence of failure — it never ran.
+      if (p['denied'] === true || p['skipped'] === true) {
+        return;
+      }
+      const command = p['command'];
+      const exitCode = p['exitCode'];
+      if (typeof command === 'string' && typeof exitCode === 'number') {
+        this.commandExits.set(command, exitCode);
+      }
+    }
   }
 
   private emit(
@@ -654,6 +715,52 @@ class LocalRunExecution {
     }
   }
 
+  /**
+   * The CLAIM LEDGER gate (plan P2.4): cross-references the model's stated claims
+   * (parsed from its messages) and the run's implied claims against REAL tool
+   * evidence (test/typecheck/build exit codes, a secret scan of the diff), emits
+   * one typed `claim` event per verdict, and returns true to BLOCK completion if
+   * a blocking claim is REFUTED (the model said tests pass when they failed, or a
+   * secret slipped into the diff). Deterministic + evidence-linked; never throws.
+   */
+  private claimGate(): boolean {
+    try {
+      const commandFor = (cmd: string | undefined): boolean | null => {
+        if (cmd === undefined) return null;
+        const exit = this.commandExits.get(cmd);
+        return exit === undefined ? null : exit === 0;
+      };
+      const evidence: ClaimEvidence = {
+        testsPassed: this.testsPassed,
+        typecheckPassed: commandFor(this.input.config.commands?.typecheck),
+        buildPassed: commandFor(this.input.config.commands?.build),
+        diff: this.collectedDiff,
+      };
+      const verdicts = buildClaimLedger(this.claimText, evidence);
+      if (verdicts.length === 0) {
+        return false;
+      }
+      for (const v of verdicts) {
+        this.emit('claim', {
+          kind: v.kind,
+          statement: v.statement,
+          status: v.status,
+          asserted: v.asserted,
+          ...(v.evidence !== undefined ? { evidence: v.evidence } : {}),
+        });
+      }
+      this.input.runManager.writeArtifact(
+        this.run.id,
+        'claims.md',
+        claimsMarkdown(this.run.id, verdicts, summarizeLedger(verdicts)),
+      );
+      return ledgerBlocks(verdicts);
+    } catch {
+      // The ledger is best-effort — a parse/IO fault never blocks the run.
+      return false;
+    }
+  }
+
   private finish(status: RunStatus): RunRecord {
     const record = this.input.runManager.updateRecord(this.run.id, {
       status,
@@ -732,9 +839,13 @@ class LocalRunExecution {
         this.emit('phase_completed', { name: phase.name, status: outcome }, phase.id);
       }
 
-      // Adversarial Verification Mesh gate: a surviving high-severity issue blocks
-      // the run from `completed` (→ failed/needs-fix). Proportional + best-effort.
-      if (await this.verificationGate()) {
+      // Quality gates (both run + emit their evidence; either can block):
+      //  - Claim ledger: the model's claims vs. real tool evidence (a lie / a
+      //    leaked secret blocks).
+      //  - Verification mesh: adversarial review of the diff (a HIGH blocks).
+      const claimBlocked = this.claimGate();
+      const meshBlocked = await this.verificationGate();
+      if (claimBlocked || meshBlocked) {
         return this.finish('failed');
       }
       return this.finish('completed');

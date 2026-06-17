@@ -263,6 +263,20 @@ export class ActionRenderer {
         this.ui.write(`  ${this.c(this.g('⚖', '!'), hex)} ${this.c(s(event, 'summary'), hex)}`.trimEnd());
         return;
       }
+      case 'claim': {
+        this.dropNarration();
+        const status = s(event, 'status');
+        const hex =
+          status === 'refuted'
+            ? this.palette.danger
+            : status === 'verified'
+              ? this.palette.success
+              : this.palette.muted;
+        this.ui.write(
+          `  ${this.c(this.g('⊨', '='), hex)} ${this.c(`${s(event, 'statement')} — ${status}`, hex)}`.trimEnd(),
+        );
+        return;
+      }
       default:
         return; // run_started/completed, phase_completed, *_selected → not actions
     }

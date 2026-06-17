@@ -25,6 +25,7 @@ export type PhaseEventKind =
   | 'branch'
   | 'compaction'
   | 'verification'
+  | 'claim'
   | 'error';
 
 export interface PhaseEvent {

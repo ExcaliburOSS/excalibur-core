@@ -94,6 +94,18 @@ export {
 // Runs
 export { RunManager, type CreateRunInput, type ModelCallLine } from './runs/run-manager';
 
+// Claim Ledger (evidence-linked truth check — plan P2.4)
+export {
+  buildClaimLedger,
+  extractAssertedClaims,
+  ledgerBlocks,
+  summarizeLedger,
+  type ClaimKind,
+  type ClaimStatus,
+  type ClaimVerdict,
+  type ClaimEvidence,
+} from './claims/claim-ledger';
+
 // Insights (cross-run lens — plan P2.5)
 export {
   aggregateInsights,

@@ -40,11 +40,12 @@ describe('createEvent', () => {
     expect(attributed.sessionId).toBe('sess_1');
   });
 
-  it('supports all 26 pinned event types', () => {
-    expect(excaliburEventTypeSchema.options).toHaveLength(26);
+  it('supports all 27 pinned event types', () => {
+    expect(excaliburEventTypeSchema.options).toHaveLength(27);
     expect(excaliburEventTypeSchema.options).toContain('compaction'); // the 24th (context compaction)
     expect(excaliburEventTypeSchema.options).toContain('task_update'); // the 25th (in-session checklist)
     expect(excaliburEventTypeSchema.options).toContain('verification'); // the 26th (mesh verdict)
+    expect(excaliburEventTypeSchema.options).toContain('claim'); // the 27th (claim ledger)
     for (const type of excaliburEventTypeSchema.options) {
       const event = createEvent({ runId: 'run_1', type, payload: {} });
       expect(excaliburEventSchema.safeParse(event).success).toBe(true);
