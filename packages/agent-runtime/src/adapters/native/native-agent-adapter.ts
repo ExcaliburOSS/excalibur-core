@@ -140,8 +140,14 @@ function systemPromptFor(input: AgentRunInput): string {
     `Working directory: ${input.workdir}.`,
     'You can call the provided tools to read and change the repository. Tool results',
     'are authoritative — obey them and adapt when a tool reports an error or a',
-    'permission denial. When the task is complete, reply with a concise final',
-    'summary and no further tool calls.',
+    'permission denial.',
+    'For any task with more than one step, FIRST call `update_tasks` with the full',
+    'checklist (each step as a separate item), then keep it current as you work:',
+    'mark exactly one item "in_progress", flip finished items to "completed", and',
+    'send the whole list again each time. It is shown to the user as a live to-do',
+    'list. Skip it only for trivial one-step tasks.',
+    'When the task is complete, reply with a concise final summary and no further',
+    'tool calls.',
   ].join('\n');
 }
 
