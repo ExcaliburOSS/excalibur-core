@@ -6,6 +6,7 @@ import { PassThrough, Writable } from 'node:stream';
 import type { Command } from 'commander';
 import { defaultDeps, type CliDeps } from './deps';
 import { buildProgram } from './program';
+import { readRawConfig, writeRawConfig } from './lib/config-file';
 import { Ui } from './ui';
 
 /** Test helpers shared by the CLI's colocated vitest suites. */
@@ -150,6 +151,18 @@ export function writeMockProviders(repoRoot: string): void {
   writeFileSync(join(dir, 'providers.yaml'), 'providers:\n  default: mock\n  mock:\n    type: mock\n', 'utf8');
 }
 
+/**
+ * Points the verify phase at bare, real, instant commands (`true`) so the run's
+ * command_group EXECUTES for real (no simulation) without the node/pnpm startup
+ * cost that, multiplied across parallel test workers, blows the per-test budget.
+ * Call after `init`. The product still runs the user's detected commands.
+ */
+export function setFastVerifyCommands(repoRoot: string): void {
+  const config = readRawConfig(repoRoot);
+  config['commands'] = { test: 'true', lint: 'true', typecheck: 'true', build: 'true' };
+  writeRawConfig(repoRoot, config);
+}
+
 /** Creates a small plausible TypeScript repo in a temp directory. */
 export function makeTempRepo(options: TempRepoOptions = {}): string {
   const dir = makeTempDir('repo');
@@ -159,7 +172,10 @@ export function makeTempRepo(options: TempRepoOptions = {}): string {
       {
         name: 'cli-test-repo',
         version: '1.0.0',
-        scripts: { test: 'vitest run', lint: 'eslint .' },
+        // Fast, real, deterministic scripts: the verify phase EXECUTES these for
+        // real (no simulation), so they must exit 0 quickly without external
+        // deps. `true` is a real command that does exactly that.
+        scripts: { test: 'true', lint: 'true' },
       },
       null,
       2,

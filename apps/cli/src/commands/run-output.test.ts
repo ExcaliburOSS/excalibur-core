@@ -1,12 +1,13 @@
 import { excaliburEventSchema, type ExcaliburEvent } from '@excalibur/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestCli, makeTempRepo, removeDir } from '../test-utils';
+import { createTestCli, makeTempRepo, removeDir, setFastVerifyCommands } from '../test-utils';
 import { parseOutputFormat } from '../lib/run-output';
 
 const repo = makeTempRepo();
 
 beforeAll(async () => {
   await createTestCli({ cwd: repo }).run('init', '--yes');
+  setFastVerifyCommands(repo); // real, instant verify commands (no node/pnpm startup)
 });
 
 afterAll(() => removeDir(repo));

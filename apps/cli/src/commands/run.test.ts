@@ -2,13 +2,15 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseEventsJsonl, runRecordSchema } from '@excalibur/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestCli, makeTempRepo, removeDir } from '../test-utils';
+import { createTestCli, makeTempRepo, removeDir, setFastVerifyCommands } from '../test-utils';
 
 const repo = makeTempRepo();
 
 beforeAll(async () => {
-  // Detected commands (pnpm test / pnpm run lint) feed the verify phase.
+  // The verify phase EXECUTES the configured commands for real; point them at
+  // bare `true` so they run instantly (no node/pnpm startup) under parallel CI.
   await createTestCli({ cwd: repo }).run('init', '--yes');
+  setFastVerifyCommands(repo);
 });
 
 afterAll(() => removeDir(repo));
@@ -47,9 +49,14 @@ describe('run (local mock loop, Build Contract §4.9)', () => {
     expect(types).toContain('patch_generated');
     expect(types[types.length - 1]).toBe('run_completed');
 
-    // Simulated commands only — M1 never executes anything real.
+    // Commands EXECUTE for real now (no simulation): the verify phase ran the
+    // repo's `pnpm test`/`pnpm run lint` (fast `true` scripts in the fixture).
     const command = events.find((event) => event.type === 'command_started');
-    expect(command?.payload['simulated']).toBe(true);
+    expect(command).toBeDefined();
+    expect(command?.payload['simulated']).toBeUndefined();
+    const verify = events.find((event) => event.type === 'test_result');
+    expect(verify?.payload['status']).toBe('passed');
+    expect(verify?.payload['simulated']).toBeUndefined();
 
     for (const artifact of ['workflow.yaml', 'input.md', 'diff.patch', 'summary.md']) {
       expect(existsSync(join(runDir, artifact)), `${artifact} must exist`).toBe(true);

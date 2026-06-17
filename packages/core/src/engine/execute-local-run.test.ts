@@ -60,7 +60,9 @@ describe('executeLocalRun', () => {
   let gateway: ModelGateway;
   let adapter: NativeAgentAdapter;
   const config: ExcaliburConfig = {
-    commands: { test: 'pnpm test', typecheck: 'pnpm typecheck' },
+    // Real, fast, deterministic commands — they EXECUTE for real (no simulation);
+    // only the LLM is a CI double. `true`/`echo` exit 0 without external deps.
+    commands: { test: 'true', typecheck: 'echo typecheck-ok' },
     models: { default: 'mock' },
   };
 
@@ -79,9 +81,17 @@ describe('executeLocalRun', () => {
     return events.map((event) => event.type);
   }
 
-  it('runs fast-fix end-to-end: artifacts, simulated commands, lifecycle events', async () => {
+  it('runs fast-fix end-to-end: REAL commands + REAL git apply, lifecycle events', async () => {
     const definition = getDefaultWorkflow('fast-fix');
     expect(definition).toBeDefined();
+
+    // Real git repo so the apply_patch phase performs a REAL `git apply`. The
+    // mock provider emits an APPLIABLE new-file diff (creates the target path),
+    // so we must NOT pre-create the file — the real apply creates it.
+    execFileSync('git', ['init', '-q'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.email', 'test@excalibur.local'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.name', 'Excalibur Test'], { cwd: repoRoot });
+
     const run = runManager.createRun({
       title: 'Fix duplicated webhook handling in src/escrow/escrow.service.ts',
       autonomyLevel: 3,
@@ -138,30 +148,35 @@ describe('executeLocalRun', () => {
       'src/escrow/escrow.service.ts',
     );
 
-    // apply_patch auto-approved (no confirm fn) → simulated patch_applied.
+    // apply_patch REALLY applied the diff (no `simulated`) and the working tree changed.
     const applied = events.find((event) => event.type === 'patch_applied');
-    expect(applied?.payload['simulated']).toBe(true);
+    expect(applied).toBeDefined();
+    expect(applied?.payload['simulated']).toBeUndefined();
+    expect(applied?.payload['filesAffected']).toContain('src/escrow/escrow.service.ts');
+    expect(readFileSync(join(repoRoot, 'src/escrow/escrow.service.ts'), 'utf8')).toContain(
+      'Idempotency guard',
+    );
     const autoApproval = events.find((event) => event.type === 'approval_approved');
     expect(autoApproval?.payload['auto']).toBe(true);
 
-    // command_group simulated the configured commands and wrote test-results.json.
+    // command_group EXECUTED the configured commands for real (exit 0, no `simulated`).
     const commandEvents = events.filter((event) => event.type === 'command_completed');
     expect(commandEvents.map((event) => event.payload['command'])).toEqual([
-      'pnpm test',
-      'pnpm typecheck',
+      'true',
+      'echo typecheck-ok',
     ]);
     for (const event of commandEvents) {
-      expect(event.payload['simulated']).toBe(true);
+      expect(event.payload['simulated']).toBeUndefined();
       expect(event.payload['exitCode']).toBe(0);
     }
     const testResult = events.find((event) => event.type === 'test_result');
     expect(testResult?.payload['status']).toBe('passed');
-    expect(testResult?.payload['simulated']).toBe(true);
+    expect(testResult?.payload['simulated']).toBeUndefined();
     const testResults = JSON.parse(readFileSync(join(run.dir, 'test-results.json'), 'utf8')) as {
       status: string;
-      simulated: boolean;
     };
-    expect(testResults).toMatchObject({ status: 'passed', simulated: true });
+    expect(testResults).toMatchObject({ status: 'passed' });
+    expect((testResults as Record<string, unknown>)['simulated']).toBeUndefined();
 
     // Static + phase artifacts.
     expect(existsSync(join(run.dir, 'workflow.yaml'))).toBe(true);

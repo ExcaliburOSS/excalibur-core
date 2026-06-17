@@ -1,7 +1,12 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import type { AgentAdapter } from '@excalibur/agent-runtime';
+import {
+  executeNativeTool,
+  PermissionEngine,
+  type AgentAdapter,
+  type ToolExecutionContext,
+} from '@excalibur/agent-runtime';
 import type { ChatMessage, ChatOutput, ModelGateway } from '@excalibur/model-gateway';
 import {
   createEvent,
@@ -20,14 +25,18 @@ import {
   type WorkflowPhase,
 } from '@excalibur/workflow-schema';
 import { EffectiveInstructionBuilder } from '../instructions/effective-instructions';
+import { applyPatch, checkPatchApplies } from '../git/git';
 import type { RunManager } from '../runs/run-manager';
 
 /**
  * Local workflow engine (Build Contract §4.6): executes a workflow's phases
- * sequentially against the run directory. M1 is a fully local mock loop —
- * model output comes from the gateway (MockProvider), agent work is a
- * scripted event stream, commands are simulated (`simulated: true`) and the
- * user's files are never modified.
+ * sequentially against the run directory. Everything is REAL: agent_work runs
+ * the native tool loop (real file edits via the gateway's configured model),
+ * command_group EXECUTES the configured commands through the permission-gated
+ * `run_command` tool (real exit codes, no simulation), and apply_patch performs
+ * a real `git apply`. The ONLY test double is the LLM itself (MockProvider) when
+ * a real provider is not configured — never the execution. (Pre-de-mock, M1
+ * simulated commands/apply with `simulated: true`; that is gone.)
  */
 
 export interface ExecuteLocalRunInput {
@@ -301,7 +310,14 @@ class LocalRunExecution {
     }
   }
 
-  private commandGroupPhase(phase: WorkflowPhase): void {
+  /**
+   * Runs the phase's commands FOR REAL — every command is executed through the
+   * native `run_command` tool, so it is gated by the PermissionEngine (allowlist
+   * + blocked-command floor), routed through the Docker sandbox when enabled, and
+   * its output redacted. NO simulation: the exit status reflects the real run, a
+   * failing command marks the phase (and the test-results artifact) as failed.
+   */
+  private async commandGroupPhase(phase: WorkflowPhase): Promise<void> {
     const commands: string[] = [...(phase.commands ?? [])];
     if (phase.commandsFromConfig === true) {
       const detected = this.input.config.commands ?? {};
@@ -316,28 +332,38 @@ class LocalRunExecution {
       commands.push(...(this.input.definition.defaults?.commands ?? []));
     }
 
+    const ctx: ToolExecutionContext = {
+      workdir: this.input.repoRoot,
+      config: this.input.config,
+      permissions: new PermissionEngine(this.input.config.permissions),
+    };
+
     const logLines: string[] = [];
+    let allPassed = true;
     for (const command of commands) {
-      // M1: commands are never executed — simulated with exit code 0.
-      this.emit('command_started', { command, simulated: true }, phase.id);
-      this.emit('command_completed', { command, simulated: true, exitCode: 0 }, phase.id);
-      logLines.push(`[simulated] ${command} → exit 0`);
+      this.emit('command_started', { command }, phase.id);
+      const { ok, result } = await executeNativeTool('run_command', { command }, ctx);
+      if (!ok) {
+        allPassed = false;
+      }
+      this.emit('command_completed', { command, exitCode: ok ? 0 : 1 }, phase.id);
+      logLines.push(`$ ${command}\n${result}`);
     }
-    this.emit('test_result', { status: 'passed', simulated: true, commands }, phase.id);
+
+    // No commands resolved → nothing to verify (honest: not a fake "passed").
+    const status: 'passed' | 'failed' | 'skipped' =
+      commands.length === 0 ? 'skipped' : allPassed ? 'passed' : 'failed';
+    this.emit('test_result', { status, commands }, phase.id);
 
     this.input.runManager.writeArtifact(
       this.run.id,
       'test-results.json',
-      `${JSON.stringify(
-        { status: 'passed', simulated: true, commands, timestamp: new Date().toISOString() },
-        null,
-        2,
-      )}\n`,
+      `${JSON.stringify({ status, commands, timestamp: new Date().toISOString() }, null, 2)}\n`,
     );
     this.input.runManager.writeArtifact(
       this.run.id,
       'tests.log',
-      `${logLines.length > 0 ? logLines.join('\n') : '[simulated] no commands configured'}\n`,
+      `${logLines.length > 0 ? logLines.join('\n\n') : 'no commands configured'}\n`,
     );
   }
 
@@ -355,24 +381,38 @@ class LocalRunExecution {
     return phase.required === false ? 'skipped' : 'cancelled';
   }
 
+  /**
+   * Applies the collected diff to the working tree FOR REAL (gated by `confirm`,
+   * pre-flight-checked with `git apply --check`). No simulation: if there is no
+   * diff, nothing is applied; if the diff does not apply cleanly, the phase fails
+   * loudly rather than emitting a fake success. (When the agent_work phase wrote
+   * files directly, the tree is already mutated and there is no separate diff to
+   * apply — that path is a no-op here, correctly.)
+   */
   private async applyPatchPhase(phase: WorkflowPhase): Promise<void> {
-    const approved = await this.confirm(
-      `Apply the generated patch for run ${this.run.id}? (simulated in M1)`,
-      phase.id,
-    );
+    if (this.collectedDiff === null || this.collectedDiff.trim().length === 0) {
+      return; // nothing was generated to apply (e.g. agent_work mutated the tree directly)
+    }
+    const approved = await this.confirm(`Apply the generated patch for run ${this.run.id}?`, phase.id);
     if (!approved) {
       return;
     }
-    this.emit(
-      'patch_applied',
-      {
-        simulated: true,
-        ...(this.collectedDiff !== null
-          ? { filesAffected: filesAffectedFromDiff(this.collectedDiff) }
-          : {}),
-      },
-      phase.id,
-    );
+    const filesAffected = filesAffectedFromDiff(this.collectedDiff);
+    const check = checkPatchApplies(this.input.repoRoot, this.collectedDiff);
+    if (!check.applies) {
+      // Honest + non-fatal: the patch did NOT apply, so we emit a real error
+      // event (never a fake `patch_applied`) and leave the diff.patch artifact
+      // for the user — but we do NOT crash the run (the agent may already have
+      // mutated the tree directly, and a bad generated diff shouldn't nuke it).
+      this.emit(
+        'error',
+        { message: `patch did not apply: ${check.reason ?? 'unknown'}`, filesAffected, fatal: false },
+        phase.id,
+      );
+      return;
+    }
+    applyPatch(this.input.repoRoot, this.collectedDiff);
+    this.emit('patch_applied', { filesAffected }, phase.id);
   }
 
   private async pullRequestPhase(phase: WorkflowPhase): Promise<void> {
@@ -416,7 +456,7 @@ class LocalRunExecution {
         await this.agentWorkPhase(phase);
         return 'completed';
       case 'command_group':
-        this.commandGroupPhase(phase);
+        await this.commandGroupPhase(phase);
         return 'completed';
       case 'human_approval':
         return this.humanApprovalPhase(phase);
