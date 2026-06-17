@@ -1,13 +1,24 @@
 import { NativeAgentAdapter } from '@excalibur/agent-runtime';
 import {
+  applyPatch,
+  planAgentAllocation,
   runSwarm,
   type Subtask,
   type SwarmLaneProgress,
   type SwarmResult,
 } from '@excalibur/core';
+import {
+  detectColorTier,
+  detectThemeSync,
+  paletteFor,
+  parseDiffStat,
+  renderLanes,
+  type LaneModel,
+} from '@excalibur/tui';
 import type { GatewayChatInput, ModelGateway } from '@excalibur/model-gateway';
 import type { ExcaliburConfig, ExcaliburEvent } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
+import { LiveLanes } from './live-lanes';
 
 /**
  * Swarm planning + execution glue for `excalibur swarm` (M3): a real model
@@ -146,4 +157,177 @@ export function executeSwarm(
     },
     swarmOptions,
   );
+}
+
+/** Context a swarm flow needs (already resolved by the command / the REPL session). */
+export interface SwarmFlowContext {
+  gateway: ModelGateway;
+  providerName: string;
+  config: ExcaliburConfig;
+}
+
+export interface SwarmFlowOptions {
+  maxAgents?: number;
+  /** Apply the merged diff without prompting. */
+  apply?: boolean;
+  /** Skip prompts and accept safe defaults. */
+  yes?: boolean;
+  /** Cancels the in-flight swarm (ESC / Ctrl-C). */
+  signal?: AbortSignal;
+}
+
+/**
+ * The full end-to-end swarm flow shared by `excalibur swarm` AND the in-shell
+ * `/swarm` command: decompose → size (allocator) → confirm → run REAL parallel
+ * agents with a LIVE per-lane panel (flicker-free, TTY-gated) → fan-in → render
+ * the lanes panel → offer to apply the merged diff. Extracted so the live swarm
+ * lanes work identically from the batch command and from the interactive shell.
+ */
+export async function runSwarmFlow(
+  deps: CliDeps,
+  repoRoot: string,
+  task: string,
+  ctx: SwarmFlowContext,
+  options: SwarmFlowOptions = {},
+): Promise<void> {
+  const signalOpt = options.signal !== undefined ? { signal: options.signal } : {};
+
+  deps.ui.info(deps.t('swarm.decomposing'));
+  const subtasks = await decomposeTask(ctx.gateway, task, {
+    provider: ctx.providerName,
+    ...(options.maxAgents !== undefined ? { maxSubtasks: options.maxAgents } : {}),
+    ...signalOpt,
+  });
+
+  const allocation = planAgentAllocation({
+    taskType: 'feature',
+    sensitive: false,
+    subtasks: asAllocationSubtasks(subtasks),
+    ...(options.maxAgents !== undefined ? { maxAgents: options.maxAgents } : {}),
+  });
+  const lanes = subtasks.slice(0, allocation.agentCount);
+
+  deps.ui.write();
+  deps.ui.heading(deps.t('swarm.heading', { reason: allocation.reason }));
+  lanes.forEach((subtask, index) => {
+    deps.ui.write(`  ${index + 1}. ${subtask.title}`);
+  });
+  deps.ui.write();
+  if (lanes.length === 1) {
+    deps.ui.info(deps.t('swarm.singleUnit'));
+  }
+
+  const go =
+    options.yes === true ||
+    (await deps.ui.confirm(deps.t('swarm.confirmRun', { count: lanes.length }), {
+      defaultYes: true,
+    }));
+  if (!go) {
+    deps.ui.info(deps.t('swarm.cancelled'));
+    return;
+  }
+
+  deps.ui.info(deps.t('swarm.running'));
+  const tier = detectColorTier();
+  const mode = detectThemeSync() ?? 'dark';
+  const palette = paletteFor(ctx.config.ui?.theme ?? 'auto', mode);
+  const railLabels = {
+    swarm: deps.t('rail.swarm'),
+    lanes: deps.t('rail.lanes'),
+    merge: deps.t('rail.merge'),
+    applied: deps.t('rail.applied'),
+    conflict: deps.t('rail.conflict'),
+  };
+  // LIVE: each lane lights up empty → running → done/failed as its agent works
+  // (flicker-free, parallel). On a non-TTY we skip it and print the final panel.
+  const live = deps.ui.isOutputTty()
+    ? new LiveLanes(
+        { writeRaw: (t) => deps.ui.writeRaw(t) },
+        {
+          tier,
+          mode,
+          palette,
+          labels: railLabels,
+          lanes: lanes.map((s) => ({ id: s.id, title: s.title })),
+        },
+      )
+    : null;
+  live?.start();
+  let result;
+  try {
+    result = await executeSwarm(deps, repoRoot, lanes, {
+      gateway: ctx.gateway,
+      config: ctx.config,
+      autonomyAutoApprove: true, // a parallel batch can't prompt per-lane
+      ...signalOpt,
+      ...(live !== null ? { onLane: (p: SwarmLaneProgress) => live.update(p) } : {}),
+    });
+  } finally {
+    live?.finish();
+  }
+
+  // The SWARM LANES panel: concurrent sub-rails branching off the swarm node and
+  // converging on a fan-in merge node — the visual payoff of the allocator.
+  const conflictIds = new Set(result.conflicts.map((c) => c.id));
+  const laneModels: LaneModel[] = result.lanes.map((lane) => {
+    const subtask = lanes.find((s) => s.id === lane.id);
+    const hasChanges = lane.diff.trim().length > 0;
+    const state: LaneModel['state'] = lane.failed
+      ? 'failed'
+      : conflictIds.has(lane.id)
+        ? 'conflict'
+        : hasChanges
+          ? 'done'
+          : 'empty';
+    return {
+      id: lane.id,
+      title: subtask?.title ?? lane.id,
+      state,
+      ...(lane.result?.toolCalls !== undefined ? { toolCalls: lane.result.toolCalls } : {}),
+      ...(hasChanges ? { diff: parseDiffStat(lane.diff) } : {}),
+      ...(lane.result?.costCents != null ? { costCents: lane.result.costCents } : {}),
+      ...(lane.failed
+        ? { detail: lane.error ?? 'failed' }
+        : conflictIds.has(lane.id)
+          ? { detail: 'merge conflict' }
+          : {}),
+    };
+  });
+  const applied = laneModels.filter((l) => l.state === 'done').length;
+
+  deps.ui.write();
+  for (const line of renderLanes(
+    { lanes: laneModels, applied, conflicts: result.conflicts.length },
+    { tier, mode, palette, labels: railLabels },
+  )) {
+    deps.ui.write(line);
+  }
+
+  if (result.mergedDiff.trim().length === 0) {
+    deps.ui.info(deps.t('swarm.noChanges'));
+    return;
+  }
+  deps.ui.write();
+  deps.ui.write(result.mergedDiff);
+
+  const apply =
+    options.apply === true ||
+    (await deps.ui.confirm(deps.t('swarm.confirmApply'), {
+      yes: options.yes,
+      defaultYes: false,
+    }));
+  if (!apply) {
+    deps.ui.info(deps.t('swarm.leftUnapplied'));
+    return;
+  }
+  try {
+    applyPatch(repoRoot, result.mergedDiff);
+    deps.ui.success(deps.t('swarm.applied'));
+  } catch (error) {
+    deps.ui.error(
+      deps.t('swarm.applyFailed', {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
 }

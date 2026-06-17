@@ -79,6 +79,7 @@ describe('interactive session (M-Shell, model-first)', () => {
     // /help capabilities + the model-first explainer.
     expect(stdout).toContain('show this help');
     expect(stdout).toContain('/plan');
+    expect(stdout).toContain('/swarm');
     expect(stdout).toContain('the model decides');
     // StatusLine: model mock + cost + safety preset.
     expect(stdout).toContain('mock');
@@ -187,6 +188,17 @@ describe('interactive session (M-Shell, model-first)', () => {
     const dirs = sessionDirs();
     const turns = readTranscript(dirs[dirs.length - 1] as string);
     expect(turns.some((t) => t.kind === 'status' && String(t.text).startsWith('shell:'))).toBe(true);
+  });
+
+  it('/swarm with no task shows usage and never crashes the session', async () => {
+    const cli = createInteractiveCli({ cwd: repo });
+    cli.send('/swarm');
+    cli.send('/exit');
+    const code = await runInteractiveSession(cli.deps, {});
+    expect(code).toBe(0);
+    // The empty-arg guard returns BEFORE the git/provider checks, so it is safe
+    // in a non-git temp repo and prints the usage hint.
+    expect(cli.stdout()).toContain('/swarm <task>');
   });
 
   it('/discovery <idea> runs the explicit clarification flow (discovery session created)', async () => {

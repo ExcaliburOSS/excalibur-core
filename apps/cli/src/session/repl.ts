@@ -36,6 +36,7 @@ import {
   safetyLine,
 } from '../lib/context';
 import { runDiscoveryFlow } from '../commands/discovery';
+import { runSwarmFlow } from '../lib/swarm';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
 import { buildSessionLog, formatSessionLog } from '../lib/session-log';
 import { buildStartupContext } from '../lib/startup-context';
@@ -425,6 +426,16 @@ export async function runInteractiveSession(
             printStatusLine(deps, runtime);
             continue;
           }
+          if (input.name === 'swarm') {
+            const ctrl = beginTurn();
+            try {
+              await handleSwarmCommand(deps, runtime, input.argv.join(' '), ctrl.signal);
+            } finally {
+              endTurn();
+            }
+            printStatusLine(deps, runtime);
+            continue;
+          }
           const result = handleSlashCommand(deps, runtime, input.name);
           if (result === 'exit') {
             break;
@@ -524,6 +535,7 @@ const GHOST_COMMANDS = [
   'remember',
   'goal',
   'loop',
+  'swarm',
   'model',
   'clear',
   'exit',
@@ -857,6 +869,38 @@ async function dispatchPlan(
 }
 
 /**
+ * `/swarm <task>` — fan a task out to REAL parallel agents from inside the
+ * shell: a model decomposes it into independent subtasks, the allocator sizes
+ * the swarm, and live lanes light up as each agent works in its own worktree
+ * (the same flow as `excalibur swarm`, reused). ESC cancels the in-flight swarm.
+ */
+async function handleSwarmCommand(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  task: string,
+  signal: AbortSignal,
+): Promise<void> {
+  if (task.trim().length === 0) {
+    deps.ui.warn(deps.t('repl.swarm-usage'));
+    return;
+  }
+  if (!getGitInfo(runtime.repoRoot).isRepo) {
+    deps.ui.error(deps.t('swarm.needsGitRepo'));
+    return;
+  }
+  const gateway = loadGatewayContext(runtime.repoRoot);
+  requireConfiguredModel(gateway, deps.t); // a swarm of mock agents is pointless
+  runtime.store.appendPromptHistory(`/swarm ${redactSecrets(task)}`);
+  await runSwarmFlow(
+    deps,
+    runtime.repoRoot,
+    task,
+    { gateway: gateway.gateway, providerName: gateway.providerName, config: runtime.config },
+    { signal },
+  );
+}
+
+/**
  * `/plan <task>` — explicit plan-mode. Records the user turn, runs the plan
  * gate, and persists the plan (and execution, when approved).
  */
@@ -1181,6 +1225,7 @@ function handleSlashCommand(
       deps.ui.write(deps.t('repl.help-plan'));
       deps.ui.write(deps.t('repl.help-goal'));
       deps.ui.write(deps.t('repl.help-loop'));
+      deps.ui.write(deps.t('repl.help-swarm'));
       deps.ui.write(deps.t('repl.help-discovery'));
       deps.ui.write(deps.t('repl.help-rewind'));
       deps.ui.write(deps.t('repl.help-changes'));

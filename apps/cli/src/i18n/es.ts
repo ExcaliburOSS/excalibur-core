@@ -483,6 +483,8 @@ export const ES: Catalog = {
   "repl.goal-evaluator-unavailable": "Bucle de objetivo detenido (evaluador no disponible) tras {iterations} iteración(es).",
   "repl.goal-usage": "Uso: /goal <objetivo> — Excalibur trabaja hacia él a lo largo de varios turnos hasta que un evaluador diga que está hecho.",
   "repl.loop-usage": "Uso: /loop [--every <seg>] [--times <n>] <prompt> — lo reejecuta periódicamente hasta ESC.",
+  "repl.swarm-usage": "Uso: /swarm <tarea> — reparte la tarea entre agentes reales en paralelo (subtareas independientes, carriles en vivo).",
+  "repl.help-swarm": "  /swarm <tarea>  reparte entre agentes reales en paralelo (subtareas independientes, carriles en vivo)",
   "repl.loop-start": "En bucle cada {every}s, hasta {times}× — pulsa ESC para detener. (recurrencia, no finalización)",
   "repl.loop-iteration": "  bucle · iteración {iteration}/{times}",
   "repl.loop-completed": "Bucle completado en {iterations} iteración(es).",

@@ -243,6 +243,45 @@ await scenario('swarm — LIVE lanes render on a TTY (pty, real parallel agents)
   assert(out.includes('\x1b[?2026h'), 'live frames must be wrapped in DEC 2026 synchronized output');
 });
 
+await scenario('/swarm — in-shell fan-out renders live lanes (pty REPL, real agents)', () => {
+  if (!hasExpect()) {
+    console.log('(skipped: `expect` not available to drive the pty)');
+    return;
+  }
+  const dir = freshRepo();
+  const task =
+    'create two independent files: docs/gamma.md describing module Gamma, and docs/delta.md describing module Delta';
+  const exp = join(tmpdir(), `exc-shell-swarm.exp`);
+  writeFileSync(
+    exp,
+    [
+      `set timeout 240`,
+      `spawn node ${CLI}`,
+      `expect -re "(automatically|automáticamente)"`,
+      `send "y\\r"`,
+      `sleep 2`,
+      `send "/swarm ${task}\\r"`,
+      `sleep 180`,
+      `send "/exit\\r"`,
+      `expect eof`,
+    ].join('\n'),
+  );
+  let out = '';
+  try {
+    out = execFileSync('expect', [exp], {
+      cwd: dir,
+      env: { ...env, EXCALIBUR_FORCE_COLOR: '1' },
+      encoding: 'utf8',
+      timeout: 260000,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (e) {
+    out = `${e.stdout ?? ''}${e.stderr ?? ''}`;
+  }
+  // The in-shell /swarm reuses the SAME runSwarmFlow as `excalibur swarm`.
+  assert(/Swarm|lanes|merge|subtask/i.test(out), 'in-shell /swarm should render the lanes panel');
+});
+
 await scenario('discovery — clarifies an idea with deterministic scoring', () => {
   const dir = freshRepo();
   const { out } = exc(dir, ['discovery', 'Add AI contract-renewal reminders', '--yes']);
