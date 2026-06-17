@@ -65,6 +65,11 @@ type GlyphSet = {
   bar: string;
   barEmpty: string;
   logo: string;
+  boxTL: string;
+  boxTR: string;
+  boxBL: string;
+  boxBR: string;
+  boxH: string;
 };
 
 const unicode: GlyphSet = {
@@ -79,6 +84,11 @@ const unicode: GlyphSet = {
   bar: '█',
   barEmpty: '░',
   logo: '▌',
+  boxTL: '┌',
+  boxTR: '┐',
+  boxBL: '└',
+  boxBR: '┘',
+  boxH: '─',
 };
 
 const asciiSet: GlyphSet = {
@@ -93,6 +103,11 @@ const asciiSet: GlyphSet = {
   bar: '#',
   barEmpty: '.',
   logo: '|',
+  boxTL: '+',
+  boxTR: '+',
+  boxBL: '+',
+  boxBR: '+',
+  boxH: '-',
 };
 
 export const glyph: GlyphSet = ascii ? asciiSet : unicode;

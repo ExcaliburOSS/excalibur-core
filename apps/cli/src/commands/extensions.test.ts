@@ -86,7 +86,9 @@ describe('extensions create (scaffold generators, extensions spec §9)', () => {
     await cli.run('extensions', 'create', 'workflow', 'safe-hotfix');
     cli.reset();
     await cli.run('run', 'Fix webhook retry handling bug', '--workflow', 'safe-hotfix', '--yes');
-    expect(cli.stdout()).toContain('Using: Safe Hotfix (safe-hotfix)');
+    // The plan card renders the scaffolded workflow's name + id.
+    expect(cli.stdout()).toContain('Safe Hotfix');
+    expect(cli.stdout()).toContain('safe-hotfix');
     expect(cli.stdout()).toContain('run completed');
   });
 

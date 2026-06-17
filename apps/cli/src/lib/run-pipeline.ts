@@ -18,7 +18,13 @@ import {
   type RunRecord,
 } from '@excalibur/shared';
 import type { WorkflowDefinition } from '@excalibur/workflow-schema';
-import { detectColorTier, detectThemeSync, reduceRail, renderRail } from '@excalibur/tui';
+import {
+  detectColorTier,
+  detectThemeSync,
+  reduceRail,
+  renderPlanCard,
+  renderRail,
+} from '@excalibur/tui';
 import { LiveRail } from './live-rail';
 import pc from 'picocolors';
 import { CliUsageError } from '../errors';
@@ -134,14 +140,6 @@ export function describeEvent(event: ExcaliburEvent): string | null {
   }
 }
 
-function printPlanPreview(deps: CliDeps, definition: WorkflowDefinition): void {
-  deps.ui.write('Plan:');
-  definition.phases.forEach((phase, index) => {
-    const optional = phase.required === false ? pc.dim(' (optional)') : '';
-    deps.ui.write(`  ${index + 1}. ${phase.name} ${pc.dim(`[${phase.type}]`)}${optional}`);
-  });
-}
-
 /**
  * `excalibur run "<task>"` orchestration (Build Contract §4.9), extracted from
  * the Commander action so it can be reused by the interactive M-Shell REPL.
@@ -241,14 +239,11 @@ export async function runTask(
     );
   }
 
+  const tier = detectColorTier();
+  const mode = detectThemeSync() ?? 'dark';
+
   // The intent-driven run prompt (onboarding §6).
   for (;;) {
-    deps.ui.write();
-    deps.ui.heading(`Using: ${choice.definition.name} (${choice.workflowId})`);
-    deps.ui.write(`Autonomy: ${AUTONOMY_LEVEL_LABELS[choice.autonomyLevel]}`);
-    deps.ui.write(safetyLine(config));
-    deps.ui.info(`Reason: ${choice.reason}`);
-
     // Swarm sizing (pre-plan estimate). The developer never picks the count;
     // the allocator does, explainably. Shown only when it sizes to >1 — and
     // honestly: the parallel fan-out itself executes in a later milestone, so
@@ -260,14 +255,34 @@ export async function runTask(
       ...(options.agents !== undefined ? { requested: options.agents } : {}),
       ...(options.maxAgents !== undefined ? { maxAgents: options.maxAgents } : {}),
     });
-    if (allocation.agentCount > 1) {
-      deps.ui.write(pc.dim(`Swarm: ${allocation.reason}`));
-      deps.ui.write(pc.dim('  (parallel fan-out is coming; this run uses one agent for now)'));
+
+    // The PLAN card: one bordered, gated node in the rail's visual language
+    // (vs CC's markdown lost in scrollback). Workflow + autonomy header, a
+    // pending node per phase, swarm sizing + sensitive areas when present.
+    deps.ui.write();
+    const planCard = renderPlanCard(
+      {
+        workflowName: choice.definition.name,
+        workflowId: choice.workflowId,
+        autonomyLabel: AUTONOMY_LEVEL_LABELS[choice.autonomyLevel],
+        phases: choice.definition.phases.map((phase) => ({
+          name: phase.name,
+          type: phase.type,
+          optional: phase.required === false,
+        })),
+        ...(allocation.agentCount > 1
+          ? { swarmReason: `${allocation.reason} (fan-out lands in a later milestone)` }
+          : {}),
+        ...(intent.sensitive ? { sensitiveAreas: intent.sensitiveAreas } : {}),
+        gate: '[Enter] run · [m] mode · [c] cancel',
+      },
+      { tier, mode },
+    );
+    for (const line of planCard) {
+      deps.ui.write(line);
     }
-    if (intent.sensitive) {
-      deps.ui.warn(`Sensitive areas: ${intent.sensitiveAreas.join(', ')}`);
-    }
-    printPlanPreview(deps, choice.definition);
+    deps.ui.write(safetyLine(config));
+    deps.ui.info(`Reason: ${choice.reason}`);
 
     const answer = await deps.ui.ask('[Enter] continue  [m] change mode  [c] cancel', {
       yes,
@@ -344,8 +359,6 @@ export async function runTask(
     model: gatewayContext.providerName,
     push: options.sync === true,
   };
-  const tier = detectColorTier();
-  const mode = detectThemeSync() ?? 'dark';
   const liveRail = deps.ui.isOutputTty()
     ? new LiveRail({ writeRaw: (t) => deps.ui.writeRaw(t) }, { tier, mode, reduce: reduceOpts })
     : null;

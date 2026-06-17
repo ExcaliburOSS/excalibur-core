@@ -24,8 +24,10 @@ describe('run (local mock loop, Build Contract §4.9)', () => {
     await cli.run('run', 'Fix typo in README.md', '--yes');
 
     const stdout = cli.stdout();
-    // Intent-driven prompt header + visible safety preset (onboarding §5/§6).
-    expect(stdout).toContain('Using: Fast Fix (fast-fix)');
+    // The plan card (bordered, gated node) shows the workflow + id, plus the
+    // visible safety preset (onboarding §5/§6).
+    expect(stdout).toContain('Fast Fix');
+    expect(stdout).toContain('fast-fix');
     expect(stdout).toContain('Safety: standard-safe');
     expect(stdout).toContain('run completed');
 

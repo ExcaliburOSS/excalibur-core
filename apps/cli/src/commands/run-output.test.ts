@@ -27,7 +27,8 @@ describe('run --output-format (headless / scripting, Build Contract §4.9)', () 
     const cli = createTestCli({ cwd: repo });
     await cli.run('run', 'Fix typo in README.md', '--yes');
     const stdout = cli.stdout();
-    expect(stdout).toContain('Using: Fast Fix (fast-fix)');
+    expect(stdout).toContain('Fast Fix');
+    expect(stdout).toContain('fast-fix');
     expect(stdout).toContain('run completed');
     // No top-level JSON object/array document.
     expect(stdout.trimStart().startsWith('{')).toBe(false);
@@ -39,8 +40,11 @@ describe('run --output-format (headless / scripting, Build Contract §4.9)', () 
     await cli.run('run', 'Fix another typo in README.md', '--yes', '--output-format', 'json');
 
     const stdout = cli.stdout().trim();
-    // The human header/summary must be suppressed in machine mode.
-    expect(stdout).not.toContain('Using: Fast Fix');
+    // The human header/summary must be suppressed in machine mode: no plan-card
+    // border, no success line. ("Fast Fix" itself is legitimate JSON data — it's
+    // the workflow name in a `workflow_selected` event — so we key on chrome-only
+    // markers instead.)
+    expect(stdout).not.toContain('┌─');
     expect(stdout).not.toContain('run completed');
 
     const parsed = JSON.parse(stdout) as {
