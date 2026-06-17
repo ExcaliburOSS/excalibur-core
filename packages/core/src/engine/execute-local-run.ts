@@ -26,6 +26,9 @@ import {
 } from '@excalibur/workflow-schema';
 import { EffectiveInstructionBuilder } from '../instructions/effective-instructions';
 import { applyPatch, checkPatchApplies } from '../git/git';
+import { planVerificationMesh } from '../verification/verification-mesh';
+import { runVerificationMesh } from '../verification/verification-runner';
+import type { MeshResult } from '../verification/verification-mesh';
 import type { RunManager } from '../runs/run-manager';
 
 /**
@@ -79,6 +82,29 @@ function responseKindFor(phase: WorkflowPhase): string {
     default:
       return 'ask';
   }
+}
+
+/** Heuristic: does a changed path live in a sensitive area (→ widen the mesh)? */
+const SENSITIVE_PATH_RE = /(^|\/)(auth|billing|payments?|secrets?|credentials?)(\/|\.)|\.env/i;
+function isSensitivePath(path: string): boolean {
+  return SENSITIVE_PATH_RE.test(path);
+}
+
+/** Renders a Verification Mesh result as the `verification.md` artifact. */
+function meshMarkdown(runId: string, result: MeshResult): string {
+  return [
+    `# Verification mesh — ${runId}`,
+    '',
+    `${result.blocked ? '**BLOCKED**' : 'Passed'} · lenses: ${result.lensesRun.join(', ')}`,
+    '',
+    ...(result.issues.length === 0
+      ? ['No issues found.']
+      : result.issues.map(
+          (i) =>
+            `- [${i.severity}] ${i.file !== undefined ? `${i.file} — ` : ''}${i.problem}${i.fix !== undefined ? `\n  - fix: ${i.fix}` : ''}`,
+        )),
+    '',
+  ].join('\n');
 }
 
 /** Pulls the unified diff out of a ```diff fenced block. */
@@ -519,6 +545,69 @@ class LocalRunExecution {
     }
   }
 
+  /**
+   * Adversarial Verification Mesh gate (PROPORTIONAL + GOVERNABLE). When the
+   * workflow includes a review phase (or `verification.mesh: always`) and the
+   * change has a diff, runs the mesh — lens set scaled to risk — over the
+   * collected diff, persists the verdict (verification.md), and returns true to
+   * BLOCK completion if a high-severity issue survived. Always best-effort: a
+   * mesh/model error never blocks (we could not verify → do not punish the run).
+   * `verification.mesh: off` disables it.
+   */
+  private async verificationGate(): Promise<boolean> {
+    const mode = this.input.config.verification?.mesh ?? 'auto';
+    if (mode === 'off') {
+      return false;
+    }
+    const diff = this.collectedDiff;
+    if (diff === null || diff.trim().length === 0) {
+      return false;
+    }
+    const hasReview = this.input.definition.phases.some((p) => p.type === 'agent_review');
+    if (!hasReview && mode !== 'always') {
+      return false; // proportional: only review-bearing workflows get the mesh
+    }
+    try {
+      const files = filesAffectedFromDiff(diff);
+      const plan = planVerificationMesh({
+        taskType: 'feature',
+        sensitive: files.some(isSensitivePath),
+        affectedUnits: files.length,
+        autonomyLevel: this.run.record.autonomyLevel,
+        hasTests: typeof this.input.config.commands?.test === 'string',
+        mode,
+      });
+      if (plan.lenses.length === 0) {
+        return false;
+      }
+      this.emit('policy_decision', {
+        kind: 'log',
+        decision: 'allow',
+        message: `Verification mesh — ${plan.reason}`,
+      });
+      const result = await runVerificationMesh({
+        diff,
+        lenses: plan.lenses,
+        gateway: this.input.gateway,
+        ...(this.run.record.model !== null ? { provider: this.run.record.model } : {}),
+      });
+      this.input.runManager.writeArtifact(
+        this.run.id,
+        'verification.md',
+        meshMarkdown(this.run.id, result),
+      );
+      if (result.blocked) {
+        this.emit('error', { message: result.summary, code: 'verification_blocked' });
+        return true;
+      }
+      this.emit('test_result', { status: 'passed', verification: true, lenses: result.lensesRun });
+      return false;
+    } catch {
+      // Mesh/model failure → we could not verify; never block on that.
+      return false;
+    }
+  }
+
   private finish(status: RunStatus): RunRecord {
     const record = this.input.runManager.updateRecord(this.run.id, {
       status,
@@ -597,6 +686,11 @@ class LocalRunExecution {
         this.emit('phase_completed', { name: phase.name, status: outcome }, phase.id);
       }
 
+      // Adversarial Verification Mesh gate: a surviving high-severity issue blocks
+      // the run from `completed` (→ failed/needs-fix). Proportional + best-effort.
+      if (await this.verificationGate()) {
+        return this.finish('failed');
+      }
       return this.finish('completed');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

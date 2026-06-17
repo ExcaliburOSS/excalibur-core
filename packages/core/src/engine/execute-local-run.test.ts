@@ -54,6 +54,66 @@ class ToolDrivenGateway {
   }
 }
 
+/**
+ * Like {@link ToolDrivenGateway}, but the adversarial Verification Mesh calls
+ * (identified by `metadata.kind` starting with `mesh-`) return a JSON verdict
+ * with a HIGH-severity issue → the proportional gate must block the run.
+ */
+class MeshBlockingGateway {
+  private wroteFile = false;
+  constructor(private readonly inner: ModelGateway) {}
+
+  chat(input: ChatInput): Promise<ChatOutput> {
+    const kind = typeof input.metadata?.['kind'] === 'string' ? input.metadata['kind'] : '';
+    if (kind.startsWith('mesh-')) {
+      return Promise.resolve({
+        content: JSON.stringify({
+          clean: false,
+          issues: [
+            {
+              severity: 'high',
+              file: 'src/feature.ts',
+              problem: 'unguarded division by zero',
+              fix: 'guard the divisor',
+            },
+          ],
+        }),
+        model: 'mock-model',
+        usage: { inputTokens: 10, outputTokens: 8 },
+        costCents: 0,
+        finishReason: 'stop',
+      });
+    }
+    if (input.tools === undefined || input.tools.length === 0) {
+      return this.inner.chat(input);
+    }
+    if (!this.wroteFile) {
+      this.wroteFile = true;
+      return Promise.resolve({
+        content: '',
+        model: 'mock-model',
+        usage: { inputTokens: 8, outputTokens: 4 },
+        costCents: 0,
+        finishReason: 'tool_calls',
+        toolCalls: [
+          {
+            id: 'call_write_1',
+            name: 'write_file',
+            arguments: { path: 'src/feature.ts', content: 'export const feature = true;\n' },
+          },
+        ],
+      });
+    }
+    return Promise.resolve({
+      content: 'Implemented src/feature.ts as requested.',
+      model: 'mock-model',
+      usage: { inputTokens: 12, outputTokens: 6 },
+      costCents: 0,
+      finishReason: 'stop',
+    });
+  }
+}
+
 describe('executeLocalRun', () => {
   let repoRoot: string;
   let runManager: RunManager;
@@ -257,6 +317,91 @@ describe('executeLocalRun', () => {
       expect(existsSync(join(run.dir, artifact))).toBe(true);
     }
     expect(readFileSync(join(run.dir, 'review.md'), 'utf8')).toContain('Mock provider (M1)');
+  });
+
+  it('BLOCKS completion (failed) when the Verification Mesh finds a high issue', async () => {
+    // structured-feature has an agent_review phase, so the proportional gate runs.
+    execFileSync('git', ['init', '-q'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.email', 'test@excalibur.local'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.name', 'Excalibur Test'], { cwd: repoRoot });
+
+    const definition = getDefaultWorkflow('structured-feature');
+    const run = runManager.createRun({
+      title: 'Implement contract renewal reminders',
+      autonomyLevel: 4,
+      workflow: 'structured-feature',
+      methodology: 'spec-driven',
+      executionStyle: 'structured',
+    });
+
+    const config4: ExcaliburConfig = {
+      ...config,
+      permissions: { tools: { write_file: true }, allowedCommands: [] },
+      verification: { mesh: 'auto' },
+    };
+
+    const record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      definition: definition!,
+      gateway: new MeshBlockingGateway(gateway) as unknown as ModelGateway,
+      adapter,
+      config: config4,
+    });
+
+    // The gate flips a would-be `completed` run to `failed` (needs-fix).
+    expect(record.status).toBe('failed');
+    const events = runManager.readEvents(run.id);
+    const blocked = events.find(
+      (event) => event.type === 'error' && event.payload['code'] === 'verification_blocked',
+    );
+    expect(blocked).toBeDefined();
+    expect(String(blocked?.payload['message'])).toContain('BLOCKING');
+
+    // The verdict is persisted as a replayable/auditable artifact.
+    const verification = readFileSync(join(run.dir, 'verification.md'), 'utf8');
+    expect(verification).toContain('**BLOCKED**');
+    expect(verification).toContain('unguarded division by zero');
+
+    // The mesh ran AFTER the phases (the work still happened; only completion is gated).
+    expect(events.some((event) => event.type === 'patch_generated')).toBe(true);
+    expect(events[events.length - 1]?.payload['status']).toBe('failed');
+  });
+
+  it('does NOT run the mesh gate when verification.mesh is off', async () => {
+    execFileSync('git', ['init', '-q'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.email', 'test@excalibur.local'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.name', 'Excalibur Test'], { cwd: repoRoot });
+
+    const definition = getDefaultWorkflow('structured-feature');
+    const run = runManager.createRun({
+      title: 'Implement contract renewal reminders',
+      autonomyLevel: 4,
+      workflow: 'structured-feature',
+      methodology: 'spec-driven',
+      executionStyle: 'structured',
+    });
+
+    const config4: ExcaliburConfig = {
+      ...config,
+      permissions: { tools: { write_file: true }, allowedCommands: [] },
+      verification: { mesh: 'off' },
+    };
+
+    const record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      definition: definition!,
+      gateway: new MeshBlockingGateway(gateway) as unknown as ModelGateway,
+      adapter,
+      config: config4,
+    });
+
+    // mesh off → the blocking verdict is never solicited → run completes.
+    expect(record.status).toBe('completed');
+    expect(existsSync(join(run.dir, 'verification.md'))).toBe(false);
   });
 
   it('cancels the run when a required human approval is denied', async () => {
