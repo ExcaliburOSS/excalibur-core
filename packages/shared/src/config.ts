@@ -67,6 +67,13 @@ const approvalsSectionSchema = z.object({
       phases: z.array(z.string()).optional(),
     })
     .optional(),
+  /**
+   * Session auto-accept preference (minimum-friction mode). When `true`, the
+   * interactive shell never prompts for edit/command approval (blocked paths
+   * stay hard-denied). `undefined` = not chosen yet → the shell asks ONCE at
+   * session start and persists the answer here, so it never asks again.
+   */
+  auto: z.boolean().optional(),
 });
 
 const contextSectionSchema = z.object({

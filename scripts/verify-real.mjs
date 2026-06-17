@@ -207,6 +207,55 @@ await scenario('daily — generates a real report', () => {
   assert(/Daily Report|Completed runs/i.test(out), 'daily should produce a report');
 });
 
+await scenario('run — creates AND executes a bash script', () => {
+  const dir = freshRepo();
+  exc(dir, ['run', 'Create a shell script greet.sh that prints GREETINGS, make it executable, and run it', '--yes']);
+  assert(existsSync(join(dir, 'greet.sh')), 'greet.sh must be created');
+  assert(toolsUsed(runEvents(dir)).includes('run_command'), 'should have executed the script via run_command');
+});
+
+await scenario('branch — applies a patch onto a new git branch', () => {
+  const dir = freshRepo();
+  const { out } = exc(dir, ['patch', 'Add a multiply(a, b) function to src/math.ts', '--yes']);
+  const id = /patch_\d{8}_\d{6}/.exec(out)?.[0];
+  assert(id, 'a patch id should be printed');
+  const res = exc(dir, ['branch', id, '--yes']);
+  const branches = execFileSync('git', ['branch'], { cwd: dir, encoding: 'utf8' });
+  assert(/excalibur\//.test(branches), `an excalibur/* branch must be created (got: ${branches.trim()})`);
+});
+
+await scenario('undo — reverts a run’s changes', () => {
+  const dir = freshRepo();
+  exc(dir, ['run', 'Create a file undome.txt containing UNDO', '--yes']);
+  assert(existsSync(join(dir, 'undome.txt')), 'precondition: the run created undome.txt');
+  const runId = execFileSync('ls', ['-t', join(dir, '.excalibur/runs')]).toString().trim().split('\n')[0];
+  exc(dir, ['undo', runId, '--yes']);
+  assert(!existsSync(join(dir, 'undome.txt')), 'undo must remove the file the run created');
+});
+
+await scenario('changes — lists a run’s changed files', () => {
+  const dir = freshRepo();
+  exc(dir, ['run', 'Add a divide(a, b) function to src/math.ts', '--yes']);
+  const runId = execFileSync('ls', ['-t', join(dir, '.excalibur/runs')]).toString().trim().split('\n')[0];
+  const { out } = exc(dir, ['changes', runId]);
+  assert(/math\.ts/.test(out), 'changes should list the modified file');
+});
+
+await scenario('fork — forks a run from a step', () => {
+  const dir = freshRepo();
+  exc(dir, ['run', 'Create a file base.txt containing BASE', '--yes']);
+  const runId = execFileSync('ls', ['-t', join(dir, '.excalibur/runs')]).toString().trim().split('\n')[0];
+  const { out, code } = exc(dir, ['fork', runId, 'Also create forked.txt containing FORKED', '--yes']);
+  assert(code === 0 && /fork|run_\d{8}/i.test(out), 'fork should produce a new run from the cached prefix');
+});
+
+await scenario('weekly-plan — generates a real report', () => {
+  const dir = freshRepo();
+  exc(dir, ['run', 'Create a file z.txt containing Z', '--yes']);
+  const { out } = exc(dir, ['weekly-plan']);
+  assert(/Weekly Plan|Last week|Plan for next week/i.test(out), 'weekly-plan should produce a report');
+});
+
 // ── Summary ───────────────────────────────────────────────────────────────────
 for (const dir of tmpRepos) {
   try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }

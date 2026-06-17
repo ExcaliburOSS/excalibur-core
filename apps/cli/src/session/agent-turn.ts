@@ -71,6 +71,19 @@ export interface AgentTurnResult {
   mutated: boolean;
 }
 
+/**
+ * Session-scoped approval policy (shared, mutable across a session's turns) so
+ * the user approves edits ONCE rather than on every tool call:
+ * - `auto`: never prompt — auto-approve every mutating tool (the `/auto` mode,
+ *   like Claude Code's auto-accept). Blocked paths stay hard-denied regardless.
+ * - `always`: tools the user approved with "always" — auto-approved for the
+ *   rest of the session.
+ */
+export interface ApprovalState {
+  auto: boolean;
+  always: Set<string>;
+}
+
 export interface AgentTurnDeps {
   deps: CliDeps;
   repoRoot: string;
@@ -80,6 +93,8 @@ export interface AgentTurnDeps {
   providerName: string;
   /** The session's autonomy level — governs the role and approval strength. */
   autonomyLevel: AutonomyLevel;
+  /** Session approval policy (auto-accept + per-tool "always"); prompts when absent. */
+  approvals?: ApprovalState;
   /** Cancels the in-flight turn (Ctrl-C). */
   signal?: AbortSignal;
   /** Injectable adapter (tests pass a fake-gateway-backed native adapter). */
@@ -207,6 +222,13 @@ async function driveLoop(
   };
 
   const confirm = async (req: ConfirmationRequest): Promise<boolean> => {
+    // Approve-once UX: skip the prompt when auto-accept is on or this tool was
+    // already approved with "always" this session (blocked paths are still
+    // hard-denied at the tool-execution layer regardless).
+    const approvals = turn.approvals;
+    if (approvals?.auto === true || approvals?.always.has(req.tool) === true) {
+      return true;
+    }
     spinner.stop(); // clear the transient line before the (permanent) prompt
     const detail = req.detail !== undefined ? ` (${req.detail})` : '';
     deps.ui.write(
@@ -218,9 +240,14 @@ async function driveLoop(
         }),
       ),
     );
-    return deps.ui.confirm(deps.t('agent-turn.allow_action'), {
+    const choice = await deps.ui.confirmTool(deps.t('agent-turn.allow_action'), {
       defaultYes: options.approvalDefaultYes,
     });
+    if (choice === 'always' && approvals !== undefined) {
+      approvals.always.add(req.tool);
+      deps.ui.info(deps.t('agent-turn.always_allowed', { tool: req.tool }));
+    }
+    return choice !== 'no';
   };
 
   const stream = adapter.run({

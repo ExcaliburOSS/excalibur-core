@@ -246,6 +246,28 @@ export class Ui {
     return answer === 'y' || answer === 'yes';
   }
 
+  /**
+   * Three-way tool-approval prompt: `[y / N / a]` (a = always). Returns 'yes',
+   * 'no', or 'always' — "always" lets the caller add the action to a session
+   * allowlist so the user approves an edit ONCE instead of on every tool call.
+   * Non-interactive / `yes` resolves to the default ('yes' when defaultYes).
+   */
+  async confirmTool(question: string, options: ConfirmOptions = {}): Promise<'yes' | 'no' | 'always'> {
+    const defaultYes = options.defaultYes ?? false;
+    if (options.yes === true || !this.interactive) {
+      return defaultYes ? 'yes' : 'no';
+    }
+    const suffix = defaultYes ? '[Y/n/a]' : '[y/N/a]';
+    const answer = (await this.readLine(`${question} ${suffix} `)).trim().toLowerCase();
+    if (answer.length === 0) {
+      return defaultYes ? 'yes' : 'no';
+    }
+    if (answer === 'a' || answer === 'always' || answer === 'siempre') {
+      return 'always';
+    }
+    return answer === 'y' || answer === 'yes' || answer === 's' || answer === 'si' ? 'yes' : 'no';
+  }
+
   /** Numbered chooser; returns the zero-based index of the selection. */
   async select(question: string, choices: SelectChoice[], options: SelectOptions = {}): Promise<number> {
     const defaultIndex = options.defaultIndex ?? 0;

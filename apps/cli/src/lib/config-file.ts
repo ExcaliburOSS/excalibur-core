@@ -54,6 +54,23 @@ export function writeRawConfig(repoRoot: string, config: Record<string, unknown>
   writeYamlObject(configFilePath(repoRoot), config);
 }
 
+/**
+ * Persists the session auto-accept preference to `.excalibur/config.yaml`
+ * (`approvals.auto`) so the shell asks ONCE and never again. Unknown keys in the
+ * config are preserved.
+ */
+export function setAutoApprove(repoRoot: string, value: boolean): void {
+  const config = readRawConfig(repoRoot);
+  const approvals = (
+    typeof config['approvals'] === 'object' && config['approvals'] !== null
+      ? (config['approvals'] as Record<string, unknown>)
+      : {}
+  );
+  approvals['auto'] = value;
+  config['approvals'] = approvals;
+  writeRawConfig(repoRoot, config);
+}
+
 export interface SourceRef extends Record<string, unknown> {
   path: string;
 }

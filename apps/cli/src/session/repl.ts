@@ -37,6 +37,7 @@ import {
 } from '../lib/context';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
+import { setAutoApprove } from '../lib/config-file';
 import { REWIND_SENTINEL } from '../ui';
 import { CLI_VERSION } from '../program';
 import { renderWelcome, type WelcomeContext } from './welcome';
@@ -47,6 +48,7 @@ import {
   runUndo,
   type AgentTurnDeps,
   type AgentTurnResult,
+  type ApprovalState,
 } from './agent-turn';
 import { runGoalLoop } from './goal-loop';
 import { runIntervalLoop } from './interval-loop';
@@ -103,6 +105,8 @@ interface SessionRuntime {
   session: LocalSession;
   /** Running cost sum, in cents, across the session's assistant turns. */
   costCents: number;
+  /** Session approval policy (auto-accept + per-tool "always") — minimum friction. */
+  approvals: ApprovalState;
 }
 
 /**
@@ -183,11 +187,30 @@ export async function runInteractiveSession(
     store,
     session,
     costCents: 0,
+    // Resolve the saved auto-accept preference; the prompt below sets it the
+    // first time (so future sessions never ask).
+    approvals: { auto: config.approvals?.auto === true, always: new Set<string>() },
   };
 
   // Welcome banner (two-column frame + cyberpunk sword) + status line.
   deps.ui.write(renderWelcome(buildWelcomeContext(deps, repoRoot, runtime.model)));
   deps.ui.write();
+
+  // Minimum-friction auto-accept: ask ONCE (when never chosen) whether Excalibur
+  // may edit/run without prompting, then PERSIST the answer so it never asks
+  // again — in this session or future ones. Blocked paths stay hard-denied.
+  if (config.approvals?.auto === undefined && deps.ui.isInteractive() && deps.ui.isOutputTty()) {
+    const allow = await deps.ui.confirm(deps.t('repl.auto-setup-prompt'), { defaultYes: true });
+    runtime.approvals.auto = allow;
+    try {
+      setAutoApprove(repoRoot, allow);
+    } catch {
+      // Persisting the preference is best-effort; the session still honours it.
+    }
+    deps.ui.info(deps.t(allow ? 'repl.auto-enabled' : 'repl.auto-disabled'));
+    deps.ui.write();
+  }
+
   printStatusLine(deps, runtime);
 
   const history = store.loadPromptHistory().slice().reverse(); // readline wants newest-first
@@ -317,6 +340,21 @@ export async function runInteractiveSession(
             printStatusLine(deps, runtime);
             continue;
           }
+          if (input.name === 'auto') {
+            // Toggle (or set on/off) the session auto-accept mode + persist it,
+            // so future sessions honour the choice without asking.
+            const arg = (input.argv[0] ?? '').toLowerCase();
+            const next = arg === 'on' ? true : arg === 'off' ? false : !runtime.approvals.auto;
+            runtime.approvals.auto = next;
+            try {
+              setAutoApprove(runtime.repoRoot, next);
+            } catch {
+              /* persisting is best-effort */
+            }
+            deps.ui.info(deps.t(next ? 'repl.auto-on' : 'repl.auto-off'));
+            printStatusLine(deps, runtime);
+            continue;
+          }
           if (input.name === 'compact') {
             await runCompaction(deps, runtime, { manual: true });
             printStatusLine(deps, runtime);
@@ -430,6 +468,7 @@ const GHOST_COMMANDS = [
   'changes',
   'fork',
   'undo',
+  'auto',
   'compact',
   'remember',
   'goal',
@@ -525,6 +564,7 @@ function agentTurnDeps(deps: CliDeps, runtime: SessionRuntime, signal: AbortSign
     gateway: gateway.gateway,
     providerName: gateway.providerName,
     autonomyLevel: runtime.autonomyLevel,
+    approvals: runtime.approvals,
     adapter,
     signal,
   };

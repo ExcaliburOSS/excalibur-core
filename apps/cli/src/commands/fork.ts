@@ -10,6 +10,7 @@ import { runForkTurn, runUndo, type AgentTurnDeps } from '../session/agent-turn'
 interface ForkOptions {
   at?: string;
   level?: string;
+  yes?: boolean;
 }
 
 interface UndoOptions {
@@ -52,6 +53,7 @@ export function registerForkCommand(program: Command, deps: CliDeps): void {
     .argument('<instruction>', 'what to do from the fork point')
     .option('--at <n>', 'fork at step n (1-based; defaults to the last step)')
     .option('--level <0-4>', 'autonomy level for the forked run (default 3)')
+    .option('-y, --yes', 'auto-approve the forked run’s edits/commands (non-interactive)')
     .action(async (id: string | undefined, instruction: string, options: ForkOptions) => {
       const { id: runId } = resolveRun(deps, id);
       const atStep = resolveStep(deps, runId, options.at);
@@ -67,6 +69,12 @@ export function registerForkCommand(program: Command, deps: CliDeps): void {
         gateway: gateway.gateway,
         providerName: gateway.providerName,
         autonomyLevel: level,
+        // --yes (or a non-interactive shell) auto-approves the fork's mutations;
+        // otherwise the agent prompts per edit. Blocked paths stay hard-denied.
+        approvals: {
+          auto: options.yes === true || !deps.ui.isInteractive(),
+          always: new Set<string>(),
+        },
       };
 
       const result = await runForkTurn(turn, { sourceRunId: runId, atStep, instruction });

@@ -588,4 +588,12 @@ export const ES: Catalog = {
   "rail.applied": "aplicados",
   "rail.conflict": "conflicto",
   "rail.tasks": "Tareas",
+
+  // auto-accept (approval UX)
+  "agent-turn.always_allowed": "Permitiendo {tool} durante toda la sesión.",
+  "repl.auto-setup-prompt": "¿Permitir que Excalibur edite ficheros y ejecute comandos automáticamente (sin pedir aprobación)?",
+  "repl.auto-enabled": "Auto-aceptar ACTIVADO — Excalibur editará y ejecutará sin preguntar (guardado). Cámbialo con /auto.",
+  "repl.auto-disabled": "Auto-aceptar DESACTIVADO — Excalibur pregunta antes de editar (elige «siempre» para dejar de preguntar, o /auto).",
+  "repl.auto-on": "Auto-aceptar ACTIVADO — editando sin preguntar (guardado).",
+  "repl.auto-off": "Auto-aceptar DESACTIVADO — preguntará antes de editar (guardado).",
 };
