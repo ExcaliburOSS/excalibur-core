@@ -404,6 +404,79 @@ describe('executeLocalRun', () => {
     expect(existsSync(join(run.dir, 'verification.md'))).toBe(false);
   });
 
+  it('STOPS the run (failed) at the hard budget cap — deny-by-dollars', async () => {
+    // Every model call costs 1 cent; the cap is 1 cent → the FIRST call is
+    // allowed (spend 0 < cap), the SECOND is DENIED (spend 1 >= cap 1).
+    class CostlyGateway {
+      chat(): Promise<ChatOutput> {
+        return Promise.resolve({
+          content: 'ok',
+          model: 'mock-model',
+          usage: { inputTokens: 5, outputTokens: 5 },
+          costCents: 1,
+          finishReason: 'stop',
+        });
+      }
+    }
+    const definition = getDefaultWorkflow('fast-fix');
+    const run = runManager.createRun({
+      title: 'Tweak something',
+      autonomyLevel: 3,
+      workflow: 'fast-fix',
+      executionStyle: 'fast',
+    });
+
+    const record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      definition: definition!,
+      gateway: new CostlyGateway() as unknown as ModelGateway,
+      adapter,
+      config,
+      budgetCents: 1,
+    });
+
+    expect(record.status).toBe('failed');
+    const events = runManager.readEvents(run.id);
+    const deny = events.find(
+      (e) => e.type === 'policy_decision' && e.payload['kind'] === 'budget',
+    );
+    expect(deny).toBeDefined();
+    expect(deny?.payload['decision']).toBe('deny');
+    const err = events.find((e) => e.type === 'error' && e.payload['code'] === 'budget_exceeded');
+    expect(err).toBeDefined();
+    expect(String(err?.payload['message'])).toContain('Budget cap');
+  });
+
+  it('does NOT cap when no budget is configured (the default)', async () => {
+    // A run with no budgetCents + no config.budget completes normally (the
+    // existing fast-fix happy path still holds — the cap is opt-in).
+    execFileSync('git', ['init', '-q'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.email', 'test@excalibur.local'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.name', 'Excalibur Test'], { cwd: repoRoot });
+    const definition = getDefaultWorkflow('fast-fix');
+    const run = runManager.createRun({
+      title: 'Fix duplicated webhook handling in src/escrow/escrow.service.ts',
+      autonomyLevel: 3,
+      workflow: 'fast-fix',
+      executionStyle: 'fast',
+    });
+    const record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      definition: definition!,
+      gateway,
+      adapter,
+      config, // no budget set
+    });
+    expect(record.status).toBe('completed');
+    expect(
+      runManager.readEvents(run.id).some((e) => e.payload['kind'] === 'budget'),
+    ).toBe(false);
+  });
+
   it('cancels the run when a required human approval is denied', async () => {
     const definition = getDefaultWorkflow('human-gated');
     expect(definition).toBeDefined();

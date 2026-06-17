@@ -52,6 +52,27 @@ export interface ExecuteLocalRunInput {
   config: ExcaliburConfig;
   confirm?: (question: string) => Promise<boolean>;
   onEvent?: (e: ExcaliburEvent) => void;
+  /**
+   * Hard per-run budget ceiling in CENTS (overrides `config.budget.maxRunUsd`).
+   * When the run's accumulated model spend reaches it, the next model call is
+   * DENIED and the run ends `failed`. Undefined → fall back to config → no cap.
+   */
+  budgetCents?: number;
+}
+
+/** Thrown when a run hits its hard budget cap — Excalibur STOPS, it doesn't just track. */
+export class BudgetExceededError extends Error {
+  readonly code = 'budget_exceeded';
+  constructor(
+    readonly spentCents: number,
+    readonly capCents: number,
+  ) {
+    super(
+      `Budget cap reached: $${(spentCents / 100).toFixed(2)} spent of a $${(capCents / 100).toFixed(2)} ceiling. ` +
+        `Run stopped before the next model call — raise budget.maxRunUsd or pass --budget to continue.`,
+    );
+    this.name = 'BudgetExceededError';
+  }
 }
 
 /** Maps a phase onto the MockProvider response kind (Build Contract §7). */
@@ -152,10 +173,18 @@ class LocalRunExecution {
   private readonly run: LocalRun;
   private instructionsMarkdown = '';
   private collectedDiff: string | null = null;
+  /** Accumulated model spend (cents) — checked against the budget cap. */
+  private spentCents = 0;
+  /** Hard budget ceiling in cents, or null for no cap. */
+  private readonly budgetCapCents: number | null;
 
   constructor(input: ExecuteLocalRunInput) {
     this.input = input;
     this.run = input.run;
+    const fromUsd = input.config.budget?.maxRunUsd;
+    this.budgetCapCents =
+      input.budgetCents ??
+      (typeof fromUsd === 'number' && fromUsd > 0 ? Math.round(fromUsd * 100) : null);
   }
 
   // --- event plumbing --------------------------------------------------------
@@ -190,6 +219,19 @@ class LocalRunExecution {
       this.instructionsMarkdown.length > 0
         ? `${this.instructionsMarkdown}\n\n${roleLine}`
         : roleLine;
+    // HARD BUDGET CAP (deny-by-dollars): refuse the next model call once spend
+    // has reached the ceiling. We check BEFORE the call (the cap is a ceiling,
+    // not a target) — at worst we overshoot by the single call that crossed it.
+    if (this.budgetCapCents !== null && this.spentCents >= this.budgetCapCents) {
+      this.emit('policy_decision', {
+        kind: 'budget',
+        decision: 'deny',
+        message: `Budget cap $${(this.budgetCapCents / 100).toFixed(2)} reached ($${(this.spentCents / 100).toFixed(2)} spent) — denying further model calls.`,
+        spentCents: this.spentCents,
+        capCents: this.budgetCapCents,
+      }, phase?.id);
+      throw new BudgetExceededError(this.spentCents, this.budgetCapCents);
+    }
     const messages: ChatMessage[] = [
       { role: 'system', content: system },
       { role: 'user', content: userContent },
@@ -204,6 +246,7 @@ class LocalRunExecution {
       metadata: { kind, runId: this.run.id, phaseId: phase?.id ?? null },
     });
 
+    this.spentCents += output.costCents ?? 0;
     this.input.runManager.appendModelCall(this.run.id, {
       provider: this.input.config.models?.default ?? 'mock',
       model: output.model,

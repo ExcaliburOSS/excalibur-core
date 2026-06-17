@@ -186,6 +186,19 @@ const verificationSectionSchema = z
   })
   .optional();
 
+/** Hard budget cap (plan P2.3) — autonomy you can cap by dollars. */
+const budgetSectionSchema = z
+  .object({
+    /**
+     * Maximum model spend for a SINGLE run, in US dollars. When the run's
+     * accumulated cost reaches this ceiling, the next model call is DENIED and
+     * the run ends `failed` (needs-raise) — Excalibur does not just track spend,
+     * it stops at the cap. Omit/`null` for no cap (the default).
+     */
+    maxRunUsd: z.number().positive().nullable().optional(),
+  })
+  .optional();
+
 const baseExcaliburConfigSchema = z.object({
   version: z.number().int().optional(),
   /** Spoken UI locale for generated chrome/prose (`en`|`es`); auto-detected when absent. */
@@ -194,6 +207,8 @@ const baseExcaliburConfigSchema = z.object({
   ui: uiSectionSchema,
   /** Adversarial Verification Mesh policy. */
   verification: verificationSectionSchema,
+  /** Hard per-run budget cap (deny-by-dollars). */
+  budget: budgetSectionSchema,
   project: projectSectionSchema.optional(),
   /** Top-level canonical commands; `project.commands` is normalized into it. */
   commands: commandsConfigSchema.optional(),

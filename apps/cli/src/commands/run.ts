@@ -31,6 +31,7 @@ interface RunOptions {
   yes?: boolean;
   sync?: boolean;
   diagnostics?: boolean;
+  budget?: string;
 }
 
 /** Parses a positive-integer agent count flag (`--agents` / `--max-agents`). */
@@ -41,6 +42,18 @@ function parseAgentCount(value: string | undefined, flag: string): number | unde
   const parsed = Number.parseInt(value, 10);
   if (!Number.isInteger(parsed) || parsed < 1 || String(parsed) !== value.trim()) {
     throw new CliUsageError(`${flag} must be a positive integer (got "${value}").`);
+  }
+  return parsed;
+}
+
+/** Parses the `--budget <usd>` flag (a positive dollar amount), or undefined. */
+function parseBudget(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = Number.parseFloat(value.replace(/^\$/, ''));
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new CliUsageError(`--budget must be a positive dollar amount (got "${value}").`);
   }
   return parsed;
 }
@@ -110,6 +123,7 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
     )
     .option('--sync', 'push the finished run to Excalibur Enterprise (experimental)')
     .option('--diagnostics', 'run the repo typecheck first and feed real compiler errors to the agent')
+    .option('--budget <usd>', 'hard cost ceiling in USD — deny further model calls once spend reaches it')
     .option('-y, --yes', 'skip prompts and accept safe defaults')
     .action(async (taskWords: string[], options: RunOptions) => {
       const task = taskWords.join(' ').trim();
@@ -123,6 +137,7 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
       const outputFormat: RunOutputFormat = parseOutputFormat(options.outputFormat) ?? 'text';
       const agents = parseAgentCount(options.agents, '--agents');
       const maxAgents = parseAgentCount(options.maxAgents, '--max-agents');
+      const budgetUsd = parseBudget(options.budget);
 
       const taskOptions: RunTaskOptions = {
         ...(explicitLevel !== undefined ? { level: explicitLevel } : {}),
@@ -133,6 +148,7 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
         ...(options.yes === true ? { yes: true } : {}),
         ...(options.sync === true ? { sync: true } : {}),
         ...(options.diagnostics === true ? { diagnostics: true } : {}),
+        ...(budgetUsd !== undefined ? { budgetUsd } : {}),
       };
 
       // `text` is unchanged: the run streams human output through deps.ui.

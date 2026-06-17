@@ -59,6 +59,8 @@ export interface RunTaskOptions {
    * agent's context (M3 LSP-diagnostics value; opt-in — typecheck can be slow).
    */
   diagnostics?: boolean;
+  /** Hard per-run budget ceiling in US dollars (`--budget`); overrides config. */
+  budgetUsd?: number;
 }
 
 /** Distinct path-like mentions in a task — a rough pre-plan "affected modules" proxy. */
@@ -424,6 +426,8 @@ export async function runTask(
     gateway: gatewayContext.gateway,
     adapter: new NativeAgentAdapter(),
     config,
+    // Hard budget cap: a `--budget` flag (USD→cents) overrides config.budget.maxRunUsd.
+    ...(options.budgetUsd !== undefined ? { budgetCents: Math.round(options.budgetUsd * 100) } : {}),
     // Without a confirm fn the engine auto-approves ({ auto: true }) —
     // exactly what --yes / non-interactive runs want.
     ...(interactive ? { confirm } : {}),

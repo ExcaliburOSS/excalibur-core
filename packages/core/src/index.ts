@@ -181,7 +181,11 @@ export {
 } from './selection/select-workflow';
 
 // Engine
-export { executeLocalRun, type ExecuteLocalRunInput } from './engine/execute-local-run';
+export {
+  executeLocalRun,
+  BudgetExceededError,
+  type ExecuteLocalRunInput,
+} from './engine/execute-local-run';
 
 // Git helpers
 export {
