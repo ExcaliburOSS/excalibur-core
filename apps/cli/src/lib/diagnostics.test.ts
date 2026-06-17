@@ -13,12 +13,15 @@ describe('runDiagnostics', () => {
     });
   });
 
+  // These spawn a real `node` subprocess; under full-suite parallel load (other
+  // suites also spawn processes) node startup can exceed the 5s default → flaky.
+  // A generous timeout keeps them reliable (in isolation they run in ~80ms).
   it('captures a clean typecheck (exit 0)', () => {
     const result = runDiagnostics(process.cwd(), `${node} -e ""`);
     expect(result.ran).toBe(true);
     expect(result.ok).toBe(true);
     expect(result.diagnostics).toEqual([]);
-  });
+  }, 30000);
 
   it('captures a failing typecheck (non-zero) and parses tsc-style errors', () => {
     const script = `process.stdout.write('src/x.ts(3,5): error TS2304: Cannot find name foo.\\nsrc/y.ts(10,1): error TS1005: ; expected.\\n'); process.exit(2)`;
@@ -30,7 +33,7 @@ describe('runDiagnostics', () => {
       { file: 'src/x.ts', line: 3, message: 'Cannot find name foo.' },
       { file: 'src/y.ts', line: 10, message: '; expected.' },
     ]);
-  });
+  }, 30000);
 });
 
 describe('diagnosticsContextSource', () => {
