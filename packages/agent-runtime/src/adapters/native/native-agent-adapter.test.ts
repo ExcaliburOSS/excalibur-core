@@ -452,4 +452,27 @@ describe('NativeAgentAdapter — role-based tool exposure', () => {
     expect(offered).not.toContain('write_file');
     expect(offered).not.toContain('run_command');
   });
+
+  it('runs the reviewer role as an ADVERSARIAL reviewer (refute, not rubber-stamp)', async () => {
+    const gateway = new FakeGateway([{ content: 'no issues found' }]);
+    await collect(new NativeAgentAdapter().run(makeInput(gateway, { role: 'reviewer' })));
+    const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
+    expect(system).toContain('ADVERSARIAL reviewer');
+    expect(system).toContain('REFUTE');
+  });
+
+  it('gives the security role a security-lens adversarial preamble', async () => {
+    const gateway = new FakeGateway([{ content: 'ok' }]);
+    await collect(new NativeAgentAdapter().run(makeInput(gateway, { role: 'security' })));
+    const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
+    expect(system).toContain('ADVERSARIAL reviewer');
+    expect(system.toLowerCase()).toContain('security');
+  });
+
+  it('does NOT add the adversarial preamble to an implementer role', async () => {
+    const gateway = new FakeGateway([{ content: 'done' }]);
+    await collect(new NativeAgentAdapter().run(makeInput(gateway))); // implementer (default)
+    const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
+    expect(system).not.toContain('ADVERSARIAL reviewer');
+  });
 });

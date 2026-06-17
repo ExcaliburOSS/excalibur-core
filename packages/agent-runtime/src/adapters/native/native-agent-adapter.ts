@@ -132,11 +132,35 @@ function toolSpecsFor(role: AgentRole): ToolSpec[] {
   }));
 }
 
+/**
+ * Reviewer/security roles run an ADVERSARIAL review (the "review adversarial
+ * interno" differentiator): a skeptic that tries to REFUTE the work, not
+ * rubber-stamp it. Surfaced to the human pre-filtered.
+ */
+function adversarialPreamble(role: AgentRunInput['role']): string[] {
+  if (role !== 'reviewer' && role !== 'security') {
+    return [];
+  }
+  const lens =
+    role === 'security'
+      ? 'Focus on security: injection, secret handling, auth, unsafe shell/network, data exposure.'
+      : 'Focus on correctness, regressions, edge cases, and whether the change actually does what was asked.';
+  return [
+    'You are an ADVERSARIAL reviewer: your job is to REFUTE the work, not approve it.',
+    'Read the actual changes (git diff / the files) and actively hunt for what is WRONG.',
+    lens,
+    'List each issue as: [severity high|medium|low] <file>:<where> — <problem> → <concrete fix>.',
+    'Do NOT rubber-stamp. If after a genuine hunt you find nothing, say so explicitly and',
+    'state exactly what you verified (so the human can trust the green).',
+  ];
+}
+
 function systemPromptFor(input: AgentRunInput): string {
   const phase =
     input.phase !== undefined ? ` for phase "${input.phase.name}" (${input.phase.type})` : '';
   return [
     `You are the Excalibur native agent acting as the "${input.role}" role${phase}.`,
+    ...adversarialPreamble(input.role),
     `Working directory: ${input.workdir}.`,
     'You can call the provided tools to read and change the repository. Tool results',
     'are authoritative — obey them and adapt when a tool reports an error or a',
