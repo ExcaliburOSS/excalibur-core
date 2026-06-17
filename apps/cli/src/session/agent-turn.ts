@@ -13,13 +13,16 @@ import {
   getGitInfo,
   hasCommits,
   loadReplay,
+  MemoryStore,
   planFork,
   planUndo,
   removeWorktree,
   restampEventsForFork,
   RunManager,
+  savePlan,
   turnSummaryToMarkdown,
 } from '@excalibur/core';
+import { basename } from 'node:path';
 import {
   createEvent,
   generateId,
@@ -558,6 +561,30 @@ export async function runPlanTurn(
   });
   finishRun(turn.deps, runManager, execRun, execResult.aborted);
   emitReceipt(turn, runManager, execRun.id, execResult.model || turn.providerName);
+
+  // Persist the approved plan to the PLANS folder (portable, re-runnable .md) and
+  // promote it to project MEMORY (Knowledge Compounding) — neither CC nor
+  // OpenCode do this. Best-effort: a write fault never fails the executed run.
+  if (planResult.finalText.trim().length > 0) {
+    try {
+      const file = savePlan(turn.repoRoot, {
+        task,
+        planMarkdown: planResult.finalText,
+        status: 'executed',
+        planRunId: planRun.id,
+        execRunId: execRun.id,
+      });
+      turn.deps.ui.info(turn.deps.t('agent-turn.plan_saved', { file: basename(file) }));
+      new MemoryStore(turn.repoRoot).capture({
+        type: 'decision',
+        statement: `Approved & executed a plan for: ${task}`,
+        rationale: planResult.finalText.slice(0, 600),
+        sourceRunId: planRun.id,
+      });
+    } catch {
+      /* persistence is best-effort; the executed run already succeeded */
+    }
+  }
 
   return {
     gate: 'approve',

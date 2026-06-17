@@ -385,6 +385,7 @@ export const ES: Catalog = {
   "agent-turn.plan_gate_prompt": "[approve / edit / cancel]",
   "agent-turn.plan_edit": "Edita la tarea y vuelve a planificar.",
   "agent-turn.plan_cancelled": "Plan cancelado. No se cambió nada.",
+  "agent-turn.plan_saved": "Plan guardado en .excalibur/plans/{file} y registrado en memoria.",
   "agent-turn.execute_header": "→ ejecutar · implementador · L{level}",
   "agent-turn.fork_redacted": "La base reconstruida contiene [REDACTED] donde se ocultó un secreto al capturarlo — complétalos antes de confiar en el árbol de trabajo bifurcado.",
   "agent-turn.fork_header": "⑂ bifurcación de {runId} @ paso {step}/{total}",

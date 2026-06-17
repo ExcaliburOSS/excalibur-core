@@ -389,6 +389,7 @@ export const EN: Catalog = {
   "agent-turn.plan_gate_prompt": "[approve / edit / cancel]",
   "agent-turn.plan_edit": "Edit the task and re-plan.",
   "agent-turn.plan_cancelled": "Plan cancelled. Nothing was changed.",
+  "agent-turn.plan_saved": "Plan saved to .excalibur/plans/{file} and recorded in memory.",
   "agent-turn.execute_header": "→ execute · implementer · L{level}",
   "agent-turn.fork_redacted": "The reconstructed base contains [REDACTED] where a secret was scrubbed at capture — fill those in before relying on the forked worktree.",
   "agent-turn.fork_header": "⑂ fork of {runId} @ step {step}/{total}",

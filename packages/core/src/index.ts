@@ -60,6 +60,13 @@ export {
   type Subtask,
 } from './swarm/agent-allocation';
 export {
+  savePlan,
+  plansDir,
+  slugify,
+  type PlanStatus,
+  type SavePlanInput,
+} from './plans/plan-store';
+export {
   runSwarm,
   type RunSwarmOptions,
   type SwarmConflict,
