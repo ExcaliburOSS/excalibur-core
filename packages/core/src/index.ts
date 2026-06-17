@@ -67,6 +67,18 @@ export {
   type SavePlanInput,
 } from './plans/plan-store';
 export {
+  planVerificationMesh,
+  aggregateMesh,
+  MESH_LENSES,
+  type MeshLens,
+  type MeshMode,
+  type MeshPlan,
+  type MeshPlanInput,
+  type MeshIssue,
+  type MeshVerdict,
+  type MeshResult,
+} from './verification/verification-mesh';
+export {
   runSwarm,
   type RunSwarmOptions,
   type SwarmConflict,
