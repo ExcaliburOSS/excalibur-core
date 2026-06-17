@@ -487,6 +487,7 @@ export const ES: Catalog = {
   "repl.goal-offer": "Esto parece un objetivo a completar (\"{signal}…\"). ¿Perseguirlo a lo largo de varios turnos hasta que un evaluador diga que está hecho (máx. {max})?",
   "repl.remember-usage": "Uso: /remember <una decisión, rechazo, riesgo o convención que recordar>",
   "repl.remember-saved": "Recordado ({detail}). Las próximas ejecuciones que toquen estas rutas lo tendrán presente.",
+  "repl.remember-reinforced": "Reforzada una memoria existente ({detail}) — evidencia ×{count}. Compone: cuanto más se repite, más seguro está Excalibur.",
   "repl.remember-failed": "No se pudo guardar la memoria: {reason}",
   "repl.compact-nothing": "Nada que compactar todavía: el contexto reciente ya cabe.",
   "repl.compacted-manual": "Compactados {n} turno(s) anteriores → resumen · {before}→{after} tokens. El detalle completo permanece en el historial de ejecuciones.",

@@ -678,7 +678,13 @@ function handleRememberCommand(deps: CliDeps, runtime: SessionRuntime, text: str
       sourceRunId: runtime.session.id,
     });
     const detail = `${node.type}${subjectPaths.length > 0 ? ` · ${subjectPaths.join(', ')}` : ''}`;
-    deps.ui.success(deps.t('repl.remember-saved', { detail }));
+    // Knowledge compounding made VISIBLE: a corroborating capture reinforces an
+    // existing memory (evidenceCount > 1) rather than duplicating it.
+    if (node.evidenceCount > 1) {
+      deps.ui.success(deps.t('repl.remember-reinforced', { detail, count: node.evidenceCount }));
+    } else {
+      deps.ui.success(deps.t('repl.remember-saved', { detail }));
+    }
   } catch (error) {
     deps.ui.warn(
       deps.t('repl.remember-failed', {

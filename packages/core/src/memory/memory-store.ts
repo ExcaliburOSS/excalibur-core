@@ -48,14 +48,52 @@ export class MemoryStore {
       ((node): string => `mem_${node.createdAt.replace(/[^0-9]/g, '').slice(0, 14)}_${shortHash(node.statement)}`);
   }
 
-  /** Captures a node: redacts, stamps id/dates/defaults, appends to the JSONL. */
+  /**
+   * Captures a node — the KNOWLEDGE-COMPOUNDING entry point (plan P2.12). Before
+   * adding it, it folds it against the current memory:
+   *  - **Corroboration** — a matching active node of the SAME type (overlapping
+   *    subjectPaths + similar statement) is REINFORCED (evidenceCount++, confidence
+   *    rises with diminishing returns) instead of duplicated; the reinforced node
+   *    is returned.
+   *  - **Supersede-on-contradiction** — an explicit `supersedes`, OR a `rejection`
+   *    that matches a prior active `decision`/`convention` on overlapping paths,
+   *    marks the older node `superseded` (linked via `supersededById`, confidence
+   *    halved) so a since-reversed belief stops priming future runs.
+   * All of this is APPEND-ONLY (each change is a new revision line; {@link current}
+   * collapses by id), so the JSONL stays the lossless source of truth.
+   */
   capture(input: CaptureMemoryInput): MemoryNode {
     const createdAt = this.now();
+    const statement = redactSecrets(input.statement.trim());
+    const subjectPaths = (input.subjectPaths ?? []).map((p) => p.trim()).filter((p) => p.length > 0);
+
+    // Corroboration: reinforce an existing equivalent node rather than duplicate.
+    // Skipped when the caller explicitly supersedes (they want a distinct node).
+    const current = this.current();
+    const match =
+      input.supersedes !== undefined
+        ? undefined
+        : current.find(
+            (node) =>
+              node.status === 'active' &&
+              node.type === input.type &&
+              subjectsOverlap(node.subjectPaths, subjectPaths) &&
+              statementSimilarity(node.statement, statement) >= REINFORCE_THRESHOLD,
+          );
+    if (match !== undefined) {
+      return this.appendRevision({
+        ...match,
+        evidenceCount: match.evidenceCount + 1,
+        confidence: reinforcedConfidence(match.confidence),
+        lastReinforcedAt: createdAt,
+      });
+    }
+
     const base: Omit<MemoryNode, 'id'> = {
       type: input.type,
-      statement: redactSecrets(input.statement.trim()),
+      statement,
       ...(input.rationale !== undefined ? { rationale: redactSecrets(input.rationale.trim()) } : {}),
-      subjectPaths: (input.subjectPaths ?? []).map((p) => p.trim()).filter((p) => p.length > 0),
+      subjectPaths,
       ...(input.sourceRunId !== undefined ? { sourceRunId: input.sourceRunId } : {}),
       ...(input.author !== undefined ? { author: input.author } : {}),
       confidence: clamp01(input.confidence ?? DEFAULT_CONFIDENCE[input.type]),
@@ -68,7 +106,48 @@ export class MemoryStore {
     const node: MemoryNode = { ...base, id: this.idFor(base) };
     mkdirSync(dirname(this.path), { recursive: true });
     appendFileSync(this.path, `${JSON.stringify(node)}\n`, 'utf8');
+
+    // Supersede-on-contradiction: an explicit target, or a rejection that lands
+    // on a prior decision/convention about the same subject.
+    const toSupersede = current.filter((node) => {
+      if (node.status !== 'active') return false;
+      if (input.supersedes !== undefined && node.id === input.supersedes) return true;
+      if (input.type !== 'rejection') return false;
+      if ((node.type !== 'decision' && node.type !== 'convention')) return false;
+      if (!subjectsOverlap(node.subjectPaths, subjectPaths)) return false;
+      return statementSimilarity(node.statement, statement) >= CONTRADICT_THRESHOLD;
+    });
+    for (const old of toSupersede) {
+      this.appendRevision({
+        ...old,
+        status: 'superseded',
+        supersededById: node.id,
+        confidence: clamp01(old.confidence * 0.5),
+        lastReinforcedAt: createdAt,
+      });
+    }
+
     return node;
+  }
+
+  /** Appends a new revision of an existing node (same id) and returns it. */
+  private appendRevision(node: MemoryNode): MemoryNode {
+    mkdirSync(dirname(this.path), { recursive: true });
+    appendFileSync(this.path, `${JSON.stringify(node)}\n`, 'utf8');
+    return node;
+  }
+
+  /**
+   * The CURRENT state of memory: the latest revision per id (append-only history
+   * collapsed). Reinforcements and supersessions are later revisions of the same
+   * id, so the last line wins.
+   */
+  current(): MemoryNode[] {
+    const byId = new Map<string, MemoryNode>();
+    for (const node of this.all()) {
+      byId.set(node.id, node); // later lines overwrite → latest revision wins
+    }
+    return [...byId.values()];
   }
 
   /** All persisted nodes (newest last). Malformed lines are skipped, never thrown. */
@@ -99,7 +178,7 @@ export class MemoryStore {
   retrieve(queryPaths: ReadonlyArray<string>, options: RetrieveOptions = {}): MemoryNode[] {
     const limit = options.limit ?? 5;
     const nowMs = Date.parse(options.now ?? this.now());
-    const scored = this.all()
+    const scored = this.current()
       .filter((node) => node.status === 'active')
       .filter((node) => options.type === undefined || node.type === options.type)
       .map((node) => ({ node, score: this.scoreNode(node, queryPaths, nowMs) }))
@@ -120,6 +199,49 @@ export class MemoryStore {
     const recency = 1 / (1 + ageDays / 30); // ~half-weight at one month old
     return relevance * node.confidence * recency;
   }
+}
+
+/** Statement similarity at/above which a same-type capture REINFORCES (not duplicates). */
+const REINFORCE_THRESHOLD = 0.6;
+/** Similarity at/above which a rejection CONTRADICTS a prior decision/convention. */
+const CONTRADICT_THRESHOLD = 0.4;
+
+/** Confidence after one corroboration — rises toward 1 with diminishing returns. */
+function reinforcedConfidence(current: number): number {
+  return clamp01(current + (1 - current) * 0.34);
+}
+
+/** Do two subject-path sets overlap? Empty∩empty counts as overlap (both global). */
+function subjectsOverlap(a: ReadonlyArray<string>, b: ReadonlyArray<string>): boolean {
+  if (a.length === 0 && b.length === 0) {
+    return true;
+  }
+  return a.some((x) => b.some((y) => pathsRelate(x, y)));
+}
+
+/** Lowercased alphanumeric tokens (length ≥ 3) of a statement, for similarity. */
+function tokens(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((t) => t.length >= 3),
+  );
+}
+
+/** Token-set Jaccard similarity of two statements (0–1; deterministic). */
+function statementSimilarity(a: string, b: string): number {
+  const ta = tokens(a);
+  const tb = tokens(b);
+  if (ta.size === 0 || tb.size === 0) {
+    return a.trim() === b.trim() ? 1 : 0;
+  }
+  let intersection = 0;
+  for (const t of ta) {
+    if (tb.has(t)) intersection += 1;
+  }
+  const union = ta.size + tb.size - intersection;
+  return union === 0 ? 0 : intersection / union;
 }
 
 /** Two paths relate when one contains the other (exact or directory prefix). */

@@ -87,6 +87,77 @@ describe('MemoryStore.retrieve', () => {
   });
 });
 
+describe('MemoryStore knowledge-compounding loop (P2.12)', () => {
+  it('REINFORCES a corroborating same-type capture instead of duplicating it', () => {
+    const { repoRoot, store: s } = store();
+    try {
+      const first = s.capture({
+        type: 'decision',
+        statement: 'use postgres for the billing module',
+        subjectPaths: ['src/billing'],
+      });
+      const second = s.capture({
+        type: 'decision',
+        statement: 'use postgres for the billing module',
+        subjectPaths: ['src/billing'],
+      });
+      // Same id (reinforced revision), not a new node.
+      expect(second.id).toBe(first.id);
+      expect(second.evidenceCount).toBe(2);
+      expect(second.confidence).toBeGreaterThan(first.confidence);
+      // current() collapses to ONE node; the JSONL keeps both revisions (lossless).
+      expect(s.current()).toHaveLength(1);
+      expect(s.all().length).toBe(2);
+    } finally {
+      removeDir(repoRoot);
+    }
+  });
+
+  it('SUPERSEDES a prior decision when a matching rejection lands on the same subject', () => {
+    const { repoRoot, store: s } = store();
+    try {
+      const decision = s.capture({
+        type: 'decision',
+        statement: 'use an ORM for the payments module',
+        subjectPaths: ['src/pay'],
+      });
+      const rejection = s.capture({
+        type: 'rejection',
+        statement: 'do not use an ORM for the payments module',
+        subjectPaths: ['src/pay'],
+      });
+      const current = s.current();
+      const supersededDecision = current.find((n) => n.id === decision.id);
+      expect(supersededDecision?.status).toBe('superseded');
+      expect(supersededDecision?.supersededById).toBe(rejection.id);
+      expect(supersededDecision?.confidence).toBeLessThan(0.7); // halved from the prior
+      // A future run no longer gets primed with the reversed decision.
+      const hits = s.retrieve(['src/pay/charge.ts']);
+      expect(hits.map((n) => n.id)).toEqual([rejection.id]);
+    } finally {
+      removeDir(repoRoot);
+    }
+  });
+
+  it('honors an explicit supersedes target', () => {
+    const { repoRoot, store: s } = store();
+    try {
+      const old = s.capture({ type: 'convention', statement: 'tabs for indentation', subjectPaths: ['src'] });
+      const fresh = s.capture({
+        type: 'convention',
+        statement: 'spaces for indentation everywhere',
+        subjectPaths: ['src'],
+        supersedes: old.id,
+      });
+      const superseded = s.current().find((n) => n.id === old.id);
+      expect(superseded?.status).toBe('superseded');
+      expect(superseded?.supersededById).toBe(fresh.id);
+    } finally {
+      removeDir(repoRoot);
+    }
+  });
+});
+
 describe('memoryContextSource / buildMemoryContext', () => {
   it('formats nodes as an injectable context source (null when empty)', () => {
     expect(memoryContextSource([])).toBeNull();

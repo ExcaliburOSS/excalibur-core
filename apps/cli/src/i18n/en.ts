@@ -491,6 +491,7 @@ export const EN: Catalog = {
   "repl.goal-offer": "That reads as a goal to complete (\"{signal}…\"). Pursue it across turns until an evaluator says it's done (max {max})?",
   "repl.remember-usage": "Usage: /remember <a decision, rejection, risk or convention to remember>",
   "repl.remember-saved": "Remembered ({detail}). Future runs touching these paths will be primed with it.",
+  "repl.remember-reinforced": "Reinforced an existing memory ({detail}) — evidence ×{count}. It compounds: the more it recurs, the more confident Excalibur is.",
   "repl.remember-failed": "Could not save memory: {reason}",
   "repl.compact-nothing": "Nothing to compact yet — the recent context already fits.",
   "repl.compacted-manual": "Compacted {n} earlier turn(s) → summary · {before}→{after} tokens. Full detail stays in the run history.",

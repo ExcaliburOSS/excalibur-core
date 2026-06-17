@@ -41,6 +41,8 @@ export interface MemoryNode {
   createdAt: string;
   lastReinforcedAt: string;
   status: MemoryNodeStatus;
+  /** When `status === 'superseded'`, the id of the node that replaced it. */
+  supersededById?: string;
   redacted: boolean;
 }
 
@@ -54,6 +56,8 @@ export interface CaptureMemoryInput {
   author?: string;
   /** Override the default confidence prior (0–1). */
   confidence?: number;
+  /** Explicitly mark an existing node id as superseded by this capture. */
+  supersedes?: string;
 }
 
 /** Default confidence prior by type — a human rejection is a strong signal. */
