@@ -120,6 +120,7 @@ export const ES: Catalog = {
   "diagnostics.repairing": "Diagnósticos: quedan {count} error(es) reales de compilación — ejecutando una pasada de reparación…",
   "diagnostics.repaired": "Diagnósticos: la pasada de reparación eliminó los errores de compilación. ✓",
   "diagnostics.stillErrors": "Diagnósticos: aún quedan {count} error(es) de compilación tras la reparación.",
+  "diagnostics.skipBudget": "Diagnósticos: se omite la reparación — la ejecución alcanzó su tope de presupuesto (reparar volvería a gastarlo).",
   "status.no-discovery-sessions": "No hay sesiones de descubrimiento locales. Inicia una con: excalibur discovery \"<idea>\"",
   "status.no-runs": "Aún no hay ejecuciones locales. Inicia una con: excalibur run \"<task>\"",
   "status.rewind-hint": "Rebobina cualquier ejecución como un vídeo: excalibur rewind <id>",

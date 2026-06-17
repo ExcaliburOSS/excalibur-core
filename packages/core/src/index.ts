@@ -217,6 +217,7 @@ export {
   hasCommits,
   listRecentCommits,
   removeWorktree,
+  resetWorktree,
   revParse,
   type GitCommit,
   type GitIdentity,

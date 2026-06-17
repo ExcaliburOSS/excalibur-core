@@ -521,7 +521,16 @@ export async function runTask(
     options.internalRepair !== true &&
     record.status !== 'cancelled'
   ) {
-    await selfCorrectWithDiagnostics(deps, repoRoot, config, task, options);
+    // Do NOT repair a run that hit the hard budget cap — a repair would spend a
+    // fresh full budget again (double-spend past the ceiling the user set).
+    const budgetExhausted = runManager
+      .readEvents(run.id)
+      .some((e) => e.type === 'error' && e.payload['code'] === 'budget_exceeded');
+    if (budgetExhausted) {
+      deps.ui.warn(deps.t('diagnostics.skipBudget'));
+    } else {
+      await selfCorrectWithDiagnostics(deps, repoRoot, config, task, options);
+    }
   }
 
   if (options.sync === true) {

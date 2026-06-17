@@ -124,6 +124,7 @@ export const EN: Catalog = {
   "diagnostics.repairing": "Diagnostics: {count} real compiler error(s) remain — running one repair pass…",
   "diagnostics.repaired": "Diagnostics: the repair pass cleared the compiler errors. ✓",
   "diagnostics.stillErrors": "Diagnostics: {count} compiler error(s) still remain after the repair pass.",
+  "diagnostics.skipBudget": "Diagnostics: skipping the repair pass — the run hit its budget cap (a repair would spend the budget again).",
   "status.no-discovery-sessions": "No local discovery sessions. Start one with: excalibur discovery \"<idea>\"",
   "status.no-runs": "No local runs yet. Start one with: excalibur run \"<task>\"",
   "status.rewind-hint": "Rewind any run like a video: excalibur rewind <id>",

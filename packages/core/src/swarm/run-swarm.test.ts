@@ -152,6 +152,38 @@ describe('runSwarm', () => {
     }
   });
 
+  it('RESETS the worktree between attempts so partial edits never leak into the retry diff', async () => {
+    const repo = initRepo();
+    try {
+      const attempts = new Map<string, number>();
+      const result = await runSwarm(
+        repo,
+        [lane('dirty')],
+        ({ lane: l, worktreePath }) => {
+          const n = (attempts.get(l.id) ?? 0) + 1;
+          attempts.set(l.id, n);
+          if (n < 2) {
+            // Attempt 1: write GARBAGE, then throw (partial state left behind).
+            writeFileSync(join(worktreePath, 'garbage.ts'), 'BROKEN\n', 'utf8');
+            throw new Error('crashed mid-edit');
+          }
+          // Attempt 2 runs against a freshly-reset tree → only good.ts should ship.
+          writeFileSync(join(worktreePath, 'good.ts'), 'ok\n', 'utf8');
+          return Promise.resolve(null);
+        },
+        { maxAttempts: 2 },
+      );
+      expect(attempts.get('dirty')).toBe(2);
+      expect(result.lanes.find((l) => l.id === 'dirty')?.failed).toBe(false);
+      // The reset cleaned attempt-1's garbage; the merged diff contains ONLY good.ts.
+      expect(result.mergedDiff).toContain('good.ts');
+      expect(result.mergedDiff).not.toContain('garbage.ts');
+      expect(result.mergedDiff).not.toContain('BROKEN');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
   it('respects the concurrency cap (never more lanes in flight than allowed)', async () => {
     const repo = initRepo();
     try {

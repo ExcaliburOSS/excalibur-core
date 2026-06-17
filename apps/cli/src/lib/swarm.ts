@@ -137,6 +137,11 @@ export function executeSwarm(
       const adapter = new NativeAgentAdapter();
       let costCents: number | null = null;
       let toolCalls = 0;
+      // The native adapter SWALLOWS provider/network errors into a non-throwing
+      // `error` event and finishes cleanly. Track it so a lane that errored
+      // without doing any work THROWS — which is what lets `--retries` actually
+      // re-dispatch a transient failure (runSwarm only retries on a throw).
+      let lastError: string | null = null;
       for await (const event of adapter.run({
         runId: `swarm_${lane.id}`,
         sessionId: `swarm_${lane.id}`,
@@ -150,10 +155,19 @@ export function executeSwarm(
       } as Parameters<NativeAgentAdapter['run']>[0])) {
         const e = event as ExcaliburEvent;
         if (e.type === 'tool_call') toolCalls += 1;
+        if (e.type === 'error') {
+          const msg = (e.payload as Record<string, unknown>)['message'];
+          lastError = typeof msg === 'string' ? msg : 'agent error';
+        }
         if (e.type === 'assistant_message') {
           const total = (e.payload as Record<string, unknown>)['totalCostCents'];
           if (typeof total === 'number') costCents = total;
         }
+      }
+      // The turn ended in an error AND accomplished nothing (no tool calls) →
+      // treat as a (likely transient) lane failure so the retry loop fires.
+      if (lastError !== null && toolCalls === 0) {
+        throw new Error(lastError);
       }
       return { costCents, toolCalls };
     },

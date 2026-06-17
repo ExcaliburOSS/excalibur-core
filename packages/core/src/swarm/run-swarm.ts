@@ -9,6 +9,7 @@ import {
   getGitInfo,
   hasCommits,
   removeWorktree,
+  resetWorktree,
   revParse,
   stageAll,
 } from '../git/git';
@@ -172,6 +173,11 @@ export async function runSwarm<T>(
       setups.map((setup) => async (): Promise<{ failed: boolean; error?: string; result?: T }> => {
         let lastError = '';
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+          // Before a RETRY, restore the lane's worktree to pristine base so a
+          // failed attempt's partial edits never contaminate the retry's diff.
+          if (attempt > 1) {
+            resetWorktree(setup.worktreePath, baseRef);
+          }
           emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'started' });
           try {
             const result = await runner({

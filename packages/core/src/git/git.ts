@@ -146,6 +146,18 @@ export function stageAll(repoRoot: string): boolean {
 }
 
 /**
+ * Restores a worktree to a pristine `baseRef` state: discards tracked changes
+ * (`reset --hard`) and removes untracked files/dirs (`clean -fd`). Gives a swarm
+ * lane a CLEAN tree before a retry, so a failed attempt's partial edits never
+ * contaminate the next attempt's captured diff. Best-effort.
+ */
+export function resetWorktree(worktreePath: string, baseRef = 'HEAD'): boolean {
+  const reset = tryGit(worktreePath, ['reset', '-q', '--hard', baseRef]) !== null;
+  const clean = tryGit(worktreePath, ['clean', '-fdq']) !== null;
+  return reset && clean;
+}
+
+/**
  * Creates a new git worktree at `worktreePath` on a NEW branch `branch`, based
  * at `baseRef` (defaults to HEAD). Used by the time-machine fork to reconstruct
  * a run's state in an isolated tree without touching the user's working copy.
