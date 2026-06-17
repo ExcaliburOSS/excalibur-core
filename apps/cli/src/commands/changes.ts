@@ -1,4 +1,5 @@
 import { buildTurnSummary, changeGlyph, loadReplay, reconstructStateAt } from '@excalibur/core';
+import { detectColorTier, detectThemeSync, renderDiff } from '@excalibur/tui';
 import type { Command } from 'commander';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
@@ -58,7 +59,15 @@ export function registerChangesCommand(program: Command, deps: CliDeps): void {
         if (diff.trim().length === 0) {
           deps.ui.write(pc.dim(deps.t('changes.noUnifiedDiff')));
         } else {
-          deps.ui.write(diff);
+          // The real diff viewer: gutter + full-row tint + word-level highlight,
+          // colour auto-detected (plain when piped/non-TTY → scriptable).
+          const isTty = deps.ui.isOutputTty();
+          const tier = detectColorTier(deps.env, isTty);
+          const mode = detectThemeSync() ?? 'dark';
+          const width = process.stdout.columns ?? 80;
+          for (const line of renderDiff(diff, { tier, mode, width })) {
+            deps.ui.write(line);
+          }
         }
       }
     });
