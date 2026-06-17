@@ -5,6 +5,7 @@ import {
   MESH_LENSES,
   planVerificationMesh,
   reconstructStateAt,
+  RunManager,
 } from '@excalibur/core';
 import { analyzeRepository } from '@excalibur/context-engine';
 import type { Command } from 'commander';
@@ -85,6 +86,28 @@ export function registerVerifyCommand(program: Command, deps: CliDeps): void {
         if (issue.fix !== undefined) {
           deps.ui.write(`     ${pc.dim(`→ ${issue.fix}`)}`);
         }
+      }
+
+      // Persist the verdict as a run artifact → replayable/auditable evidence
+      // (shows in `logs`, the run dir, and a later inspect), the mesh's
+      // "evidence-linked" property. Best-effort: never fail verify on a write.
+      try {
+        const md = [
+          `# Verification mesh — ${runId}`,
+          '',
+          `${result.blocked ? '**BLOCKED**' : 'Passed'} · lenses: ${result.lensesRun.join(', ')}`,
+          '',
+          ...(result.issues.length === 0
+            ? ['No issues found.']
+            : result.issues.map(
+                (i) =>
+                  `- [${i.severity}] ${i.file !== undefined ? `${i.file} — ` : ''}${i.problem}${i.fix !== undefined ? `\n  - fix: ${i.fix}` : ''}`,
+              )),
+          '',
+        ].join('\n');
+        new RunManager(repoRoot).writeArtifact(runId, 'verification.md', md);
+      } catch {
+        /* artifact persistence is best-effort */
       }
     });
 }
