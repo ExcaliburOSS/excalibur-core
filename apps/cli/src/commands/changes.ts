@@ -1,8 +1,9 @@
 import { buildTurnSummary, changeGlyph, loadReplay, reconstructStateAt } from '@excalibur/core';
-import { detectColorTier, detectThemeSync, renderDiff } from '@excalibur/tui';
+import { detectColorTier, detectThemeSync, paletteFor, renderDiff } from '@excalibur/tui';
 import type { Command } from 'commander';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
+import { loadConfigContext } from '../lib/context';
 import { resolveRun } from '../lib/replay-scrubber';
 
 interface ChangesOptions {
@@ -60,12 +61,15 @@ export function registerChangesCommand(program: Command, deps: CliDeps): void {
           deps.ui.write(pc.dim(deps.t('changes.noUnifiedDiff')));
         } else {
           // The real diff viewer: gutter + full-row tint + word-level highlight,
-          // colour auto-detected (plain when piped/non-TTY → scriptable).
+          // colour auto-detected (plain when piped/non-TTY → scriptable), honouring
+          // the configured theme preset (`ui.theme`: auto/dark/light/daltonized/…).
           const isTty = deps.ui.isOutputTty();
           const tier = detectColorTier(deps.env, isTty);
           const mode = detectThemeSync() ?? 'dark';
+          const { config } = loadConfigContext(repoRoot);
+          const palette = paletteFor(config.ui?.theme ?? 'auto', mode);
           const width = process.stdout.columns ?? 80;
-          for (const line of renderDiff(diff, { tier, mode, width })) {
+          for (const line of renderDiff(diff, { tier, palette, width })) {
             deps.ui.write(line);
           }
         }

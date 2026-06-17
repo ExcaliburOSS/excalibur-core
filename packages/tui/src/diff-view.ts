@@ -1,5 +1,5 @@
 import { paint, paintBg, type ColorTier } from './color';
-import { getColors, type ThemeMode } from './theme';
+import { getColors, type Palette, type ThemeMode } from './theme';
 
 /**
  * The DIFF VIEWER — a real, syntax-aware unified-diff renderer (P1.2). Beats
@@ -172,6 +172,8 @@ function spanOf(
 export interface RenderDiffOptions {
   tier?: ColorTier;
   mode?: ThemeMode;
+  /** Explicit palette (a named theme preset); wins over `mode` when provided. */
+  palette?: Palette;
   /** Terminal width; rows are tinted to this width so the bg reaches the edge. */
   width?: number;
   /**
@@ -188,7 +190,7 @@ const SIDE_BY_SIDE_MIN_WIDTH = 120;
 /** Renders a unified diff into colour-tiered lines (the diff viewport body). */
 export function renderDiff(diff: string, options: RenderDiffOptions = {}): string[] {
   const tier = options.tier ?? 'none';
-  const palette = getColors(options.mode ?? 'dark');
+  const palette = options.palette ?? getColors(options.mode ?? 'dark');
   const width = options.width ?? 80;
   const layout = options.layout ?? 'auto';
   const sideBySide =

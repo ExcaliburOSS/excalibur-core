@@ -33,7 +33,15 @@ export {
   type LanesModel,
   type RenderLanesOptions,
 } from './rail-lanes.js';
-export { detectThemeSync, getColors, type ThemeMode, type Palette } from './theme.js';
+export {
+  detectThemeSync,
+  getColors,
+  paletteFor,
+  THEME_NAMES,
+  type ThemeMode,
+  type ThemeName,
+  type Palette,
+} from './theme.js';
 export type {
   ApprovalPrompt,
   Phase,

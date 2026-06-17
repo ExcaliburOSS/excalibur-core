@@ -70,8 +70,101 @@ export const lightColors: Palette = {
   diffDelWordBg: '#FFC1BC',
 };
 
+/**
+ * Colorblind-safe (deuteranopia/protanopia) — diffs and states use BLUE vs
+ * AMBER instead of green/red, which collide for ~8% of men. Parity with CC's
+ * daltonized themes.
+ */
+export const daltonizedDark: Palette = {
+  mode: 'dark',
+  accent: '#5BC8FF',
+  accentDim: '#3A7CA0',
+  success: '#56B4E9', // blue = "good/added" (not green)
+  warn: '#E69F00',
+  danger: '#E69F00', // amber = "bad/removed" (not red)
+  text: '#E6EDF3',
+  muted: '#8B949E',
+  rail: '#3A4048',
+  diffAddFg: '#9CD3F0',
+  diffDelFg: '#F0C36D',
+  diffAddBg: '#10293A',
+  diffDelBg: '#3A2A10',
+  diffAddWordBg: '#1C4E70',
+  diffDelWordBg: '#6E4E16',
+};
+
+export const daltonizedLight: Palette = {
+  mode: 'light',
+  accent: '#0969DA',
+  accentDim: '#0a4b9c',
+  success: '#0072B2',
+  warn: '#B35900',
+  danger: '#B35900',
+  text: '#1F2328',
+  muted: '#636C76',
+  rail: '#D0D7DE',
+  diffAddFg: '#0072B2',
+  diffDelFg: '#B35900',
+  diffAddBg: '#E1EFFA',
+  diffDelBg: '#FBEEDD',
+  diffAddWordBg: '#B6DBF2',
+  diffDelWordBg: '#F2D9B0',
+};
+
+/** Maximum-contrast palette for low-vision / bright-room use. */
+export const highContrastDark: Palette = {
+  mode: 'dark',
+  accent: '#00D7FF',
+  accentDim: '#00AFD7',
+  success: '#00FF5F',
+  warn: '#FFD700',
+  danger: '#FF5F5F',
+  text: '#FFFFFF',
+  muted: '#C0C0C0',
+  rail: '#6A6A6A',
+  diffAddFg: '#00FF5F',
+  diffDelFg: '#FF5F5F',
+  diffAddBg: '#003A1A',
+  diffDelBg: '#3A0000',
+  diffAddWordBg: '#008F3F',
+  diffDelWordBg: '#8F0000',
+};
+
+/** A user-selectable theme name; `auto` follows the terminal's light/dark. */
+export type ThemeName = 'auto' | 'dark' | 'light' | 'daltonized' | 'high-contrast';
+
+/** All selectable theme names (for a `/theme` picker + config validation). */
+export const THEME_NAMES: readonly ThemeName[] = [
+  'auto',
+  'dark',
+  'light',
+  'daltonized',
+  'high-contrast',
+];
+
 export function getColors(mode: ThemeMode): Palette {
   return mode === 'light' ? lightColors : darkColors;
+}
+
+/**
+ * Resolves a named theme to a concrete palette. `auto`/`dark`/`light` map to the
+ * base palettes (honouring the detected `mode` for `auto`); the named presets
+ * pick their light/dark variant by `mode`. Unknown names fall back to `auto`.
+ */
+export function paletteFor(name: ThemeName, mode: ThemeMode): Palette {
+  switch (name) {
+    case 'dark':
+      return darkColors;
+    case 'light':
+      return lightColors;
+    case 'daltonized':
+      return mode === 'light' ? daltonizedLight : daltonizedDark;
+    case 'high-contrast':
+      return highContrastDark; // single high-contrast variant (dark base)
+    case 'auto':
+    default:
+      return getColors(mode);
+  }
 }
 
 type GlyphSet = {

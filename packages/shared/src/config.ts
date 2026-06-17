@@ -168,10 +168,22 @@ const skillSourceRefSchema = z.object({
   trustLevel: trustLevelSchema.optional(),
 });
 
+/** Presentation settings for the TUI (theme preset, arthurian flavour). */
+const uiSectionSchema = z
+  .object({
+    /** Named theme: `auto` (follow terminal) | `dark` | `light` | `daltonized` | `high-contrast`. */
+    theme: z.enum(['auto', 'dark', 'light', 'daltonized', 'high-contrast']).optional(),
+    /** Caption flavour for phase spinners: `plain` (default) | `arthurian`. */
+    flavor: z.enum(['plain', 'arthurian']).optional(),
+  })
+  .optional();
+
 const baseExcaliburConfigSchema = z.object({
   version: z.number().int().optional(),
   /** Spoken UI locale for generated chrome/prose (`en`|`es`); auto-detected when absent. */
   language: z.string().optional(),
+  /** TUI presentation (theme preset, flavour). */
+  ui: uiSectionSchema,
   project: projectSectionSchema.optional(),
   /** Top-level canonical commands; `project.commands` is normalized into it. */
   commands: commandsConfigSchema.optional(),
