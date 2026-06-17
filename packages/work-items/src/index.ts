@@ -60,4 +60,7 @@ export {
 } from './templates';
 export type { CommentTemplateName } from './templates';
 
+export { GitHubCliProvider, mapGhIssue } from './github-cli-provider';
+export type { GhRunner } from './github-cli-provider';
+
 export { MockWorkItemProvider } from './mock-provider';
