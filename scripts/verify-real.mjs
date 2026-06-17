@@ -95,6 +95,40 @@ function runEvents(dir, runId) {
 }
 const toolsUsed = (events) => events.filter((e) => e.type === 'tool_call').map((e) => e.payload.tool ?? e.payload.name);
 
+/** Whether `expect` is available (for driving the interactive REPL over a pty). */
+function hasExpect() {
+  try {
+    execFileSync('which', ['expect'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Drives the interactive REPL over a pty: answers the auto-accept prompt yes, sends one task, exits. */
+function replAutoTurn(dir, prompt, waitS = 55) {
+  const exp = join(tmpdir(), `exc-repl-${Math.abs(prompt.length * 7919) % 100000}.exp`);
+  writeFileSync(
+    exp,
+    [
+      `set timeout ${waitS + 40}`,
+      `spawn node ${CLI}`,
+      `expect -re "(automatically|automáticamente)"`,
+      `send "y\\r"`,
+      `sleep 2`,
+      `send "${prompt}\\r"`,
+      `sleep ${waitS}`,
+      `send "/exit\\r"`,
+      `expect eof`,
+    ].join('\n'),
+  );
+  try {
+    execFileSync('expect', [exp], { cwd: dir, env, timeout: (waitS + 60) * 1000, stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch {
+    /* expect's eof handling can exit non-zero; the assertions check the real outcome */
+  }
+}
+
 // ── Scenario runner ──────────────────────────────────────────────────────────
 const results = [];
 async function scenario(name, fn) {
@@ -254,6 +288,24 @@ await scenario('weekly-plan — generates a real report', () => {
   exc(dir, ['run', 'Create a file z.txt containing Z', '--yes']);
   const { out } = exc(dir, ['weekly-plan']);
   assert(/Weekly Plan|Last week|Plan for next week/i.test(out), 'weekly-plan should produce a report');
+});
+
+await scenario('shell (REPL) — auto-mode asked ONCE, then edits with zero prompts', () => {
+  if (!hasExpect()) {
+    // `expect` not installed → cannot drive a pty here; surfaced honestly, not silently green.
+    console.log('(skipped: `expect` not available to drive the interactive pty)');
+    return;
+  }
+  const dir = freshRepo();
+  // First interactive session: the shell asks the one-time auto-accept question;
+  // we answer yes, then ask it (in natural language) to create a file.
+  replAutoTurn(dir, 'create a file shellmade.txt containing SHELLMADE', 70);
+  // The agent must have actually created the file under auto-mode (no per-edit prompts)…
+  assert(existsSync(join(dir, 'shellmade.txt')), 'the interactive shell should have created the file under auto-mode');
+  assert(/SHELLMADE/.test(readFileSync(join(dir, 'shellmade.txt'), 'utf8')), 'the file should contain the requested content');
+  // …and the auto-accept answer must be PERSISTED so future sessions never re-ask.
+  const cfg = readFileSync(join(dir, '.excalibur/config.yaml'), 'utf8');
+  assert(/auto:\s*true/.test(cfg), 'auto-accept must be persisted to .excalibur/config.yaml');
 });
 
 // ── Summary ───────────────────────────────────────────────────────────────────

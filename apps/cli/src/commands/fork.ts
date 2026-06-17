@@ -73,7 +73,6 @@ export function registerForkCommand(program: Command, deps: CliDeps): void {
         // otherwise the agent prompts per edit. Blocked paths stay hard-denied.
         approvals: {
           auto: options.yes === true || !deps.ui.isInteractive(),
-          always: new Set<string>(),
         },
       };
 

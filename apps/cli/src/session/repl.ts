@@ -189,7 +189,7 @@ export async function runInteractiveSession(
     costCents: 0,
     // Resolve the saved auto-accept preference; the prompt below sets it the
     // first time (so future sessions never ask).
-    approvals: { auto: config.approvals?.auto === true, always: new Set<string>() },
+    approvals: { auto: config.approvals?.auto === true },
   };
 
   // Welcome banner (two-column frame + cyberpunk sword) + status line.

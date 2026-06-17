@@ -38,6 +38,7 @@ import { CliUsageError } from '../errors';
 import { describeEvent } from '../lib/run-pipeline';
 import { renderTurnReceipt } from '../lib/turn-receipt';
 import { ActionRenderer, activityFor } from '../lib/action-render';
+import { setAutoApprove } from '../lib/config-file';
 
 /**
  * The model-FIRST conversational turn (M-Shell). A natural-language line is
@@ -73,15 +74,14 @@ export interface AgentTurnResult {
 
 /**
  * Session-scoped approval policy (shared, mutable across a session's turns) so
- * the user approves edits ONCE rather than on every tool call:
+ * the user approves edits ONCE rather than on every tool call. ONE concept:
  * - `auto`: never prompt — auto-approve every mutating tool (the `/auto` mode,
- *   like Claude Code's auto-accept). Blocked paths stay hard-denied regardless.
- * - `always`: tools the user approved with "always" — auto-approved for the
- *   rest of the session.
+ *   like Claude Code's auto-accept). Set either by the session-start prompt or
+ *   by answering "Auto mode" (`a`) at any per-edit prompt, and PERSISTED so
+ *   future sessions don't re-ask. Blocked paths stay hard-denied regardless.
  */
 export interface ApprovalState {
   auto: boolean;
-  always: Set<string>;
 }
 
 export interface AgentTurnDeps {
@@ -93,7 +93,7 @@ export interface AgentTurnDeps {
   providerName: string;
   /** The session's autonomy level — governs the role and approval strength. */
   autonomyLevel: AutonomyLevel;
-  /** Session approval policy (auto-accept + per-tool "always"); prompts when absent. */
+  /** Session approval policy (auto-accept on/off); prompts per edit when absent or off. */
   approvals?: ApprovalState;
   /** Cancels the in-flight turn (Ctrl-C). */
   signal?: AbortSignal;
@@ -222,11 +222,10 @@ async function driveLoop(
   };
 
   const confirm = async (req: ConfirmationRequest): Promise<boolean> => {
-    // Approve-once UX: skip the prompt when auto-accept is on or this tool was
-    // already approved with "always" this session (blocked paths are still
-    // hard-denied at the tool-execution layer regardless).
+    // Approve-once UX: skip the prompt entirely when auto-accept is on (blocked
+    // paths are still hard-denied at the tool-execution layer regardless).
     const approvals = turn.approvals;
-    if (approvals?.auto === true || approvals?.always.has(req.tool) === true) {
+    if (approvals?.auto === true) {
       return true;
     }
     spinner.stop(); // clear the transient line before the (permanent) prompt
@@ -243,9 +242,20 @@ async function driveLoop(
     const choice = await deps.ui.confirmTool(deps.t('agent-turn.allow_action'), {
       defaultYes: options.approvalDefaultYes,
     });
-    if (choice === 'always' && approvals !== undefined) {
-      approvals.always.add(req.tool);
-      deps.ui.info(deps.t('agent-turn.always_allowed', { tool: req.tool }));
+    // "Auto mode" (a): flip on session-wide auto-accept AND persist it, so this
+    // is the LAST prompt — unified with the `/auto` mode (one concept). Counts
+    // as approval for the current action too.
+    if (choice === 'auto') {
+      if (approvals !== undefined) {
+        approvals.auto = true;
+      }
+      try {
+        setAutoApprove(turn.repoRoot, true);
+      } catch {
+        /* persistence is best-effort; the in-session flag is what matters now */
+      }
+      deps.ui.info(deps.t('agent-turn.auto_enabled'));
+      return true;
     }
     return choice !== 'no';
   };

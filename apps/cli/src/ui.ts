@@ -247,23 +247,26 @@ export class Ui {
   }
 
   /**
-   * Three-way tool-approval prompt: `[y / N / a]` (a = always). Returns 'yes',
-   * 'no', or 'always' — "always" lets the caller add the action to a session
-   * allowlist so the user approves an edit ONCE instead of on every tool call.
-   * Non-interactive / `yes` resolves to the default ('yes' when defaultYes).
+   * Three-way tool-approval prompt: `[y / N / a]` (a = Auto mode). Returns
+   * 'yes', 'no', or 'auto' — "auto" turns on session-wide auto-accept (the
+   * caller persists it), so the user approves ONCE and Excalibur never asks
+   * again. Non-interactive / `yes` resolves to the default ('yes' when defaultYes).
    */
-  async confirmTool(question: string, options: ConfirmOptions = {}): Promise<'yes' | 'no' | 'always'> {
+  async confirmTool(question: string, options: ConfirmOptions = {}): Promise<'yes' | 'no' | 'auto'> {
     const defaultYes = options.defaultYes ?? false;
     if (options.yes === true || !this.interactive) {
       return defaultYes ? 'yes' : 'no';
     }
+    // Three-way: Yes / No / Auto mode. "a" turns on session-wide auto-accept
+    // (persisted) so Excalibur stops asking entirely — unifying the per-edit
+    // prompt with the `/auto` mode (one concept, not a per-tool allowlist).
     const suffix = defaultYes ? '[Y/n/a]' : '[y/N/a]';
     const answer = (await this.readLine(`${question} ${suffix} `)).trim().toLowerCase();
     if (answer.length === 0) {
       return defaultYes ? 'yes' : 'no';
     }
-    if (answer === 'a' || answer === 'always' || answer === 'siempre') {
-      return 'always';
+    if (answer === 'a' || answer === 'auto' || answer === 'always' || answer === 'siempre') {
+      return 'auto';
     }
     return answer === 'y' || answer === 'yes' || answer === 's' || answer === 'si' ? 'yes' : 'no';
   }

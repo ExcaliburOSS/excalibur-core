@@ -48,6 +48,22 @@ describe('Ui prompts are always skippable (Build Contract §4.9)', () => {
     await expect(no.ui.confirm('Apply?', { defaultYes: true })).resolves.toBe(false);
   });
 
+  it('confirmTool is three-way: yes / no / auto ("a" = Auto mode)', async () => {
+    await expect(makeUi('a\n').ui.confirmTool('Allow?')).resolves.toBe('auto');
+    await expect(makeUi('always\n').ui.confirmTool('Allow?')).resolves.toBe('auto');
+    await expect(makeUi('siempre\n').ui.confirmTool('Allow?')).resolves.toBe('auto');
+    await expect(makeUi('y\n').ui.confirmTool('Allow?')).resolves.toBe('yes');
+    await expect(makeUi('n\n').ui.confirmTool('Allow?')).resolves.toBe('no');
+  });
+
+  it('confirmTool resolves to the default (never "auto") when skipped/non-interactive', async () => {
+    const { ui } = makeUi();
+    await expect(ui.confirmTool('Allow?', { defaultYes: false })).resolves.toBe('no');
+    await expect(ui.confirmTool('Allow?', { defaultYes: true })).resolves.toBe('yes');
+    // empty line at an interactive prompt also falls back to the default
+    await expect(makeUi('\n').ui.confirmTool('Allow?', { defaultYes: false })).resolves.toBe('no');
+  });
+
   it('select returns the default index when skipped', async () => {
     const { ui } = makeUi();
     const index = await ui.select('Pick:', [{ label: 'a' }, { label: 'b' }, { label: 'c' }], {

@@ -368,7 +368,7 @@ export const EN: Catalog = {
 
   // agent-turn
   "agent-turn.tool_needs_approval": "  ⚠ {tool} needs approval: {reason}{detail}",
-  "agent-turn.allow_action": "  Allow this action?",
+  "agent-turn.allow_action": "  Allow this action?  (y = yes · n = no · a = Auto mode, stop asking)",
   "agent-turn.agent_header": "→ agent · {mode} · L{level}",
   "agent-turn.mode_answer": "answer (read-only)",
   "agent-turn.mode_act": "act",
@@ -594,7 +594,7 @@ export const EN: Catalog = {
   "rail.tasks": "Tasks",
 
   // auto-accept (approval UX)
-  "agent-turn.always_allowed": "Always allowing {tool} this session.",
+  "agent-turn.auto_enabled": "Auto mode ON — Excalibur will edit and run without asking (saved). Toggle with /auto.",
   "repl.auto-setup-prompt": "Allow Excalibur to edit files and run commands automatically (no approval prompts)?",
   "repl.auto-enabled": "Auto-accept ON — Excalibur will edit and run without asking (saved). Toggle with /auto.",
   "repl.auto-disabled": "Auto-accept OFF — Excalibur asks before edits (choose \"always\" to stop asking, or /auto).",
