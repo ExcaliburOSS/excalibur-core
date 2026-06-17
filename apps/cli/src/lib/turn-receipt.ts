@@ -58,24 +58,24 @@ function formatDuration(startedAt: string, completedAt: string | null): string |
 }
 
 /** Relative "just now / 2s ago / 14:32" + absolute clock for the footer. */
-function formatWhen(now: Date, completedAt: string | null): string {
+function formatWhen(deps: CliDeps, now: Date, completedAt: string | null): string {
   const at = completedAt !== null ? new Date(completedAt) : now;
   const clock = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`;
   const deltaSec = Math.max(0, Math.round((now.getTime() - at.getTime()) / 1000));
   const rel =
     deltaSec < 2
-      ? 'just now'
+      ? deps.t('turn-receipt.just-now')
       : deltaSec < 60
-        ? `${deltaSec}s ago`
+        ? deps.t('turn-receipt.seconds-ago', { seconds: deltaSec })
         : deltaSec < 3600
-          ? `${Math.floor(deltaSec / 60)}m ago`
-          : `${Math.floor(deltaSec / 3600)}h ago`;
+          ? deps.t('turn-receipt.minutes-ago', { minutes: Math.floor(deltaSec / 60) })
+          : deps.t('turn-receipt.hours-ago', { hours: Math.floor(deltaSec / 3600) });
   return `${rel} · ${clock}`;
 }
 
 /** The leading glyph + color for the headline, by tier. */
-function headline(summary: TurnSummary): string {
-  const text = summary.narrative.length > 0 ? summary.narrative : defaultNarrative(summary);
+function headline(deps: CliDeps, summary: TurnSummary): string {
+  const text = summary.narrative.length > 0 ? summary.narrative : defaultNarrative(deps, summary);
   switch (summary.tier) {
     case 'action':
       return `${pc.green('✓')} ${text}`;
@@ -89,16 +89,16 @@ function headline(summary: TurnSummary): string {
 }
 
 /** A sensible headline when the model returned no final prose. */
-function defaultNarrative(summary: TurnSummary): string {
+function defaultNarrative(deps: CliDeps, summary: TurnSummary): string {
   switch (summary.tier) {
     case 'action':
-      return 'Changes applied.';
+      return deps.t('turn-receipt.narrative-action');
     case 'failed':
-      return 'The turn ended with an error.';
+      return deps.t('turn-receipt.narrative-failed');
     case 'partial':
-      return 'The turn stopped before finishing.';
+      return deps.t('turn-receipt.narrative-partial');
     case 'answer':
-      return 'Done.';
+      return deps.t('turn-receipt.narrative-answer');
   }
 }
 
@@ -120,11 +120,12 @@ function renderCheck(check: TurnCheck): string {
 }
 
 /** The compact one-line metrics summary (files · diffstat · check · cost). */
-function metricsLine(summary: TurnSummary): string {
+function metricsLine(deps: CliDeps, summary: TurnSummary): string {
   const parts: string[] = [];
   const { metrics } = summary;
   if (metrics.files > 0) {
-    const fileWord = metrics.files === 1 ? 'file' : 'files';
+    const fileWord =
+      metrics.files === 1 ? deps.t('turn-receipt.file') : deps.t('turn-receipt.files');
     parts.push(
       `${metrics.files} ${fileWord} · ${formatPairStat(metrics.insertions, metrics.deletions)}`,
     );
@@ -134,7 +135,7 @@ function metricsLine(summary: TurnSummary): string {
     parts.push(renderCheck(check));
   }
   if (summary.declined > 0) {
-    parts.push(pc.yellow(`${summary.declined} declined`));
+    parts.push(pc.yellow(deps.t('turn-receipt.declined', { count: summary.declined })));
   }
   const tokens = metrics.inputTokens + metrics.outputTokens;
   const cost = `${compactTokens(tokens)} tok · ${formatCost(metrics.costCents)}`;
@@ -175,16 +176,16 @@ function formatPairStat(insertions: number, deletions: number): string {
 }
 
 /** Maps the structured next-hint to a localized one-liner. */
-function renderNextHint(hint: NextHint): string {
+function renderNextHint(deps: CliDeps, hint: NextHint): string {
   switch (hint.kind) {
     case 'apply':
-      return `review, then  excalibur apply ${hint.runId}`;
+      return deps.t('turn-receipt.hint-apply', { runId: hint.runId });
     case 'fix_failures':
-      return 'address the failing checks above';
+      return deps.t('turn-receipt.hint-fix-failures');
     case 'branch':
-      return `changes are on branch ${hint.branch}`;
+      return deps.t('turn-receipt.hint-branch', { branch: hint.branch });
     case 'resolve_block':
-      return 'resolve the block to continue';
+      return deps.t('turn-receipt.hint-resolve-block');
   }
 }
 
@@ -199,11 +200,11 @@ export function renderTurnReceipt(
 ): void {
   const { ui } = deps;
   ui.write();
-  ui.write(` ${headline(summary)}`);
+  ui.write(` ${headline(deps, summary)}`);
 
   // Answer turns stop at the headline + footer (anti-cargante).
   if (summary.tier !== 'answer') {
-    ui.write(`   ${metricsLine(summary)}`);
+    ui.write(`   ${metricsLine(deps, summary)}`);
 
     if (summary.changedFiles.length > 0) {
       ui.write();
@@ -212,19 +213,19 @@ export function renderTurnReceipt(
       }
       const extra = summary.changedFiles.length - FILE_LIST_CAP;
       if (extra > 0) {
-        ui.write(pc.dim(`   …and ${extra} more · /changes`));
+        ui.write(pc.dim(`   ${deps.t('turn-receipt.and-more', { extra })}`));
       }
     }
 
     if (summary.nextHint !== null) {
       ui.write();
       ui.write(
-        `   ${pc.cyan('→')} ${renderNextHint(summary.nextHint)}${pc.dim('     /changes · /rewind')}`,
+        `   ${pc.cyan('→')} ${renderNextHint(deps, summary.nextHint)}${pc.dim('     /changes · /rewind')}`,
       );
     }
   }
 
   // Dim footer: relative+absolute time · model. (A subtle rule precedes it.)
   ui.write(pc.dim(' ' + '─'.repeat(48)));
-  ui.write(pc.dim(` ${formatWhen(options.now, summary.completedAt)} · ${options.model}`));
+  ui.write(pc.dim(` ${formatWhen(deps, options.now, summary.completedAt)} · ${options.model}`));
 }

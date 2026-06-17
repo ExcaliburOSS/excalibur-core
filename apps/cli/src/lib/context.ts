@@ -334,26 +334,25 @@ export async function readUserSuppliedFile(
 
   if (!decision.allowed) {
     throw new CliUsageError(
-      `Refusing to read "${relPath}": ${decision.reason} ` +
-        'Blocked paths (secrets, keys, .env) are never read into model prompts.',
+      deps.t('context.refuseRead', { relPath, reason: decision.reason }),
     );
   }
   if (decision.requiresConfirmation) {
     const proceed = await deps.ui.confirm(
-      `Read "${relPath}" into the prompt? (${decision.reason})`,
+      deps.t('context.confirmRead', { relPath, reason: decision.reason }),
       {
         yes: options.yes,
         defaultYes: false,
       },
     );
     if (!proceed) {
-      throw new CliUsageError(`Declined to read "${relPath}".`);
+      throw new CliUsageError(deps.t('context.declinedRead', { relPath }));
     }
   }
 
   const filePath = join(repoRoot, relPath);
   if (!existsSync(filePath)) {
-    throw new CliUsageError(`File not found: ${relPath}`);
+    throw new CliUsageError(deps.t('context.fileNotFound', { relPath }));
   }
   // Always redact: an allowed file can still contain an embedded credential.
   return redactSecrets(readFileSync(filePath, 'utf8'));

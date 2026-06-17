@@ -154,6 +154,7 @@ function targetFor(tool: string, args: Record<string, unknown>): string {
 
 export class ActionRenderer {
   private readonly ui: CliDeps['ui'];
+  private readonly t: CliDeps['t'];
   private readonly unicode: boolean;
   private readonly clock: () => number;
   // The interactive shell shares the rail's colour identity: the same truecolor
@@ -167,6 +168,7 @@ export class ActionRenderer {
 
   constructor(deps: CliDeps, options: ActionRendererOptions = {}) {
     this.ui = deps.ui;
+    this.t = deps.t;
     this.unicode = options.unicode ?? true;
     this.clock = options.clock ?? ((): number => Date.now());
     this.tier = detectColorTier(process.env, deps.ui.isOutputTty());
@@ -187,7 +189,7 @@ export class ActionRenderer {
     switch (event.type) {
       case 'phase_started':
         this.dropNarration();
-        this.ui.write(this.c(`${this.g('▸', '>')} ${s(event, 'name') || 'phase'}`, this.palette.accent));
+        this.ui.write(this.c(`${this.g('▸', '>')} ${s(event, 'name') || this.t('action-render.phase')}`, this.palette.accent));
         return;
       case 'model_call': {
         const content = s(event, 'content').trim();
@@ -218,12 +220,12 @@ export class ActionRenderer {
         return;
       case 'policy_decision':
         if (event.payload['kind'] === 'confirmation' && event.payload['decision'] === 'deny') {
-          const msg = s(event, 'message') || 'declined';
+          const msg = s(event, 'message') || this.t('action-render.declined');
           this.closeWithResult(`    ${this.c(this.g('⎿', 'L'), this.palette.warn)} ${this.c(msg, this.palette.warn)}`);
         }
         return;
       case 'error':
-        this.closeWithResult(`    ${this.c(this.g('⎿', 'L'), this.palette.danger)} ${this.c(`error: ${s(event, 'message')}`, this.palette.danger)}`);
+        this.closeWithResult(`    ${this.c(this.g('⎿', 'L'), this.palette.danger)} ${this.c(this.t('action-render.error', { message: s(event, 'message') }), this.palette.danger)}`);
         return;
       default:
         return; // run_started/completed, phase_completed, *_selected → not actions
@@ -262,7 +264,7 @@ export class ActionRenderer {
     const args = this.pending?.args ?? {};
 
     if (!ok) {
-      this.closeWithResult(this.c(`${this.indent()} ${s(event, 'result') || 'failed'}`, this.palette.danger));
+      this.closeWithResult(this.c(`${this.indent()} ${s(event, 'result') || this.t('action-render.failed')}`, this.palette.danger));
       return;
     }
 
@@ -289,22 +291,24 @@ export class ActionRenderer {
     switch (tool) {
       case 'read_file': {
         const lines = countLines(s(event, 'result'));
-        return [`${this.indent()} ${this.c(`${lines} line${lines === 1 ? '' : 's'}`, this.palette.muted)}`];
+        return [`${this.indent()} ${this.c(this.t('action-render.lines', { count: lines, plural: lines === 1 ? '' : 's' }), this.palette.muted)}`];
       }
       case 'list_files': {
         const n = countLines(s(event, 'result'));
-        return [`${this.indent()} ${this.c(`${n} entr${n === 1 ? 'y' : 'ies'}`, this.palette.muted)}`];
+        const entries = n === 1 ? this.t('action-render.entriesOne', { count: n }) : this.t('action-render.entriesMany', { count: n });
+        return [`${this.indent()} ${this.c(entries, this.palette.muted)}`];
       }
       case 'search_code': {
         const n = countLines(s(event, 'result'));
-        return [`${this.indent()} ${this.c(`${n} match line${n === 1 ? '' : 'es'}`, this.palette.muted)}`];
+        const matches = n === 1 ? this.t('action-render.matchesOne', { count: n }) : this.t('action-render.matchesMany', { count: n });
+        return [`${this.indent()} ${this.c(matches, this.palette.muted)}`];
       }
       case 'write_file': {
-        const note = s(event, 'result') || 'written';
+        const note = s(event, 'result') || this.t('action-render.written');
         return [`${this.indent()} ${this.c(note, this.palette.muted)}`];
       }
       case 'create_branch':
-        return [`${this.indent()} ${this.c(`branch ${s(event, 'branch')}`, this.palette.muted)}`];
+        return [`${this.indent()} ${this.c(this.t('action-render.branch', { name: s(event, 'branch') }), this.palette.muted)}`];
       case 'run_command':
       case 'run_tests': {
         const exit = typeof event.payload['exitCode'] === 'number' ? (event.payload['exitCode'] as number) : null;
@@ -313,7 +317,7 @@ export class ActionRenderer {
         // the boilerplate banner at the top.
         const tail = tailLines(s(event, 'result'), 2);
         if (tail.length === 0) {
-          return [`${this.indent()} ${this.c(meta || 'done', this.palette.muted)}`];
+          return [`${this.indent()} ${this.c(meta || this.t('action-render.done'), this.palette.muted)}`];
         }
         const first = `${this.indent()} ${tail[0]}${meta ? `   ${this.c(meta, this.palette.muted)}` : ''}`;
         const rest = tail.slice(1).map((l) => `      ${this.c(l, this.palette.muted)}`);
@@ -324,10 +328,10 @@ export class ActionRenderer {
       case 'apply_patch': {
         const diff = typeof args['diff'] === 'string' ? (args['diff'] as string) : '';
         const head = this.diffLines(diff);
-        return head.length > 0 ? head : [`${this.indent()} ${this.c('applied', this.palette.muted)}`];
+        return head.length > 0 ? head : [`${this.indent()} ${this.c(this.t('action-render.applied'), this.palette.muted)}`];
       }
       default:
-        return [`${this.indent()} ${this.c(s(event, 'result') || 'done', this.palette.muted)}`];
+        return [`${this.indent()} ${this.c(s(event, 'result') || this.t('action-render.done'), this.palette.muted)}`];
     }
   }
 
@@ -340,7 +344,10 @@ export class ActionRenderer {
     if (diff.trim().length === 0 && affected.length === 0) {
       return;
     }
-    const label = `${affected.length} file${affected.length === 1 ? '' : 's'} changed`;
+    const label = this.t('action-render.filesChanged', {
+      count: affected.length,
+      plural: affected.length === 1 ? '' : 's',
+    });
     this.ui.write(`  ${this.c(this.g('⏺', '*'), this.palette.accent)} ${'Diff'.padEnd(VERB_WIDTH)} ${this.c(label, this.palette.muted)}`.trimEnd());
     for (const line of this.diffLines(diff)) {
       this.ui.write(line);
@@ -384,7 +391,7 @@ export class ActionRenderer {
       // context lines are skipped to keep the live view tight
     }
     if (hidden > 0) {
-      out.push(this.c(`    … +${hidden} more diff lines · /changes`, this.palette.muted));
+      out.push(this.c(`    … ${this.t('action-render.moreDiffLines', { count: hidden })} · /changes`, this.palette.muted));
     }
     return out;
   }

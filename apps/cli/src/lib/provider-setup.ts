@@ -29,22 +29,19 @@ const SECRET_LOOKING_PATTERN = /^(sk-|ghp_|gho_|ghs_|xox|AKIA)/;
 
 async function askEnvVarName(deps: CliDeps, defaultName: string, yes: boolean): Promise<string> {
   if (!yes && (deps.env[defaultName] ?? '').length > 0) {
-    deps.ui.info(`Detected ${defaultName} in your environment — press Enter to use it.`);
+    deps.ui.info(deps.t('provider-setup.detected_env', { defaultName }));
   }
   for (;;) {
     const answer = await deps.ui.ask(
-      `Name of the environment variable holding the API key (never the key itself) [${defaultName}]:`,
+      deps.t('provider-setup.ask_env_var_name', { defaultName }),
       { yes, defaultAnswer: defaultName },
     );
     if (SECRET_LOOKING_PATTERN.test(answer)) {
-      deps.ui.warn(
-        'That looks like an API key VALUE. Enter the NAME of the environment variable instead ' +
-          '(for example OPENAI_API_KEY) — Excalibur never stores key values.',
-      );
+      deps.ui.warn(deps.t('provider-setup.looks_like_key_value'));
       continue;
     }
     if (!ENV_VAR_NAME_PATTERN.test(answer)) {
-      deps.ui.warn('Environment variable names use uppercase letters, digits and underscores.');
+      deps.ui.warn(deps.t('provider-setup.env_var_format'));
       if (yes || !deps.ui.isInteractive()) {
         return defaultName;
       }
@@ -57,16 +54,10 @@ async function askEnvVarName(deps: CliDeps, defaultName: string, yes: boolean): 
 /** Post-save guidance: the provider runs once its API key env var is set. */
 function announceSaved(deps: CliDeps, apiKeyEnv: string): void {
   if ((deps.env[apiKeyEnv] ?? '').length > 0) {
-    deps.ui.info(
-      `Saved. ✓ ${apiKeyEnv} is already set in your environment — this provider is ready. ` +
-        'Run `excalibur models test` to confirm the connection.',
-    );
+    deps.ui.info(deps.t('provider-setup.saved_env_set', { apiKeyEnv }));
     return;
   }
-  deps.ui.info(
-    `Saved. Set ${apiKeyEnv} to your API key (Excalibur stores only the variable name), then run ` +
-      '`excalibur models test` to confirm. With no key set, commands ask you to configure one — there is no mock fallback.',
-  );
+  deps.ui.info(deps.t('provider-setup.saved_env_unset', { apiKeyEnv }));
 }
 
 /** A single-provider config — no bundled mock (the mock is never a fallback). */
@@ -87,13 +78,11 @@ async function askEnvVarNameOptional(
   suggestion: string,
 ): Promise<string | undefined> {
   if ((deps.env[suggestion] ?? '').length > 0) {
-    deps.ui.info(
-      `Detected ${suggestion} in your environment — type it to send a bearer token, or leave blank for a keyless endpoint.`,
-    );
+    deps.ui.info(deps.t('provider-setup.detected_env_optional', { suggestion }));
   }
   const answer = (
     await deps.ui.ask(
-      `API key env var (leave blank if your endpoint needs no auth) [${suggestion} or blank]:`,
+      deps.t('provider-setup.ask_env_var_optional', { suggestion }),
       { defaultAnswer: '' },
     )
   ).trim();
@@ -101,9 +90,7 @@ async function askEnvVarNameOptional(
     return undefined;
   }
   if (SECRET_LOOKING_PATTERN.test(answer)) {
-    deps.ui.warn(
-      'That looks like a key VALUE — enter the NAME of the env var (or blank). Using blank.',
-    );
+    deps.ui.warn(deps.t('provider-setup.looks_like_key_value_optional'));
     return undefined;
   }
   return ENV_VAR_NAME_PATTERN.test(answer) ? answer : suggestion;
@@ -146,17 +133,17 @@ function pairConfig(entry: ProviderCatalogEntry, apiKeyEnv: string): ProvidersFi
 }
 
 /** Dim hint for the "Subscription" option, per the provider's sanctioned path. */
-function subscriptionHint(entry: ProviderCatalogEntry): string {
+function subscriptionHint(deps: CliDeps, entry: ProviderCatalogEntry): string {
   const sub = entry.subscription;
   if (sub === undefined) {
     return '';
   }
   if (sub.kind === 'subscription-key') {
-    return 'sanctioned subscription key · full native Excalibur';
+    return deps.t('provider-setup.hint_subscription_key');
   }
   return sub.risk === 'prohibited'
-    ? 'drives the vendor’s official CLI · third-party token reuse is prohibited (at your own risk)'
-    : 'drives the vendor’s official CLI · at your own risk';
+    ? deps.t('provider-setup.hint_cli_prohibited')
+    : deps.t('provider-setup.hint_cli_own_risk');
 }
 
 /** The API-key (BYOK) rail: prompt the key env var, auto-configure good+fast, show it. */
@@ -167,13 +154,21 @@ async function setupApiKeyRail(
   const apiKeyEnv = await askEnvVarName(deps, entry.apiKeyEnv, false);
   if (entry.pair !== undefined) {
     deps.ui.info(
-      `Auto-configured ${entry.label}: ${entry.pair.good} for coding, ${entry.pair.fast} for fast ` +
-        `suggestions & compaction — both on ${apiKeyEnv}. Change either with \`excalibur models setup\`.`,
+      deps.t('provider-setup.auto_configured', {
+        label: entry.label,
+        good: entry.pair.good,
+        fast: entry.pair.fast,
+        apiKeyEnv,
+      }),
     );
     announceSaved(deps, apiKeyEnv);
     return pairConfig(entry, apiKeyEnv);
   }
-  const model = (await deps.ui.ask(`${entry.label} model:`, { defaultAnswer: '' })).trim();
+  const model = (
+    await deps.ui.ask(deps.t('provider-setup.ask_model', { label: entry.label }), {
+      defaultAnswer: '',
+    })
+  ).trim();
   announceSaved(deps, apiKeyEnv);
   const config: ProviderConfig = { type: entry.type, apiKeyEnv };
   if (entry.baseUrl !== undefined) {
@@ -202,9 +197,7 @@ async function setupSubscription(
     return setupApiKeyRail(deps, entry);
   }
   if (sub.kind === 'subscription-key' && sub.keyConfig !== undefined) {
-    deps.ui.info(
-      `Your ${entry.label} subscription runs through a subscription key (sanctioned) — full native Excalibur.`,
-    );
+    deps.ui.info(deps.t('provider-setup.subscription_key_native', { label: entry.label }));
     const apiKeyEnv = await askEnvVarName(deps, sub.keyConfig.apiKeyEnv, false);
     announceSaved(deps, apiKeyEnv);
     return single(entry.key, {
@@ -219,17 +212,22 @@ async function setupSubscription(
   }
   if (sub.cli !== undefined) {
     deps.ui.info(
-      `Excalibur will drive the official \`${sub.cli.command}\` CLI (${sub.cli.loginHint}). ` +
-        'That passthrough adapter is coming — for now you can connect an API key instead.',
+      deps.t('provider-setup.cli_passthrough', {
+        command: sub.cli.command,
+        loginHint: sub.cli.loginHint,
+      }),
     );
   }
-  const useKey = await deps.ui.confirm(`Set up a ${entry.label} API key now instead?`, {
-    defaultYes: true,
-  });
+  const useKey = await deps.ui.confirm(
+    deps.t('provider-setup.confirm_api_key_instead', { label: entry.label }),
+    {
+      defaultYes: true,
+    },
+  );
   if (useKey) {
     return setupApiKeyRail(deps, entry);
   }
-  deps.ui.info(`No problem — run \`excalibur models setup\` anytime to connect ${entry.label}.`);
+  deps.ui.info(deps.t('provider-setup.no_problem_later', { label: entry.label }));
   return null;
 }
 
@@ -276,25 +274,25 @@ export async function promptProviderSetup(
         return { label: choice.entry.label, hint: choice.entry.hint };
       case 'ollama':
         return {
-          label: 'Ollama (local) — free, no key',
+          label: deps.t('provider-setup.opt_ollama'),
           hint: ollamaDetected
-            ? 'detected on this machine!'
-            : 'install from ollama.com, then `ollama pull <model>`',
+            ? deps.t('provider-setup.hint_ollama_detected')
+            : deps.t('provider-setup.hint_ollama_install'),
         };
       case 'self-hosted':
         return {
-          label: 'Self-hosted / your own model',
-          hint: 'vLLM · TGI · an internal Qwen/Llama gateway — your endpoint, key optional',
+          label: deps.t('provider-setup.opt_self_hosted'),
+          hint: deps.t('provider-setup.hint_self_hosted'),
         };
       case 'mock':
-        return { label: 'Mock', hint: 'offline / tests only — NOT a real model' };
+        return { label: deps.t('provider-setup.opt_mock'), hint: deps.t('provider-setup.hint_mock') };
       case 'later':
-        return { label: 'Configure later' };
+        return { label: deps.t('provider-setup.opt_later') };
     }
   });
 
   const index = await deps.ui.select(
-    'Which model provider? (Excalibur is free — use your subscription or API key, or run a local/own model)',
+    deps.t('provider-setup.select_provider'),
     labels,
     { yes: false, defaultIndex: 0 },
   );
@@ -306,12 +304,12 @@ export async function promptProviderSetup(
       if (entry.subscription !== undefined) {
         // Subscription-first ordering (OSS individual devs mostly pay a subscription).
         const how = await deps.ui.select(
-          `How do you use ${entry.label}?`,
+          deps.t('provider-setup.how_do_you_use', { label: entry.label }),
           [
-            { label: 'Subscription', hint: subscriptionHint(entry) },
+            { label: deps.t('provider-setup.opt_subscription'), hint: subscriptionHint(deps, entry) },
             {
-              label: 'API key',
-              hint: 'pay-per-token · full native Excalibur (auto-pairs a good + fast model)',
+              label: deps.t('provider-setup.opt_api_key'),
+              hint: deps.t('provider-setup.hint_api_key'),
             },
           ],
           { yes: false, defaultIndex: 0 },
@@ -321,30 +319,27 @@ export async function promptProviderSetup(
       return setupApiKeyRail(deps, entry);
     }
     case 'ollama': {
-      const model = await deps.ui.ask('Ollama model name [llama3]:', { defaultAnswer: 'llama3' });
-      deps.ui.info(
-        'Saved. Excalibur will use your local Ollama at http://localhost:11434 (no key, no cost). ' +
-          'Make sure Ollama is running and the model is pulled (`ollama pull <model>`). ' +
-          'Ghost-text needs a fast second model, so it stays off in single-model mode.',
-      );
+      const model = await deps.ui.ask(deps.t('provider-setup.ask_ollama_model'), {
+        defaultAnswer: 'llama3',
+      });
+      deps.ui.info(deps.t('provider-setup.saved_ollama'));
       return single('ollama', { type: 'ollama', baseUrl: 'http://localhost:11434', model });
     }
     case 'self-hosted': {
       // vLLM, TGI, SGLang, an internal Qwen/Llama gateway — any OpenAI-compatible
       // endpoint. Auth optional (keyless). This is the main path for Qwen run on
       // your own / private infra.
-      const baseUrl = await deps.ui.ask('Your endpoint base URL [http://localhost:8000/v1]:', {
+      const baseUrl = await deps.ui.ask(deps.t('provider-setup.ask_endpoint_url'), {
         defaultAnswer: 'http://localhost:8000/v1',
       });
-      const model = await deps.ui.ask(
-        'Model name served by your endpoint [Qwen/Qwen2.5-Coder-32B-Instruct]:',
-        { defaultAnswer: 'Qwen/Qwen2.5-Coder-32B-Instruct' },
-      );
+      const model = await deps.ui.ask(deps.t('provider-setup.ask_endpoint_model'), {
+        defaultAnswer: 'Qwen/Qwen2.5-Coder-32B-Instruct',
+      });
       const apiKeyEnv = await askEnvVarNameOptional(deps, 'LLM_API_KEY');
       deps.ui.info(
         apiKeyEnv !== undefined
-          ? `Saved. Excalibur will call ${baseUrl} with the bearer token in ${apiKeyEnv}.`
-          : `Saved. Excalibur will call ${baseUrl} with no auth (keyless self-hosted endpoint).`,
+          ? deps.t('provider-setup.saved_self_hosted_auth', { baseUrl, apiKeyEnv })
+          : deps.t('provider-setup.saved_self_hosted_keyless', { baseUrl }),
       );
       const config: ProviderConfig = { type: 'openai-compatible', baseUrl, model };
       if (apiKeyEnv !== undefined) {

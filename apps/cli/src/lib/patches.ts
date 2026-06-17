@@ -31,7 +31,7 @@ export function resolvePatch(deps: CliDeps, id: string | undefined): LocalPatch 
   const latest = patches[patches.length - 1];
   if (latest === undefined) {
     throw new CliUsageError(
-      'No local patches found. Generate one first: excalibur patch "<task>".',
+      deps.t('patches.noLocalPatches'),
     );
   }
   return latest;
@@ -58,19 +58,19 @@ export function applyStoredPatch(deps: CliDeps, patch: LocalPatch): { filesAffec
   const repoRoot = deps.cwd();
   if (!getGitInfo(repoRoot).isRepo) {
     throw new CliUsageError(
-      `Cannot apply patch ${patch.id}: ${repoRoot} is not a git repository. Run \`git init\` first.`,
+      deps.t('patches.notAGitRepo', { id: patch.id, repoRoot }),
     );
   }
   const store = new PatchStore(repoRoot);
   const diff = store.readArtifact(patch.id, 'diff.patch') ?? '';
   if (diff.trim().length === 0) {
     throw new CliUsageError(
-      `Patch ${patch.id} has an empty diff — nothing to apply. Regenerate it with \`excalibur patch "<task>"\`.`,
+      deps.t('patches.emptyDiff', { id: patch.id }),
     );
   }
   if (patch.metadata.diffApplies === false) {
     deps.ui.warn(
-      `Patch ${patch.id} did not validate with \`git apply --check\` at proposal time; the apply below may fail.`,
+      deps.t('patches.diffDidNotValidate', { id: patch.id }),
     );
   }
   try {
@@ -78,8 +78,7 @@ export function applyStoredPatch(deps: CliDeps, patch: LocalPatch): { filesAffec
   } catch (error) {
     if (error instanceof GitOperationError) {
       throw new CliUsageError(
-        `Patch ${patch.id} did not apply: ${error.message}. ` +
-          `Try \`excalibur branch ${patch.id}\` (applies onto a fresh branch) or regenerate the patch.`,
+        deps.t('patches.didNotApply', { id: patch.id, message: error.message }),
       );
     }
     throw error;

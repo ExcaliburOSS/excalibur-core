@@ -183,7 +183,7 @@ export async function runTask(
     explicitStyle === undefined
   ) {
     deps.ui.warn(intent.reason);
-    const runDiscovery = await deps.ui.confirm('Run Discovery first?', {
+    const runDiscovery = await deps.ui.confirm(deps.t('run-pipeline.discoveryPrompt'), {
       yes,
       defaultYes: !yes,
     });
@@ -191,7 +191,7 @@ export async function runTask(
       await runDiscoveryFlow(deps, { input: task, inputType: 'idea', yes });
       return null;
     }
-    deps.ui.info('Continuing without Discovery.');
+    deps.ui.info(deps.t('run-pipeline.continuingWithoutDiscovery'));
     useIntentDefaults = false;
   }
 
@@ -235,7 +235,7 @@ export async function runTask(
   let choice = choose(explicitStyle, explicitLevel);
   if (options.workflow !== undefined && choice.workflowId !== options.workflow) {
     throw new CliUsageError(
-      `Unknown workflow "${options.workflow}". Run \`excalibur workflows list\` to see the catalog.`,
+      deps.t('run-pipeline.unknownWorkflow', { workflow: options.workflow }),
     );
   }
 
@@ -282,27 +282,27 @@ export async function runTask(
       deps.ui.write(line);
     }
     deps.ui.write(safetyLine(config));
-    deps.ui.info(`Reason: ${choice.reason}`);
+    deps.ui.info(deps.t('run-pipeline.reason', { reason: choice.reason }));
 
-    const answer = await deps.ui.ask('[Enter] continue  [m] change mode  [c] cancel', {
+    const answer = await deps.ui.ask(deps.t('run-pipeline.runPromptGate'), {
       yes,
       defaultAnswer: '',
     });
     const normalized = answer.trim().toLowerCase();
     if (normalized === 'c' || normalized === 'cancel') {
-      deps.ui.info('Run cancelled.');
+      deps.ui.info(deps.t('run-pipeline.runCancelled'));
       return null;
     }
     if (normalized === 'm') {
       const styles: ExecutionStyle[] = ['fast', 'careful', 'structured', 'explore', 'team_default'];
       const index = await deps.ui.select(
-        'Execution mode:',
+        deps.t('run-pipeline.executionModePrompt'),
         [
-          { label: 'Fast', hint: 'small fixes, minimal ceremony' },
-          { label: 'Careful', hint: 'Level 4, stronger approvals' },
-          { label: 'Structured', hint: 'spec → plan → implement → verify' },
-          { label: 'Explore', hint: 'compare engineering alternatives' },
-          { label: 'Team default' },
+          { label: deps.t('run-pipeline.modeFastLabel'), hint: deps.t('run-pipeline.modeFastHint') },
+          { label: deps.t('run-pipeline.modeCarefulLabel'), hint: deps.t('run-pipeline.modeCarefulHint') },
+          { label: deps.t('run-pipeline.modeStructuredLabel'), hint: deps.t('run-pipeline.modeStructuredHint') },
+          { label: deps.t('run-pipeline.modeExploreLabel'), hint: deps.t('run-pipeline.modeExploreHint') },
+          { label: deps.t('run-pipeline.modeTeamDefaultLabel') },
         ],
         { defaultIndex: 4 },
       );
@@ -345,7 +345,7 @@ export async function runTask(
     executionStyle: choice.executionStyle,
   });
   deps.ui.write();
-  deps.ui.info(`Run ${run.id} → ${run.dir}`);
+  deps.ui.info(deps.t('run-pipeline.runDir', { id: run.id, dir: run.dir }));
 
   const interactive = deps.ui.isInteractive() && !yes;
 
@@ -412,12 +412,12 @@ export async function runTask(
 
   deps.ui.write();
   if (record.status === 'completed') {
-    deps.ui.success(`Run ${run.id} completed.`);
+    deps.ui.success(deps.t('run-pipeline.runCompleted', { id: run.id }));
   } else {
-    deps.ui.warn(`Run ${run.id} finished with status: ${record.status}`);
+    deps.ui.warn(deps.t('run-pipeline.runFinishedStatus', { id: run.id, status: record.status }));
   }
-  deps.ui.info(`Artifacts: ${run.dir}`);
-  deps.ui.info(`Inspect with: excalibur logs ${run.id}`);
+  deps.ui.info(deps.t('run-pipeline.artifacts', { dir: run.dir }));
+  deps.ui.info(deps.t('run-pipeline.inspectWith', { id: run.id }));
 
   if (options.sync === true) {
     await pushLatestRun(deps, run.id);

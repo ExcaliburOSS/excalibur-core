@@ -63,7 +63,11 @@ export async function runInteractionCommand(
   const { workflow, autonomyLevel } = commandDefaults(input.command);
 
   deps.ui.info(
-    `${input.command} → ${workflow} · ${AUTONOMY_LEVEL_LABELS[autonomyLevel]} · never changes code`,
+    deps.t('interactions.headerNeverChanges', {
+      command: input.command,
+      workflow,
+      autonomy: AUTONOMY_LEVEL_LABELS[autonomyLevel],
+    }),
   );
 
   const effective = await buildEffectiveContext(deps, repoRoot, {
@@ -128,7 +132,9 @@ export async function runInteractionCommand(
     warnings: effective.warnings,
     costCents: output.costCents,
   });
-  deps.ui.info(`Saved interaction ${interaction.id} → ${interaction.dir}`);
+  deps.ui.info(
+    deps.t('interactions.savedInteraction', { id: interaction.id, dir: interaction.dir }),
+  );
 }
 
 /** Pulls the unified diff out of a ```diff fenced block. */
@@ -158,7 +164,10 @@ export async function generatePatch(deps: CliDeps, task: string): Promise<LocalP
   const defaults = commandDefaults('patch');
 
   deps.ui.info(
-    `patch → ${defaults.workflow} · ${AUTONOMY_LEVEL_LABELS[defaults.autonomyLevel]} · apply requires confirmation`,
+    deps.t('interactions.patchHeader', {
+      workflow: defaults.workflow,
+      autonomy: AUTONOMY_LEVEL_LABELS[defaults.autonomyLevel],
+    }),
   );
   deps.ui.info(safetyLine(config));
 
@@ -196,7 +205,9 @@ export async function generatePatch(deps: CliDeps, task: string): Promise<LocalP
   const validationWarnings =
     validation !== null && !validation.applies
       ? [
-          `The proposed diff did not validate with \`git apply --check\`: ${validation.reason ?? 'unknown reason'}. Review it before applying.`,
+          deps.t('interactions.diffDidNotValidate', {
+            reason: validation.reason ?? 'unknown reason',
+          }),
         ]
       : [];
 
@@ -223,8 +234,12 @@ export async function generatePatch(deps: CliDeps, task: string): Promise<LocalP
 
   const files = filesAffectedFromDiff(diff);
   deps.ui.write();
-  deps.ui.heading(`Patch ${patch.id}`);
-  deps.ui.write(`Files affected: ${files.length > 0 ? files.join(', ') : '(none detected)'}`);
+  deps.ui.heading(deps.t('interactions.patchTitle', { id: patch.id }));
+  deps.ui.write(
+    deps.t('interactions.filesAffected', {
+      files: files.length > 0 ? files.join(', ') : deps.t('interactions.filesAffectedNone'),
+    }),
+  );
   deps.ui.write();
   deps.ui.write(output.content);
   deps.ui.write();
@@ -233,6 +248,6 @@ export async function generatePatch(deps: CliDeps, task: string): Promise<LocalP
     deps.ui.write(diff);
     deps.ui.write();
   }
-  deps.ui.info(`Saved patch ${patch.id} → ${patch.dir}`);
+  deps.ui.info(deps.t('interactions.savedPatch', { id: patch.id, dir: patch.dir }));
   return patch;
 }
