@@ -70,6 +70,15 @@ export interface SwarmResult<T> {
   conflicts: SwarmConflict[];
 }
 
+/** A live per-lane progress signal (for animating the swarm-lanes panel). */
+export interface SwarmLaneProgress {
+  index: number;
+  id: string;
+  /** `started` when the lane's runner begins; `settled` when it resolves/throws. */
+  phase: 'started' | 'settled';
+  failed?: boolean;
+}
+
 export interface RunSwarmOptions {
   /** Max lanes whose runner executes concurrently (default: all). */
   maxConcurrency?: number;
@@ -77,6 +86,26 @@ export interface RunSwarmOptions {
   baseRef?: string;
   /** Stable prefix for worktree dirs/branches (default: `swarm`). */
   idPrefix?: string;
+  /**
+   * Live per-lane progress callback — fires `started` as each lane's runner
+   * begins and `settled` when it resolves or throws. The hook a live lanes
+   * renderer subscribes to so the panel animates instead of only painting once
+   * post-run. Best-effort: a throwing callback never breaks the swarm.
+   */
+  onLane?: (progress: SwarmLaneProgress) => void;
+}
+
+/** Fires a lane-progress callback, swallowing any error (never breaks the swarm). */
+function emitLane(
+  cb: ((p: SwarmLaneProgress) => void) | undefined,
+  progress: SwarmLaneProgress,
+): void {
+  if (cb === undefined) return;
+  try {
+    cb(progress);
+  } catch {
+    /* a faulty progress sink must never affect the run */
+  }
 }
 
 /** Runs an array of thunks with a bounded concurrency pool, preserving order. */
@@ -133,6 +162,7 @@ export async function runSwarm<T>(
     // 2. RUN (parallel — the slow agent work, bounded by maxConcurrency).
     const runResults = await pool(
       setups.map((setup) => async (): Promise<{ failed: boolean; error?: string; result?: T }> => {
+        emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'started' });
         try {
           const result = await runner({
             lane: setup.lane,
@@ -140,8 +170,15 @@ export async function runSwarm<T>(
             branch: setup.branch,
             index: setup.index,
           });
+          emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled' });
           return { failed: false, result };
         } catch (error) {
+          emitLane(options.onLane, {
+            index: setup.index,
+            id: setup.lane.id,
+            phase: 'settled',
+            failed: true,
+          });
           return { failed: true, error: error instanceof Error ? error.message : String(error) };
         }
       }),

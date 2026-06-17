@@ -49,6 +49,35 @@ describe('runSwarm', () => {
     }
   });
 
+  it('emits live per-lane progress (started + settled, with the failed flag)', async () => {
+    const repo = initRepo();
+    try {
+      const events: string[] = [];
+      await runSwarm(
+        repo,
+        [lane('ok'), lane('boom')],
+        ({ lane: l, worktreePath }) => {
+          if (l.id === 'boom') {
+            throw new Error('lane failed on purpose');
+          }
+          writeFileSync(join(worktreePath, `${l.id}.ts`), `// ${l.id}\n`, 'utf8');
+          return Promise.resolve({ wrote: `${l.id}.ts` });
+        },
+        {
+          onLane: (p) => {
+            events.push(`${p.id}:${p.phase}${p.failed === true ? ':failed' : ''}`);
+          },
+        },
+      );
+      expect(events).toContain('ok:started');
+      expect(events).toContain('ok:settled');
+      expect(events).toContain('boom:started');
+      expect(events).toContain('boom:settled:failed');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
   it('reports a lane whose diff CONFLICTS with the merge (same line, different edits)', async () => {
     const repo = initRepo();
     try {
