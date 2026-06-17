@@ -101,13 +101,19 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
           )
         : null;
       live?.start();
-      const result = await executeSwarm(deps, repoRoot, lanes, {
-        gateway: gateway.gateway,
-        config,
-        autonomyAutoApprove: true, // a parallel batch can't prompt per-lane
-        ...(live !== null ? { onLane: (p: SwarmLaneProgress) => live.update(p) } : {}),
-      });
-      live?.finish(); // erase the live panel; the final detailed panel prints below
+      let result;
+      try {
+        result = await executeSwarm(deps, repoRoot, lanes, {
+          gateway: gateway.gateway,
+          config,
+          autonomyAutoApprove: true, // a parallel batch can't prompt per-lane
+          ...(live !== null ? { onLane: (p: SwarmLaneProgress) => live.update(p) } : {}),
+        });
+      } finally {
+        // Always erase the live panel + restore the cursor, even if the swarm
+        // throws (idempotent via LiveLanes' stopped guard).
+        live?.finish();
+      }
 
       // The SWARM LANES panel: concurrent sub-rails branching off the swarm node
       // and converging on a fan-in merge node — the visual payoff of the

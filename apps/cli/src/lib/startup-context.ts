@@ -7,7 +7,7 @@ import { buildSessionLog } from './session-log';
 
 /** Minimal session-store surface this needs (decouples it from the concrete class). */
 interface SessionStoreLike {
-  latestSession(): LocalSession | null;
+  listSessions(): LocalSession[];
   readTranscript(id: string): SessionTurn[];
 }
 
@@ -30,14 +30,19 @@ function newestActivePlan(repoRoot: string): string | null {
       .sort()
       .reverse();
     for (const file of files) {
-      const m = /^---\n([\s\S]*?)\n---/.exec(readFileSync(join(dir, file), 'utf8'));
-      const fm = (m !== null ? parseYaml(m[1] ?? '') : {}) as { task?: string; status?: string };
-      if (fm.status !== 'cancelled') {
-        return fm.task ?? file.replace(/\.md$/, '');
+      try {
+        const m = /^---\n([\s\S]*?)\n---/.exec(readFileSync(join(dir, file), 'utf8'));
+        const fm = (m !== null ? parseYaml(m[1] ?? '') : {}) as { task?: string; status?: string };
+        if (fm.status !== 'cancelled') {
+          return fm.task ?? file.replace(/\.md$/, '');
+        }
+      } catch {
+        // A single corrupt/unreadable plan file is skipped, not fatal.
+        continue;
       }
     }
   } catch {
-    /* best-effort */
+    /* dir-level failure (unreadable plans dir) — best-effort */
   }
   return null;
 }
@@ -56,13 +61,26 @@ export function buildStartupContext(
 ): StartupContext {
   const lines: string[] = [];
 
-  const latest0 = store.latestSession();
-  const latest = latest0 !== null && latest0.metadata.repoRoot === repoRoot ? latest0 : null;
+  // Most-recent NON-EMPTY session for THIS repo. Skipping empty sessions means a
+  // just-created blank session (e.g. an orphan left after a resume) never shadows
+  // the real prior one. listSessions() is chronological → the last match is newest.
+  let latest: LocalSession | null = null;
+  let latestTranscript: SessionTurn[] = [];
+  for (const candidate of store.listSessions()) {
+    if (candidate.metadata.repoRoot !== repoRoot) {
+      continue;
+    }
+    const transcript = store.readTranscript(candidate.id);
+    if (transcript.some((turn) => turn.kind === 'message')) {
+      latest = candidate;
+      latestTranscript = transcript;
+    }
+  }
 
   let lastActivity: string | null = null;
   if (latest !== null) {
     try {
-      const entries = buildSessionLog(repoRoot, store.readTranscript(latest.id));
+      const entries = buildSessionLog(repoRoot, latestTranscript);
       const last = entries[entries.length - 1];
       if (last !== undefined) {
         lastActivity = `${last.title.length > 0 ? last.title : t('session-log.untitled')} (${last.status})`;

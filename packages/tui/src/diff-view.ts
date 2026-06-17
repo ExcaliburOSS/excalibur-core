@@ -290,12 +290,16 @@ function renderCell(
   const no = side === 'left' ? line.oldNo : line.newNo;
   const numStr = (no === null ? '' : String(no)).padStart(numW);
   const marker = line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' ';
-  const textW = Math.max(1, colW - numW - 2); // "<num> <marker><text>"
-  let text = line.text;
-  if (text.length > textW) {
-    text = `${text.slice(0, Math.max(0, textW - 1))}…`;
-  }
-  const body = `${marker}${text}`.padEnd(textW);
+  // The cell is gutter (`<num> ` = numW+1) + body; body fills the rest so every
+  // cell is EXACTLY colW wide (no off-by-one under-fill).
+  const bodyW = Math.max(2, colW - numW - 1);
+  const textBudget = bodyW - 1; // minus the +/-/space marker
+  // Truncate on CODE POINTS (Array.from) so a surrogate pair / combining mark is
+  // never split before the ellipsis.
+  const cps = Array.from(line.text);
+  const text =
+    cps.length > textBudget ? `${cps.slice(0, Math.max(0, textBudget - 1)).join('')}…` : line.text;
+  const body = `${marker}${text}`.padEnd(bodyW);
   const gutter = paint(`${numStr} `, palette.muted, tier);
   if (line.kind === 'context') {
     return `${gutter}${paint(body, palette.muted, tier)}`;

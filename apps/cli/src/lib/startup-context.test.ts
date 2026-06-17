@@ -8,10 +8,22 @@ import { buildStartupContext } from './startup-context';
 const t = (key: string, vars?: Record<string, string | number>): string =>
   vars === undefined ? key : `${key} ${JSON.stringify(vars)}`;
 
+const messageTurn = {
+  id: 't1',
+  seq: 1,
+  at: '2026-06-17T00:00:00.000Z',
+  role: 'user',
+  kind: 'message',
+  text: 'hi',
+} as SessionTurn;
+
 /** A store stub exposing only what buildStartupContext needs. */
-function fakeStore(repoRoot: string, latest: LocalSession | null, transcript: SessionTurn[] = []) {
+function fakeStore(
+  sessions: LocalSession[],
+  transcript: SessionTurn[] = [messageTurn],
+) {
   return {
-    latestSession: (): LocalSession | null => latest,
+    listSessions: (): LocalSession[] => sessions,
     readTranscript: (): SessionTurn[] => transcript,
   };
 }
@@ -32,7 +44,7 @@ afterEach(() => rmSync(repo, { recursive: true, force: true }));
 
 describe('buildStartupContext (proactive startup intelligence)', () => {
   it('is empty in a pristine repo (no session, plan or memory)', () => {
-    const ctx = buildStartupContext(t, repo, fakeStore(repo, null));
+    const ctx = buildStartupContext(t, repo, fakeStore([]));
     expect(ctx.lines).toEqual([]);
     expect(ctx.latest).toBeNull();
   });
@@ -41,7 +53,7 @@ describe('buildStartupContext (proactive startup intelligence)', () => {
     savePlan(repo, { task: 'Refactor auth', planMarkdown: 'x', status: 'approved', planRunId: 'r1' });
     new MemoryStore(repo).capture({ type: 'decision', statement: 'Use pnpm here' });
     const prev = session(repo);
-    const ctx = buildStartupContext(t, repo, fakeStore(repo, prev));
+    const ctx = buildStartupContext(t, repo, fakeStore([prev]));
     const joined = ctx.lines.join('\n');
     expect(joined).toContain('repl.context-plan');
     expect(joined).toContain('Refactor auth');
@@ -51,13 +63,13 @@ describe('buildStartupContext (proactive startup intelligence)', () => {
 
   it('ignores a latest session from a DIFFERENT repo', () => {
     const other = { ...session(repo), metadata: { repoRoot: '/elsewhere', status: 'active' } } as LocalSession;
-    const ctx = buildStartupContext(t, repo, fakeStore(repo, other));
+    const ctx = buildStartupContext(t, repo, fakeStore([other]));
     expect(ctx.latest).toBeNull();
   });
 
   it('skips a cancelled plan when choosing the active one', () => {
     savePlan(repo, { task: 'Abandoned idea', planMarkdown: 'x', status: 'cancelled', planRunId: 'r0' });
-    const ctx = buildStartupContext(t, repo, fakeStore(repo, null));
+    const ctx = buildStartupContext(t, repo, fakeStore([]));
     expect(ctx.lines.join('\n')).not.toContain('Abandoned idea');
   });
 });

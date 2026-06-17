@@ -311,11 +311,15 @@ class LocalRunExecution {
   }
 
   /**
-   * Runs the phase's commands FOR REAL — every command is executed through the
-   * native `run_command` tool, so it is gated by the PermissionEngine (allowlist
-   * + blocked-command floor), routed through the Docker sandbox when enabled, and
-   * its output redacted. NO simulation: the exit status reflects the real run, a
-   * failing command marks the phase (and the test-results artifact) as failed.
+   * Runs the phase's commands FOR REAL, fully gated: each command is checked by
+   * the PermissionEngine — a blocked command is DENIED (never run), a
+   * non-allowlisted one (incl. the default `run_command: ask` policy) PROMPTS
+   * via the phase confirmer (auto-approved only non-interactively, mirroring
+   * agentWorkPhase), and only then is it executed through `run_command`
+   * (sandbox-aware, redacted). NO simulation. A failing command marks the
+   * verify phase 'failed' in the artifact + event, but is NON-FATAL by design
+   * (verify is informational — it does not crash the run; the agent's edits may
+   * already stand). The real exit code is surfaced per command.
    */
   private async commandGroupPhase(phase: WorkflowPhase): Promise<void> {
     const commands: string[] = [...(phase.commands ?? [])];
@@ -332,27 +336,50 @@ class LocalRunExecution {
       commands.push(...(this.input.definition.defaults?.commands ?? []));
     }
 
+    const permissions = new PermissionEngine(this.input.config.permissions);
     const ctx: ToolExecutionContext = {
       workdir: this.input.repoRoot,
       config: this.input.config,
-      permissions: new PermissionEngine(this.input.config.permissions),
+      permissions,
     };
 
     const logLines: string[] = [];
     let allPassed = true;
+    let ran = 0;
     for (const command of commands) {
       this.emit('command_started', { command }, phase.id);
+      // Gate exactly like the agent's run_command path: deny → never run;
+      // ask → confirm (auto-approved only when non-interactive).
+      const decision = permissions.checkCommand(command);
+      if (!decision.allowed) {
+        allPassed = false;
+        this.emit('command_completed', { command, exitCode: -1, denied: true }, phase.id);
+        logLines.push(`$ ${command}\n[denied] ${decision.reason}`);
+        continue;
+      }
+      if (
+        decision.requiresConfirmation &&
+        !(await this.confirm(`Run "${command}"?`, phase.id))
+      ) {
+        this.emit('command_completed', { command, exitCode: -1, skipped: true }, phase.id);
+        logLines.push(`$ ${command}\n[skipped — not approved]`);
+        continue;
+      }
       const { ok, result } = await executeNativeTool('run_command', { command }, ctx);
+      ran += 1;
       if (!ok) {
         allPassed = false;
       }
-      this.emit('command_completed', { command, exitCode: ok ? 0 : 1 }, phase.id);
+      // Surface the REAL exit code (parsed from the command result), not a flat 1.
+      const codeMatch = /exit code:\s*(-?\d+)/.exec(result);
+      const exitCode = codeMatch !== null ? Number.parseInt(codeMatch[1] ?? '0', 10) : ok ? 0 : 1;
+      this.emit('command_completed', { command, exitCode }, phase.id);
       logLines.push(`$ ${command}\n${result}`);
     }
 
-    // No commands resolved → nothing to verify (honest: not a fake "passed").
+    // No commands actually ran → nothing to verify (honest: not a fake "passed").
     const status: 'passed' | 'failed' | 'skipped' =
-      commands.length === 0 ? 'skipped' : allPassed ? 'passed' : 'failed';
+      ran === 0 && allPassed ? 'skipped' : allPassed ? 'passed' : 'failed';
     this.emit('test_result', { status, commands }, phase.id);
 
     this.input.runManager.writeArtifact(

@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXCALIBUR_DIR } from '../config/load-config';
 
@@ -63,10 +63,15 @@ function yamlEscape(value: string): string {
  */
 export function savePlan(repoRoot: string, input: SavePlanInput): string {
   const now = input.now ?? new Date();
-  const fileName = `${stamp(now)}-${slugify(input.task)}.md`;
+  const base = `${stamp(now)}-${slugify(input.task)}`;
   const dir = plansDir(repoRoot);
   mkdirSync(dir, { recursive: true });
-  const file = join(dir, fileName);
+  // Never overwrite a prior plan that landed in the same second with the same
+  // slug — disambiguate with a numeric suffix.
+  let file = join(dir, `${base}.md`);
+  for (let n = 2; existsSync(file); n += 1) {
+    file = join(dir, `${base}-${n}.md`);
+  }
 
   const frontmatter = [
     '---',

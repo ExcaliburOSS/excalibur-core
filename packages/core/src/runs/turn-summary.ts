@@ -243,8 +243,12 @@ function tierOf(
   // 'failed' covers both a hard error (provider/tool error, `errored` flag) AND
   // a failing check (tests red, non-zero command): honesty-first — the headline
   // must not show a reassuring ✓ when something the turn ran did not pass.
+  // A `fatal:false` error (e.g. a generated patch that didn't apply, while the
+  // agent's own edits stand) is recorded honestly but must NOT flip the whole
+  // turn to 'failed' — it never crashed the run.
   const errored =
-    assistant?.payload['errored'] === true || events.some((e) => e.type === 'error');
+    assistant?.payload['errored'] === true ||
+    events.some((e) => e.type === 'error' && e.payload['fatal'] !== false);
   if (errored || checks.some((check) => !check.ok)) {
     return 'failed';
   }
