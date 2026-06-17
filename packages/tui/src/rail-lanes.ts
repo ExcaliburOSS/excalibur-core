@@ -13,7 +13,7 @@ import { eventGlyph, getColors, glyph, type Palette, type ThemeMode } from './th
  * Pure + snapshot-testable; colour is opt-in and byte-identical to plain.
  */
 
-export type LaneState = 'done' | 'empty' | 'failed' | 'conflict';
+export type LaneState = 'done' | 'empty' | 'failed' | 'conflict' | 'running';
 
 export interface LaneModel {
   id: string;
@@ -54,6 +54,8 @@ function laneGlyphHex(state: LaneState, palette: Palette): { g: string; hex: str
       return { g: glyph.failed, hex: palette.danger };
     case 'conflict':
       return { g: glyph.waiting, hex: palette.warn };
+    case 'running':
+      return { g: glyph.running, hex: palette.accent };
     default:
       return { g: glyph.sub, hex: palette.muted };
   }
