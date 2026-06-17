@@ -255,7 +255,11 @@ export function checkPatchApplies(
   if (diff.trim().length === 0) {
     return { applies: false, reason: 'empty diff' };
   }
-  const args = ['apply', '--check'];
+  // `--recount` recomputes the @@ hunk line counts from the actual hunk body, so
+  // a model-generated diff whose line numbers are slightly off (a very common
+  // LLM mistake) still validates as long as the CONTEXT lines match. It never
+  // changes what the hunk does.
+  const args = ['apply', '--check', '--recount'];
   if (opts?.reverse === true) {
     args.push('-R');
   }
@@ -294,7 +298,10 @@ export function applyPatch(
       reason: 'empty diff',
     });
   }
-  const args = ['apply'];
+  // `--recount` tolerates wrong @@ line counts in model-generated diffs (see
+  // checkPatchApplies); the context lines must still match, so it never applies
+  // a wrong hunk.
+  const args = ['apply', '--recount'];
   if (opts?.threeway === true) {
     args.push('--3way');
   }

@@ -15,7 +15,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "verify:real": "node scripts/verify-real.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
