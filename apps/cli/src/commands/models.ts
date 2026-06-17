@@ -22,13 +22,12 @@ async function runConnectionTest(deps: CliDeps): Promise<void> {
   const modelLabel =
     config?.model !== undefined && config.model.length > 0 ? ` (${config.model})` : '';
   if (config?.type === 'mock') {
-    deps.ui.info(
-      `Provider "${context.providerName}" is the offline mock — nothing to reach over the network. ` +
-        'Configure a real provider with `excalibur models setup` to test a live connection.',
-    );
+    deps.ui.info(deps.t('models.test-mock', { provider: context.providerName }));
     return;
   }
-  deps.ui.info(`Testing provider "${context.providerName}"${modelLabel} — sending a tiny request…`);
+  deps.ui.info(
+    deps.t('models.test-sending', { provider: context.providerName, modelLabel }),
+  );
   const startedAt = Date.now();
   try {
     const { output } = await chatWithGuidance(deps, context, {
@@ -41,16 +40,25 @@ async function runConnectionTest(deps: CliDeps): Promise<void> {
     const tokens = `${output.usage.inputTokens}→${output.usage.outputTokens} tok`;
     const cost = output.costCents !== null ? ` · ${output.costCents.toFixed(3)}¢` : '';
     deps.ui.success(
-      `Connected — ${context.providerName}${modelLabel} responded in ${seconds}s · ${tokens}${cost}.`,
+      deps.t('models.test-connected', {
+        provider: context.providerName,
+        modelLabel,
+        seconds,
+        tokens,
+        cost,
+      }),
     );
     if (reply.length > 0) {
-      deps.ui.info(`Reply: "${reply}"`);
+      deps.ui.info(deps.t('models.test-reply', { reply }));
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new CliUsageError(
-      `Could not reach provider "${context.providerName}"${modelLabel}: ${message} ` +
-        'Check the API key env var is exported and the base URL/model are correct (`excalibur models list`).',
+      deps.t('models.test-failed', {
+        provider: context.providerName,
+        modelLabel,
+        message,
+      }),
     );
   }
 }
@@ -76,10 +84,10 @@ export function registerModelsCommand(program: Command, deps: CliDeps): void {
         const config = context.providers.providers[name];
         const status =
           config?.type === 'mock'
-            ? 'ready (built-in)'
+            ? deps.t('models.status-built-in')
             : config?.apiKeyEnv !== undefined && config.apiKeyEnv.length > 0
-              ? `ready · set ${config.apiKeyEnv}`
-              : 'ready';
+              ? deps.t('models.status-ready-set', { apiKeyEnv: config.apiKeyEnv })
+              : deps.t('models.status-ready');
         return {
           name,
           type: config?.type ?? 'unknown',
@@ -94,10 +102,7 @@ export function registerModelsCommand(program: Command, deps: CliDeps): void {
         return;
       }
       if (context.providersPath === null) {
-        deps.ui.info(
-          'No LLM provider configured. Run `excalibur models setup` — the free default is local Ollama; ' +
-            'Kimi K2 (Moonshot) is the recommended paid option (bring your own key).',
-        );
+        deps.ui.info(deps.t('models.list-none'));
       }
       deps.ui.table(
         ['NAME', 'TYPE', 'BASE URL', 'KEY ENV', 'DEFAULT', 'STATUS'],
@@ -119,15 +124,12 @@ export function registerModelsCommand(program: Command, deps: CliDeps): void {
     .action(async (options: { yes?: boolean }) => {
       const providers = await promptProviderSetup(deps, { yes: options.yes === true });
       if (providers === null) {
-        deps.ui.info(
-          'Provider setup skipped. Excalibur needs an LLM — run `excalibur models setup` anytime ' +
-            '(free: local Ollama · recommended: Kimi K2 via Moonshot, BYOK).',
-        );
+        deps.ui.info(deps.t('models.setup-skipped'));
         return;
       }
       const filePath = writeProvidersFile(deps.cwd(), providers);
-      deps.ui.success(`Wrote ${filePath}`);
-      deps.ui.info('API keys are read from environment variables at call time — never stored.');
+      deps.ui.success(deps.t('models.setup-wrote', { filePath }));
+      deps.ui.info(deps.t('models.setup-keys-note'));
 
       // Offer a live connection check so onboarding ends with confidence, not a
       // guess. Skipped non-interactively and for the offline mock; a failure is
@@ -135,7 +137,7 @@ export function registerModelsCommand(program: Command, deps: CliDeps): void {
       const defaultName = providers.providers.default;
       const chosen = typeof defaultName === 'string' ? providers.providers[defaultName] : undefined;
       if (deps.ui.isInteractive() && chosen?.type !== 'mock') {
-        const test = await deps.ui.confirm('Test the connection now? (sends a tiny request)', {
+        const test = await deps.ui.confirm(deps.t('models.setup-test-confirm'), {
           defaultYes: true,
         });
         if (test) {

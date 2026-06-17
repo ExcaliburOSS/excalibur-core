@@ -36,7 +36,7 @@ export function registerSkillsCommand(program: Command, deps: CliDeps): void {
         return;
       }
       if (detected.length === 0) {
-        deps.ui.info('No skills detected (looked for **/SKILL.md in the repo and ~/.claude/skills).');
+        deps.ui.info(deps.t('skills.none-detected'));
         return;
       }
       deps.ui.table(
@@ -50,7 +50,7 @@ export function registerSkillsCommand(program: Command, deps: CliDeps): void {
           skill.path,
         ]),
       );
-      deps.ui.info('Skills are never auto-executed; enable them explicitly per repository.');
+      deps.ui.info(deps.t('skills.list-footer'));
     });
 
   skills
@@ -59,15 +59,22 @@ export function registerSkillsCommand(program: Command, deps: CliDeps): void {
     .argument('<id>', 'skill id (see skills list)')
     .action(async (id: string) => {
       const skill = findSkillById(await scanSkills(deps, deps.cwd()), id);
-      deps.ui.heading(`${skill.id} — ${skill.name}`);
-      deps.ui.write(`Description: ${skill.description ?? '(none)'}`);
-      deps.ui.write(`Path: ${skill.path} · Scope: ${skill.scope}`);
+      deps.ui.heading(deps.t('skills.inspect-heading', { id: skill.id, name: skill.name }));
+      deps.ui.write(deps.t('skills.inspect-description', { description: skill.description ?? '(none)' }));
+      deps.ui.write(deps.t('skills.inspect-path', { path: skill.path, scope: skill.scope }));
       deps.ui.write(
-        `Trust: ${displayTrust({ scope: skill.scope, trustLevel: skill.trustLevel })} · Enabled: ${skill.enabled ? 'yes' : 'no'}`,
+        deps.t('skills.inspect-trust', {
+          trust: displayTrust({ scope: skill.scope, trustLevel: skill.trustLevel }),
+          enabled: skill.enabled ? 'yes' : 'no',
+        }),
       );
-      deps.ui.write(`Triggers: ${skill.triggers.join(', ') || '(none declared)'}`);
-      deps.ui.write(`Dependencies: ${skill.dependencies.join(', ') || '(none declared)'}`);
-      deps.ui.write(`Tools required: ${skill.toolsRequired.join(', ') || '(none declared)'}`);
+      deps.ui.write(deps.t('skills.inspect-triggers', { triggers: skill.triggers.join(', ') || '(none declared)' }));
+      deps.ui.write(
+        deps.t('skills.inspect-dependencies', { dependencies: skill.dependencies.join(', ') || '(none declared)' }),
+      );
+      deps.ui.write(
+        deps.t('skills.inspect-tools', { tools: skill.toolsRequired.join(', ') || '(none declared)' }),
+      );
     });
 
   skills
@@ -85,18 +92,21 @@ export function registerSkillsCommand(program: Command, deps: CliDeps): void {
           // Contract §4.9: --yes alone is NOT enough for review_required skills —
           // --accept-risk is the explicit confirmation.
           throw new CliUsageError(
-            `Skill "${id}" is ${skill.trustLevel}. Review ${skill.path} first, then re-run with --accept-risk. ` +
-              'The --yes flag alone never enables unreviewed skills.',
+            deps.t('skills.enable-needs-accept-risk', {
+              id,
+              trustLevel: skill.trustLevel,
+              path: skill.path,
+            }),
           );
         }
         deps.ui.warn(
-          `Enabling ${skill.trustLevel} skill "${skill.name}" — you accepted the risk explicitly (--accept-risk).`,
+          deps.t('skills.enable-risk-accepted', { trustLevel: skill.trustLevel, name: skill.name }),
         );
       }
 
       upsertSourceRef(repoRoot, 'skills', configRef(skill, true));
-      deps.ui.success(`Skill "${id}" enabled in ${EXCALIBUR_DIR}/config.yaml.`);
-      deps.ui.info('Skills are never auto-executed — they only join the effective context.');
+      deps.ui.success(deps.t('skills.enabled', { id, dir: EXCALIBUR_DIR }));
+      deps.ui.info(deps.t('skills.enabled-footer'));
     });
 
   skills
@@ -107,6 +117,6 @@ export function registerSkillsCommand(program: Command, deps: CliDeps): void {
       const repoRoot = deps.cwd();
       const skill = findSkillById(await scanSkills(deps, repoRoot), id);
       upsertSourceRef(repoRoot, 'skills', configRef(skill, false));
-      deps.ui.success(`Skill "${id}" disabled in ${EXCALIBUR_DIR}/config.yaml.`);
+      deps.ui.success(deps.t('skills.disabled', { id, dir: EXCALIBUR_DIR }));
     });
 }

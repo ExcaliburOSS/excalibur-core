@@ -63,27 +63,27 @@ export function registerMethodologiesCommand(program: Command, deps: CliDeps): v
           .methodologies()
           .map((methodology) => methodology.id)
           .join(', ');
-        throw new CliUsageError(`Unknown methodology "${id}". Available: ${known}`);
+        throw new CliUsageError(deps.t('methodologies.unknown', { id, known }));
       }
-      deps.ui.heading(`${definition.name} (${definition.id})`);
+      deps.ui.heading(deps.t('methodologies.heading', { name: definition.name, id: definition.id }));
       deps.ui.write(definition.description.trim());
       if (definition.useWhen !== undefined && definition.useWhen.length > 0) {
         deps.ui.write();
-        deps.ui.heading('Use when:');
+        deps.ui.heading(deps.t('methodologies.use-when'));
         for (const line of definition.useWhen) deps.ui.write(`  - ${line}`);
       }
       if (definition.avoidWhen !== undefined && definition.avoidWhen.length > 0) {
         deps.ui.write();
-        deps.ui.heading('Avoid when:');
+        deps.ui.heading(deps.t('methodologies.avoid-when'));
         for (const line of definition.avoidWhen) deps.ui.write(`  - ${line}`);
       }
       if (definition.defaultWorkflow !== undefined) {
         deps.ui.write();
-        deps.ui.write(`Default workflow: ${definition.defaultWorkflow}`);
+        deps.ui.write(deps.t('methodologies.default-workflow', { workflow: definition.defaultWorkflow }));
       }
       if (definition.phases !== undefined && definition.phases.length > 0) {
-        deps.ui.write(`Phases: ${definition.phases.join(' → ')}`);
+        deps.ui.write(deps.t('methodologies.phases', { phases: definition.phases.join(' → ') }));
       }
-      deps.ui.write(`Risk profile: ${definition.riskProfile ?? 'medium'}`);
+      deps.ui.write(deps.t('methodologies.risk-profile', { risk: definition.riskProfile ?? 'medium' }));
     });
 }

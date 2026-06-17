@@ -48,7 +48,7 @@ export function registerWorkflowsCommand(program: Command, deps: CliDeps): void 
         deps.ui.warn(warning);
       }
       deps.ui.write();
-      deps.ui.info('Explain one with: excalibur workflows explain <id>');
+      deps.ui.info(deps.t('workflows.explain-hint'));
     });
 
   workflows
@@ -65,28 +65,32 @@ export function registerWorkflowsCommand(program: Command, deps: CliDeps): void 
           .workflows()
           .map((workflow) => workflow.id)
           .join(', ');
-        throw new CliUsageError(`Unknown workflow "${id}". Available: ${known}`);
+        throw new CliUsageError(deps.t('workflows.unknown', { id, known }));
       }
 
-      deps.ui.heading(`${definition.name} (${definition.id})`);
+      deps.ui.heading(deps.t('workflows.title', { name: definition.name, id: definition.id }));
       if (definition.description !== undefined) {
         deps.ui.write(definition.description.trim());
       }
-      deps.ui.write(`Mode: ${definition.mode}`);
+      deps.ui.write(deps.t('workflows.mode', { mode: definition.mode }));
       deps.ui.write(
-        `Supported autonomy levels: ${(definition.supportedAutonomyLevels ?? []).join(', ')}`,
+        deps.t('workflows.levels', {
+          levels: (definition.supportedAutonomyLevels ?? []).join(', '),
+        }),
       );
       deps.ui.write();
-      deps.ui.heading('Phases:');
+      deps.ui.heading(deps.t('workflows.phases-heading'));
       definition.phases.forEach((phase, index) => {
         const parts = [
           `${index + 1}. ${phase.name} ${pc.dim(`[${phase.type}]`)}`,
-          phase.role !== undefined ? pc.dim(`role: ${phase.role}`) : '',
-          phase.required === false ? pc.dim('(optional)') : '',
+          phase.role !== undefined ? pc.dim(deps.t('workflows.phase-role', { role: phase.role })) : '',
+          phase.required === false ? pc.dim(deps.t('workflows.phase-optional')) : '',
           phase.approval !== undefined && phase.approval !== 'none'
-            ? pc.yellow(`approval: ${phase.approval}`)
+            ? pc.yellow(deps.t('workflows.phase-approval', { approval: phase.approval }))
             : '',
-          phase.requiresHumanConfirmation === true ? pc.yellow('requires confirmation') : '',
+          phase.requiresHumanConfirmation === true
+            ? pc.yellow(deps.t('workflows.phase-confirmation'))
+            : '',
         ].filter((part) => part.length > 0);
         deps.ui.write(`  ${parts.join('  ')}`);
       });
@@ -95,7 +99,7 @@ export function registerWorkflowsCommand(program: Command, deps: CliDeps): void 
         .filter((output): output is string => output !== undefined);
       if (artifacts.length > 0) {
         deps.ui.write();
-        deps.ui.write(`Artifacts: ${artifacts.join(', ')}`);
+        deps.ui.write(deps.t('workflows.artifacts', { artifacts: artifacts.join(', ') }));
       }
     });
 }

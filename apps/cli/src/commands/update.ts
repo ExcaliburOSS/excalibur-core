@@ -178,7 +178,7 @@ export function registerUpdateCommand(
       // Skip the human "checking…" chatter in --json mode so stdout is a single
       // parseable JSON document (info/warn/json all write to stdout here).
       if (options.json !== true) {
-        deps.ui.info(`Checking for updates… (installed ${current})`);
+        deps.ui.info(deps.t('update.checking', { current }));
       }
       const { version: latest, error } = await lookup(deps);
 
@@ -193,8 +193,10 @@ export function registerUpdateCommand(
           return;
         }
         deps.ui.warn(
-          `Could not check for updates${error !== undefined ? ` (${error})` : ''}. ` +
-            `You can upgrade anytime with: ${UPGRADE_COMMAND}`,
+          deps.t('update.check-failed', {
+            errSuffix: error !== undefined ? ` (${error})` : '',
+            cmd: UPGRADE_COMMAND,
+          }),
         );
         return;
       }
@@ -208,23 +210,20 @@ export function registerUpdateCommand(
       }
 
       if (status === 'current') {
-        deps.ui.success(`You're up to date — @excalibur/cli ${current} is the latest release.`);
+        deps.ui.success(deps.t('update.up-to-date', { current }));
         return;
       }
 
       if (status === 'ahead') {
         // Installed is newer than the registry (local/dev/canary build): nothing to do.
-        deps.ui.info(
-          `Installed @excalibur/cli ${current} is newer than the latest published release (${latest}). ` +
-            'Nothing to update.',
-        );
+        deps.ui.info(deps.t('update.ahead', { current, latest }));
         return;
       }
 
       // status === 'outdated' → a newer version is available.
       deps.ui.write();
-      deps.ui.heading(`Update available: ${current} → ${latest}`);
-      deps.ui.info(`Upgrade with: ${UPGRADE_COMMAND}`);
+      deps.ui.heading(deps.t('update.available', { current, latest }));
+      deps.ui.info(deps.t('update.upgrade-with', { cmd: UPGRADE_COMMAND }));
 
       if (!deps.ui.isInteractive() && options.yes !== true) {
         return; // non-interactive without --yes: just surface the hint.
@@ -232,12 +231,14 @@ export function registerUpdateCommand(
 
       const shouldRun =
         options.yes === true ||
-        (await deps.ui.confirm(`Run "${UPGRADE_COMMAND}" now?`, { defaultYes: true }));
+        (await deps.ui.confirm(deps.t('update.confirm-run', { cmd: UPGRADE_COMMAND }), {
+          defaultYes: true,
+        }));
       if (!shouldRun) {
         return;
       }
 
-      deps.ui.info(`Running: ${UPGRADE_COMMAND}`);
+      deps.ui.info(deps.t('update.running', { cmd: UPGRADE_COMMAND }));
       try {
         const { stdout, stderr } = await execFileAsync(
           'npm',
@@ -251,13 +252,11 @@ export function registerUpdateCommand(
         if (tail.length > 0) {
           deps.ui.write(tail);
         }
-        deps.ui.success(
-          `Upgraded to @excalibur/cli@latest (${latest}). Restart your shell to use it.`,
-        );
+        deps.ui.success(deps.t('update.upgraded', { latest }));
       } catch (runError) {
         const message = runError instanceof Error ? runError.message : String(runError);
         // A failed upgrade is reported, never fatal — re-run the command manually.
-        deps.ui.warn(`Upgrade command failed: ${message}. Run it manually: ${UPGRADE_COMMAND}`);
+        deps.ui.warn(deps.t('update.upgrade-failed', { message, cmd: UPGRADE_COMMAND }));
       }
     });
 }

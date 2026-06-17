@@ -23,7 +23,7 @@ export function registerStatusCommand(program: Command, deps: CliDeps): void {
           return;
         }
         if (sessions.length === 0) {
-          deps.ui.info('No local discovery sessions. Start one with: excalibur discovery "<idea>"');
+          deps.ui.info(deps.t('status.no-discovery-sessions'));
           return;
         }
         deps.ui.table(
@@ -56,7 +56,7 @@ export function registerStatusCommand(program: Command, deps: CliDeps): void {
       }
 
       if (runs.length === 0) {
-        deps.ui.info('No local runs yet. Start one with: excalibur run "<task>"');
+        deps.ui.info(deps.t('status.no-runs'));
       } else {
         deps.ui.table(
           ['ID', 'TITLE', 'WORKFLOW', 'LEVEL', 'STATUS', 'STARTED'],
@@ -72,23 +72,25 @@ export function registerStatusCommand(program: Command, deps: CliDeps): void {
               run.record.startedAt,
             ]),
         );
-        deps.ui.info('Rewind any run like a video: excalibur rewind <id>');
+        deps.ui.info(deps.t('status.rewind-hint'));
       }
       deps.ui.write();
       deps.ui.info(
-        `Patches: ${patches.length} · Interactions: ${interactions.length} · Runs: ${runs.length}`,
+        deps.t('status.counts', {
+          patches: patches.length,
+          interactions: interactions.length,
+          runs: runs.length,
+        }),
       );
 
       // Progressive disclosure (onboarding §9): non-blocking suggestions.
       if (runs.length >= 5) {
         deps.ui.write();
-        deps.ui.heading('Useful next steps:');
-        deps.ui.write('  - Share team standards: excalibur init --team');
-        deps.ui.write('  - Add custom instructions under .excalibur/instructions/');
-        deps.ui.write(
-          '  - Tighten rules for sensitive paths in .excalibur/config.yaml (autonomy.paths)',
-        );
-        deps.ui.write('  - Connect GitHub Issues and work items (arrives in M4)');
+        deps.ui.heading(deps.t('status.next-steps-heading'));
+        deps.ui.write(deps.t('status.next-step-team'));
+        deps.ui.write(deps.t('status.next-step-instructions'));
+        deps.ui.write(deps.t('status.next-step-paths'));
+        deps.ui.write(deps.t('status.next-step-github'));
       }
     });
 }

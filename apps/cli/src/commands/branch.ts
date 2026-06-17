@@ -23,7 +23,7 @@ export function registerBranchCommand(program: Command, deps: CliDeps): void {
 
       if (!getGitInfo(repoRoot).isRepo) {
         throw new CliUsageError(
-          `Cannot create branch ${branchName}: ${repoRoot} is not a git repository. Run \`git init\` first.`,
+          deps.t('branch.not-a-repo', { branchName, repoRoot }),
         );
       }
 
@@ -31,17 +31,17 @@ export function registerBranchCommand(program: Command, deps: CliDeps): void {
       const diff = store.readArtifact(patch.id, 'diff.patch') ?? '';
       if (diff.trim().length === 0) {
         throw new CliUsageError(
-          `Patch ${patch.id} has an empty diff — nothing to apply onto a branch. Regenerate it with \`excalibur patch "<task>"\`.`,
+          deps.t('branch.empty-diff', { patchId: patch.id }),
         );
       }
 
       const confirmed =
         options.yes === true ||
-        (await deps.ui.confirm(`Create git branch ${branchName} and apply the patch onto it?`, {
+        (await deps.ui.confirm(deps.t('branch.confirm', { branchName }), {
           defaultYes: false,
         }));
       if (!confirmed) {
-        deps.ui.info('Branch creation cancelled.');
+        deps.ui.info(deps.t('branch.cancelled'));
         return;
       }
 
@@ -62,10 +62,7 @@ export function registerBranchCommand(program: Command, deps: CliDeps): void {
           reason,
         });
         store.update(patch.id, { status: 'branch_created' });
-        deps.ui.warn(
-          `Created branch ${branchName}, but the patch did not apply: ${reason}. ` +
-            `You are on ${branchName}; resolve it manually or regenerate the patch.`,
-        );
+        deps.ui.warn(deps.t('branch.applied-failed', { branchName, reason }));
         return;
       }
 
@@ -76,10 +73,8 @@ export function registerBranchCommand(program: Command, deps: CliDeps): void {
         filesAffected,
       });
       store.update(patch.id, { status: 'branch_created' });
-      deps.ui.success(
-        `Created branch ${branchName} and applied the patch (${
-          filesAffected.length > 0 ? filesAffected.join(', ') : 'no files detected'
-        }).`,
-      );
+      const files =
+        filesAffected.length > 0 ? filesAffected.join(', ') : deps.t('branch.no-files-detected');
+      deps.ui.success(deps.t('branch.applied-success', { branchName, files }));
     });
 }
