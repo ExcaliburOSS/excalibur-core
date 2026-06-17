@@ -7,6 +7,7 @@ import {
   planAgentAllocation,
   selectWorkflow,
   workflowCatalog,
+  type AdditionalContextSource,
   type TaskIntent,
 } from '@excalibur/core';
 import { analyzeRepository } from '@excalibur/context-engine';
@@ -37,6 +38,7 @@ import {
   requireConfiguredModel,
   safetyLine,
 } from './context';
+import { diagnosticsContextSource, runDiagnostics } from './diagnostics';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { pushLatestRun } from '../commands/login';
 
@@ -51,6 +53,11 @@ export interface RunTaskOptions {
   maxAgents?: number;
   yes?: boolean;
   sync?: boolean;
+  /**
+   * Run the repo typecheck first and feed its REAL compiler errors into the
+   * agent's context (M3 LSP-diagnostics value; opt-in — typecheck can be slow).
+   */
+  diagnostics?: boolean;
 }
 
 /** Distinct path-like mentions in a task — a rough pre-plan "affected modules" proxy. */
@@ -311,9 +318,31 @@ export async function runTask(
     break;
   }
 
+  // Real compiler diagnostics (M3): with --diagnostics, run the repo typecheck
+  // and feed its REAL errors into the agent's effective context, so fixes anchor
+  // on the compiler — not hallucinated problems. Opt-in (typecheck can be slow).
+  const diagnosticSources: AdditionalContextSource[] = [];
+  if (options.diagnostics === true) {
+    const typecheck = config.commands?.typecheck;
+    if (typecheck === undefined) {
+      deps.ui.warn(deps.t('review.noTypecheck'));
+    } else {
+      deps.ui.info(deps.t('review.runningDiagnostics', { typecheck }));
+      const result = runDiagnostics(repoRoot, typecheck);
+      const source = diagnosticsContextSource(result);
+      if (source !== null) {
+        diagnosticSources.push(source);
+        deps.ui.warn(deps.t('review.typecheckErrors', { count: result.diagnostics.length || 'some' }));
+      } else if (result.ok === true) {
+        deps.ui.success(deps.t('review.typecheckClean'));
+      }
+    }
+  }
+
   const effective = await buildEffectiveContext(deps, repoRoot, {
     workflowId: choice.workflowId,
     autonomyLevel: choice.autonomyLevel,
+    ...(diagnosticSources.length > 0 ? { additionalSources: diagnosticSources } : {}),
   });
   for (const warning of effective.warnings) {
     deps.ui.warn(warning);

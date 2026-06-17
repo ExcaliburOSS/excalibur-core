@@ -30,6 +30,7 @@ interface RunOptions {
   maxAgents?: string;
   yes?: boolean;
   sync?: boolean;
+  diagnostics?: boolean;
 }
 
 /** Parses a positive-integer agent count flag (`--agents` / `--max-agents`). */
@@ -108,6 +109,7 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
       'output format for CI/scripts: text (default), json (full run as one JSON doc), stream-json (one event per line)',
     )
     .option('--sync', 'push the finished run to Excalibur Enterprise (experimental)')
+    .option('--diagnostics', 'run the repo typecheck first and feed real compiler errors to the agent')
     .option('-y, --yes', 'skip prompts and accept safe defaults')
     .action(async (taskWords: string[], options: RunOptions) => {
       const task = taskWords.join(' ').trim();
@@ -130,6 +132,7 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
         ...(maxAgents !== undefined ? { maxAgents } : {}),
         ...(options.yes === true ? { yes: true } : {}),
         ...(options.sync === true ? { sync: true } : {}),
+        ...(options.diagnostics === true ? { diagnostics: true } : {}),
       };
 
       // `text` is unchanged: the run streams human output through deps.ui.
