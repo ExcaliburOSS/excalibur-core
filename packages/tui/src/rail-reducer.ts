@@ -1,6 +1,13 @@
 import type { ExcaliburEvent } from '@excalibur/shared';
 import { formatDiffStat, parseDiffStat } from './diff-stat.js';
-import type { ApprovalPrompt, Phase, PhaseEvent, RailModel, RunStatus } from './rail-types.js';
+import type {
+  ApprovalPrompt,
+  Phase,
+  PhaseEvent,
+  RailModel,
+  RunStatus,
+  TodoItem,
+} from './rail-types.js';
 
 /**
  * The keystone of the LIVING RAIL: folds an `ExcaliburEvent` stream into a
@@ -80,6 +87,7 @@ export function reduceRail(
   let inputTokens = 0;
   let outputTokens = 0;
   let approval: ApprovalPrompt | undefined;
+  let todos: TodoItem[] | undefined;
   let firstTs: number | undefined;
   let lastTs: number | undefined;
 
@@ -167,6 +175,19 @@ export function reduceRail(
           }
         }
         break;
+      case 'task_update': {
+        // Last snapshot wins (the model sends the full checklist each time).
+        const raw = Array.isArray(p['tasks']) ? (p['tasks'] as unknown[]) : [];
+        todos = raw.map((item) => {
+          const t = (item ?? {}) as { text?: unknown; status?: unknown };
+          return {
+            text: typeof t.text === 'string' ? t.text : '',
+            status:
+              t.status === 'in_progress' || t.status === 'completed' ? t.status : 'pending',
+          } satisfies TodoItem;
+        });
+        break;
+      }
       case 'model_call': {
         const c = p['costCents'];
         if (typeof c === 'number') {
@@ -203,6 +224,7 @@ export function reduceRail(
     phases,
     status,
     ...(approval !== undefined ? { approval } : {}),
+    ...(todos !== undefined ? { todos } : {}),
     done,
     errored,
   };

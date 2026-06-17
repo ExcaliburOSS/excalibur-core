@@ -105,7 +105,7 @@ export interface RenderRailOptions {
    * Localized status words (i18n). English defaults keep the golden snapshots +
    * the pure form byte-identical; the CLI passes translated labels.
    */
-  labels?: { push?: string; noPush?: string };
+  labels?: { push?: string; noPush?: string; tasks?: string };
 }
 
 /** Renders the rail model to an array of text lines. */
@@ -153,6 +153,37 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
       }
     }
   });
+
+  // The in-session checklist (the `task_update` band). One line per item with a
+  // state glyph; the active item reads in the accent, done items dim with a ✓,
+  // pending stay muted. A header shows the done/total count. Unlike Claude
+  // Code's ephemeral TodoWrite, this is folded from the event stream — so it is
+  // replayable and shows identically in `logs`.
+  if (model.todos !== undefined && model.todos.length > 0) {
+    const total = model.todos.length;
+    const doneCount = model.todos.filter((todo) => todo.status === 'completed').length;
+    lines.push(
+      ` ${c(glyph.logo, palette.accent)} ${c(options.labels?.tasks ?? 'Tasks', palette.text)}  ${c(
+        `${doneCount}/${total}`,
+        palette.muted,
+      )}`,
+    );
+    for (const todo of model.todos) {
+      const g =
+        todo.status === 'completed'
+          ? { ch: glyph.done, hex: palette.success }
+          : todo.status === 'in_progress'
+            ? { ch: glyph.running, hex: palette.accent }
+            : { ch: glyph.pending, hex: palette.muted };
+      const textHex =
+        todo.status === 'in_progress'
+          ? palette.text
+          : todo.status === 'completed'
+            ? palette.muted
+            : palette.muted;
+      lines.push(` ${c(RAIL, palette.rail)}   ${c(g.ch, g.hex)} ${c(todo.text, textHex)}`.trimEnd());
+    }
+  }
 
   if (model.approval !== undefined) {
     lines.push(

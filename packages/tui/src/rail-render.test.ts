@@ -118,6 +118,23 @@ describe('renderRail', () => {
     expect(withTokens[withTokens.length - 1]).toContain('3.2k↑ 540↓');
   });
 
+  it('renders the in-session checklist (task_update band) with a done/total count', () => {
+    const lines = renderRail(
+      model({
+        todos: [
+          { text: 'Add retry guard', status: 'completed' },
+          { text: 'Wire it up', status: 'in_progress' },
+          { text: 'Add a test', status: 'pending' },
+        ],
+      }),
+    );
+    const text = lines.join('\n');
+    expect(text).toContain('Tasks  1/3');
+    expect(text).toContain('Add retry guard');
+    expect(text).toContain('Wire it up');
+    expect(text).toContain('Add a test');
+  });
+
   it('prepends a per-tool glyph when an event carries a kind', () => {
     const lines = renderRail(
       model({

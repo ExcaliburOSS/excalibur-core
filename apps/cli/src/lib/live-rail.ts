@@ -39,7 +39,7 @@ export interface LiveRailOptions {
   /** Wall-clock source for the ticking elapsed (injectable for tests). */
   now?: () => number;
   /** Localized rail status words (i18n) forwarded to `renderRail`. */
-  labels?: { push?: string; noPush?: string };
+  labels?: { push?: string; noPush?: string; tasks?: string };
 }
 
 export class LiveRail {

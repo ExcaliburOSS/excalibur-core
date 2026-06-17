@@ -357,7 +357,11 @@ export async function runTask(
     model: gatewayContext.providerName,
     push: options.sync === true,
   };
-  const railLabels = { push: deps.t('rail.push'), noPush: deps.t('rail.noPush') };
+  const railLabels = {
+    push: deps.t('rail.push'),
+    noPush: deps.t('rail.noPush'),
+    tasks: deps.t('rail.tasks'),
+  };
   const liveRail = deps.ui.isOutputTty()
     ? new LiveRail(
         { writeRaw: (t) => deps.ui.writeRaw(t) },

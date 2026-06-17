@@ -587,4 +587,5 @@ export const ES: Catalog = {
   "rail.merge": "fusión",
   "rail.applied": "aplicados",
   "rail.conflict": "conflicto",
+  "rail.tasks": "Tareas",
 };

@@ -36,6 +36,7 @@ export const excaliburEventTypeSchema = z.enum([
   'error',
   'artifact_created',
   'compaction',
+  'task_update',
 ]);
 export type ExcaliburEventType = z.infer<typeof excaliburEventTypeSchema>;
 
@@ -50,6 +51,23 @@ export const excaliburEventSchema = z.object({
   payload: z.record(z.unknown()),
 });
 export type ExcaliburEvent = z.infer<typeof excaliburEventSchema>;
+
+/** A single item in the agent's in-session checklist (the `task_update` event). */
+export const taskItemSchema = z.object({
+  id: z.string().min(1),
+  text: z.string(),
+  status: z.enum(['pending', 'in_progress', 'completed']),
+});
+export type TaskItem = z.infer<typeof taskItemSchema>;
+
+/**
+ * Payload of a `task_update` event (event #25): a full SNAPSHOT of the agent's
+ * live checklist for the current request — last snapshot wins. Modeled as an
+ * event (not ephemeral UI state) so the checklist is replayable, forkable and
+ * auditable, which Claude Code's TodoWrite is not.
+ */
+export const taskUpdatePayloadSchema = z.object({ tasks: z.array(taskItemSchema) });
+export type TaskUpdatePayload = z.infer<typeof taskUpdatePayloadSchema>;
 
 export interface CreateEventInput {
   runId: string | null;

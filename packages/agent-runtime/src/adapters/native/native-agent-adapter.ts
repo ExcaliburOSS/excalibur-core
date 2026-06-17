@@ -64,6 +64,9 @@ const READ_ONLY_TOOLS: ReadonlyArray<NativeToolName> = [
   'list_files',
   'search_code',
   'git_diff',
+  // Maintaining the checklist has no side effects, so even a read-only/planning
+  // role may surface its plan as a live to-do list.
+  'update_tasks',
 ];
 
 /** Roles that get the read-only tool subset (they observe, they do not change the tree). */
@@ -109,6 +112,8 @@ function eventTypeForTool(name: NativeToolName): ExcaliburEventType {
     case 'run_command':
     case 'run_tests':
       return 'command_completed';
+    case 'update_tasks':
+      return 'task_update';
   }
 }
 
@@ -557,6 +562,10 @@ export class NativeAgentAdapter implements AgentAdapter {
     name: NativeToolName,
     args: Record<string, unknown>,
   ): { requiresConfirmation: boolean; reason: string } {
+    if (name === 'update_tasks') {
+      // The checklist is pure declaration — never gated.
+      return { requiresConfirmation: false, reason: 'checklist update (no side effect)' };
+    }
     if (name === 'write_file') {
       const d = permissions.checkPath(String(args['path'] ?? ''), 'write');
       return { requiresConfirmation: d.requiresConfirmation, reason: d.reason };
@@ -688,6 +697,20 @@ function toolEventPayload(
   }
   if (name === 'apply_patch') {
     base['simulated'] = false;
+  }
+  if (name === 'update_tasks') {
+    // Surface the checklist SNAPSHOT as the `task_update` payload; the reducer
+    // keys items by their (synthesized, stable-by-index) id.
+    const raw = Array.isArray(args['tasks']) ? (args['tasks'] as unknown[]) : [];
+    base['tasks'] = raw.map((item, index) => {
+      const t = (item ?? {}) as { text?: unknown; status?: unknown };
+      return {
+        id: `task-${index + 1}`,
+        text: typeof t.text === 'string' ? t.text : '',
+        status:
+          t.status === 'in_progress' || t.status === 'completed' ? t.status : 'pending',
+      };
+    });
   }
   // The (already-redacted) result text rides along, capped for event hygiene.
   base['result'] = result.length > 4000 ? `${result.slice(0, 4000)}…` : result;

@@ -54,6 +54,12 @@ export interface ApprovalPrompt {
   options: string; // e.g. "[y/N/always]"
 }
 
+/** One item of the agent's in-session checklist (the `task_update` event). */
+export interface TodoItem {
+  text: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
 export interface RunStatus {
   elapsedMs: number;
   costCents: number;
@@ -74,6 +80,8 @@ export interface RailModel {
   phases: Phase[];
   status: RunStatus;
   approval?: ApprovalPrompt;
+  /** The agent's live checklist (latest `task_update` snapshot), if any. */
+  todos?: TodoItem[];
   done: boolean;
   errored: boolean;
 }

@@ -442,7 +442,13 @@ describe('NativeAgentAdapter — role-based tool exposure', () => {
     const gateway = new FakeGateway([{ content: 'plan complete' }]);
     await collect(new NativeAgentAdapter().run(makeInput(gateway, { role: 'reviewer' })));
     const offered = gateway.received[0]?.tools?.map((t) => t.name) ?? [];
-    expect(offered.sort()).toEqual(['git_diff', 'list_files', 'read_file', 'search_code']);
+    expect(offered.sort()).toEqual([
+      'git_diff',
+      'list_files',
+      'read_file',
+      'search_code',
+      'update_tasks',
+    ]);
     expect(offered).not.toContain('write_file');
     expect(offered).not.toContain('run_command');
   });

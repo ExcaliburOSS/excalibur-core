@@ -588,6 +588,19 @@ async function execCreateBranch(
 }
 
 /**
+ * `update_tasks` is a no-op on disk: it only declares the agent's checklist. The
+ * native adapter turns the (validated) snapshot into a `task_update` event for
+ * the UI; here we just acknowledge it so the model continues.
+ */
+function execUpdateTasks(args: Record<string, unknown>): ToolResult {
+  const tasks = Array.isArray(args['tasks']) ? (args['tasks'] as unknown[]) : [];
+  const done = tasks.filter(
+    (t) => typeof t === 'object' && t !== null && (t as { status?: string }).status === 'completed',
+  ).length;
+  return ok(`checklist updated (${done}/${tasks.length} done)`);
+}
+
+/**
  * Executes a native tool with full defense in depth (validation → path
  * confinement → permission gate → redaction). NEVER throws: a denied/invalid
  * request returns `{ ok: false, result }` so the result can be fed back to the
@@ -625,6 +638,8 @@ export async function executeNativeTool(
         return await execApplyPatch(args, ctx);
       case 'create_branch':
         return await execCreateBranch(args, ctx);
+      case 'update_tasks':
+        return execUpdateTasks(args);
       default: {
         // Exhaustiveness guard: every NativeToolName is handled above.
         const exhaustive: never = name;

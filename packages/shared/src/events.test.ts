@@ -39,9 +39,10 @@ describe('createEvent', () => {
     expect(attributed.sessionId).toBe('sess_1');
   });
 
-  it('supports all 24 pinned event types', () => {
-    expect(excaliburEventTypeSchema.options).toHaveLength(24);
+  it('supports all 25 pinned event types', () => {
+    expect(excaliburEventTypeSchema.options).toHaveLength(25);
     expect(excaliburEventTypeSchema.options).toContain('compaction'); // the 24th (context compaction)
+    expect(excaliburEventTypeSchema.options).toContain('task_update'); // the 25th (in-session checklist)
     for (const type of excaliburEventTypeSchema.options) {
       const event = createEvent({ runId: 'run_1', type, payload: {} });
       expect(excaliburEventSchema.safeParse(event).success).toBe(true);

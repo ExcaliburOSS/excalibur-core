@@ -17,10 +17,11 @@ const PINNED_NAMES: NativeToolName[] = [
   'apply_patch',
   'create_branch',
   'run_tests',
+  'update_tasks',
 ];
 
 describe('NATIVE_TOOLS', () => {
-  it('contains exactly the nine pinned tools, in catalog order', () => {
+  it('contains exactly the pinned tools, in catalog order', () => {
     expect(NATIVE_TOOLS.map((tool) => tool.name)).toEqual(PINNED_NAMES);
     expect(NATIVE_TOOL_NAMES).toEqual(PINNED_NAMES);
   });

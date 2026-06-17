@@ -66,6 +66,30 @@ describe('reduceRail', () => {
     expect(rail.phases[0]?.costCents).toBeUndefined(); // Context made no model call
   });
 
+  it('folds task_update snapshots into the checklist (last snapshot wins)', () => {
+    const rail = reduceRail([
+      ev('phase_started', { name: 'Implement' }, 'p1'),
+      ev('task_update', {
+        tasks: [
+          { text: 'Add retry guard', status: 'in_progress' },
+          { text: 'Wire it up', status: 'pending' },
+        ],
+      }),
+      ev('task_update', {
+        tasks: [
+          { text: 'Add retry guard', status: 'completed' },
+          { text: 'Wire it up', status: 'in_progress' },
+          { text: 'Add a test', status: 'pending' },
+        ],
+      }),
+    ]);
+    expect(rail.todos).toEqual([
+      { text: 'Add retry guard', status: 'completed' },
+      { text: 'Wire it up', status: 'in_progress' },
+      { text: 'Add a test', status: 'pending' },
+    ]);
+  });
+
   it('marks the active phase waiting on an approval, and clears it on approve', () => {
     const waiting = reduceRail([
       ev('phase_started', { name: 'Implement' }, 'p1'),

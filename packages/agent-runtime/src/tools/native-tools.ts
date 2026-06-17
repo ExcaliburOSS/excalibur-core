@@ -18,6 +18,7 @@ export const NATIVE_TOOL_NAMES = [
   'apply_patch',
   'create_branch',
   'run_tests',
+  'update_tasks',
 ] as const;
 export type NativeToolName = (typeof NATIVE_TOOL_NAMES)[number];
 
@@ -143,6 +144,28 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
           .optional()
           .describe('Override test command (defaults to the detected one from config)'),
         pattern: z.string().min(1).optional().describe('Test name or file pattern to filter by'),
+      })
+      .strict(),
+  },
+  {
+    name: 'update_tasks',
+    description:
+      'Maintain a live checklist for the CURRENT request. Pass the FULL list each time (a snapshot that replaces the previous one), with exactly one item "in_progress" and finished ones "completed". It is shown to the user as a live to-do list. Use it for multi-step work to make your plan visible; skip it for trivial one-step tasks. Read-only — it changes nothing on disk.',
+    parameters: z
+      .object({
+        tasks: z
+          .array(
+            z.object({
+              text: z
+                .string()
+                .min(1)
+                .describe('Short imperative step, e.g. "Add a retry guard to the webhook handler"'),
+              status: z
+                .enum(['pending', 'in_progress', 'completed'])
+                .describe('pending | in_progress | completed'),
+            }),
+          )
+          .describe('The full checklist snapshot (replaces any previous one)'),
       })
       .strict(),
   },
