@@ -37,6 +37,7 @@ import {
 } from '../lib/context';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
+import { buildSessionLog, formatSessionLog } from '../lib/session-log';
 import { setAutoApprove } from '../lib/config-file';
 import { REWIND_SENTINEL } from '../ui';
 import { CLI_VERSION } from '../program';
@@ -325,6 +326,11 @@ export async function runInteractiveSession(
             printStatusLine(deps, runtime);
             continue;
           }
+          if (input.name === 'log') {
+            await handleLogCommand(deps, runtime, (prompt) => editor.question(prompt));
+            printStatusLine(deps, runtime);
+            continue;
+          }
           if (input.name === 'fork') {
             const ctrl = beginTurn();
             const execution = await handleForkCommand(deps, runtime, input.argv, ctrl.signal);
@@ -466,6 +472,7 @@ const GHOST_COMMANDS = [
   'rewind',
   'replay',
   'changes',
+  'log',
   'fork',
   'undo',
   'auto',
@@ -1222,6 +1229,50 @@ async function handleReplayCommand(
     await runScrubber(deps, runId, { question });
   } catch (error) {
     deps.ui.error(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * `/log` — the SESSION-level time-machine front-door. Aggregates every run this
+ * session spawned (from the transcript's run refs) into a navigable index, then
+ * lets the user drop into ANY run's scrubber (the per-run time-machine) by number
+ * — without needing to know its id. Reuses {@link buildSessionLog} +
+ * {@link runScrubber}. `q`/empty/EOF exits.
+ */
+async function handleLogCommand(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  question: (prompt: string) => Promise<string | null>,
+): Promise<void> {
+  for (;;) {
+    const transcript = runtime.store.readTranscript(runtime.session.id);
+    const entries = buildSessionLog(deps.cwd(), transcript);
+    for (const line of formatSessionLog(entries, deps.t)) {
+      deps.ui.write(line);
+    }
+    if (entries.length === 0) {
+      return;
+    }
+    const answer = await question(pc.cyan(deps.t('session-log.prompt')));
+    if (answer === null) {
+      return; // EOF / Ctrl-D
+    }
+    const text = answer.trim().toLowerCase();
+    if (text === '' || text === 'q' || text === 'quit' || text === 'exit') {
+      return;
+    }
+    const n = Number.parseInt(text, 10);
+    const entry = Number.isNaN(n) ? undefined : entries[n - 1];
+    if (entry === undefined) {
+      deps.ui.warn(deps.t('session-log.invalid', { max: entries.length }));
+      continue;
+    }
+    try {
+      await runScrubber(deps, entry.runId, { question }); // drop into that run's time-machine
+    } catch (error) {
+      deps.ui.error(error instanceof Error ? error.message : String(error));
+    }
+    // loop back → re-render the index after returning from the scrubber
   }
 }
 
