@@ -3,6 +3,7 @@ import {
   reduceRail,
   renderRail,
   type ColorTier,
+  type Palette,
   type ReduceRailOptions,
   type ThemeMode,
 } from '@excalibur/tui';
@@ -40,6 +41,8 @@ export interface LiveRailSink {
 export interface LiveRailOptions {
   tier: ColorTier;
   mode: ThemeMode;
+  /** Explicit palette (a named theme preset); wins over `mode` when provided. */
+  palette?: Palette;
   /** Forwarded to `reduceRail` (autonomyLabel/safety/model/push). */
   reduce: ReduceRailOptions;
   /** Animate the spinner on a timer between events (default true). */
@@ -142,6 +145,7 @@ export class LiveRail {
     const lines = renderRail(model, {
       tier: this.options.tier,
       mode: this.options.mode,
+      ...(this.options.palette !== undefined ? { palette: this.options.palette } : {}),
       spinnerFrame: this.frame,
       ...(this.options.labels !== undefined ? { labels: this.options.labels } : {}),
     });

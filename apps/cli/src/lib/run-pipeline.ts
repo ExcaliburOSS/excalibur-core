@@ -23,6 +23,7 @@ import type { WorkflowDefinition } from '@excalibur/workflow-schema';
 import {
   detectColorTier,
   detectThemeSync,
+  paletteFor,
   reduceRail,
   renderPlanCard,
   renderRail,
@@ -246,6 +247,9 @@ export async function runTask(
 
   const tier = detectColorTier();
   const mode = detectThemeSync() ?? 'dark';
+  // Honour the configured theme preset (ui.theme: auto/dark/light/daltonized/…)
+  // across the WHOLE live rail, not just the diff view.
+  const palette = paletteFor(config.ui?.theme ?? 'auto', mode);
 
   // The intent-driven run prompt (onboarding §6).
   for (;;) {
@@ -394,7 +398,7 @@ export async function runTask(
   const liveRail = deps.ui.isOutputTty()
     ? new LiveRail(
         { writeRaw: (t) => deps.ui.writeRaw(t) },
-        { tier, mode, reduce: reduceOpts, labels: railLabels },
+        { tier, mode, palette, reduce: reduceOpts, labels: railLabels },
       )
     : null;
 

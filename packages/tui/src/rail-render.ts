@@ -96,6 +96,8 @@ export interface RenderRailOptions {
   tier?: ColorTier;
   /** Light/dark palette selection (defaults to dark). */
   mode?: ThemeMode;
+  /** Explicit palette (a named theme preset); wins over `mode` when provided. */
+  palette?: Palette;
   /**
    * Expand EVERY phase's event stream, not just the active one. Used by the
    * inspect/replay surface (`excalibur logs`) where there is no live "active"
@@ -114,7 +116,7 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
   const frame = options.spinnerFrame ?? 0;
   const active = activeIndex(model.phases);
   const tier: ColorTier = options.tier ?? 'none';
-  const palette = getColors(options.mode ?? 'dark');
+  const palette = options.palette ?? getColors(options.mode ?? 'dark');
   // `c(text, hex)` paints only when colour is on; otherwise returns text as-is,
   // keeping the no-colour output byte-identical to the plain renderer.
   const c = (text: string, hex: string): string => (tier === 'none' ? text : paint(text, hex, tier));
