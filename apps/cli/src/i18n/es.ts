@@ -85,6 +85,7 @@ export const ES: Catalog = {
   "skills.disabled": "Skill \"{id}\" deshabilitada en {dir}/config.yaml.",
 
   // status
+  "ask.schema-invalid": "La respuesta del modelo no cumplió del todo el esquema: {errors}",
   "insights.no-runs": "Aún no hay ejecuciones locales — nada que resumir. Inicia una con: excalibur run \"<tarea>\"",
   "insights.title": "Insights — {runs} ejecuciones",
   "insights.status": "estado   ",

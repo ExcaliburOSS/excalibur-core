@@ -89,6 +89,7 @@ export const EN: Catalog = {
   "skills.disabled": "Skill \"{id}\" disabled in {dir}/config.yaml.",
 
   // status
+  "ask.schema-invalid": "The model's answer did not fully conform to the schema: {errors}",
   "insights.no-runs": "No local runs yet — nothing to summarise. Start one with: excalibur run \"<task>\"",
   "insights.title": "Insights — {runs} runs",
   "insights.status": "status   ",

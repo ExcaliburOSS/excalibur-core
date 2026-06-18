@@ -120,6 +120,17 @@ export {
 // Pre-flight estimate (dry-run forecast — plan differentiator #2)
 export { estimateRun, type RunEstimate, type EstimateInput } from './insights/estimate';
 
+// Structured output (provider-agnostic --json-schema — plan P1.12)
+export {
+  askStructured,
+  buildSchemaInstruction,
+  extractJsonValue,
+  validateAgainstSchema,
+  type JsonSchema,
+  type StructuredAskInput,
+  type StructuredAskResult,
+} from './structured/structured-output';
+
 // Turn receipt (post-turn summary derived from the event stream)
 export {
   buildTurnSummary,
