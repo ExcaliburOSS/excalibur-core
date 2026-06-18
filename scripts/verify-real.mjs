@@ -551,6 +551,22 @@ await scenario('skills / plans / insights — run cleanly with an empty history'
   assert(exc(dir, ['insights']).code === 0, 'insights should exit 0');
 });
 
+await scenario('verify — adversarial Verification Mesh over a run’s changes (MOAT)', () => {
+  const dir = freshRepo();
+  // A run that reliably produces a change for the mesh to verify.
+  exc(dir, ['run', 'create a file src/sub.ts exporting a subtract function', '--fast', '--yes'], 180000);
+  const runId = execFileSync('ls', ['-t', join(dir, '.excalibur/runs')]).toString().trim().split('\n')[0];
+  const { out, code } = exc(dir, ['verify', runId], 180000);
+  // The mesh ran REAL adversarial verifier lenses and produced a verdict.
+  assert(code === 0 || code === 1, 'verify exits cleanly (0 = passed, 1 = blocked)');
+  assert(/verif|adversarial|lens|pass|block/i.test(out), 'verify should report the mesh verdict');
+  // …and persisted evidence-linked proof (the auditable moat property).
+  assert(
+    existsSync(join(dir, '.excalibur/runs', runId, 'verification.md')),
+    'verify should persist verification.md evidence',
+  );
+});
+
 // ── Summary ───────────────────────────────────────────────────────────────────
 for (const dir of tmpRepos) {
   try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
