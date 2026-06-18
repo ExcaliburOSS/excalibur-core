@@ -1,8 +1,9 @@
 #!/usr/bin/env tsx
 import { render, useApp } from 'ink';
 import { useEffect, useReducer, type ReactElement } from 'react';
-import { PhaseTimeline, type Phase, type ApprovalPrompt } from './ink/PhaseTimeline.js';
+import { RunView } from './ink/RunView.js';
 import { ThemeProvider } from './ink/ThemeContext.js';
+import type { ApprovalPrompt, Phase, RailModel } from './rail-types.js';
 import { getColors, resolveThemeMode } from './theme.js';
 
 /**
@@ -190,26 +191,25 @@ function App(): ReactElement {
     return () => timers.forEach((timer) => clearTimeout(timer));
   }, [exit]);
 
-  return (
-    <PhaseTimeline
-      runId="run_20260613_143022"
-      title="Fix duplicate escrow release on webhook retry"
-      autonomyLabel="L3 — Implement in branch"
-      phases={state.phases}
-      status={{
-        elapsedMs: state.elapsedMs,
-        costCents: state.costCents,
-        safety: 'standard-safe',
-        push: false,
-        model: 'qwen',
-        inputTokens: 0,
-        outputTokens: 0,
-      }}
-      spinnerFrame={state.spinnerFrame}
-      approval={state.approval}
-      done={state.done}
-    />
-  );
+  const model: RailModel = {
+    runId: 'run_20260613_143022',
+    title: 'Fix duplicate escrow release on webhook retry',
+    autonomyLabel: 'L3 — Implement in branch',
+    phases: state.phases,
+    status: {
+      elapsedMs: state.elapsedMs,
+      costCents: state.costCents,
+      safety: 'standard-safe',
+      push: false,
+      model: 'qwen',
+      inputTokens: 0,
+      outputTokens: 0,
+    },
+    done: state.done,
+    errored: false,
+    ...(state.approval !== undefined ? { approval: state.approval } : {}),
+  };
+  return <RunView model={model} spinnerFrame={state.spinnerFrame} useStatic={false} />;
 }
 
 // Detect the terminal background BEFORE Ink takes over stdin, then render with

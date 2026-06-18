@@ -24,10 +24,15 @@
   },
   "typesVersions": {
     "*": {
-      "ink": ["dist/ink/index.d.ts"]
+      "ink": [
+        "dist/ink/index.d.ts"
+      ]
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
     "demo": "tsx src/demo-timeline.tsx",
     "build": "tsup",
@@ -43,6 +48,7 @@
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
+    "ink-testing-library": "^4.0.0",
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",
     "typescript": "^5.8.3",

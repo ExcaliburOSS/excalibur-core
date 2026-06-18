@@ -1,0 +1,240 @@
+import { describe, expect, it } from 'vitest';
+import { EventEmitter } from 'node:events';
+import { render } from 'ink-testing-library';
+import { createEvent } from '@excalibur/shared';
+import { stripAnsi } from '../color.js';
+import { darkColors } from '../theme.js';
+import type { RailModel } from '../rail-types.js';
+import { ThemeProvider } from './ThemeContext.js';
+import { RunView } from './RunView.js';
+import { mountRunView } from './mount.js';
+import { applyRunViewKey, createRunViewStore } from './store.js';
+
+function model(overrides: Partial<RailModel> = {}): RailModel {
+  return {
+    runId: 'run_test',
+    title: 'Fix duplicate escrow release',
+    autonomyLabel: 'L3',
+    phases: [
+      { id: 'context', name: 'Context', state: 'completed', detail: 'read 6 files' },
+      {
+        id: 'implement',
+        name: 'Implement',
+        state: 'running',
+        detail: 'escrow.service.ts',
+        events: [{ text: 'edit escrow.service.ts', note: '+24 −6', tone: 'accent', kind: 'write' }],
+      },
+      { id: 'verify', name: 'Verify', state: 'pending' },
+    ],
+    status: {
+      elapsedMs: 5000,
+      costCents: 12,
+      safety: 'standard-safe',
+      push: false,
+      model: 'kimi',
+      inputTokens: 0,
+      outputTokens: 0,
+    },
+    done: false,
+    errored: false,
+    ...overrides,
+  };
+}
+
+/** Renders <RunView> inside a ThemeProvider; returns the stripped last frame. */
+function frameOf(props: Parameters<typeof RunView>[0]): string {
+  const { lastFrame } = render(
+    <ThemeProvider colors={darkColors}>
+      <RunView {...props} />
+    </ThemeProvider>,
+  );
+  return stripAnsi(lastFrame() ?? '');
+}
+
+describe('<RunView>', () => {
+  it('renders the phases, the active phase event stream and the status line', () => {
+    const frame = frameOf({ model: model(), spinnerFrame: 0, useStatic: false });
+    expect(frame).toContain('Context');
+    expect(frame).toContain('Implement');
+    expect(frame).toContain('Verify');
+    expect(frame).toContain('edit escrow.service.ts');
+    expect(frame).toContain('+24');
+    // Status line: autonomy · safety · cost · elapsed · push · model.
+    expect(frame).toContain('L3');
+    expect(frame).toContain('standard-safe');
+    expect(frame).toContain('kimi');
+    expect(frame).toContain('no push');
+  });
+
+  it('renders an interactive approval (question + options)', () => {
+    const frame = frameOf({
+      model: model(),
+      spinnerFrame: 0,
+      useStatic: false,
+      approval: { question: 'Approve write to escrow.service.ts?', options: '[y/N/always]' },
+    });
+    expect(frame).toContain('Approve write to escrow.service.ts?');
+    expect(frame).toContain('[y/N/always]');
+  });
+
+  it('shows a done marker when the run completed', () => {
+    const phases = model().phases.map((p) => ({ ...p, state: 'completed' as const }));
+    const frame = frameOf({ model: model({ phases, done: true }), spinnerFrame: 0, useStatic: false });
+    expect(frame).toContain('done');
+  });
+
+  it('shows the failed glyph when the run errored', () => {
+    const frame = frameOf({ model: model({ errored: true }), spinnerFrame: 0, useStatic: false });
+    expect(frame).toContain('✗');
+  });
+
+  it('renders the todos band', () => {
+    const frame = frameOf({
+      model: model({
+        todos: [
+          { text: 'guard release() behind a table', status: 'completed' },
+          { text: 'add idempotency key', status: 'in_progress' },
+        ],
+      }),
+      spinnerFrame: 0,
+      useStatic: false,
+      tier: 'truecolor',
+    });
+    expect(frame).toContain('Tasks');
+    expect(frame).toContain('guard release()');
+    expect(frame).toContain('add idempotency key');
+  });
+
+  it('with <Static> on, the live region holds the active + pending tail (no crash)', () => {
+    const { lastFrame, frames } = render(
+      <ThemeProvider colors={darkColors}>
+        <RunView model={model()} spinnerFrame={0} useStatic />
+      </ThemeProvider>,
+    );
+    const live = stripAnsi(lastFrame() ?? '');
+    expect(live).toContain('Implement');
+    expect(live).toContain('Verify');
+    // The completed phase was flushed once (it appears across the written frames).
+    expect(stripAnsi(frames.join('\n'))).toContain('Context');
+  });
+});
+
+describe('createRunViewStore', () => {
+  it('accumulates events, ticks the frame and toggles diffs', () => {
+    const store = createRunViewStore();
+    expect(store.getSnapshot().events).toHaveLength(0);
+    store.push(createEvent({ runId: 'r', type: 'run_started', payload: {} }));
+    expect(store.getSnapshot().events).toHaveLength(1);
+    const before = store.getSnapshot().frame;
+    store.tick();
+    expect(store.getSnapshot().frame).toBe(before + 1);
+    expect(store.getSnapshot().diffsExpanded).toBe(false);
+    store.toggleDiffs();
+    expect(store.getSnapshot().diffsExpanded).toBe(true);
+  });
+
+  it('requestApproval resolves with the answer that resolveApproval supplies', async () => {
+    const store = createRunViewStore();
+    const promise = store.requestApproval({ question: 'Approve?', options: '[y/N]' });
+    expect(store.getSnapshot().approval).not.toBeNull();
+    store.resolveApproval('auto');
+    await expect(promise).resolves.toBe('auto');
+    expect(store.getSnapshot().approval).toBeNull();
+  });
+
+  it('fires registered escape handlers and unsubscribes', () => {
+    const store = createRunViewStore();
+    let fired = 0;
+    const off = store.onEscape(() => {
+      fired += 1;
+    });
+    store.fireEscape();
+    off();
+    store.fireEscape();
+    expect(fired).toBe(1);
+  });
+});
+
+describe('applyRunViewKey', () => {
+  it('maps y/n/a/Return to the approval answer', async () => {
+    for (const [input, expected] of [
+      ['y', 'yes'],
+      ['n', 'no'],
+      ['a', 'auto'],
+    ] as const) {
+      const store = createRunViewStore();
+      const promise = store.requestApproval({ question: 'Approve?', options: '[y/N/always]' });
+      applyRunViewKey(store, input, {});
+      await expect(promise).resolves.toBe(expected);
+    }
+    const store = createRunViewStore();
+    const promise = store.requestApproval({ question: 'Approve?', options: '[y/N/always]' });
+    applyRunViewKey(store, '', { return: true });
+    await expect(promise).resolves.toBe('yes');
+  });
+
+  it('ESC fires escape; Space toggles diffs only when no approval is pending', () => {
+    const store = createRunViewStore();
+    let escaped = 0;
+    store.onEscape(() => {
+      escaped += 1;
+    });
+    applyRunViewKey(store, '', { escape: true });
+    expect(escaped).toBe(1);
+    applyRunViewKey(store, ' ', {});
+    expect(store.getSnapshot().diffsExpanded).toBe(true);
+  });
+});
+
+// NOTE: the key→store contract is fully covered by `applyRunViewKey` above, and
+// `<Keys>` (mount.tsx) is a one-line `useInput` forward to it. End-to-end RAW
+// keystroke handling (raw mode + Ink's stdin parsing) is validated by the pty
+// smoke in scripts/verify-real.mjs (phase 5 of the Ink migration).
+
+/** A minimal fake stdout that collects every write (no real terminal). */
+function fakeStdout(): NodeJS.WriteStream & { frames: string[] } {
+  const out = new EventEmitter() as unknown as NodeJS.WriteStream & { frames: string[] };
+  out.frames = [];
+  out.columns = 80;
+  out.rows = 24;
+  out.write = ((chunk: string): boolean => {
+    out.frames.push(String(chunk));
+    return true;
+  }) as NodeJS.WriteStream['write'];
+  return out;
+}
+
+/** A non-TTY fake stdin (so the input guard stays inert — no raw mode). */
+function fakeStdin(): NodeJS.ReadStream {
+  const inp = new EventEmitter() as unknown as NodeJS.ReadStream;
+  inp.isTTY = false;
+  (inp as unknown as { setRawMode: () => void }).setRawMode = () => {};
+  inp.ref = (() => inp) as NodeJS.ReadStream['ref'];
+  inp.unref = (() => inp) as NodeJS.ReadStream['unref'];
+  inp.read = (() => null) as NodeJS.ReadStream['read'];
+  inp.setEncoding = (() => inp) as NodeJS.ReadStream['setEncoding'];
+  inp.resume = (() => inp) as NodeJS.ReadStream['resume'];
+  inp.pause = (() => inp) as NodeJS.ReadStream['pause'];
+  return inp;
+}
+
+describe('mountRunView', () => {
+  it('renders pushed events to its stdout and unmounts cleanly (non-TTY safe)', async () => {
+    const stdout = fakeStdout();
+    const handle = mountRunView({
+      palette: darkColors,
+      tier: 'truecolor',
+      reduce: { autonomyLabel: 'L3', safety: 'standard-safe', model: 'kimi' },
+      now: () => 1000,
+      tickMs: 0,
+      stdout,
+      stdin: fakeStdin(),
+    });
+    handle.push(createEvent({ runId: 'r', type: 'run_started', payload: { title: 'Test run' } }));
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    const out = stripAnsi(stdout.frames.join('\n'));
+    expect(out).toContain('kimi');
+    expect(out).toContain('standard-safe');
+    handle.unmount();
+  });
+});

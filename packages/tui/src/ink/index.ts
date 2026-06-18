@@ -9,12 +9,17 @@
  * its two presenters (Ink for TTY; `renderRail` strings for non-TTY/CI).
  */
 export { ThemeProvider, useColors } from './ThemeContext.js';
+export { RunView, type RunViewProps, type RunViewLabels } from './RunView.js';
 export {
-  PhaseTimeline,
-  type PhaseTimelineProps,
-  type PhaseState,
-  type PhaseEvent,
-  type Phase,
-  type ApprovalPrompt,
-  type RunStatus,
-} from './PhaseTimeline.js';
+  mountRunView,
+  type MountRunViewOptions,
+  type RunViewHandle,
+} from './mount.js';
+export {
+  createRunViewStore,
+  applyRunViewKey,
+  type RunViewStore,
+  type RunViewSnapshot,
+  type ApprovalAnswer,
+  type KeyFlags,
+} from './store.js';
