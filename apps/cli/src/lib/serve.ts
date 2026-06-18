@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { statSync } from 'node:fs';
+import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { collectInsights, RunManager } from '@excalibur/core';
 import type { ExcaliburEvent } from '@excalibur/shared';
@@ -112,25 +112,50 @@ function streamRun(
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
   });
-  const manager = new RunManager(repoRoot);
-  let sent = 0;
+  const path = new RunManager(repoRoot).eventsPath(id);
+  // INCREMENTAL tail: track a byte offset + read ONLY the bytes appended since the
+  // last poll (buffering a partial trailing line), so streaming a long run is
+  // O(total) instead of re-reading + re-parsing the whole log on every tick.
+  let offset = 0;
+  let lineBuffer = '';
   let done = false;
 
   const flush = (): void => {
-    let events: ExcaliburEvent[];
+    let size: number;
     try {
-      events = manager.readEvents(id);
+      size = statSync(path).size;
     } catch {
-      events = [];
+      return; // events.jsonl not created yet
     }
-    for (let i = sent; i < events.length; i += 1) {
-      const event = events[i];
-      res.write(`event: ${event?.type}\ndata: ${JSON.stringify(event)}\n\n`);
-      if (event?.type === 'run_completed') {
-        done = true;
+    if (size <= offset) return;
+    let fd: number | null = null;
+    try {
+      fd = openSync(path, 'r');
+      const length = size - offset;
+      const buf = Buffer.alloc(length);
+      const read = readSync(fd, buf, 0, length, offset);
+      offset += read;
+      lineBuffer += buf.toString('utf8', 0, read);
+    } catch {
+      return;
+    } finally {
+      if (fd !== null) closeSync(fd);
+    }
+    let nl = lineBuffer.indexOf('\n');
+    while (nl !== -1) {
+      const line = lineBuffer.slice(0, nl).trim();
+      lineBuffer = lineBuffer.slice(nl + 1);
+      if (line.length > 0) {
+        try {
+          const event = JSON.parse(line) as { type?: string };
+          res.write(`event: ${event.type ?? 'message'}\ndata: ${line}\n\n`);
+          if (event.type === 'run_completed') done = true;
+        } catch {
+          // a corrupt/partial line — skip it
+        }
       }
+      nl = lineBuffer.indexOf('\n');
     }
-    sent = events.length;
   };
 
   flush();

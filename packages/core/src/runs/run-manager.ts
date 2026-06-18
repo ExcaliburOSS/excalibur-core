@@ -140,6 +140,11 @@ export class RunManager {
     return content === null ? [] : parseEventsJsonl(content);
   }
 
+  /** Absolute path to a run's `events.jsonl` (for an incremental tail/stream). */
+  eventsPath(runId: string): string {
+    return join(this.dirFor(runId), EVENTS_FILE);
+  }
+
   /** Parsed `model-calls.jsonl` lines (cost/token ledger). Tolerant: skips bad lines. */
   readModelCalls(runId: string): ModelCallLine[] {
     const dir = this.dirFor(runId);

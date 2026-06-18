@@ -116,4 +116,22 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
     expect(text).toContain('event: run_completed');
     expect(text).toContain('event: end');
   });
+
+  it('TAILS events appended AFTER the stream opens (incremental byte-offset tail)', async () => {
+    const manager = new RunManager(repoRoot);
+    const run = manager.createRun({ title: 'live', autonomyLevel: 3, workflow: 'fast-fix', executionStyle: 'fast' });
+    // Only run_started exists when the client connects (no run_completed yet).
+    manager.appendEvent(run.id, createEvent({ runId: run.id, type: 'run_started', payload: { title: 'live' } }));
+    const res = await get(`/api/runs/${run.id}/stream`);
+    // Append more events AFTER the stream is open — the tail must pick them up.
+    manager.appendEvent(run.id, createEvent({ runId: run.id, type: 'phase_started', payload: { name: 'Analyze' }, phaseId: 'p1' }));
+    manager.appendEvent(run.id, createEvent({ runId: run.id, type: 'file_write', payload: { path: 'src/x.ts' }, phaseId: 'p1' }));
+    manager.appendEvent(run.id, createEvent({ runId: run.id, type: 'run_completed', payload: { status: 'completed' } }));
+    const text = await res.text(); // resolves once run_completed → end closes the stream
+    expect(text).toContain('event: run_started'); // replayed on connect
+    expect(text).toContain('event: phase_started'); // tailed after connect
+    expect(text).toContain('event: file_write'); // tailed after connect
+    expect(text).toContain('event: run_completed');
+    expect(text).toContain('event: end');
+  });
 });
