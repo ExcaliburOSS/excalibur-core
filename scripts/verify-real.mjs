@@ -372,7 +372,10 @@ await scenario('swarm — LIVE lanes render on a TTY (pty, real parallel agents)
     out = `${e.stdout ?? ''}${e.stderr ?? ''}`;
   }
   assert(/Swarm|lanes|merge/i.test(out), 'the live lanes panel should render on a pty');
-  assert(out.includes('\x1b[?2026h'), 'live frames must be wrapped in DEC 2026 synchronized output');
+  // The lanes now render via the Ink <LanesView> (in-place, log-update) — Ink
+  // hides the cursor for the live region (the ANSI LiveLanes' DEC-2026 sync was
+  // removed in the Ink migration). Assert the live in-place render happened.
+  assert(out.includes('\x1b[?25l'), 'the Ink live lanes view should hide the cursor for in-place rendering');
 });
 
 await scenario('/swarm — in-shell fan-out renders live lanes (pty REPL, real agents)', () => {
