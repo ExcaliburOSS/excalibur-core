@@ -39,10 +39,38 @@ export interface SwarmLaneContext {
   worktreePath: string;
   branch: string;
   index: number;
+  /** 1-based attempt number (>1 on a grader/throw re-dispatch). */
+  attempt: number;
+  /** The grader's feedback from the prior attempt — the runner folds it into the
+   * prompt to REVISE its work. Absent on the first attempt (and after a throw). */
+  feedback?: string;
 }
 
 /** Runs ONE lane's agent work inside its worktree, returning a lane-specific result. */
 export type SwarmLaneRunner<T> = (context: SwarmLaneContext) => Promise<T>;
+
+/** A grader's verdict on a lane's output (its diff). */
+export interface SwarmGrade {
+  /** Whether the lane's work meets the bar (merge it; stop revising). */
+  pass: boolean;
+  /** One line of actionable feedback fed back to the runner on a re-dispatch. */
+  feedback?: string;
+  /** Optional 0..1 score (informational). */
+  score?: number;
+}
+
+/**
+ * Scores a lane's output against the subtask (the rubric). When provided, a lane
+ * that PASSES is kept; a lane that FAILS is RE-DISPATCHED with the feedback (the
+ * revise-until-it-passes loop) up to `maxAttempts`, then marked failed. Pure
+ * orchestration: the model-backed judge plugs in from the CLI.
+ */
+export type SwarmLaneGrader<T> = (args: {
+  lane: SwarmLane;
+  diff: string;
+  result: T;
+  attempt: number;
+}) => Promise<SwarmGrade>;
 
 /** The outcome of one lane. */
 export interface SwarmLaneResult<T> {
@@ -51,10 +79,15 @@ export interface SwarmLaneResult<T> {
   branch: string;
   /** The lane's changes as a unified diff (working tree vs its base). */
   diff: string;
-  /** Whether the lane's runner threw (its diff is still captured if any). */
+  /** Whether the lane failed — its runner threw every attempt, OR (with a grader)
+   * it never met the rubric. A failed lane is EXCLUDED from the merge. */
   failed: boolean;
   error?: string;
   result?: T;
+  /** How many attempts the lane took (≥1; >1 means a grader/throw re-dispatch). */
+  attempts?: number;
+  /** The final grader verdict, when a grader ran. */
+  grade?: SwarmGrade;
 }
 
 /** A lane whose diff did not apply cleanly onto the accumulating merge. */
@@ -80,7 +113,7 @@ export interface SwarmLaneProgress {
   failed?: boolean;
 }
 
-export interface RunSwarmOptions {
+export interface RunSwarmOptions<T = unknown> {
   /** Max lanes whose runner executes concurrently (default: all). */
   maxConcurrency?: number;
   /** Worktree base ref (default: HEAD). */
@@ -95,12 +128,20 @@ export interface RunSwarmOptions {
    */
   onLane?: (progress: SwarmLaneProgress) => void;
   /**
-   * Max attempts per lane (default 1 = no retry). The grader/rubric "re-dispatch"
-   * pattern: a lane whose runner THROWS (a transient model/network error, a
-   * flaky tool) is retried up to this many times in its own worktree before it
-   * is marked failed. A lane that succeeds is never retried.
+   * Max attempts per lane (default 1 = no retry). A lane is re-dispatched in its
+   * own worktree (reset to base between attempts) when its runner THROWS (a
+   * transient model/network error), OR — with a {@link grade} — when its output
+   * fails the rubric. A lane that succeeds AND passes the grader is never
+   * retried.
    */
   maxAttempts?: number;
+  /**
+   * Optional grader: scores each lane's diff against its subtask. A failing lane
+   * is RE-DISPATCHED with the grader's feedback (the revise-until-it-passes loop)
+   * until it passes or `maxAttempts` is hit; an exhausted lane is marked failed.
+   * Off by default (throw-based retry only).
+   */
+  grade?: SwarmLaneGrader<T>;
 }
 
 /** Fires a lane-progress callback, swallowing any error (never breaks the swarm). */
@@ -143,7 +184,7 @@ export async function runSwarm<T>(
   repoRoot: string,
   lanes: ReadonlyArray<SwarmLane>,
   runner: SwarmLaneRunner<T>,
-  options: RunSwarmOptions = {},
+  options: RunSwarmOptions<T> = {},
 ): Promise<SwarmResult<T>> {
   if (!getGitInfo(repoRoot).isRepo) {
     throw new Error('Swarm fan-out needs a git repository (each lane runs in an isolated worktree).');
@@ -169,12 +210,14 @@ export async function runSwarm<T>(
   try {
     // 2. RUN (parallel — the slow agent work, bounded by maxConcurrency).
     const maxAttempts = Math.max(1, options.maxAttempts ?? 1);
+    type LaneRun = { failed: boolean; error?: string; result?: T; attempts: number; grade?: SwarmGrade };
     const runResults = await pool(
-      setups.map((setup) => async (): Promise<{ failed: boolean; error?: string; result?: T }> => {
+      setups.map((setup) => async (): Promise<LaneRun> => {
         let lastError = '';
+        let feedback: string | undefined;
         for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-          // Before a RETRY, restore the lane's worktree to pristine base so a
-          // failed attempt's partial edits never contaminate the retry's diff.
+          // Before a RE-DISPATCH, restore the lane's worktree to pristine base so
+          // a prior attempt's edits never contaminate this attempt's diff.
           if (attempt > 1) {
             resetWorktree(setup.worktreePath, baseRef);
           }
@@ -185,13 +228,33 @@ export async function runSwarm<T>(
               worktreePath: setup.worktreePath,
               branch: setup.branch,
               index: setup.index,
+              attempt,
+              ...(feedback !== undefined ? { feedback } : {}),
             });
+            // GRADE (when a grader is set): score this attempt's diff; a fail
+            // re-dispatches with feedback (revise loop) until it passes/exhausts.
+            if (options.grade !== undefined) {
+              stageAll(setup.worktreePath);
+              const diff = getLocalDiff(setup.worktreePath);
+              const grade = await options.grade({ lane: setup.lane, diff, result, attempt });
+              if (!grade.pass) {
+                lastError = grade.feedback ?? 'did not meet the rubric';
+                feedback = grade.feedback;
+                if (attempt < maxAttempts) {
+                  continue; // revise
+                }
+                emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled', failed: true });
+                return { failed: true, error: `rubric not met: ${lastError}`, attempts: attempt, grade };
+              }
+              emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled' });
+              return { failed: false, result, attempts: attempt, grade };
+            }
             emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled' });
-            return { failed: false, result };
+            return { failed: false, result, attempts: attempt };
           } catch (error) {
             lastError = error instanceof Error ? error.message : String(error);
-            // Re-dispatch on a non-final attempt; the worktree persists so the
-            // retry runs against the lane's own isolated tree.
+            feedback = undefined; // a thrown attempt yields no grader feedback
+            // Re-dispatch on a non-final attempt.
           }
         }
         emitLane(options.onLane, {
@@ -200,7 +263,7 @@ export async function runSwarm<T>(
           phase: 'settled',
           failed: true,
         });
-        return { failed: true, error: lastError };
+        return { failed: true, error: lastError, attempts: maxAttempts };
       }),
       options.maxConcurrency ?? setups.length,
     );
@@ -217,6 +280,8 @@ export async function runSwarm<T>(
         failed: run.failed,
         ...(run.error !== undefined ? { error: run.error } : {}),
         ...(run.result !== undefined ? { result: run.result } : {}),
+        ...(run.attempts !== undefined ? { attempts: run.attempts } : {}),
+        ...(run.grade !== undefined ? { grade: run.grade } : {}),
       };
     });
 
@@ -243,8 +308,9 @@ function mergeLaneDiffs<T>(
   addWorktree(repoRoot, mergePath, { branch: `excalibur/${prefix}-merge`, baseRef });
   try {
     for (const lane of laneResults) {
-      if (lane.diff.trim().length === 0) {
-        continue; // a lane that changed nothing contributes nothing
+      if (lane.failed || lane.diff.trim().length === 0) {
+        continue; // a failed lane (threw all attempts / never met the rubric) or
+        // one that changed nothing contributes no work to the merge.
       }
       const check = checkPatchApplies(mergePath, lane.diff);
       if (!check.applies) {

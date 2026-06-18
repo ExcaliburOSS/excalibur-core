@@ -184,6 +184,46 @@ describe('runSwarm', () => {
     }
   });
 
+  it('GRADES lanes: revises a failing lane with feedback until it passes; drops one that never does', async () => {
+    const repo = initRepo();
+    try {
+      const attempts = new Map<string, number>();
+      const result = await runSwarm(
+        repo,
+        [lane('improve'), lane('doomed')],
+        ({ lane: l, worktreePath, attempt, feedback }) => {
+          attempts.set(l.id, attempt);
+          // 'improve' writes a weak file first, then a GOOD one once it has
+          // grader feedback (the revise loop); 'doomed' is always weak.
+          const good = l.id === 'improve' && feedback !== undefined;
+          writeFileSync(join(worktreePath, `${l.id}.ts`), good ? '// GOOD\n' : '// weak\n', 'utf8');
+          return Promise.resolve({});
+        },
+        {
+          maxAttempts: 2,
+          grade: ({ diff }) =>
+            Promise.resolve(
+              diff.includes('GOOD') ? { pass: true } : { pass: false, feedback: 'make it GOOD' },
+            ),
+        },
+      );
+      // 'improve' failed attempt 1 (weak) → got feedback → passed attempt 2 (GOOD).
+      const improve = result.lanes.find((l) => l.id === 'improve');
+      expect(attempts.get('improve')).toBe(2);
+      expect(improve?.failed).toBe(false);
+      expect(improve?.attempts).toBe(2);
+      expect(improve?.grade?.pass).toBe(true);
+      // 'doomed' never met the rubric across both attempts → failed + EXCLUDED.
+      const doomed = result.lanes.find((l) => l.id === 'doomed');
+      expect(doomed?.failed).toBe(true);
+      expect(doomed?.error).toContain('rubric not met');
+      expect(result.mergedDiff).toContain('improve.ts');
+      expect(result.mergedDiff).not.toContain('doomed.ts');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
   it('respects the concurrency cap (never more lanes in flight than allowed)', async () => {
     const repo = initRepo();
     try {

@@ -4,6 +4,7 @@ import {
   planAgentAllocation,
   runSwarm,
   type Subtask,
+  type SwarmLaneGrader,
   type SwarmLaneProgress,
   type SwarmResult,
 } from '@excalibur/core';
@@ -110,6 +111,62 @@ export interface SwarmLaneSummary {
 }
 
 /**
+ * A model-backed lane grader (the rubric): asks the model whether a lane's diff
+ * FULLY satisfies its subtask, returning pass + one line of revise feedback.
+ * An empty diff never passes; a judge error is conservatively treated as pass
+ * (a flaky judge must not block otherwise-good work).
+ */
+export function makeLaneGrader(
+  chat: { chat(input: GatewayChatInput): Promise<{ content: string }> },
+  options: { provider?: string; signal?: AbortSignal } = {},
+): SwarmLaneGrader<SwarmLaneSummary> {
+  return async ({ lane, diff }) => {
+    if (diff.trim().length === 0) {
+      return { pass: false, feedback: 'No changes were produced — implement the subtask.' };
+    }
+    const system =
+      'You are a strict reviewer grading whether a DIFF fully and correctly implements a SUBTASK. ' +
+      'Reply with ONLY a JSON object {"pass": boolean, "feedback": string}: pass=true only when the ' +
+      'diff completely satisfies the subtask; feedback = ONE concrete sentence on what to fix ' +
+      '(empty string when pass). No prose, no code fences.';
+    const user = `Subtask:\n${lane.instruction}\n\nDiff:\n${diff.slice(0, 12000)}`;
+    try {
+      const out = await chat.chat({
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        maxTokens: 200,
+        metadata: { kind: 'swarm-grade' },
+        ...(options.provider !== undefined ? { provider: options.provider } : {}),
+        ...(options.signal !== undefined ? { signal: options.signal } : {}),
+      });
+      const parsed = parseFirstJsonObject(out.content);
+      const pass = parsed?.['pass'] === true;
+      const feedback =
+        typeof parsed?.['feedback'] === 'string' && parsed['feedback'].trim().length > 0
+          ? parsed['feedback'].trim()
+          : undefined;
+      return { pass, ...(feedback !== undefined ? { feedback } : {}) };
+    } catch {
+      return { pass: true }; // never block on a flaky judge
+    }
+  };
+}
+
+/** The lane's prompt: the subtask, plus a REVISE directive carrying the grader's
+ * feedback when a prior attempt was rejected. */
+function lanePrompt(instruction: string, feedback: string | undefined): string {
+  if (feedback === undefined || feedback.trim().length === 0) {
+    return instruction;
+  }
+  return (
+    `${instruction}\n\nA prior attempt was REJECTED by code review. Revise your ` +
+    `implementation to fully address this feedback:\n${feedback}`
+  );
+}
+
+/**
  * Runs the decomposed subtasks as a real swarm: each lane drives the real
  * {@link NativeAgentAdapter} in its isolated worktree against the gateway.
  */
@@ -123,6 +180,7 @@ export function executeSwarm(
     maxAttempts?: number;
     signal?: AbortSignal;
     onLane?: (progress: SwarmLaneProgress) => void;
+    grade?: SwarmLaneGrader<SwarmLaneSummary>;
   } = {},
 ): Promise<SwarmResult<SwarmLaneSummary>> {
   const byId = new Map(subtasks.map((s) => [s.id, s]));
@@ -130,11 +188,12 @@ export function executeSwarm(
     ...(options.maxConcurrency !== undefined ? { maxConcurrency: options.maxConcurrency } : {}),
     ...(options.maxAttempts !== undefined ? { maxAttempts: options.maxAttempts } : {}),
     ...(options.onLane !== undefined ? { onLane: options.onLane } : {}),
+    ...(options.grade !== undefined ? { grade: options.grade } : {}),
   };
   return runSwarm(
     repoRoot,
     subtasks.map((s) => ({ id: s.id, instruction: s.instruction })),
-    async ({ lane, worktreePath }): Promise<SwarmLaneSummary> => {
+    async ({ lane, worktreePath, feedback }): Promise<SwarmLaneSummary> => {
       const adapter = new NativeAgentAdapter();
       let costCents: number | null = null;
       let toolCalls = 0;
@@ -147,7 +206,7 @@ export function executeSwarm(
         runId: `swarm_${lane.id}`,
         sessionId: `swarm_${lane.id}`,
         workdir: worktreePath,
-        prompt: byId.get(lane.id)?.instruction ?? lane.instruction,
+        prompt: lanePrompt(byId.get(lane.id)?.instruction ?? lane.instruction, feedback),
         role: 'implementer',
         config: context.config,
         gateway: context.gateway,
@@ -191,6 +250,10 @@ export interface SwarmFlowOptions {
   yes?: boolean;
   /** Re-dispatch a failed lane up to this many times (grader/rubric retry). */
   retries?: number;
+  /** Grade each lane's diff against its subtask and REVISE failing lanes with
+   * feedback until they pass or attempts run out (a below-bar lane is dropped
+   * from the merge). Defaults attempts to 2 when set with no explicit --retries. */
+  grade?: boolean;
   /** Cancels the in-flight swarm (ESC / Ctrl-C). */
   signal?: AbortSignal;
 }
@@ -270,12 +333,22 @@ export async function runSwarmFlow(
   }
   let result;
   try {
+    // Grading enables the revise-until-it-passes loop; default to 2 attempts when
+    // graded with no explicit --retries (so a rejected lane gets one revision).
+    const gradeOn = options.grade === true;
+    const maxAttempts =
+      options.retries !== undefined && options.retries > 0
+        ? options.retries + 1
+        : gradeOn
+          ? 2
+          : undefined;
     result = await executeSwarm(deps, repoRoot, lanes, {
       gateway: ctx.gateway,
       config: ctx.config,
       autonomyAutoApprove: true, // a parallel batch can't prompt per-lane
-      ...(options.retries !== undefined && options.retries > 0
-        ? { maxAttempts: options.retries + 1 }
+      ...(maxAttempts !== undefined ? { maxAttempts } : {}),
+      ...(gradeOn
+        ? { grade: makeLaneGrader(ctx.gateway, { provider: ctx.providerName, ...signalOpt }) }
         : {}),
       ...signalOpt,
       ...(inkLanes !== null ? { onLane: (p: SwarmLaneProgress): void => inkLanes?.update(p) } : {}),

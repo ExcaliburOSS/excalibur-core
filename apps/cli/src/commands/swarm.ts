@@ -19,9 +19,10 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
     .argument('<task...>', 'the task to fan out')
     .option('--max-agents <n>', 'hard ceiling on the number of parallel agents')
     .option('--retries <n>', 're-dispatch a failed lane up to N times (grader/rubric retry)')
+    .option('--grade', 'grade each lane against its subtask and revise failing lanes with feedback until they pass (drops below-bar lanes from the merge)')
     .option('--apply', 'apply the merged changes to your working tree without prompting')
     .option('-y, --yes', 'skip prompts and apply the merged changes (same as --apply)')
-    .action(async (taskWords: string[], options: { maxAgents?: string; retries?: string; apply?: boolean; yes?: boolean }) => {
+    .action(async (taskWords: string[], options: { maxAgents?: string; retries?: string; grade?: boolean; apply?: boolean; yes?: boolean }) => {
       const task = taskWords.join(' ').trim();
       if (task.length === 0) {
         throw new CliUsageError(deps.t('swarm.taskEmpty'));
@@ -44,6 +45,7 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
         {
           ...(maxAgents !== undefined ? { maxAgents } : {}),
           ...(retries !== undefined ? { retries } : {}),
+          ...(options.grade === true ? { grade: true } : {}),
           ...(options.apply === true ? { apply: true } : {}),
           ...(options.yes === true ? { yes: true } : {}),
         },
