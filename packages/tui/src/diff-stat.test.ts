@@ -35,6 +35,23 @@ describe('parseDiffStat', () => {
   it('returns all-zero for an empty diff', () => {
     expect(parseDiffStat('')).toEqual({ additions: 0, deletions: 0, files: 0 });
   });
+
+  it('counts body lines whose content starts with ++/-- (not header miscount)', () => {
+    // Inside the hunk: `+++counter;` is an ADDED line `++counter;`, and
+    // `---counter;` is a DELETED line `--counter;` — not file headers.
+    const diff = [
+      'diff --git a/c.ts b/c.ts',
+      '--- a/c.ts',
+      '+++ b/c.ts',
+      '@@ -1,2 +1,2 @@',
+      '---counter;',
+      '+++counter;',
+    ].join('\n');
+    const stat = parseDiffStat(diff);
+    expect(stat.additions).toBe(1);
+    expect(stat.deletions).toBe(1);
+    expect(stat.files).toBe(1);
+  });
 });
 
 describe('formatDiffStat', () => {

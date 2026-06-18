@@ -62,6 +62,20 @@ describe('createModelSummarizer', () => {
     expect(structuredSummary.objective).toBe('O');
   });
 
+  it('parses the JSON object even with trailing prose that contains braces', async () => {
+    // A greedy /\{[\s\S]*\}/ would span to the LAST `}` (in the trailing note)
+    // and fail to parse; the balanced scanner takes just the first object.
+    const summarize = createModelSummarizer({
+      chat: fakeChat(
+        '{"summary":"S","objective":"O","decisions":[],"filesTouched":[],"pending":[]}\n\n' +
+          'Note: consider the edge case where config = {a: 1} is empty.',
+      ),
+    });
+    const { summary, structuredSummary } = await summarize(ENTRIES);
+    expect(summary).toBe('S');
+    expect(structuredSummary.objective).toBe('O');
+  });
+
   it('degrades to a prose-only summary when there is no JSON', async () => {
     const summarize = createModelSummarizer({ chat: fakeChat('The user built a login form; DB still pending.') });
     const { summary, structuredSummary } = await summarize(ENTRIES);
@@ -124,6 +138,24 @@ describe('createModelSummarizer', () => {
     // Spanish locale instruction reaches the system prompt.
     const sysMsg = captured[0]!.messages.find((m) => m.role === 'system');
     expect(sysMsg?.content).toContain('Spanish');
+  });
+
+  it('pruneToolOutputs gates per-entry truncation of the summarizer input', async () => {
+    const long = 'X'.repeat(5000); // well past the per-entry truncation cap
+    const entries = projectTranscript([turn(0, 'assistant', long)]).entries;
+    const reply = '{"summary":"ok","objective":"","decisions":[],"filesTouched":[],"pending":[]}';
+
+    const full: GatewayChatInput[] = [];
+    await createModelSummarizer({ chat: fakeChat(reply, full), pruneToolOutputs: false })(entries);
+    const fullMsg = full[0]!.messages.find((m) => m.role === 'user')!.content;
+
+    const pruned: GatewayChatInput[] = [];
+    await createModelSummarizer({ chat: fakeChat(reply, pruned), pruneToolOutputs: true })(entries);
+    const prunedMsg = pruned[0]!.messages.find((m) => m.role === 'user')!.content;
+
+    // The default (true) truncates the verbose entry; false sends much more.
+    expect(fullMsg.length).toBeGreaterThan(prunedMsg.length);
+    expect(prunedMsg).not.toContain('X'.repeat(2000));
   });
 });
 

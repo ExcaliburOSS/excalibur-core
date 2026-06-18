@@ -47,6 +47,53 @@ describe('parseUnifiedDiff', () => {
     expect(file?.deletions).toBe(0);
   });
 
+  it('parses a PURE rename (no ---/+++/@@) into a rename DiffFile', () => {
+    const diff = [
+      'diff --git a/src/old.ts b/src/new.ts',
+      'similarity index 100%',
+      'rename from src/old.ts',
+      'rename to src/new.ts',
+      '',
+    ].join('\n');
+    const [file] = parseUnifiedDiff(diff);
+    expect(file?.isRename).toBe(true);
+    expect(file?.path).toBe('src/new.ts');
+    expect(file?.oldPath).toBe('src/old.ts');
+    expect(file?.hunks).toEqual([]);
+  });
+
+  it('parses a BINARY change into a binary DiffFile', () => {
+    const diff = [
+      'diff --git a/logo.png b/logo.png',
+      'index 1111..2222 100644',
+      'Binary files a/logo.png and b/logo.png differ',
+      '',
+    ].join('\n');
+    const [file] = parseUnifiedDiff(diff);
+    expect(file?.isBinary).toBe(true);
+    expect(file?.path).toBe('logo.png');
+  });
+
+  it('handles a rename WITH edits (rename markers + a hunk)', () => {
+    const diff = [
+      'diff --git a/a.ts b/b.ts',
+      'similarity index 80%',
+      'rename from a.ts',
+      'rename to b.ts',
+      '--- a/a.ts',
+      '+++ b/b.ts',
+      '@@ -1 +1 @@',
+      '-const a = 1;',
+      '+const b = 2;',
+      '',
+    ].join('\n');
+    const [file] = parseUnifiedDiff(diff);
+    expect(file?.isRename).toBe(true);
+    expect(file?.path).toBe('b.ts');
+    expect(file?.additions).toBe(1);
+    expect(file?.deletions).toBe(1);
+  });
+
   it('marks the word-level changed span of a del→add pair', () => {
     const [file] = parseUnifiedDiff(MOD_DIFF);
     const lines = file!.hunks[0]!.lines;

@@ -92,6 +92,27 @@ describe('classifyTaskIntent', () => {
     expect(intent.recommendDiscoveryFirst).toBe(false);
   });
 
+  it('does NOT flag a sensitive path on a mere substring (src/data ≠ src/database.ts)', () => {
+    const withSensitive = fakeAnalysis({
+      patterns: {
+        hasBackend: true,
+        hasFrontend: false,
+        testDirs: [],
+        migrationDirs: [],
+        apiDirs: [],
+        domainDirs: [],
+        sensitivePaths: ['src/data'],
+      },
+    });
+    // "src/database.ts" merely CONTAINS "src/data" — must not read as sensitive.
+    const falsePositive = classifyTaskIntent('Refactor src/database.ts pagination', withSensitive, {});
+    expect(falsePositive.sensitiveAreas).not.toContain('src/data');
+    expect(falsePositive.sensitive).toBe(false);
+    // A real path-boundary mention IS flagged.
+    const real = classifyTaskIntent('Refactor src/data/store.ts', withSensitive, {});
+    expect(real.sensitiveAreas).toContain('src/data');
+  });
+
   it('classifies normal feature work as standard-feature at level 3', () => {
     const intent = classifyTaskIntent(
       'Implement renewal reminder notifications for expiring documents',

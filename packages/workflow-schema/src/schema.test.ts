@@ -51,6 +51,15 @@ describe('workflowPhaseSchema', () => {
     expect(phase.required).toBe(false);
   });
 
+  it('rejects a phase declared both required:true and optional:true', () => {
+    expect(
+      workflowPhaseSchema.safeParse({ ...minimalPhase, required: true, optional: true }).success,
+    ).toBe(false);
+    // The non-contradictory combos still parse.
+    expect(workflowPhaseSchema.safeParse({ ...minimalPhase, optional: true }).success).toBe(true);
+    expect(workflowPhaseSchema.safeParse({ ...minimalPhase, required: true }).success).toBe(true);
+  });
+
   it('preserves explicit onFailure and maxRetries', () => {
     const phase = workflowPhaseSchema.parse({
       ...minimalPhase,
@@ -109,6 +118,27 @@ describe('workflowDefinitionSchema', () => {
   it('requires at least one phase', () => {
     const result = workflowDefinitionSchema.safeParse({ ...minimalWorkflow, phases: [] });
     expect(result.success).toBe(false);
+  });
+
+  it('rejects duplicate phase ids (events are attributed by phase id)', () => {
+    const result = workflowDefinitionSchema.safeParse({
+      ...minimalWorkflow,
+      phases: [
+        { id: 'p', name: 'One', type: 'agent_review' },
+        { id: 'p', name: 'Two', type: 'agent_work' },
+      ],
+    });
+    expect(result.success).toBe(false);
+    // Distinct ids are fine.
+    expect(
+      workflowDefinitionSchema.safeParse({
+        ...minimalWorkflow,
+        phases: [
+          { id: 'a', name: 'One', type: 'agent_review' },
+          { id: 'b', name: 'Two', type: 'agent_work' },
+        ],
+      }).success,
+    ).toBe(true);
   });
 
   it('rejects out-of-range autonomy levels', () => {

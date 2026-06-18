@@ -736,6 +736,7 @@ function buildCompactionSummarizer(
       chat: gateway.gateway,
       provider,
       locale: sessionLocale(runtime),
+      pruneToolOutputs: config.pruneToolOutputs,
     });
   } catch {
     return undefined; // any resolution failure → offline default (never blocks)

@@ -221,6 +221,20 @@ const FEATURE_PATTERN =
 /** File-ish path mentions in a task description (`src/auth/login.ts`, `prisma/migrations`). */
 const TASK_PATH_PATTERN = /[\w.-]+(?:\/[\w.-]+)+/g;
 
+/**
+ * Whether `term` appears in `haystack` on word/path boundaries (not glued to a
+ * surrounding word). So `auth` matches "src/auth/x" and "use auth" but NOT
+ * "author"; case-insensitive. Prevents the substring false positives that made
+ * unrelated tasks read as touching a sensitive area.
+ */
+function mentionsTerm(haystack: string, term: string): boolean {
+  if (term.length === 0) {
+    return false;
+  }
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[^\\w])${escaped}(?:[^\\w]|$)`, 'i').test(haystack);
+}
+
 function sensitiveAreasFor(
   task: string,
   analysis: RepoAnalysis,
@@ -234,14 +248,15 @@ function sensitiveAreasFor(
   }
 
   const mentionedPaths = task.match(TASK_PATH_PATTERN) ?? [];
-  const lowerTask = task.toLowerCase();
 
   // Repository-detected sensitive paths (auth/billing/payments dirs, .env*).
   for (const sensitivePath of analysis.patterns.sensitivePaths) {
     const normalized = sensitivePath.replace(/\\/g, '/');
+    // Match on word/path boundaries, NOT raw substring — otherwise `auth`
+    // matches "author", `data` matches "database", `api` matches "rapid", etc.
     const hit =
-      lowerTask.includes(normalized.toLowerCase()) ||
-      mentionedPaths.some((mentioned) => mentioned.toLowerCase().includes(normalized.toLowerCase()));
+      mentionsTerm(task, normalized) ||
+      mentionedPaths.some((mentioned) => mentionsTerm(mentioned, normalized));
     if (hit && !areas.includes(normalized)) {
       areas.push(normalized);
     }

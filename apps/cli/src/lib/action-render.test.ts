@@ -136,4 +136,24 @@ describe('ActionRenderer (live per-action view)', () => {
     ]);
     expect(out).toContain('user declined: blocked path');
   });
+
+  it('renders a standalone error (✗) when no tool call is open — no dangling ⎿', () => {
+    const out = render([ev('error', { message: 'run failed before any tool' })]);
+    expect(out).toContain('✗');
+    expect(out).toContain('run failed before any tool');
+    expect(out).not.toContain('⎿'); // no connector pointing at a non-existent header
+  });
+
+  it('"N more diff lines" counts only elided CHANGE lines, not skipped context', () => {
+    // 10 shown (BODY_CAP), then context (must NOT count) + 5 more changes (count).
+    const body: string[] = ['diff --git a/x b/x', '--- a/x', '+++ b/x', '@@ -1,20 +1,20 @@'];
+    for (let i = 0; i < 10; i += 1) body.push(`+added ${i}`);
+    for (let i = 0; i < 4; i += 1) body.push(` context ${i}`); // beyond the cap → skipped
+    for (let i = 0; i < 5; i += 1) body.push(`+overflow ${i}`); // beyond the cap → hidden
+    const out = render([
+      ev('tool_call', { tool: 'apply_patch', arguments: { diff: body.join('\n') } }),
+      ev('patch_applied', { tool: 'apply_patch', ok: true, result: 'applied' }),
+    ]);
+    expect(out).toContain('+5 more diff lines'); // 5, not 9 (the 4 context lines don't count)
+  });
 });

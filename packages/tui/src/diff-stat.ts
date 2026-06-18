@@ -25,12 +25,19 @@ export function parseDiffStat(diff: string): DiffStat {
   let deletions = 0;
   let gitHeaders = 0;
   let plusHeaders = 0;
+  // `+++`/`---` are FILE HEADERS only OUTSIDE a hunk. Inside a hunk a body line
+  // whose content starts with `++`/`--` appears as `+++…`/`---…` and must count
+  // as an addition/deletion — track hunk state to disambiguate.
+  let inHunk = false;
   for (const line of diff.split('\n')) {
     if (line.startsWith('diff --git')) {
       gitHeaders += 1;
-    } else if (line.startsWith('+++')) {
+      inHunk = false;
+    } else if (line.startsWith('@@')) {
+      inHunk = true;
+    } else if (!inHunk && line.startsWith('+++')) {
       plusHeaders += 1;
-    } else if (line.startsWith('---')) {
+    } else if (!inHunk && line.startsWith('---')) {
       // file header, ignore
     } else if (line.startsWith('+')) {
       additions += 1;

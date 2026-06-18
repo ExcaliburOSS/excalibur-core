@@ -66,6 +66,21 @@ describe('reduceRail', () => {
     expect(rail.phases[0]?.costCents).toBeUndefined(); // Context made no model call
   });
 
+  it('ticks elapsed with nowMs for a LIVE run, freezes at the final event when done', () => {
+    const live = [ev('run_started', { title: 't' }), ev('phase_started', { name: 'P' }, 'p')];
+    const firstTs = Date.parse(live[0]!.timestamp);
+    const nowMs = firstTs + 60_000; // 60s after the run started, only 1s of events
+    // Live: the clock follows wall time, not the last event's timestamp.
+    expect(reduceRail(live, { nowMs }).status.elapsedMs).toBe(60_000);
+
+    // Done: frozen at the final event, ignoring a much-later nowMs.
+    const finished = [...live, ev('run_completed', {})];
+    const lastTs = Date.parse(finished[finished.length - 1]!.timestamp);
+    const done = reduceRail(finished, { nowMs }).status.elapsedMs;
+    expect(done).toBe(lastTs - firstTs);
+    expect(done).toBeLessThan(60_000);
+  });
+
   it('folds task_update snapshots into the checklist (last snapshot wins)', () => {
     const rail = reduceRail([
       ev('phase_started', { name: 'Implement' }, 'p1'),

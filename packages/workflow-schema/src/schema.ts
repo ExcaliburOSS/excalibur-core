@@ -98,7 +98,19 @@ function normalizePhase(phase: z.infer<typeof workflowPhaseObjectSchema>): Workf
  * `required: false` and fills the documented defaults (`required: true`,
  * `onFailure: 'abort'`).
  */
-export const workflowPhaseSchema = workflowPhaseObjectSchema.transform(normalizePhase);
+export const workflowPhaseSchema = workflowPhaseObjectSchema
+  .superRefine((phase, ctx) => {
+    // `required:true` + `optional:true` is a contradiction — silently letting
+    // `optional` win would mask an authoring mistake. Reject it explicitly.
+    if (phase.required === true && phase.optional === true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'a phase cannot be both required:true and optional:true',
+        path: ['optional'],
+      });
+    }
+  })
+  .transform(normalizePhase);
 
 export interface WorkflowDefaults {
   model?: string;
@@ -142,12 +154,29 @@ const workflowDefinitionObjectSchema = z.object({
  * Schema for a full workflow definition. `supportedAutonomyLevels` defaults
  * to all levels when omitted.
  */
-export const workflowDefinitionSchema = workflowDefinitionObjectSchema.transform(
-  (definition): WorkflowDefinition => ({
-    ...definition,
-    supportedAutonomyLevels: definition.supportedAutonomyLevels ?? [...ALL_AUTONOMY_LEVELS],
-  }),
-);
+export const workflowDefinitionSchema = workflowDefinitionObjectSchema
+  .superRefine((definition, ctx) => {
+    // Phase ids must be unique: events are attributed to a phase by id, so a
+    // duplicate would merge two phases in the rail / reduceRail and corrupt
+    // progress tracking.
+    const seen = new Set<string>();
+    definition.phases.forEach((phase, index) => {
+      if (seen.has(phase.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `duplicate phase id "${phase.id}" — phase ids must be unique`,
+          path: ['phases', index, 'id'],
+        });
+      }
+      seen.add(phase.id);
+    });
+  })
+  .transform(
+    (definition): WorkflowDefinition => ({
+      ...definition,
+      supportedAutonomyLevels: definition.supportedAutonomyLevels ?? [...ALL_AUTONOMY_LEVELS],
+    }),
+  );
 
 /** Approval guidance values used by methodology approval maps. */
 export const methodologyApprovalValueSchema = z.enum([

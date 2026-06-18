@@ -154,7 +154,7 @@ export class EffectiveInstructionBuilder {
     const includeUserGlobal = input.includeUserGlobal ?? false;
     const scanned = await scanInstructionSources({ repoRoot, includeUserGlobal });
 
-    const candidates: CandidateSource[] = [];
+    let candidates: CandidateSource[] = [];
 
     // Level 2 — repository `.excalibur` instructions (+ level 4 workflow file).
     candidates.push(...this.excaliburInstructionSources(repoRoot, input.workflowId));
@@ -171,7 +171,14 @@ export class EffectiveInstructionBuilder {
     // files (2–5) and above skills (7). Flows through the same render path.
     candidates.push(...this.additionalContextSources(input.additionalSources));
 
-    candidates.sort((a, b) => a.precedence - b.precedence);
+    // Sort by precedence, then by ORIGINAL insertion order as an explicit
+    // tiebreak — so the within-precedence ordering (e.g. general.md leading the
+    // repo instructions) is deterministic by construction, not reliant on the
+    // JS engine's sort being stable.
+    candidates = candidates
+      .map((candidate, order) => ({ candidate, order }))
+      .sort((a, b) => a.candidate.precedence - b.candidate.precedence || a.order - b.order)
+      .map((entry) => entry.candidate);
 
     // Dedupe overlapping files by content hash — highest precedence wins.
     const seenHashes = new Set<string>();
@@ -425,10 +432,6 @@ export class EffectiveInstructionBuilder {
     const omitted: string[] = [];
 
     for (const candidate of included) {
-      if (omitted.length > 0) {
-        omitted.push(candidate.source.path);
-        continue;
-      }
       const header = headerFor(candidate.source);
       const redacted = redactSecrets(candidate.content.trim());
       const perSource = truncate(redacted, INSTRUCTION_SOURCE_CHAR_CAP);

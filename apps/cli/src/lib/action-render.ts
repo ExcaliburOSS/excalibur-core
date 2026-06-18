@@ -5,6 +5,7 @@ import {
   getColors,
   paint,
   renderTodos,
+  stripAnsi,
   type ColorTier,
   type Palette,
   type TodoItem,
@@ -249,12 +250,11 @@ export class ActionRenderer {
         return;
       case 'policy_decision':
         if (event.payload['kind'] === 'confirmation' && event.payload['decision'] === 'deny') {
-          const msg = s(event, 'message') || this.t('action-render.declined');
-          this.closeWithResult(`    ${this.c(this.g('⎿', 'L'), this.palette.warn)} ${this.c(msg, this.palette.warn)}`);
+          this.writeNotice(stripAnsi(s(event, 'message')) || this.t('action-render.declined'), this.palette.warn);
         }
         return;
       case 'error':
-        this.closeWithResult(`    ${this.c(this.g('⎿', 'L'), this.palette.danger)} ${this.c(this.t('action-render.error', { message: s(event, 'message') }), this.palette.danger)}`);
+        this.writeNotice(this.t('action-render.error', { message: stripAnsi(s(event, 'message')) }), this.palette.danger);
         return;
       case 'verification': {
         this.dropNarration();
@@ -314,7 +314,10 @@ export class ActionRenderer {
     const args = this.pending?.args ?? {};
 
     if (!ok) {
-      this.closeWithResult(this.c(`${this.indent()} ${s(event, 'result') || this.t('action-render.failed')}`, this.palette.danger));
+      // The result may carry its OWN ANSI (e.g. a colored test runner): strip it
+      // first so its reset codes don't terminate the danger color mid-line.
+      const reason = stripAnsi(s(event, 'result')) || this.t('action-render.failed');
+      this.closeWithResult(`${this.indent()} ${this.c(reason, this.palette.danger)}`);
       return;
     }
 
@@ -427,18 +430,18 @@ export class ActionRenderer {
       if (raw.length === 0) {
         continue;
       }
+      // Only +/− lines are rendered; context lines are skipped to keep the live
+      // view tight — so they must NOT inflate the "N more diff lines" count.
+      const isChange = raw.startsWith('+') || raw.startsWith('-');
+      if (!isChange) {
+        continue;
+      }
       if (shown >= BODY_CAP) {
         hidden += 1;
         continue;
       }
-      if (raw.startsWith('+')) {
-        out.push(`    ${this.c(raw, this.palette.success)}`);
-        shown += 1;
-      } else if (raw.startsWith('-')) {
-        out.push(`    ${this.c(raw, this.palette.danger)}`);
-        shown += 1;
-      }
-      // context lines are skipped to keep the live view tight
+      out.push(`    ${this.c(raw, raw.startsWith('+') ? this.palette.success : this.palette.danger)}`);
+      shown += 1;
     }
     if (hidden > 0) {
       out.push(this.c(`    … ${this.t('action-render.moreDiffLines', { count: hidden })} · /changes`, this.palette.muted));
@@ -463,6 +466,19 @@ export class ActionRenderer {
   private closeWithResult(line: string): void {
     this.ui.write(line);
     this.pending = null;
+  }
+
+  /**
+   * Renders an error/decline notice. When a tool call is OPEN it attaches as the
+   * call's `⎿` result; otherwise it stands alone with a top-level glyph — never
+   * a dangling `⎿` connector pointing at no header above it.
+   */
+  private writeNotice(message: string, hex: string): void {
+    if (this.pending !== null) {
+      this.closeWithResult(`    ${this.c(this.g('⎿', 'L'), hex)} ${this.c(message, hex)}`);
+    } else {
+      this.ui.write(`  ${this.c(this.g('✗', 'x'), hex)} ${this.c(message, hex)}`.trimEnd());
+    }
   }
 }
 

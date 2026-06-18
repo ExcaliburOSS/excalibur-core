@@ -4,6 +4,7 @@ import {
   type ChatOutput,
   type GatewayChatInput,
 } from '@excalibur/model-gateway';
+import { extractJsonValues } from '../structured/structured-output';
 import type { StructuredSummary, TranscriptEntry } from './types';
 
 /**
@@ -49,6 +50,13 @@ export interface ModelSummarizerOptions {
   timeoutMs?: number;
   /** Abort signal forwarded to the chat call. */
   signal?: AbortSignal;
+  /**
+   * When true (the `compaction.pruneToolOutputs` default), each entry is
+   * truncated to a per-entry cap before summarizing — the cheap "prune verbose
+   * tool outputs" pre-pass. When false, entries are sent in full (still bounded
+   * by the total input cap), trading cost for fidelity.
+   */
+  pruneToolOutputs?: boolean;
 }
 
 /** Per-entry and total input caps — bound the cheap model's input cost. */
@@ -60,10 +68,11 @@ const MAX_OUTPUT_TOKENS = 1500;
 const DEFAULT_TIMEOUT_MS = 25_000;
 
 /** Renders the entries into a redacted, length-capped, role-tagged transcript. */
-function renderEntries(entries: ReadonlyArray<TranscriptEntry>): string {
-  const lines = entries.map(
-    (e) => `[${e.role}] ${redactSecrets(e.text).replace(/\s+/g, ' ').trim().slice(0, MAX_ENTRY_CHARS)}`,
-  );
+function renderEntries(entries: ReadonlyArray<TranscriptEntry>, pruneToolOutputs = true): string {
+  const lines = entries.map((e) => {
+    const clean = redactSecrets(e.text).replace(/\s+/g, ' ').trim();
+    return `[${e.role}] ${pruneToolOutputs ? clean.slice(0, MAX_ENTRY_CHARS) : clean}`;
+  });
   const joined = lines.join('\n\n');
   return joined.length > MAX_INPUT_CHARS
     ? `${joined.slice(0, MAX_INPUT_CHARS)}\n…[older detail elided; full history stays in the run event stream]`
@@ -79,18 +88,19 @@ function condensedOf(entries: ReadonlyArray<TranscriptEntry>): StructuredSummary
   };
 }
 
-/** Extracts and parses the first balanced JSON object from model output (fence-tolerant). */
+/**
+ * Extracts the first balanced JSON OBJECT from model output (fence/prose
+ * tolerant). Uses the shared brace-depth scanner — a greedy `/\{[\s\S]*\}/`
+ * would span from the first `{` to the LAST `}`, swallowing trailing prose (or
+ * a second object) and failing to parse.
+ */
 function parseJsonObject(content: string): Record<string, unknown> | null {
-  const match = content.match(/\{[\s\S]*\}/);
-  if (match === null) {
-    return null;
+  for (const value of extractJsonValues(content)) {
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
   }
-  try {
-    const value = JSON.parse(match[0]) as unknown;
-    return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 /**
@@ -151,7 +161,10 @@ export function createModelSummarizer(options: ModelSummarizerOptions): AsyncSum
     const output = await options.chat.chat({
       messages: [
         { role: 'system', content: system } satisfies ChatMessage,
-        { role: 'user', content: renderEntries(entries) } satisfies ChatMessage,
+        {
+          role: 'user',
+          content: renderEntries(entries, options.pruneToolOutputs ?? true),
+        } satisfies ChatMessage,
       ],
       maxTokens: MAX_OUTPUT_TOKENS,
       timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,

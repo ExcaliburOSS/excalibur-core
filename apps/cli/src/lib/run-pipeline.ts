@@ -140,8 +140,13 @@ export function describeEvent(t: Translator, event: ExcaliburEvent): string | nu
         ? pc.dim(t('event.exit-ok', { sim }))
         : pc.red(t('event.exit-fail', { exit, sim }));
     }
-    case 'test_result':
-      return pc.green(t('event.test-result', { status: str('status') || 'passed', sim }));
+    case 'test_result': {
+      // Color by the ACTUAL status — a failed test must not render green.
+      const status = str('status') || 'passed';
+      const text = t('event.test-result', { status, sim });
+      const passed = status === 'passed' || status === 'green' || status === 'ok';
+      return passed ? pc.green(text) : pc.red(text);
+    }
     case 'patch_generated':
       return pc.yellow(t('event.patch-generated'));
     case 'patch_applied':
@@ -166,6 +171,27 @@ export function describeEvent(t: Translator, event: ExcaliburEvent): string | nu
       const status = str('status');
       const text = t('event.claim', { statement: str('statement'), status });
       return status === 'refuted' ? pc.red(text) : status === 'verified' ? pc.green(text) : pc.dim(text);
+    }
+    case 'policy_decision': {
+      const decision = str('decision') || 'decision';
+      const message = str('message');
+      const text = t('event.policy-decision', {
+        decision,
+        message: message.length > 0 ? ` — ${message}` : '',
+      });
+      return decision === 'deny' ? pc.red(text) : decision === 'ask' ? pc.yellow(text) : pc.dim(text);
+    }
+    case 'task_update': {
+      const tasks = Array.isArray(payload['tasks']) ? (payload['tasks'] as unknown[]) : [];
+      const done = tasks.filter(
+        (item) => (item as { status?: unknown } | null)?.status === 'completed',
+      ).length;
+      return pc.dim(t('event.task-update', { done, total: tasks.length }));
+    }
+    case 'compaction': {
+      const num = (key: string): number =>
+        typeof payload[key] === 'number' ? (payload[key] as number) : 0;
+      return pc.dim(t('event.compaction', { before: num('tokensBefore'), after: num('tokensAfter') }));
     }
     case 'run_completed':
       return pc.bold(t('event.run-completed', { status: str('status') || 'completed' }));

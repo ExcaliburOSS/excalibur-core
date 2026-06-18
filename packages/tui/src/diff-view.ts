@@ -35,6 +35,10 @@ export interface DiffFile {
   deletions: number;
   isNew: boolean;
   isDelete: boolean;
+  /** A binary file change (`Binary files … differ`); carries no textual hunks. */
+  isBinary: boolean;
+  /** A rename (`rename from`/`rename to`); `oldPath` holds the source path. */
+  isRename: boolean;
   hunks: DiffHunk[];
 }
 
@@ -52,13 +56,71 @@ export function parseUnifiedDiff(diff: string): DiffFile[] {
   let oldNo = 0;
   let newNo = 0;
   let pendingOld: string | null = null;
+  // Per `diff --git` section state, so a PURE rename or a BINARY change (neither
+  // of which emits `---`/`+++`/`@@`) still yields a DiffFile entry on flush.
+  let gitOld: string | null = null;
+  let gitNew: string | null = null;
+  let renameFrom: string | null = null;
+  let renameTo: string | null = null;
+  let sawBinary = false;
+  let sawContentHeader = false;
+
+  const flushGitSection = (): void => {
+    // The textual path already produced a file (`+++`), or there's nothing to flush.
+    if (sawContentHeader || (gitOld === null && gitNew === null && renameFrom === null)) {
+      return;
+    }
+    const newPath = renameTo ?? gitNew;
+    const oldPath = renameFrom ?? gitOld;
+    if (newPath === null && oldPath === null) {
+      return;
+    }
+    files.push({
+      path: cleanPath(newPath ?? oldPath ?? ''),
+      oldPath: oldPath !== null ? cleanPath(oldPath) : null,
+      additions: 0,
+      deletions: 0,
+      isNew: false,
+      isDelete: false,
+      isBinary: sawBinary,
+      isRename: renameFrom !== null || renameTo !== null,
+      hunks: [],
+    });
+  };
 
   for (const raw of diff.split('\n')) {
+    const gitHeader = /^diff --git a\/(.+) b\/(.+)$/.exec(raw);
+    if (gitHeader !== null) {
+      flushGitSection(); // close out the previous section (rename/binary-only)
+      gitOld = gitHeader[1] ?? null;
+      gitNew = gitHeader[2] ?? null;
+      renameFrom = null;
+      renameTo = null;
+      sawBinary = false;
+      sawContentHeader = false;
+      file = null;
+      hunk = null;
+      pendingOld = null;
+      continue;
+    }
+    if (raw.startsWith('rename from ')) {
+      renameFrom = raw.slice('rename from '.length).trim();
+      continue;
+    }
+    if (raw.startsWith('rename to ')) {
+      renameTo = raw.slice('rename to '.length).trim();
+      continue;
+    }
+    if (raw.startsWith('Binary files ') && raw.endsWith(' differ')) {
+      sawBinary = true;
+      continue;
+    }
     if (raw.startsWith('--- ')) {
       pendingOld = raw.slice(4).trim();
       continue;
     }
     if (raw.startsWith('+++ ')) {
+      sawContentHeader = true;
       const newRaw = raw.slice(4).trim();
       const isNew = pendingOld === '/dev/null';
       const isDelete = newRaw === '/dev/null';
@@ -70,6 +132,8 @@ export function parseUnifiedDiff(diff: string): DiffFile[] {
         deletions: 0,
         isNew,
         isDelete,
+        isBinary: false,
+        isRename: renameFrom !== null || renameTo !== null,
         hunks: [],
       };
       files.push(file);
@@ -105,6 +169,7 @@ export function parseUnifiedDiff(diff: string): DiffFile[] {
     }
     // '\' (No newline at end of file) and blank trailing lines are skipped.
   }
+  flushGitSection(); // last section, if it was a rename/binary-only change
 
   for (const f of files) {
     for (const h of f.hunks) {
@@ -210,8 +275,15 @@ export function renderDiff(diff: string, options: RenderDiffOptions = {}): strin
   const out: string[] = [];
 
   for (const file of files) {
-    const tag = file.isNew ? ' (new)' : file.isDelete ? ' (deleted)' : '';
-    const head = paint(`▌ ${file.path}${tag}`, palette.accent, tier);
+    const tag = file.isNew
+      ? ' (new)'
+      : file.isDelete
+        ? ' (deleted)'
+        : file.isRename && file.oldPath !== null && file.oldPath !== file.path
+          ? ` (renamed from ${file.oldPath})`
+          : '';
+    const binaryTag = file.isBinary ? ' (binary)' : '';
+    const head = paint(`▌ ${file.path}${tag}${binaryTag}`, palette.accent, tier);
     const adds = paint(`+${file.additions}`, palette.diffAddFg, tier);
     const dels = paint(`−${file.deletions}`, palette.diffDelFg, tier);
     out.push(`${head}  ${adds} ${dels}`);
