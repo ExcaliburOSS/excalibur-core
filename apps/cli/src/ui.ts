@@ -137,6 +137,14 @@ export class Ui {
   // re-render the prompt+buffer on every keystroke (raw mode has no echo).
   private activeReader: ((prompt: string) => Promise<string | null>) | null = null;
   /**
+   * Suspend/resume the persistent raw editor's stdin ownership (raw mode +
+   * keypress listener) so another consumer — the Ink live view during a turn —
+   * can own stdin, then hand it back. Registered by the raw editor; null with
+   * the queue editor (non-TTY), where both are no-ops.
+   */
+  private suspendEditor: (() => void) | null = null;
+  private resumeEditor: (() => void) | null = null;
+  /**
    * True while a per-call sub-prompt (`ask`/`confirm`/`select`/`confirmTool`)
    * is reading through the shared raw editor. The rewind (Esc-Esc) and Session
    * Log (↓) gestures belong to the MAIN session line only — they must never
@@ -162,6 +170,20 @@ export class Ui {
    */
   isOutputTty(): boolean {
     return isTtyStream(this.stdout);
+  }
+
+  /**
+   * Releases the persistent raw editor's hold on stdin (raw mode + keypress
+   * listener) so the Ink live view can own input for a turn. No-op without a raw
+   * editor (queue editor / non-TTY). Pair with {@link resumeInput}.
+   */
+  suspendInput(): void {
+    this.suspendEditor?.();
+  }
+
+  /** Re-arms the raw editor's stdin ownership after an Ink turn. */
+  resumeInput(): void {
+    this.resumeEditor?.();
   }
 
   /** Plain line to stdout. */
@@ -654,6 +676,10 @@ export class Ui {
     };
 
     this.activeReader = question;
+    // Let the Ink live view borrow stdin during a turn: suspend drops raw mode +
+    // the keypress listener; resume re-arms it (idempotent, lazy on the next read).
+    this.suspendEditor = disableRaw;
+    this.resumeEditor = enableRaw;
 
     return {
       question,
@@ -675,6 +701,10 @@ export class Ui {
       close: (): void => {
         if (this.activeReader === question) {
           this.activeReader = null;
+        }
+        if (this.suspendEditor === disableRaw) {
+          this.suspendEditor = null;
+          this.resumeEditor = null;
         }
         closed = true; // set first (mirrors the eof path) so no re-entrant read races
         cancelSuggest();

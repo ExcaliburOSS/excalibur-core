@@ -24,6 +24,7 @@ import {
 } from '@excalibur/core';
 import { basename } from 'node:path';
 import {
+  AUTONOMY_LEVEL_LABELS,
   createEvent,
   generateId,
   type AgentRole,
@@ -32,6 +33,8 @@ import {
   type ExcaliburEvent,
   type LocalRun,
 } from '@excalibur/shared';
+import { detectColorTier, detectThemeSync, paletteFor } from '@excalibur/tui';
+import type { RunViewHandle } from '@excalibur/tui/ink';
 import type { ChatMessage, ModelGateway } from '@excalibur/model-gateway';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -42,6 +45,7 @@ import { describeEvent } from '../lib/run-pipeline';
 import { renderTurnReceipt } from '../lib/turn-receipt';
 import { ActionRenderer, activityFor } from '../lib/action-render';
 import { setAutoApprove } from '../lib/config-file';
+import { loadInkUi } from '../ink/load';
 
 /**
  * The model-FIRST conversational turn (M-Shell). A natural-language line is
@@ -205,16 +209,49 @@ async function driveLoop(
   const turnStart = Date.now();
   const unicode = deps.env['EXCALIBUR_ASCII'] === undefined;
 
-  // The breathing "thinking/working" indicator (transient; animates only on a
-  // real TTY). Its text is GROUNDED: the live tool activity when one is running,
-  // a phase/role gerund while the model just reasons — plus live tok·$·elapsed.
-  const spinner = deps.ui.createSpinner({ unicode });
-  // Ctrl-C: the SIGINT handler aborts cooperatively and writes "Cancelled"
-  // immediately, but the loop may keep awaiting the in-flight model call. Cancel
-  // the indicator SYNCHRONOUSLY on abort so its next frame can't overwrite that
-  // message (and it never re-arms). Listener removed in the finally below.
-  const onAbort = (): void => spinner.cancel();
-  turn.signal?.addEventListener('abort', onAbort);
+  // Own a local AbortController: it lets the Ink view's ESC/Ctrl-C cancel the
+  // turn (Ink owns stdin while mounted, so the REPL's editor.onEscape is dormant)
+  // while STILL honouring an upstream abort (a non-Ink Ctrl-C). One signal feeds
+  // the adapter + the spinner, whichever presenter is active.
+  const ctrl = new AbortController();
+  const onUpstreamAbort = (): void => ctrl.abort();
+  if (turn.signal !== undefined) {
+    if (turn.signal.aborted) ctrl.abort();
+    else turn.signal.addEventListener('abort', onUpstreamAbort);
+  }
+
+  // The live presenter: the Ink <RunView> rail on a TTY (the same one `run`
+  // uses), or — on a piped stdout or with EXCALIBUR_TUI=ansi — the spinner +
+  // per-action renderer. The Ink rail OWNS stdin for the turn, so suspend the
+  // REPL's raw editor first and resume it on unmount (in the finally).
+  const useInk = deps.ui.isOutputTty() && deps.env['EXCALIBUR_TUI'] !== 'ansi';
+  let view: RunViewHandle | null = null;
+  if (useInk) {
+    deps.ui.suspendInput();
+    const ink = await loadInkUi();
+    const mode = detectThemeSync() ?? 'dark';
+    view = ink.mountRunView({
+      palette: paletteFor(turn.config.ui?.theme ?? 'auto', mode),
+      tier: detectColorTier(),
+      mode,
+      reduce: {
+        autonomyLabel: AUTONOMY_LEVEL_LABELS[turn.autonomyLevel],
+        safety: turn.config.safety?.preset ?? 'standard-safe',
+        model: turn.providerName,
+        push: false,
+      },
+      labels: { push: deps.t('rail.push'), noPush: deps.t('rail.noPush'), tasks: deps.t('rail.tasks') },
+    });
+    view.onEscape(() => ctrl.abort());
+  }
+
+  // The breathing indicator + per-action renderer — non-Ink path only.
+  const spinner = view === null ? deps.ui.createSpinner({ unicode }) : null;
+  const renderer = view === null ? new ActionRenderer(deps, { unicode }) : null;
+  // Cancel the indicator SYNCHRONOUSLY on abort so its next frame can't overwrite
+  // a "Cancelled" message (and it never re-arms). Listener removed in finally.
+  const onAbort = (): void => spinner?.cancel();
+  ctrl.signal.addEventListener('abort', onAbort);
   const gerund = deps.t(gerundForRole(options.role));
   const spinnerText = (activity: string | null): string => {
     const label = activity ?? gerund;
@@ -231,20 +268,26 @@ async function driveLoop(
     if (approvals?.auto === true) {
       return true;
     }
-    spinner.stop(); // clear the transient line before the (permanent) prompt
     const detail = req.detail !== undefined ? ` (${req.detail})` : '';
-    deps.ui.write(
-      pc.yellow(
-        deps.t('agent-turn.tool_needs_approval', {
-          tool: req.tool,
-          reason: req.reason,
-          detail,
-        }),
-      ),
-    );
-    const choice = await deps.ui.confirmTool(deps.t('agent-turn.allow_action'), {
-      defaultYes: options.approvalDefaultYes,
+    const question = deps.t('agent-turn.tool_needs_approval', {
+      tool: req.tool,
+      reason: req.reason,
+      detail,
     });
+    let choice: 'yes' | 'no' | 'auto';
+    if (view !== null) {
+      // The approval renders inline in the rail; y/Return → yes, a → auto, n → no.
+      choice = await view.requestApproval({
+        question,
+        options: options.approvalDefaultYes ? '[Y/n/a]' : '[y/N/a]',
+      });
+    } else {
+      spinner!.stop(); // clear the transient line before the (permanent) prompt
+      deps.ui.write(pc.yellow(question));
+      choice = await deps.ui.confirmTool(deps.t('agent-turn.allow_action'), {
+        defaultYes: options.approvalDefaultYes,
+      });
+    }
     // "Auto mode" (a): flip on session-wide auto-accept AND persist it, so this
     // is the LAST prompt — unified with the `/auto` mode (one concept). Counts
     // as approval for the current action too.
@@ -257,7 +300,10 @@ async function driveLoop(
       } catch {
         /* persistence is best-effort; the in-session flag is what matters now */
       }
-      deps.ui.info(deps.t('agent-turn.auto_enabled'));
+      // A deps.ui write would tear the Ink frame; the auto state shows in the rail.
+      if (view === null) {
+        deps.ui.info(deps.t('agent-turn.auto_enabled'));
+      }
       return true;
     }
     return choice !== 'no';
@@ -272,24 +318,38 @@ async function driveLoop(
     provider: turn.providerName,
     config: turn.config,
     gateway: turn.gateway,
-    ...(turn.signal !== undefined ? { signal: turn.signal } : {}),
+    signal: ctrl.signal,
     ...(options.allowConfirm ? { confirm } : {}),
     ...(options.seedMessages !== undefined ? { seedMessages: options.seedMessages } : {}),
   });
 
-  // The live per-action renderer: groups the stream into tool blocks (header +
-  // indented result), diffs and command output — the Claude-Code-class view.
-  const renderer = new ActionRenderer(deps, { unicode });
-
   // Show the indicator during the FIRST wait (the opening model call). The loop
   // is wrapped so the spinner's timer is ALWAYS cleared, even if a write throws.
-  spinner.start(() => spinnerText(null));
+  spinner?.start(() => spinnerText(null));
+
+  // A conversation turn has no workflow phases, so synthesize ONE "working" node
+  // (view-only — not persisted) under which the rail expands the live tool
+  // activity (read/edit/run). Without it, reduceRail would drop the phase-less
+  // events and the rail would show only the status line.
+  if (view !== null) {
+    view.push(
+      createEvent({
+        runId: run.id,
+        type: 'phase_started',
+        payload: { name: deps.t(gerundForRole(options.role)), phaseId: 'turn' },
+      }),
+    );
+  }
 
   try {
     for await (const event of stream) {
-      spinner.stop(); // erase the transient line before any permanent output
+      if (view !== null) {
+        view.push(event);
+      } else {
+        spinner!.stop(); // erase the transient line before any permanent output
+        renderer!.onEvent(event);
+      }
       runManager.appendEvent(run.id, event);
-      renderer.onEvent(event);
 
       if (event.type === 'model_call') {
         const m = event.payload['model'];
@@ -337,15 +397,34 @@ async function driveLoop(
 
       // Re-arm the indicator for the NEXT wait: the grounded activity that follows
       // this event (a tool announcement → "Running …" during execution), else the
-      // role gerund while the model reasons before the next turn.
-      const activity = activityFor(event);
-      spinner.start(() => spinnerText(activity));
+      // role gerund while the model reasons before the next turn. (Ink presenter
+      // animates from its own tick, so this is the spinner path only.)
+      if (view === null) {
+        const activity = activityFor(event);
+        spinner!.start(() => spinnerText(activity));
+      }
+    }
+    // Complete the synthetic working node so the final rail frame reads as done.
+    if (view !== null && !aborted) {
+      view.push(
+        createEvent({ runId: run.id, type: 'phase_completed', payload: { phaseId: 'turn' } }),
+      );
     }
   } finally {
-    spinner.stop();
-    turn.signal?.removeEventListener('abort', onAbort);
+    ctrl.signal.removeEventListener('abort', onAbort);
+    if (turn.signal !== undefined) {
+      turn.signal.removeEventListener('abort', onUpstreamAbort);
+    }
+    if (view !== null) {
+      // Leaves the final frame (completed phases already in scrollback via
+      // <Static>) and fully releases stdin; then re-arm the REPL's raw editor.
+      view.unmount();
+      deps.ui.resumeInput();
+    } else {
+      spinner!.stop();
+    }
   }
-  renderer.finish();
+  renderer?.finish();
 
   return { finalText, costCents, model, mutated, aborted };
 }

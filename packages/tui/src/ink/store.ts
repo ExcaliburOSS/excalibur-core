@@ -38,17 +38,19 @@ export interface RunViewStore {
 export interface KeyFlags {
   escape?: boolean;
   return?: boolean;
+  ctrl?: boolean;
 }
 
 /**
  * Maps ONE keystroke onto the store — the single source of the live-view key
- * bindings (single keys only, per the project rule): ESC aborts; while an
- * approval is pending y/Return → yes, a → auto, n → no; otherwise Space toggles
- * the inline diff. Pure (no Ink) so it is unit-testable on its own; `<Keys>`
- * just forwards Ink's `useInput` to it.
+ * bindings (single keys only, per the project rule): ESC or Ctrl-C aborts (when
+ * Ink owns stdin these are the only ways to interrupt); while an approval is
+ * pending y/Return → yes, a → auto, n → no; otherwise Space toggles the inline
+ * diff. Pure (no Ink) so it is unit-testable on its own; `<Keys>` just forwards
+ * Ink's `useInput` to it.
  */
 export function applyRunViewKey(store: RunViewStore, input: string, key: KeyFlags): void {
-  if (key.escape === true) {
+  if (key.escape === true || (key.ctrl === true && input.toLowerCase() === 'c')) {
     store.fireEscape();
     return;
   }
