@@ -31,6 +31,8 @@ import {
   renderRail,
 } from '@excalibur/tui';
 import { LiveRail } from './live-rail';
+import { loadInkUi } from '../ink/load';
+import type { RunViewHandle } from '@excalibur/tui/ink';
 import pc from 'picocolors';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
@@ -481,17 +483,32 @@ export async function runTask(
     noPush: deps.t('rail.noPush'),
     tasks: deps.t('rail.tasks'),
   };
-  const liveRail = deps.ui.isOutputTty()
-    ? new LiveRail(
-        { writeRaw: (t) => deps.ui.writeRaw(t) },
-        { tier, mode, palette, reduce: reduceOpts, labels: railLabels },
-      )
-    : null;
+  // Live TTY rendering has two presenters of the SAME reduceRail fold: the Ink
+  // <RunView> (default) and the legacy hand-rolled ANSI LiveRail (kept one
+  // release behind `EXCALIBUR_TUI=ansi` as a rollback). A piped/CI stdout uses
+  // neither — it streams plain lines + a static recap.
+  const ttyLive = deps.ui.isOutputTty();
+  const useInk = ttyLive && deps.env['EXCALIBUR_TUI'] !== 'ansi';
+  let inkHandle: RunViewHandle | null = null;
+  let liveRail: LiveRail | null = null;
+  if (useInk) {
+    const ink = await loadInkUi();
+    inkHandle = ink.mountRunView({ palette, tier, mode, reduce: reduceOpts, labels: railLabels });
+  } else if (ttyLive) {
+    liveRail = new LiveRail(
+      { writeRaw: (t) => deps.ui.writeRaw(t) },
+      { tier, mode, palette, reduce: reduceOpts, labels: railLabels },
+    );
+  }
 
   deps.ui.write();
   liveRail?.start();
 
   const confirm = (question: string): Promise<boolean> => {
+    if (inkHandle !== null) {
+      // The approval renders inline in the Ink rail; y/Return/a → yes, n → no.
+      return inkHandle.requestApproval({ question, options: '[Y/n]' }).then((answer) => answer !== 'no');
+    }
     // Suspend the in-place redraw so the prompt prints below the rail cleanly,
     // then resume a fresh frame under the answer.
     liveRail?.pause();
@@ -512,6 +529,10 @@ export async function runTask(
     // exactly what --yes / non-interactive runs want.
     ...(interactive ? { confirm } : {}),
     onEvent: (event): void => {
+      if (inkHandle !== null) {
+        inkHandle.push(event);
+        return;
+      }
       if (liveRail !== null) {
         liveRail.push(event);
         return;
@@ -523,7 +544,11 @@ export async function runTask(
     },
   });
 
-  if (liveRail !== null) {
+  if (inkHandle !== null) {
+    // Unmount leaves the final frame (completed phases already in scrollback via
+    // <Static>) and fully releases stdin/raw mode.
+    inkHandle.unmount();
+  } else if (liveRail !== null) {
     liveRail.stop();
   } else {
     // Non-TTY recap: a static rail of the recorded stream (byte-faithful to what

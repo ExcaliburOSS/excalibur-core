@@ -28,7 +28,11 @@ export default defineConfig([
     platform: 'node',
     target: 'node22',
     bundle: true,
-    noExternal: [/.*/],
+    // Inline everything EXCEPT the Ink subpath (tsup's noExternal is checked
+    // before external, so a bare /.*/ would force-bundle Ink and hit its
+    // top-level await). The negative lookahead leaves `@excalibur/tui/ink`
+    // external → loaded at runtime from the ESM sibling below.
+    noExternal: [/^(?!@excalibur\/tui\/ink$).*/],
     external: ['@excalibur/tui/ink'],
     define: { __EXCALIBUR_INK_BUNDLED__: 'true' },
     clean: true,
