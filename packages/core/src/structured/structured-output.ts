@@ -29,26 +29,62 @@ export function buildSchemaInstruction(schema: JsonSchema): string {
   ].join('\n');
 }
 
-/** Extracts the first JSON value from model output (tolerant of fences / prose). */
-export function extractJsonValue(content: string): unknown {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(content);
-  const body = (fenced?.[1] ?? content).trim();
-  // Try the whole body first (a clean JSON response), then the first {...}/[...] span.
-  const candidates: string[] = [body];
-  const objStart = body.indexOf('{');
-  const objEnd = body.lastIndexOf('}');
-  if (objStart >= 0 && objEnd > objStart) candidates.push(body.slice(objStart, objEnd + 1));
-  const arrStart = body.indexOf('[');
-  const arrEnd = body.lastIndexOf(']');
-  if (arrStart >= 0 && arrEnd > arrStart) candidates.push(body.slice(arrStart, arrEnd + 1));
-  for (const candidate of candidates) {
-    try {
-      return JSON.parse(candidate);
-    } catch {
-      // try the next candidate
+/** Finds the index of the balanced close for the `{`/`[` at `start`, or -1. */
+function matchBalanced(text: string, start: number): number {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i += 1) {
+    const c = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (c === '\\') escaped = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') inString = true;
+    else if (c === '{' || c === '[') depth += 1;
+    else if (c === '}' || c === ']') {
+      depth -= 1;
+      if (depth === 0) return i;
     }
   }
-  return undefined;
+  return -1;
+}
+
+/**
+ * Every top-level JSON value embedded in model output, in order. A
+ * brace/bracket-depth scanner (respecting string literals + escapes) finds each
+ * balanced `{...}`/`[...]` region and JSON.parses it — so it is robust to code
+ * fences, surrounding prose, a leading example object, AND multiple JSON values
+ * (the greedy first-open..last-close heuristic broke on all of those).
+ */
+export function extractJsonValues(content: string): unknown[] {
+  const values: unknown[] = [];
+  let i = 0;
+  while (i < content.length) {
+    const c = content[i];
+    if (c === '{' || c === '[') {
+      const end = matchBalanced(content, i);
+      if (end !== -1) {
+        try {
+          values.push(JSON.parse(content.slice(i, end + 1)));
+          i = end + 1;
+          continue;
+        } catch {
+          // not a valid JSON region — fall through and advance one char
+        }
+      }
+    }
+    i += 1;
+  }
+  return values;
+}
+
+/** The FIRST JSON value embedded in model output (tolerant of fences / prose). */
+export function extractJsonValue(content: string): unknown {
+  const values = extractJsonValues(content);
+  return values.length > 0 ? values[0] : undefined;
 }
 
 function matchesType(value: unknown, type: string): boolean {
@@ -83,10 +119,21 @@ export function validateAgainstSchema(value: unknown, schema: JsonSchema, path =
     errors.push(`${path}: expected ${schema.type}`);
     return errors; // type mismatch — deeper checks are meaningless
   }
-  if (Array.isArray(schema.enum) && !schema.enum.some((e) => e === value)) {
+  if (
+    Array.isArray(schema.enum) &&
+    !schema.enum.some(
+      (e) =>
+        e === value ||
+        // structural equality for object/array enum members (=== never matches those)
+        (typeof e === 'object' && e !== null && JSON.stringify(e) === JSON.stringify(value)),
+    )
+  ) {
     errors.push(`${path}: value is not one of the allowed enum values`);
   }
-  if (schema.type === 'object' && typeof value === 'object' && value !== null) {
+  // Object/array checks key off the schema's KEYWORDS (or the value's shape), not
+  // a `type` that JSON Schema lets you omit — so `{ required: [...] }` still validates.
+  const objectish = schema.type === 'object' || schema.properties !== undefined || schema.required !== undefined;
+  if (objectish && typeof value === 'object' && value !== null && !Array.isArray(value)) {
     const obj = value as Record<string, unknown>;
     for (const req of schema.required ?? []) {
       if (!(req in obj)) errors.push(`${path}.${req}: required property is missing`);
@@ -95,7 +142,7 @@ export function validateAgainstSchema(value: unknown, schema: JsonSchema, path =
       if (key in obj) errors.push(...validateAgainstSchema(obj[key], sub, `${path}.${key}`));
     }
   }
-  if (schema.type === 'array' && Array.isArray(value) && schema.items !== undefined) {
+  if ((schema.type === 'array' || schema.items !== undefined) && Array.isArray(value) && schema.items !== undefined) {
     value.forEach((item, i) => {
       errors.push(...validateAgainstSchema(item, schema.items as JsonSchema, `${path}[${i}]`));
     });
@@ -158,12 +205,18 @@ export async function askStructured(
       ...signalOpt,
       metadata: { kind: 'ask-structured' },
     });
-    const value = extractJsonValue(out.content);
-    const errors =
-      value === undefined
-        ? ['response was not valid JSON']
-        : validateAgainstSchema(value, input.schema);
-    return { value, errors, raw: out.content };
+    // Among ALL embedded JSON values (a model may print an example first, or
+    // both an object and an array), prefer the one that VALIDATES against the
+    // schema; else fall back to the first that parsed (with its errors).
+    const values = extractJsonValues(out.content);
+    if (values.length === 0) {
+      return { value: undefined, errors: ['response was not valid JSON'], raw: out.content };
+    }
+    const valid = values.find((v) => validateAgainstSchema(v, input.schema).length === 0);
+    if (valid !== undefined) {
+      return { value: valid, errors: [], raw: out.content };
+    }
+    return { value: values[0], errors: validateAgainstSchema(values[0], input.schema), raw: out.content };
   };
 
   const first = await attempt([

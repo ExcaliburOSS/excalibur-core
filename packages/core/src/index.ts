@@ -125,6 +125,7 @@ export {
   askStructured,
   buildSchemaInstruction,
   extractJsonValue,
+  extractJsonValues,
   validateAgainstSchema,
   type JsonSchema,
   type StructuredAskInput,

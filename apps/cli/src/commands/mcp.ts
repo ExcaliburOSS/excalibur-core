@@ -52,9 +52,11 @@ export function registerMcpCommand(program: Command, deps: CliDeps): void {
       const connected = await connectMcpServers(servers as Record<string, McpServerSpec>);
       try {
         const byServer = new Map<string, string[]>();
-        for (const [display, entry] of connected.byName) {
-          const tool = display.split('__').slice(2).join('__');
-          byServer.set(entry.serverName, [...(byServer.get(entry.serverName) ?? []), tool]);
+        for (const [, entry] of connected.byName) {
+          // Use the AUTHORITATIVE real tool name from the routing entry — never
+          // re-parse the `mcp__<server>__<tool>` display name (a server name
+          // containing `__` would corrupt that split).
+          byServer.set(entry.serverName, [...(byServer.get(entry.serverName) ?? []), entry.toolName]);
         }
         if (options.json === true) {
           deps.ui.json({

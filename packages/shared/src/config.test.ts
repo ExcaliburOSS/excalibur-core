@@ -119,6 +119,17 @@ describe('excaliburConfigSchema', () => {
     expect(result.commands).toBeUndefined();
   });
 
+  it('accepts a local OR remote MCP server, but rejects neither/both', () => {
+    const mcp = (server: Record<string, unknown>): unknown =>
+      excaliburConfigSchema.safeParse({ mcp: { servers: { s: server } } });
+    expect((mcp({ command: 'npx', args: ['x'] }) as { success: boolean }).success).toBe(true);
+    expect((mcp({ url: 'https://mcp.example.com/rpc' }) as { success: boolean }).success).toBe(true);
+    // neither command nor url → invalid
+    expect((mcp({ env: { A: '1' } }) as { success: boolean }).success).toBe(false);
+    // BOTH command and url → ambiguous → invalid (review fix)
+    expect((mcp({ command: 'npx', url: 'https://x/rpc' }) as { success: boolean }).success).toBe(false);
+  });
+
   it('rejects autonomy levels outside 0..4', () => {
     expect(excaliburConfigSchema.safeParse({ autonomy: { default: 5 } }).success).toBe(false);
     expect(

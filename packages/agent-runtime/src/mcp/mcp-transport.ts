@@ -255,7 +255,9 @@ export class HttpTransport implements McpTransport {
   /** Delivers a synthetic JSON-RPC error response so the pending request settles. */
   private deliverError(id: string | number | null, message: string): void {
     if (id === null) {
-      // A notification failed — best-effort; surface on the next request.
+      // A notification has no id to correlate, so a failed notification POST is
+      // simply DROPPED (MCP notifications are fire-and-forget). It is not
+      // deferred; a real problem surfaces on the next request that does have an id.
       return;
     }
     this.onMessage({ jsonrpc: '2.0', id, error: { code: -32000, message } });

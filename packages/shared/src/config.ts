@@ -135,8 +135,8 @@ const mcpServerConfigSchema = z
     /** Headers sent on every remote request, e.g. `{ Authorization: "Bearer …" }`. */
     headers: z.record(z.string()).optional(),
   })
-  .refine((s) => s.command !== undefined || s.url !== undefined, {
-    message: 'an MCP server needs a `command` (local stdio) or a `url` (remote http)',
+  .refine((s) => (s.command !== undefined) !== (s.url !== undefined), {
+    message: 'an MCP server needs EXACTLY ONE of `command` (local stdio) or `url` (remote http)',
   });
 export type McpServerConfig = z.infer<typeof mcpServerConfigSchema>;
 

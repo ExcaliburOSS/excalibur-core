@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { closeSync, openSync, readSync, statSync } from 'node:fs';
+import { StringDecoder } from 'node:string_decoder';
 import { join } from 'node:path';
 import { collectInsights, RunManager } from '@excalibur/core';
 import type { ExcaliburEvent } from '@excalibur/shared';
@@ -83,12 +84,15 @@ function route(repoRoot: string, url: URL): Json | Html | 'sse' | null {
     if (runMatch[2] === '/events') {
       // Bound the response: `?after=<index>` pages from a cursor, `?limit` caps
       // the count (default 5000) so a huge event log can't return one vast body.
-      const after = Math.max(0, Number.parseInt(url.searchParams.get('after') ?? '0', 10) || 0);
+      const after = Math.min(
+        Math.max(0, Number.parseInt(url.searchParams.get('after') ?? '0', 10) || 0),
+        events.length,
+      );
       const limit = Math.min(5000, Math.max(1, Number.parseInt(url.searchParams.get('limit') ?? '5000', 10) || 5000));
       const slice = events.slice(after, after + limit);
       return {
         status: 200,
-        body: { events: slice, total: events.length, nextCursor: after + slice.length },
+        body: { events: slice, total: events.length, nextCursor: Math.min(after + slice.length, events.length) },
       };
     }
     // The run detail: record + the reduced rail (live = scrub = replay = web).
@@ -119,6 +123,10 @@ function streamRun(
   let offset = 0;
   let lineBuffer = '';
   let done = false;
+  // Decode bytes through a StringDecoder so a multi-byte UTF-8 char split across
+  // two reads is held + completed on the next read (a plain per-chunk toString
+  // would corrupt it — events.jsonl can contain non-ASCII paths/messages).
+  const decoder = new StringDecoder('utf8');
 
   const flush = (): void => {
     let size: number;
@@ -135,7 +143,7 @@ function streamRun(
       const buf = Buffer.alloc(length);
       const read = readSync(fd, buf, 0, length, offset);
       offset += read;
-      lineBuffer += buf.toString('utf8', 0, read);
+      lineBuffer += decoder.write(buf.subarray(0, read));
     } catch {
       return;
     } finally {
