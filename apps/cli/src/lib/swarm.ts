@@ -19,6 +19,8 @@ import type { GatewayChatInput, ModelGateway } from '@excalibur/model-gateway';
 import type { ExcaliburConfig, ExcaliburEvent } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
 import { LiveLanes } from './live-lanes';
+import { loadInkUi } from '../ink/load';
+import type { LanesViewHandle } from '@excalibur/tui/ink';
 
 /**
  * Swarm planning + execution glue for `excalibur swarm` (M3): a real model
@@ -258,19 +260,26 @@ export async function runSwarmFlow(
   };
   // LIVE: each lane lights up empty → running → done/failed as its agent works
   // (flicker-free, parallel). On a non-TTY we skip it and print the final panel.
-  const live = deps.ui.isOutputTty()
-    ? new LiveLanes(
-        { writeRaw: (t) => deps.ui.writeRaw(t) },
-        {
-          tier,
-          mode,
-          palette,
-          labels: railLabels,
-          lanes: lanes.map((s) => ({ id: s.id, title: s.title })),
-        },
-      )
-    : null;
-  live?.start();
+  // LIVE lanes: the Ink <LanesView> on a TTY (the same renderer stack as the
+  // rail), or the legacy ANSI LiveLanes behind EXCALIBUR_TUI=ansi. A non-TTY
+  // skips the live panel and prints the final one. The Ink panel is output-ONLY
+  // (no useInput), so Ink never grabs raw mode — it coexists with the REPL editor
+  // (which keeps ESC-to-cancel) with no stdin handoff.
+  const ttyLive = deps.ui.isOutputTty();
+  const useInk = ttyLive && deps.env['EXCALIBUR_TUI'] !== 'ansi';
+  const laneSpecs = lanes.map((s) => ({ id: s.id, title: s.title }));
+  let inkLanes: LanesViewHandle | null = null;
+  let live: LiveLanes | null = null;
+  if (useInk) {
+    const ink = await loadInkUi();
+    inkLanes = ink.mountLanesView({ palette, tier, mode, labels: railLabels, lanes: laneSpecs });
+  } else if (ttyLive) {
+    live = new LiveLanes(
+      { writeRaw: (t) => deps.ui.writeRaw(t) },
+      { tier, mode, palette, labels: railLabels, lanes: laneSpecs },
+    );
+    live.start();
+  }
   let result;
   try {
     result = await executeSwarm(deps, repoRoot, lanes, {
@@ -281,7 +290,14 @@ export async function runSwarmFlow(
         ? { maxAttempts: options.retries + 1 }
         : {}),
       ...signalOpt,
-      ...(live !== null ? { onLane: (p: SwarmLaneProgress) => live.update(p) } : {}),
+      ...(inkLanes !== null || live !== null
+        ? {
+            onLane: (p: SwarmLaneProgress): void => {
+              inkLanes?.update(p);
+              live?.update(p);
+            },
+          }
+        : {}),
     });
   } finally {
     live?.finish();
@@ -315,13 +331,21 @@ export async function runSwarmFlow(
     };
   });
   const applied = laneModels.filter((l) => l.state === 'done').length;
+  const finalModel = { lanes: laneModels, applied, conflicts: result.conflicts.length };
 
-  deps.ui.write();
-  for (const line of renderLanes(
-    { lanes: laneModels, applied, conflicts: result.conflicts.length },
-    { tier, mode, palette, labels: railLabels },
-  )) {
-    deps.ui.write(line);
+  if (inkLanes !== null) {
+    // Render the final detailed panel (per-lane diffstat/cost + merge counts) as
+    // the Ink view's LAST frame, then unmount (leaves it in scrollback) — no
+    // separate write, no duplicate panel. A short flush lets Ink paint the
+    // swapped-in frame before teardown.
+    inkLanes.setFinal(finalModel);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    inkLanes.unmount();
+  } else {
+    deps.ui.write();
+    for (const line of renderLanes(finalModel, { tier, mode, palette, labels: railLabels })) {
+      deps.ui.write(line);
+    }
   }
 
   if (result.mergedDiff.trim().length === 0) {

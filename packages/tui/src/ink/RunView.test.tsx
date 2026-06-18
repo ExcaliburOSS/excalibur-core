@@ -9,6 +9,7 @@ import { ThemeProvider } from './ThemeContext.js';
 import { RunView } from './RunView.js';
 import { DiffView } from './DiffView.js';
 import { mountRunView } from './mount.js';
+import { createLanesStore, mountLanesView } from './Lanes.js';
 import { applyRunViewKey, createRunViewStore } from './store.js';
 
 const SAMPLE_DIFF =
@@ -290,6 +291,53 @@ function fakeStdin(): NodeJS.ReadStream {
   inp.pause = (() => inp) as NodeJS.ReadStream['pause'];
   return inp;
 }
+
+describe('createLanesStore', () => {
+  it('transitions lanes empty → running → done/failed', () => {
+    const store = createLanesStore([
+      { id: 'a', title: 'Lane A' },
+      { id: 'b', title: 'Lane B' },
+    ]);
+    expect(store.getSnapshot().model.lanes.map((l) => l.state)).toEqual(['empty', 'empty']);
+    store.update({ index: 0, phase: 'started' });
+    expect(store.getSnapshot().model.lanes[0]!.state).toBe('running');
+    store.update({ index: 0, phase: 'settled' });
+    expect(store.getSnapshot().model.lanes[0]!.state).toBe('done');
+    store.update({ index: 1, phase: 'settled', failed: true });
+    expect(store.getSnapshot().model.lanes[1]!.state).toBe('failed');
+  });
+});
+
+describe('mountLanesView', () => {
+  it('renders live lane progress then the final panel to its stdout', async () => {
+    const stdout = fakeStdout();
+    const handle = mountLanesView({
+      palette: darkColors,
+      tier: 'truecolor',
+      lanes: [
+        { id: 'a', title: 'Lane A' },
+        { id: 'b', title: 'Lane B' },
+      ],
+      stdout,
+      stdin: fakeStdin(),
+    });
+    handle.update({ index: 0, phase: 'started' });
+    handle.update({ index: 0, phase: 'settled' });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(stripAnsi(stdout.frames.join('\n'))).toContain('Lane A');
+    handle.setFinal({
+      lanes: [
+        { id: 'a', title: 'Lane A', state: 'done' },
+        { id: 'b', title: 'Lane B', state: 'done' },
+      ],
+      applied: 2,
+      conflicts: 0,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(stripAnsi(stdout.frames.join('\n'))).toContain('Lane B');
+    handle.unmount();
+  });
+});
 
 describe('mountRunView', () => {
   it('renders pushed events to its stdout and unmounts cleanly (non-TTY safe)', async () => {
