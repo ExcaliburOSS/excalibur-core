@@ -18,7 +18,6 @@ import {
 import type { GatewayChatInput, ModelGateway } from '@excalibur/model-gateway';
 import type { ExcaliburConfig, ExcaliburEvent } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
-import { LiveLanes } from './live-lanes';
 import { loadInkUi } from '../ink/load';
 import type { LanesViewHandle } from '@excalibur/tui/ink';
 
@@ -258,27 +257,16 @@ export async function runSwarmFlow(
     applied: deps.t('rail.applied'),
     conflict: deps.t('rail.conflict'),
   };
-  // LIVE: each lane lights up empty → running → done/failed as its agent works
-  // (flicker-free, parallel). On a non-TTY we skip it and print the final panel.
-  // LIVE lanes: the Ink <LanesView> on a TTY (the same renderer stack as the
-  // rail), or the legacy ANSI LiveLanes behind EXCALIBUR_TUI=ansi. A non-TTY
-  // skips the live panel and prints the final one. The Ink panel is output-ONLY
-  // (no useInput), so Ink never grabs raw mode — it coexists with the REPL editor
-  // (which keeps ESC-to-cancel) with no stdin handoff.
-  const ttyLive = deps.ui.isOutputTty();
-  const useInk = ttyLive && deps.env['EXCALIBUR_TUI'] !== 'ansi';
+  // LIVE lanes: each lane lights up empty → running → done/failed as its agent
+  // works (flicker-free, parallel). The Ink <LanesView> renders it on a TTY; a
+  // non-TTY skips the live panel and prints the final one. The Ink panel is
+  // output-ONLY (no useInput), so Ink never grabs raw mode — it coexists with the
+  // REPL editor (which keeps ESC-to-cancel) with no stdin handoff.
   const laneSpecs = lanes.map((s) => ({ id: s.id, title: s.title }));
   let inkLanes: LanesViewHandle | null = null;
-  let live: LiveLanes | null = null;
-  if (useInk) {
+  if (deps.ui.isOutputTty()) {
     const ink = await loadInkUi();
     inkLanes = ink.mountLanesView({ palette, tier, mode, labels: railLabels, lanes: laneSpecs });
-  } else if (ttyLive) {
-    live = new LiveLanes(
-      { writeRaw: (t) => deps.ui.writeRaw(t) },
-      { tier, mode, palette, labels: railLabels, lanes: laneSpecs },
-    );
-    live.start();
   }
   let result;
   try {
@@ -290,17 +278,12 @@ export async function runSwarmFlow(
         ? { maxAttempts: options.retries + 1 }
         : {}),
       ...signalOpt,
-      ...(inkLanes !== null || live !== null
-        ? {
-            onLane: (p: SwarmLaneProgress): void => {
-              inkLanes?.update(p);
-              live?.update(p);
-            },
-          }
-        : {}),
+      ...(inkLanes !== null ? { onLane: (p: SwarmLaneProgress): void => inkLanes?.update(p) } : {}),
     });
   } finally {
-    live?.finish();
+    // On an error path, tear down the live Ink panel (the success path swaps in
+    // the final detailed panel + unmounts below; unmount is idempotent).
+    if (result === undefined) inkLanes?.unmount();
   }
 
   // The SWARM LANES panel: concurrent sub-rails branching off the swarm node and

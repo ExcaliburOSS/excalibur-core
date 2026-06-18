@@ -30,7 +30,6 @@ import {
   renderPlanCard,
   renderRail,
 } from '@excalibur/tui';
-import { LiveRail } from './live-rail';
 import { loadInkUi } from '../ink/load';
 import type { RunViewHandle } from '@excalibur/tui/ink';
 import pc from 'picocolors';
@@ -483,36 +482,23 @@ export async function runTask(
     noPush: deps.t('rail.noPush'),
     tasks: deps.t('rail.tasks'),
   };
-  // Live TTY rendering has two presenters of the SAME reduceRail fold: the Ink
-  // <RunView> (default) and the legacy hand-rolled ANSI LiveRail (kept one
-  // release behind `EXCALIBUR_TUI=ansi` as a rollback). A piped/CI stdout uses
-  // neither — it streams plain lines + a static recap.
-  const ttyLive = deps.ui.isOutputTty();
-  const useInk = ttyLive && deps.env['EXCALIBUR_TUI'] !== 'ansi';
+  // The live rail renders with Ink (<RunView>) on a TTY; a piped/CI stdout
+  // streams plain per-event lines + a static renderRail recap. Both fold the
+  // SAME reduceRail, so live = scrub = replay.
   let inkHandle: RunViewHandle | null = null;
-  let liveRail: LiveRail | null = null;
-  if (useInk) {
+  if (deps.ui.isOutputTty()) {
     const ink = await loadInkUi();
     inkHandle = ink.mountRunView({ palette, tier, mode, reduce: reduceOpts, labels: railLabels });
-  } else if (ttyLive) {
-    liveRail = new LiveRail(
-      { writeRaw: (t) => deps.ui.writeRaw(t) },
-      { tier, mode, palette, reduce: reduceOpts, labels: railLabels },
-    );
   }
 
   deps.ui.write();
-  liveRail?.start();
 
   const confirm = (question: string): Promise<boolean> => {
     if (inkHandle !== null) {
       // The approval renders inline in the Ink rail; y/Return/a → yes, n → no.
       return inkHandle.requestApproval({ question, options: '[Y/n]' }).then((answer) => answer !== 'no');
     }
-    // Suspend the in-place redraw so the prompt prints below the rail cleanly,
-    // then resume a fresh frame under the answer.
-    liveRail?.pause();
-    return deps.ui.confirm(question, { defaultYes: true }).finally(() => liveRail?.resume());
+    return deps.ui.confirm(question, { defaultYes: true });
   };
 
   const record = await executeLocalRun({
@@ -533,10 +519,6 @@ export async function runTask(
         inkHandle.push(event);
         return;
       }
-      if (liveRail !== null) {
-        liveRail.push(event);
-        return;
-      }
       const line = describeEvent(deps.t, event);
       if (line !== null) {
         deps.ui.write(line);
@@ -548,11 +530,8 @@ export async function runTask(
     // Unmount leaves the final frame (completed phases already in scrollback via
     // <Static>) and fully releases stdin/raw mode.
     inkHandle.unmount();
-  } else if (liveRail !== null) {
-    liveRail.stop();
   } else {
-    // Non-TTY recap: a static rail of the recorded stream (byte-faithful to what
-    // the TTY redraw settled on).
+    // Non-TTY recap: a static rail of the recorded stream.
     deps.ui.write();
     for (const line of renderRail(reduceRail(runManager.readEvents(run.id), reduceOpts), {
       tier,

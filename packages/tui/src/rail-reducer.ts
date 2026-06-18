@@ -243,9 +243,9 @@ export function reduceRail(
   }
 
   // A FINISHED run freezes its elapsed at the final event (lastTs); a LIVE run
-  // ticks with wall-clock `nowMs` so the clock breathes between events (the
-  // LiveRail passes a fresh nowMs each frame). Preferring lastTs always would
-  // freeze the live clock at the last event's timestamp.
+  // ticks with wall-clock `nowMs` so the clock breathes between events (the live
+  // view passes a fresh nowMs each frame). Preferring lastTs always would freeze
+  // the live clock at the last event's timestamp.
   const endMs = done
     ? (lastTs ?? options.nowMs ?? firstTs)
     : (options.nowMs ?? lastTs ?? firstTs);

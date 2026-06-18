@@ -221,10 +221,10 @@ async function driveLoop(
   }
 
   // The live presenter: the Ink <RunView> rail on a TTY (the same one `run`
-  // uses), or — on a piped stdout or with EXCALIBUR_TUI=ansi — the spinner +
-  // per-action renderer. The Ink rail OWNS stdin for the turn, so suspend the
-  // REPL's raw editor first and resume it on unmount (in the finally).
-  const useInk = deps.ui.isOutputTty() && deps.env['EXCALIBUR_TUI'] !== 'ansi';
+  // uses), or — on a piped/CI stdout — the spinner + per-action renderer. The
+  // Ink rail OWNS stdin for the turn, so suspend the REPL's raw editor first and
+  // resume it on unmount (in the finally).
+  const useInk = deps.ui.isOutputTty();
   let view: RunViewHandle | null = null;
   if (useInk) {
     deps.ui.suspendInput();
