@@ -216,6 +216,16 @@ describe('createRunViewStore', () => {
     expect(store.getSnapshot().approval).toBeNull();
   });
 
+  it('settles a prior pending approval as "no" when a new one arrives (no orphaned hang)', async () => {
+    const store = createRunViewStore();
+    const first = store.requestApproval({ question: 'A?', options: '[y/N]' });
+    const second = store.requestApproval({ question: 'B?', options: '[y/N]' });
+    // The superseded approval resolves safely instead of hanging forever.
+    await expect(first).resolves.toBe('no');
+    store.resolveApproval('yes');
+    await expect(second).resolves.toBe('yes');
+  });
+
   it('fires registered escape handlers and unsubscribes', () => {
     const store = createRunViewStore();
     let fired = 0;

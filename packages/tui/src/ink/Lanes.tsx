@@ -143,7 +143,10 @@ export function mountLanesView(options: MountLanesViewOptions): LanesViewHandle 
       stdout: options.stdout ?? process.stdout,
       stdin: options.stdin ?? process.stdin,
       exitOnCtrlC: false,
-      patchConsole: true,
+      // Output-only panel (no useInput): don't globally patch console — the
+      // swarm can run from inside the REPL, where hijacking console.* for the
+      // panel's lifetime (and leaving it patched on an early throw) is unwanted.
+      patchConsole: false,
     },
   );
   return {

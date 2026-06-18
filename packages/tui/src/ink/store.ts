@@ -106,6 +106,14 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
     },
     requestApproval(approval) {
       return new Promise<ApprovalAnswer>((resolve) => {
+        // If a prior approval is still pending (queued confirmations arriving
+        // back-to-back), settle it safely as 'no' so its awaiter never hangs —
+        // Ink owns stdin, so a dropped resolver would wedge the turn.
+        if (resolver !== null) {
+          const previous = resolver;
+          resolver = null;
+          previous('no');
+        }
         resolver = resolve;
         set({ approval });
       });

@@ -280,55 +280,53 @@ export async function runSwarmFlow(
       ...signalOpt,
       ...(inkLanes !== null ? { onLane: (p: SwarmLaneProgress): void => inkLanes?.update(p) } : {}),
     });
-  } finally {
-    // On an error path, tear down the live Ink panel (the success path swaps in
-    // the final detailed panel + unmounts below; unmount is idempotent).
-    if (result === undefined) inkLanes?.unmount();
-  }
 
-  // The SWARM LANES panel: concurrent sub-rails branching off the swarm node and
-  // converging on a fan-in merge node — the visual payoff of the allocator.
-  const conflictIds = new Set(result.conflicts.map((c) => c.id));
-  const laneModels: LaneModel[] = result.lanes.map((lane) => {
-    const subtask = lanes.find((s) => s.id === lane.id);
-    const hasChanges = lane.diff.trim().length > 0;
-    const state: LaneModel['state'] = lane.failed
-      ? 'failed'
-      : conflictIds.has(lane.id)
-        ? 'conflict'
-        : hasChanges
-          ? 'done'
-          : 'empty';
-    return {
-      id: lane.id,
-      title: subtask?.title ?? lane.id,
-      state,
-      ...(lane.result?.toolCalls !== undefined ? { toolCalls: lane.result.toolCalls } : {}),
-      ...(hasChanges ? { diff: parseDiffStat(lane.diff) } : {}),
-      ...(lane.result?.costCents != null ? { costCents: lane.result.costCents } : {}),
-      ...(lane.failed
-        ? { detail: lane.error ?? 'failed' }
+    // The SWARM LANES panel: concurrent sub-rails branching off the swarm node
+    // and converging on a fan-in merge node — the visual payoff of the allocator.
+    const conflictIds = new Set(result.conflicts.map((c) => c.id));
+    const laneModels: LaneModel[] = result.lanes.map((lane) => {
+      const subtask = lanes.find((s) => s.id === lane.id);
+      const hasChanges = lane.diff.trim().length > 0;
+      const state: LaneModel['state'] = lane.failed
+        ? 'failed'
         : conflictIds.has(lane.id)
-          ? { detail: 'merge conflict' }
-          : {}),
-    };
-  });
-  const applied = laneModels.filter((l) => l.state === 'done').length;
-  const finalModel = { lanes: laneModels, applied, conflicts: result.conflicts.length };
+          ? 'conflict'
+          : hasChanges
+            ? 'done'
+            : 'empty';
+      return {
+        id: lane.id,
+        title: subtask?.title ?? lane.id,
+        state,
+        ...(lane.result?.toolCalls !== undefined ? { toolCalls: lane.result.toolCalls } : {}),
+        ...(hasChanges ? { diff: parseDiffStat(lane.diff) } : {}),
+        ...(lane.result?.costCents != null ? { costCents: lane.result.costCents } : {}),
+        ...(lane.failed
+          ? { detail: lane.error ?? 'failed' }
+          : conflictIds.has(lane.id)
+            ? { detail: 'merge conflict' }
+            : {}),
+      };
+    });
+    const applied = laneModels.filter((l) => l.state === 'done').length;
+    const finalModel = { lanes: laneModels, applied, conflicts: result.conflicts.length };
 
-  if (inkLanes !== null) {
-    // Render the final detailed panel (per-lane diffstat/cost + merge counts) as
-    // the Ink view's LAST frame, then unmount (leaves it in scrollback) — no
-    // separate write, no duplicate panel. A short flush lets Ink paint the
-    // swapped-in frame before teardown.
-    inkLanes.setFinal(finalModel);
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    inkLanes.unmount();
-  } else {
-    deps.ui.write();
-    for (const line of renderLanes(finalModel, { tier, mode, palette, labels: railLabels })) {
-      deps.ui.write(line);
+    if (inkLanes !== null) {
+      // Render the final detailed panel (per-lane diffstat/cost + merge counts)
+      // as the Ink view's LAST frame; the `finally` unmounts it, leaving the
+      // frame in scrollback. A short flush lets Ink paint it before teardown.
+      inkLanes.setFinal(finalModel);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    } else {
+      deps.ui.write();
+      for (const line of renderLanes(finalModel, { tier, mode, palette, labels: railLabels })) {
+        deps.ui.write(line);
+      }
     }
+  } finally {
+    // ALWAYS tear down the live Ink panel — on success (after the final frame is
+    // painted) AND on any throw in the swarm or the panel build. Idempotent.
+    inkLanes?.unmount();
   }
 
   if (result.mergedDiff.trim().length === 0) {
