@@ -334,6 +334,7 @@ async function driveLoop(
   // folds the SAME stream → live == replay (the byte-identical invariant). Only
   // on the Ink path: the non-TTY spinner never showed a phase, so its persisted
   // stream stays phase-less (and its output unchanged).
+  let phaseStarted = false;
   if (view !== null) {
     const started = createEvent({
       runId: run.id,
@@ -342,6 +343,7 @@ async function driveLoop(
     });
     runManager.appendEvent(run.id, started);
     view.push(started);
+    phaseStarted = true;
   }
 
   try {
@@ -407,24 +409,30 @@ async function driveLoop(
         spinner!.start(() => spinnerText(activity));
       }
     }
-    // Close the synthetic working node — ALSO on abort, else the rail freezes a
-    // spinning node in scrollback (the run-level cancellation lands AFTER unmount
-    // via finishRun, which the view never sees). Persisted to match replay.
-    if (view !== null) {
-      const completed = createEvent({
-        runId: run.id,
-        type: 'phase_completed',
-        payload: { phaseId: 'turn' },
-      });
-      runManager.appendEvent(run.id, completed);
-      view.push(completed);
-    }
   } finally {
     ctrl.signal.removeEventListener('abort', onAbort);
     if (turn.signal !== undefined) {
       turn.signal.removeEventListener('abort', onUpstreamAbort);
     }
     if (view !== null) {
+      // CLOSE the synthetic working node here — runs exactly once on a clean exit,
+      // an abort, OR a mid-loop throw (e.g. a persist error), so the persisted /
+      // replayed stream never has a phase_started without its completion (which
+      // would freeze a spinning node). Must run BEFORE unmount. Best-effort
+      // persist so a disk fault here can't mask the original error.
+      if (phaseStarted) {
+        const completed = createEvent({
+          runId: run.id,
+          type: 'phase_completed',
+          payload: { phaseId: 'turn' },
+        });
+        try {
+          runManager.appendEvent(run.id, completed);
+        } catch {
+          /* persistence best-effort */
+        }
+        view.push(completed);
+      }
       // Leaves the final frame (completed phases already in scrollback via
       // <Static>) and fully releases stdin; then re-arm the REPL's raw editor.
       view.unmount();
