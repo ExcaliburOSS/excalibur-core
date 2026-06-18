@@ -86,6 +86,11 @@ export const ES: Catalog = {
 
   // status
   "ask.schema-invalid": "La respuesta del modelo no cumplió del todo el esquema: {errors}",
+  "mcp.none": "No hay servidores MCP configurados. Añádelos en `mcp.servers` de .excalibur/config.yaml (un `command` local o una `url` remota).",
+  "mcp.col-name": "NOMBRE",
+  "mcp.col-transport": "TRANSPORTE",
+  "mcp.col-target": "DESTINO",
+  "mcp.probe-hint": "Ejecuta `excalibur mcp list --probe` para conectar y listar las herramientas de cada servidor.",
   "insights.no-runs": "Aún no hay ejecuciones locales — nada que resumir. Inicia una con: excalibur run \"<tarea>\"",
   "insights.title": "Insights — {runs} ejecuciones",
   "insights.status": "estado   ",

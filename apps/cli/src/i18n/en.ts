@@ -90,6 +90,11 @@ export const EN: Catalog = {
 
   // status
   "ask.schema-invalid": "The model's answer did not fully conform to the schema: {errors}",
+  "mcp.none": "No MCP servers configured. Add them under `mcp.servers` in .excalibur/config.yaml (a local `command` or a remote `url`).",
+  "mcp.col-name": "NAME",
+  "mcp.col-transport": "TRANSPORT",
+  "mcp.col-target": "TARGET",
+  "mcp.probe-hint": "Run `excalibur mcp list --probe` to connect and list each server's tools.",
   "insights.no-runs": "No local runs yet — nothing to summarise. Start one with: excalibur run \"<task>\"",
   "insights.title": "Insights — {runs} runs",
   "insights.status": "status   ",
