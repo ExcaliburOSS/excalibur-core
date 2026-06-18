@@ -224,6 +224,9 @@ export class NativeAgentAdapter implements AgentAdapter {
       workdir: input.workdir,
       config: input.config,
       permissions,
+      // Thread the run's abort signal so ESC/abort SIGKILLs an in-flight
+      // command/test/git process instead of waiting for it to finish.
+      ...(input.signal !== undefined ? { signal: input.signal } : {}),
     };
     // MCP (Model Context Protocol) clients are connected INSIDE the try below so
     // the `finally` that calls closeMcp() always reclaims their subprocesses —

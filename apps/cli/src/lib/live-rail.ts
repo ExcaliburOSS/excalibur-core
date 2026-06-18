@@ -2,11 +2,41 @@ import type { ExcaliburEvent } from '@excalibur/shared';
 import {
   reduceRail,
   renderRail,
+  stripAnsi,
   type ColorTier,
   type Palette,
   type ReduceRailOptions,
   type ThemeMode,
 } from '@excalibur/tui';
+
+const ANSI_SEQ = /^\x1b\[[0-9;]*m/;
+
+/**
+ * Clamps a rendered line to `columns` VISIBLE characters (ANSI color codes don't
+ * count and are preserved), so a line never wraps onto a second physical row.
+ * The differential redraw counts logical lines as physical rows when moving the
+ * cursor — a wrapped line would throw that off and corrupt the in-place repaint.
+ */
+export function clampVisibleWidth(line: string, columns: number): string {
+  if (columns <= 0 || stripAnsi(line).length <= columns) {
+    return line;
+  }
+  let visible = 0;
+  let out = '';
+  let i = 0;
+  while (i < line.length && visible < columns) {
+    const seq = ANSI_SEQ.exec(line.slice(i));
+    if (seq) {
+      out += seq[0];
+      i += seq[0].length;
+      continue;
+    }
+    out += line[i];
+    visible += 1;
+    i += 1;
+  }
+  return `${out}\x1b[0m`; // reset so a truncated color never bleeds onward
+}
 
 /**
  * The LIVING RAIL, live. On a TTY this redraws the whole rail block IN PLACE as
@@ -53,6 +83,12 @@ export interface LiveRailOptions {
   now?: () => number;
   /** Localized rail status words (i18n) forwarded to `renderRail`. */
   labels?: { push?: string; noPush?: string; tasks?: string };
+  /**
+   * Terminal width for clamping rail lines so none wraps (which would break the
+   * differential redraw's row math). Defaults to `process.stdout.columns`,
+   * re-read every frame so a resize is honored. Injectable for tests.
+   */
+  columns?: () => number;
 }
 
 export class LiveRail {
@@ -142,13 +178,18 @@ export class LiveRail {
     this.frame += 1;
     const now = this.options.now ?? Date.now;
     const model = reduceRail(this.events, { ...this.options.reduce, nowMs: now() });
-    const lines = renderRail(model, {
+    const rawLines = renderRail(model, {
       tier: this.options.tier,
       mode: this.options.mode,
       ...(this.options.palette !== undefined ? { palette: this.options.palette } : {}),
       spinnerFrame: this.frame,
       ...(this.options.labels !== undefined ? { labels: this.options.labels } : {}),
     });
+    // Clamp to the terminal width so no line wraps onto a second physical row
+    // (the redraw moves the cursor by LOGICAL line count = physical rows only
+    // when nothing wraps).
+    const columns = this.options.columns?.() ?? process.stdout.columns ?? 0;
+    const lines = columns > 0 ? rawLines.map((line) => clampVisibleWidth(line, columns)) : rawLines;
     const begin = this.options.sync !== false ? SYNC_BEGIN : '';
     const end = this.options.sync !== false ? SYNC_END : '';
 

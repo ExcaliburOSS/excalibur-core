@@ -130,10 +130,11 @@ export class ModelGateway {
    *
    * Yields each `ChatDelta` from the resolved provider, then returns the final
    * output with `costCents` computed via the exact same path as {@link chat}.
-   * The public delta stream carries no usage, so usage is estimated from the
-   * concatenated content + the input messages using `estimateTokens` — the
-   * same estimation `MockProvider.chat()` uses, so the mock's streamed and
-   * non-streamed outputs report identical usage and cost.
+   * Provider-reported usage carried on the deltas is PREFERRED per-field; any
+   * field the provider omits (e.g. the mock, which reports none) falls back to
+   * estimating from the concatenated content + input messages via
+   * `estimateTokens` — so the mock's streamed and non-streamed outputs still
+   * report identical usage and cost.
    *
    * The existing {@link stream} is left untouched for callers that only need
    * deltas.
@@ -141,17 +142,26 @@ export class ModelGateway {
   async *streamWithUsage(input: GatewayChatInput): AsyncGenerator<ChatDelta, ChatOutput> {
     const { cfg, adapter, chatInput } = this.prepare(input);
     const chunks: string[] = [];
+    const reported: Partial<ChatUsage> = {};
     for await (const delta of adapter.stream(chatInput)) {
       if (delta.content.length > 0) {
         chunks.push(delta.content);
+      }
+      if (delta.usage?.inputTokens !== undefined) {
+        reported.inputTokens = delta.usage.inputTokens;
+      }
+      if (delta.usage?.outputTokens !== undefined) {
+        reported.outputTokens = delta.usage.outputTokens;
       }
       yield delta;
     }
 
     const content = chunks.join('');
     const usage: ChatUsage = {
-      inputTokens: estimateTokens(chatInput.messages.map((message) => message.content).join('\n')),
-      outputTokens: estimateTokens(content),
+      inputTokens:
+        reported.inputTokens ??
+        estimateTokens(chatInput.messages.map((message) => message.content).join('\n')),
+      outputTokens: reported.outputTokens ?? estimateTokens(content),
     };
     const computed = computeCostCents(usage, cfg);
     return {

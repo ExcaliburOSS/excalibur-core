@@ -124,9 +124,13 @@ export function reconstructConversationPrefix(model: ReplayModel, atStep: number
     }
 
     const content = str(event, 'content');
-    // Collect this turn's announcements + results until the next model_call.
-    const announcements: ExcaliburEvent[] = [];
-    const results: ExcaliburEvent[] = [];
+    // Walk this turn's events IN ORDER (until the next model_call), pairing each
+    // tool result with the oldest still-unanswered announcement — the order the
+    // adapter actually ran them. This never mis-pairs a result to the wrong call
+    // (which a zip of two separated announcement/result lists can), and a turn
+    // truncated mid-execution simply leaves a trailing announcement unpaired.
+    const pendingAnnouncements: ExcaliburEvent[] = [];
+    const pairs: { announcement: ExcaliburEvent; result: ExcaliburEvent }[] = [];
     let cursor = index + 1;
     for (; cursor < events.length; cursor += 1) {
       const inner = events[cursor] as ExcaliburEvent;
@@ -134,24 +138,32 @@ export function reconstructConversationPrefix(model: ReplayModel, atStep: number
         break;
       }
       if (isAnnouncement(inner)) {
-        announcements.push(inner);
+        pendingAnnouncements.push(inner);
       } else if (isResult(inner)) {
-        results.push(inner);
+        const announcement = pendingAnnouncements.shift();
+        if (announcement !== undefined) {
+          pairs.push({ announcement, result: inner });
+        }
       }
       // assistant_message / patch_generated / phase_* are not paired tool I/O.
     }
 
-    // Pair positionally; truncate to complete pairs so the prefix stays valid.
-    const paired = Math.min(announcements.length, results.length);
-    if (paired > 0) {
-      const toolCalls = announcements.slice(0, paired).map((a, k) => ({
+    // Only complete (answered) pairs reach the prefix, so every assistant tool
+    // call has a matching tool result — a dangling announcement is dropped.
+    if (pairs.length > 0) {
+      const toolCalls = pairs.map((pair, k) => ({
         id: `fork_${turn}_${k}`,
-        name: str(a, 'tool') || str(a, 'name'),
-        arguments: (a.payload['arguments'] as Record<string, unknown> | undefined) ?? {},
+        name: str(pair.announcement, 'tool') || str(pair.announcement, 'name'),
+        arguments:
+          (pair.announcement.payload['arguments'] as Record<string, unknown> | undefined) ?? {},
       }));
       messages.push({ role: 'assistant', content, toolCalls });
-      results.slice(0, paired).forEach((r, k) => {
-        messages.push({ role: 'tool', toolCallId: `fork_${turn}_${k}`, content: resultText(r) });
+      pairs.forEach((pair, k) => {
+        messages.push({
+          role: 'tool',
+          toolCallId: `fork_${turn}_${k}`,
+          content: resultText(pair.result),
+        });
       });
     } else if (content.trim().length > 0) {
       // A plain assistant turn (final answer, or a truncated narration turn).
@@ -195,10 +207,21 @@ export function planFork(repoRoot: string, runId: string, atStep: number): ForkP
  * the replayed prefix distinctly from the live suffix. Pure.
  */
 export function restampEventsForFork(events: ExcaliburEvent[], newRunId: string): ExcaliburEvent[] {
-  return events.map((event) => ({
+  return events.map((event, index) => ({
     ...event,
+    // Fresh, fork-local event id so the replayed prefix NEVER collides with the
+    // source run's `evt_<uuid>` ids — both logs can be ingested/deduped together
+    // (e.g. Enterprise sync). Index-based so fork.ts stays pure + resume-cacheable.
+    // The original timestamp is intentionally preserved: it records when the
+    // cached work actually happened.
+    id: `${newRunId}:fork:${index}`,
     runId: newRunId,
-    payload: { ...event.payload, cached: true, replayedFromRunId: event.runId },
+    payload: {
+      ...event.payload,
+      cached: true,
+      replayedFromRunId: event.runId,
+      replayedFromEventId: event.id,
+    },
   }));
 }
 

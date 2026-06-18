@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ExcaliburEvent, ExcaliburEventType } from '@excalibur/shared';
 import { stripAnsi } from '@excalibur/tui';
-import { LiveRail } from './live-rail';
+import { LiveRail, clampVisibleWidth } from './live-rail';
 
 let seq = 0;
 function ev(
@@ -44,6 +44,27 @@ const opts = (over = {}): ConstructorParameters<typeof LiveRail>[1] => ({
   animate: false,
   now: () => Date.UTC(2026, 5, 17, 0, 1, 0),
   ...over,
+});
+
+describe('clampVisibleWidth', () => {
+  it('truncates to the visible width, preserving ANSI codes and resetting at the end', () => {
+    const colored = '\x1b[32mhello world this is long\x1b[0m';
+    const clamped = clampVisibleWidth(colored, 5);
+    expect(stripAnsi(clamped).length).toBe(5); // 5 VISIBLE chars
+    expect(stripAnsi(clamped)).toBe('hello');
+    expect(clamped).toContain('\x1b[32m'); // color preserved
+    expect(clamped.endsWith('\x1b[0m')).toBe(true); // reset so color never bleeds
+  });
+
+  it('leaves a line that already fits untouched', () => {
+    const line = '\x1b[1mshort\x1b[0m';
+    expect(clampVisibleWidth(line, 80)).toBe(line);
+  });
+
+  it('does nothing when columns is unknown (0)', () => {
+    const line = 'a'.repeat(200);
+    expect(clampVisibleWidth(line, 0)).toBe(line);
+  });
 });
 
 describe('LiveRail', () => {

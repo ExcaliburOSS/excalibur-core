@@ -76,19 +76,20 @@ export function buildSessionSeed(
   if (latestRecord === null) {
     return entries.map((entry) => ({ role: entry.role, content: entry.text }));
   }
-  // The verbatim tail starts at the reload anchor — but advance to the first
-  // USER turn so the post-summary conversation is user-first (Anthropic rejects
-  // an assistant-leading turn; openai-compatible is lenient but this is safe for
-  // both). Everything older is represented by the summary.
-  let start =
+  // The verbatim tail starts at the reload anchor (the first kept entry). The
+  // anchor is user-aligned by planCompaction, so the tail is already user-first
+  // WITHOUT skipping forward — the old forward-skip silently dropped kept
+  // entries that were neither summarized nor reinjected.
+  const anchorIndex =
     latestRecord.firstKeptEntryId === null
       ? entries.length
       : entries.findIndex((entry) => entry.id === latestRecord.firstKeptEntryId);
-  if (start < 0) {
-    start = 0;
-  }
-  while (start < entries.length && entries[start]!.role !== 'user') {
-    start += 1;
-  }
-  return reassembleContext(latestRecord, entries.slice(start));
+  const start = anchorIndex < 0 ? 0 : anchorIndex;
+  // System / pinned entries the compaction preserved live BEFORE the anchor —
+  // re-include them by id (matching the plan's kept set) so pins survive a
+  // reload. The tail (anchor → end) is the verbatim recent context plus any
+  // turns added since the compaction.
+  const keptIds = new Set(latestRecord.details.keptEntryIds);
+  const preservedPrefix = entries.slice(0, start).filter((entry) => keptIds.has(entry.id));
+  return reassembleContext(latestRecord, [...preservedPrefix, ...entries.slice(start)]);
 }

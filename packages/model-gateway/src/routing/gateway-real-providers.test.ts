@@ -79,6 +79,36 @@ describe('ModelGateway with injected real providers (offline)', () => {
     );
   });
 
+  it('streamWithUsage reports the provider usage chunk, not an estimate', async () => {
+    const transport = new QueueTransport([
+      fakeResponse({ body: fixture('openai.stream.sse.txt') }),
+    ]);
+    const gateway = new ModelGateway(
+      config({
+        default: 'qwen',
+        qwen: {
+          type: 'openai-compatible',
+          baseUrl: 'https://api.example.test/v1',
+          apiKeyEnv: KEY_ENV,
+          model: 'test-openai-model',
+          inputCostPerMillionTokensCents: 300,
+          outputCostPerMillionTokensCents: 1500,
+        },
+      }),
+      { transport, factories: CORE_PROVIDER_FACTORIES },
+    );
+    const gen = gateway.streamWithUsage({ messages });
+    let next = await gen.next();
+    while (!next.done) {
+      next = await gen.next();
+    }
+    const output = next.value;
+    // Exact provider-reported numbers from the SSE usage chunk — NOT estimated.
+    expect(output.usage).toEqual({ inputTokens: 31, outputTokens: 9 });
+    // Cost is therefore computed from the real numbers: (31*300 + 9*1500)/1e6.
+    expect(output.costCents).toBeCloseTo((31 * 300 + 9 * 1500) / 1e6, 10);
+  });
+
   it('threads an injected keyResolver through to the real adapter', async () => {
     const injectedKey = 'sk-proj-GATEWAYINJECTED1234567890abcdef';
     const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);

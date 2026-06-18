@@ -82,15 +82,49 @@ export function getGitIdentity(repoRoot: string): GitIdentity {
  * string when there is no diff or the directory is not a git repository.
  */
 export function getLocalDiff(repoRoot: string): string {
-  const againstHead = tryGit(repoRoot, ['diff', 'HEAD']);
-  if (againstHead !== null) {
-    return againstHead.length > 0 ? `${againstHead}\n` : '';
+  // `git diff HEAD` shows tracked changes but OMITS brand-new (untracked) files,
+  // which an agentic run frequently creates. We temporarily mark only the
+  // untracked files intent-to-add (`git add -N`) so they appear in the diff as
+  // proper "new file" hunks, then unstage exactly those again — leaving any
+  // changes the user had already staged completely untouched.
+  if (revParse(repoRoot, 'HEAD') !== null) {
+    const untracked = listUntrackedFiles(repoRoot);
+    if (untracked.length > 0) {
+      tryGit(repoRoot, ['add', '-N', '--', ...untracked]);
+    }
+    try {
+      const againstHead = tryGit(repoRoot, ['diff', 'HEAD']);
+      if (againstHead !== null) {
+        return againstHead.length > 0 ? `${againstHead}\n` : '';
+      }
+    } finally {
+      if (untracked.length > 0) {
+        // Restore: drop the intent-to-add entries so the files are untracked again.
+        tryGit(repoRoot, ['reset', '-q', '--', ...untracked]);
+      }
+    }
   }
+  // No HEAD yet (no commits): fall back to the working-tree diff of tracked files.
   const workingTree = tryGit(repoRoot, ['diff']);
   if (workingTree !== null) {
     return workingTree.length > 0 ? `${workingTree}\n` : '';
   }
   return '';
+}
+
+/** Lists untracked, non-ignored files (NUL-delimited so odd names are safe). */
+function listUntrackedFiles(repoRoot: string): string[] {
+  const out = tryGit(repoRoot, ['ls-files', '--others', '--exclude-standard', '-z']);
+  if (out === null || out.length === 0) {
+    return [];
+  }
+  return out
+    .split('\0')
+    .filter((name) => name.length > 0)
+    // Excalibur's own state dir is never part of a user code diff/review —
+    // including it would let a run's artifacts pollute (and recursively grow)
+    // its own captured diff. Exclude it even when the repo hasn't gitignored it.
+    .filter((name) => name !== '.excalibur' && !name.startsWith('.excalibur/'));
 }
 
 /**
@@ -199,7 +233,13 @@ export function removeWorktree(
     args.push('--force');
   }
   args.push(worktreePath);
-  const removed = tryGit(repoRoot, args) !== null;
+  let removed = tryGit(repoRoot, args) !== null;
+  // A plain `worktree remove` REFUSES a tree with uncommitted changes — exactly
+  // the common teardown case (the agent just edited files there). Retry once
+  // with --force so cleanup never leaks the worktree directory + admin entry.
+  if (!removed && opts?.force !== true) {
+    removed = tryGit(repoRoot, ['worktree', 'remove', '--force', worktreePath]) !== null;
+  }
   // Prune stale admin entries regardless (e.g. if the dir was already gone).
   tryGit(repoRoot, ['worktree', 'prune']);
   return removed;

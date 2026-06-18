@@ -212,8 +212,15 @@ export abstract class BaseHttpProvider implements ModelProviderAdapter {
     );
 
     for await (const event of this.decodeStream(response, input, model)) {
-      if (event.content.length > 0) {
-        yield { content: event.content, done: false };
+      // Forward content chunks AND provider-reported usage (which previously was
+      // dropped here, forcing the gateway to estimate). A usage-only event still
+      // surfaces so streamWithUsage can prefer exact provider numbers.
+      if (event.content.length > 0 || event.usage !== undefined) {
+        yield {
+          content: event.content,
+          done: false,
+          ...(event.usage !== undefined ? { usage: event.usage } : {}),
+        };
       }
     }
     yield { content: '', done: true };

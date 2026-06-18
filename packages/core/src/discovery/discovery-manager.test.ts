@@ -5,7 +5,7 @@ import { DEFAULT_PROVIDERS_CONFIG, ModelGateway } from '@excalibur/model-gateway
 import { DISCOVERY_ARTIFACT_FILES } from '@excalibur/shared';
 import { DiscoverySessionNotFoundError } from '../errors';
 import { makeTempDir, removeDir } from '../test-utils';
-import { DiscoveryManager } from './discovery-manager';
+import { DiscoveryManager, workflowForRecommendation } from './discovery-manager';
 
 describe('DiscoveryManager', () => {
   let repoRoot: string;
@@ -137,6 +137,33 @@ describe('DiscoveryManager', () => {
     const summary = readFileSync(join(session.dir, 'discovery-summary.md'), 'utf8');
     expect(summary).toContain('Open questions');
     expect(summary).toContain('What problem are we trying to solve?');
+  });
+
+  it('routes the readiness-card workflow by RECOMMENDATION, not just readiness', () => {
+    // The bug: a "don't build yet" verdict still routed to a build workflow when
+    // the agent-readiness sub-score happened to be high. Discovery's gate must win.
+    // Even with implementation_ready readiness, a non-build verdict stays off-build:
+    expect(workflowForRecommendation('do_not_build', 'implementation_ready', 3)).toBe('discovery');
+    expect(workflowForRecommendation('customer_validation', 'implementation_ready', 3)).toBe(
+      'discovery',
+    );
+    expect(workflowForRecommendation('refine_first', 'implementation_ready', 4)).toBe('discovery');
+    expect(workflowForRecommendation('split_scope', 'implementation_ready', 3)).toBe('discovery');
+    expect(workflowForRecommendation('prototype', 'implementation_ready', 3)).toBe(
+      'explore-alternatives',
+    );
+    expect(workflowForRecommendation('technical_spike', 'implementation_ready', 3)).toBe(
+      'explore-alternatives',
+    );
+    expect(workflowForRecommendation('plan_only', 'implementation_ready', 3)).toBe('assist');
+    // A build verdict THEN refines by readiness + autonomy.
+    expect(workflowForRecommendation('patch_ready', 'patch_ready', 2)).toBe('propose-patch');
+    expect(workflowForRecommendation('build_now', 'implementation_ready', 3)).toBe(
+      'standard-feature',
+    );
+    expect(workflowForRecommendation('agent_run_ready', 'implementation_ready', 4)).toBe(
+      'structured-feature',
+    );
   });
 
   it('throws DiscoverySessionNotFoundError for unknown ids', () => {

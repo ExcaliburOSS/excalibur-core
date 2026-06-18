@@ -301,6 +301,29 @@ describe('executeNativeTool — run_command / run_tests', () => {
     const result = await executeNativeTool('run_tests', {}, ctx(cfg));
     expect(result.result).toContain('TESTS_RAN');
   });
+
+  it('SIGKILLs an in-flight command when the run is aborted (does not wait for the process)', async () => {
+    const controller = new AbortController();
+    const abortCtx: ToolExecutionContext = { ...ctx(), signal: controller.signal };
+    setTimeout(() => controller.abort(), 50);
+    const startedAt = Date.now();
+    // `sleep 30` would block for 30s (and the executor's own timeout is 120s);
+    // an honoured abort must kill it within a fraction of that.
+    const result = await executeNativeTool('run_command', { command: 'sleep 30' }, abortCtx);
+    const elapsedMs = Date.now() - startedAt;
+    expect(elapsedMs).toBeLessThan(4000);
+    expect(result.result).toContain('aborted');
+  });
+
+  it('does not start a command when the signal is already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const abortCtx: ToolExecutionContext = { ...ctx(), signal: controller.signal };
+    const result = await executeNativeTool('run_command', { command: 'echo should-not-run' }, abortCtx);
+    // The "before start" marker is only produced on the pre-spawn short-circuit,
+    // proving the process was never launched (echo never produced its output).
+    expect(result.result).toContain('command aborted before start');
+  });
 });
 
 describe('executeNativeTool — git tools', () => {

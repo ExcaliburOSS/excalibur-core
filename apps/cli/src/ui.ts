@@ -136,6 +136,13 @@ export class Ui {
   // display: the queue editor echoes via the terminal, but the raw editor must
   // re-render the prompt+buffer on every keystroke (raw mode has no echo).
   private activeReader: ((prompt: string) => Promise<string | null>) | null = null;
+  /**
+   * True while a per-call sub-prompt (`ask`/`confirm`/`select`/`confirmTool`)
+   * is reading through the shared raw editor. The rewind (Esc-Esc) and Session
+   * Log (↓) gestures belong to the MAIN session line only — they must never
+   * resolve a mid-turn confirmation/question with a sentinel.
+   */
+  private inSubPrompt = false;
 
   constructor(options: UiOptions = {}) {
     this.stdout = options.stdout ?? process.stdout;
@@ -517,7 +524,13 @@ export class Ui {
             // Esc-Esc at the prompt: resolve the pending read with the rewind
             // sentinel so the REPL opens the time-machine (which then drives its
             // own question() reads). A rewind only fires while awaiting, so a
-            // waiter exists; drop harmlessly if somehow not.
+            // waiter exists; drop harmlessly if somehow not. NEVER while a
+            // sub-prompt (confirm/ask/select) is reading — the gesture is for
+            // the main session line only.
+            if (this.inSubPrompt) {
+              repaint();
+              return;
+            }
             cancelSuggest();
             out.write('\n');
             currentPrompt = null;
@@ -527,7 +540,12 @@ export class Ui {
           case 'open_log': {
             // ↓ on the empty live line: resolve the pending read with the log
             // sentinel so the REPL opens the Session Log (which drives its own
-            // question() reads). Mirrors the rewind path.
+            // question() reads). Mirrors the rewind path — suppressed during a
+            // sub-prompt so a stray ↓ can't resolve a confirmation.
+            if (this.inSubPrompt) {
+              repaint();
+              return;
+            }
             cancelSuggest();
             out.write('\n');
             currentPrompt = null;
@@ -675,8 +693,16 @@ export class Ui {
     // reader owns prompt display (raw editor renders it live), so we DON'T
     // writeRaw here when delegating.
     if (this.activeReader !== null) {
-      const line = await this.activeReader(prompt);
-      return line ?? '';
+      // Suppress the live-line gestures (rewind / Session Log) for the duration
+      // of this sub-prompt so a stray Esc-Esc / ↓ can't resolve it with a
+      // sentinel string instead of a real answer.
+      this.inSubPrompt = true;
+      try {
+        const line = await this.activeReader(prompt);
+        return line ?? '';
+      } finally {
+        this.inSubPrompt = false;
+      }
     }
     const rl = readline.createInterface({ input: this.stdin, output: this.stdout });
     return new Promise((resolve) => {

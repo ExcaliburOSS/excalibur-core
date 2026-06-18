@@ -51,6 +51,13 @@ export interface ToolExecutionContext {
   permissions: PermissionEngine;
   /** Environment for spawned commands (defaults to a minimal inherited env). */
   env?: NodeJS.ProcessEnv;
+  /**
+   * Optional abort signal. When it fires, any in-flight spawned process
+   * (run_command / run_tests / git) is SIGKILLed immediately instead of
+   * running to completion or the 120s timeout — so ESC/abort actually stops
+   * work the agent already started.
+   */
+  signal?: AbortSignal;
 }
 
 export interface ToolResult {
@@ -178,9 +185,20 @@ function validate(name: NativeToolName, args: unknown): { data: Record<string, u
 function runProcess(
   file: string,
   args: string[],
-  options: { cwd: string; env?: NodeJS.ProcessEnv; shell?: boolean; input?: string },
-): Promise<{ code: number | null; output: string; timedOut: boolean }> {
+  options: {
+    cwd: string;
+    env?: NodeJS.ProcessEnv;
+    shell?: boolean;
+    input?: string;
+    signal?: AbortSignal;
+  },
+): Promise<{ code: number | null; output: string; timedOut: boolean; aborted: boolean }> {
   return new Promise((resolve) => {
+    const { signal } = options;
+    if (signal?.aborted === true) {
+      resolve({ code: null, output: '(command aborted before start)', timedOut: false, aborted: true });
+      return;
+    }
     const child = spawn(file, args, {
       cwd: options.cwd,
       env: options.env ?? { PATH: process.env['PATH'] ?? '', HOME: process.env['HOME'] ?? '' },
@@ -191,6 +209,7 @@ function runProcess(
     let output = '';
     let bytes = 0;
     let timedOut = false;
+    let aborted = false;
     let settled = false;
 
     const capture = (chunk: Buffer): void => {
@@ -210,13 +229,25 @@ function runProcess(
       child.kill('SIGKILL');
     }, COMMAND_TIMEOUT_MS);
 
+    // Kill the spawned process the moment the run is aborted (ESC / signal),
+    // rather than letting it run to completion or the 120s timeout.
+    const onAbort = (): void => {
+      aborted = true;
+      child.kill('SIGKILL');
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+
     const finish = (code: number | null): void => {
       if (settled) {
         return;
       }
       settled = true;
       clearTimeout(timer);
-      resolve({ code, output, timedOut });
+      signal?.removeEventListener('abort', onAbort);
+      if (aborted) {
+        output += '\n…(command aborted)';
+      }
+      resolve({ code, output, timedOut, aborted });
     };
 
     child.on('error', (error) => {
@@ -503,6 +534,7 @@ async function execRunCommand(
     cwd,
     ...(ctx.env !== undefined ? { env: ctx.env } : {}),
     shell: true,
+    ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
   });
   return formatCommandResult(command, code, output, timedOut);
 }
@@ -542,6 +574,7 @@ async function execRunTests(
     cwd: path.resolve(ctx.workdir),
     ...(ctx.env !== undefined ? { env: ctx.env } : {}),
     shell: true,
+    ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
   });
   return formatCommandResult(command, code, output, timedOut);
 }
@@ -587,6 +620,7 @@ async function execGitDiff(
   }
   const { code, output, timedOut } = await runProcess('git', gitArgs, {
     cwd: path.resolve(ctx.workdir),
+    ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
   });
   if (timedOut) {
     return fail('git diff timed out');
@@ -620,6 +654,7 @@ async function execApplyPatch(
   const { code, output, timedOut } = await runProcess('git', ['apply', '--whitespace=nowarn', '-'], {
     cwd: path.resolve(ctx.workdir),
     input: diff.endsWith('\n') ? diff : `${diff}\n`,
+    ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
   });
   if (timedOut) {
     return fail('git apply timed out');
@@ -637,6 +672,7 @@ async function execCreateBranch(
   const name = args['name'] as string;
   const { code, output, timedOut } = await runProcess('git', ['checkout', '-b', name], {
     cwd: path.resolve(ctx.workdir),
+    ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
   });
   if (timedOut) {
     return fail('git checkout timed out');

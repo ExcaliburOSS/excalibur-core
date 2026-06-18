@@ -11,6 +11,7 @@ import {
   type AgentReadiness,
   type DiscoveryAnswerEntry,
   type DiscoveryInputType,
+  type DiscoveryRecommendation,
   type DiscoveryRecord,
   type DiscoveryScore,
   type DiscoverySource,
@@ -71,7 +72,7 @@ const READINESS_LABELS: Record<AgentReadiness, string> = {
   implementation_ready: 'Implementation ready',
 };
 
-/** Deterministic readiness → workflow key for the readiness card. */
+/** Deterministic readiness → build-workflow key (used once a build is endorsed). */
 function workflowForReadiness(readiness: AgentReadiness, autonomyLevel: number): string {
   switch (readiness) {
     case 'not_ready':
@@ -82,6 +83,39 @@ function workflowForReadiness(readiness: AgentReadiness, autonomyLevel: number):
       return 'propose-patch';
     case 'implementation_ready':
       return autonomyLevel >= 4 ? 'structured-feature' : 'standard-feature';
+  }
+}
+
+/**
+ * Deterministic recommendation → workflow key for the readiness card. The
+ * RECOMMENDATION drives the choice (that is Discovery's build/don't-build gate):
+ * a "don't build yet" verdict must never route to a build workflow just because
+ * the agent-readiness sub-score happened to be high. Only when the verdict is
+ * to build (`build_now`/`agent_run_ready`) do we refine by agent readiness.
+ */
+export function workflowForRecommendation(
+  recommendation: DiscoveryRecommendation,
+  readiness: AgentReadiness,
+  autonomyLevel: number,
+): string {
+  switch (recommendation) {
+    case 'do_not_build':
+    case 'refine_first':
+    case 'split_scope':
+    case 'customer_validation':
+      // Gate says not yet — send back into discovery/validation, not building.
+      return 'discovery';
+    case 'plan_only':
+      return 'assist';
+    case 'prototype':
+    case 'technical_spike':
+      // A cheap exploratory build, not the full feature.
+      return 'explore-alternatives';
+    case 'patch_ready':
+      return 'propose-patch';
+    case 'build_now':
+    case 'agent_run_ready':
+      return workflowForReadiness(readiness, autonomyLevel);
   }
 }
 
@@ -215,7 +249,8 @@ export class DiscoveryManager {
       `Turn the discovery session "${session.record.title}" into a refined, implementation-ready ticket.\n\nTranscript:\n${transcriptText}`,
     );
 
-    const recommendedWorkflow = workflowForReadiness(
+    const recommendedWorkflow = workflowForRecommendation(
+      recommendation.recommendation,
       scores.agentReadiness,
       recommendation.recommendedAutonomyLevel,
     );

@@ -150,23 +150,34 @@ function spanOf(
   delText: string,
   addText: string,
 ): { del: readonly [number, number]; add: readonly [number, number] } | null {
+  // Operate on CODE POINTS (not UTF-16 units): a common prefix/suffix computed
+  // on raw `string[index]` can split a surrogate pair (e.g. an emoji), so the
+  // highlighted span would slice a half-character into mojibake.
+  const delCp = Array.from(delText);
+  const addCp = Array.from(addText);
   let p = 0;
-  const min = Math.min(delText.length, addText.length);
-  while (p < min && delText[p] === addText[p]) p += 1;
+  const min = Math.min(delCp.length, addCp.length);
+  while (p < min && delCp[p] === addCp[p]) p += 1;
   let s = 0;
   while (
-    s < delText.length - p &&
-    s < addText.length - p &&
-    delText[delText.length - 1 - s] === addText[addText.length - 1 - s]
+    s < delCp.length - p &&
+    s < addCp.length - p &&
+    delCp[delCp.length - 1 - s] === addCp[addCp.length - 1 - s]
   ) {
     s += 1;
   }
-  const delEnd = delText.length - s;
-  const addEnd = addText.length - s;
+  const delEndCp = delCp.length - s;
+  const addEndCp = addCp.length - s;
   // No change, or the whole line changed (no useful sub-span) → skip highlight.
-  if (p >= delEnd && p >= addEnd) return null;
-  if (p === 0 && delEnd === delText.length && addEnd === addText.length) return null;
-  return { del: [p, delEnd], add: [p, addEnd] };
+  if (p >= delEndCp && p >= addEndCp) return null;
+  if (p === 0 && delEndCp === delCp.length && addEndCp === addCp.length) return null;
+  // Convert code-point indices back to UTF-16 string indices (used with slice),
+  // staying on code-point boundaries so a surrogate pair is never split.
+  const u16 = (cps: string[], n: number): number => cps.slice(0, n).join('').length;
+  return {
+    del: [u16(delCp, p), u16(delCp, delEndCp)],
+    add: [u16(addCp, p), u16(addCp, addEndCp)],
+  };
 }
 
 export interface RenderDiffOptions {

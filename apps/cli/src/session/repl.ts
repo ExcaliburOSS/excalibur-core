@@ -22,7 +22,7 @@ import {
 } from '@excalibur/core';
 import { analyzeRepository } from '@excalibur/context-engine';
 import { agentUsesGateway, resolveAgentAdapter } from '@excalibur/agent-runtime';
-import { redactSecrets, type ChatMessage } from '@excalibur/model-gateway';
+import { estimateTokens, redactSecrets, type ChatMessage } from '@excalibur/model-gateway';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { AutonomyLevel, ExcaliburConfig } from '@excalibur/shared';
@@ -773,6 +773,21 @@ async function runCompaction(
   try {
     const turns = runtime.store.readTranscript(runtime.session.id);
     const contextWindow = compactionContextWindow(runtime.repoRoot, runtime.model);
+    // The on-disk transcript is lossless (it keeps every turn, even ones already
+    // folded into a prior summary). Gating the AUTOMATIC path on that raw total
+    // would re-compact the same prefix on every turn once it first goes over
+    // budget. Gate instead on the EFFECTIVE context we actually send — the
+    // latest summary + kept tail + new turns (what buildSessionSeed produces).
+    if (!opts.manual) {
+      const latest = runtime.store.latestCompaction(runtime.session.id);
+      const effectiveTokens = buildSessionSeed(turns, latest).reduce(
+        (sum, message) => sum + estimateTokens(message.content),
+        0,
+      );
+      if (effectiveTokens <= contextWindow - config.reserveTokens) {
+        return; // effective context is within budget — no compaction churn
+      }
+    }
     const summarizer = buildCompactionSummarizer(runtime, config);
     let record;
     if (summarizer !== undefined) {

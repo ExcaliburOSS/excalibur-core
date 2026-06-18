@@ -92,6 +92,13 @@ export interface ChatOutput {
 export interface ChatDelta {
   content: string;
   done: boolean;
+  /**
+   * Provider-reported usage carried on the stream when available (e.g. an
+   * Anthropic `message_start`/`message_delta`, or an OpenAI `include_usage`
+   * final chunk). Partial — input and output tokens may arrive on separate
+   * deltas. Consumers prefer this over estimating from text.
+   */
+  usage?: Partial<ChatUsage>;
 }
 
 export interface ModelProviderAdapter {

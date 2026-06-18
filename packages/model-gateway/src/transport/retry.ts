@@ -34,9 +34,11 @@ function defaultSleep(ms: number): Promise<void> {
 /**
  * Runs `fn`, retrying retryable failures with exponential backoff and full
  * jitter: `delay = random() * min(maxDelayMs, baseDelayMs * 2^attempt)`. A
- * server-supplied `retryAfterMs` (capped at `maxDelayMs`) overrides the
- * computed delay when present. The last error is re-thrown once retries are
- * exhausted or the error is non-retryable.
+ * server-supplied `retryAfterMs` sets the floor, plus bounded jitter within the
+ * remaining headroom up to `maxDelayMs` — so a `Retry-After` shared by many
+ * clients does not make them all retry on the same tick (thundering herd). The
+ * last error is re-thrown once retries are exhausted or the error is
+ * non-retryable.
  */
 export async function withRetry<T, E = unknown>(
   fn: () => Promise<T>,
@@ -60,7 +62,12 @@ export async function withRetry<T, E = unknown>(
       const suggested = opts.retryAfterMs?.(typed) ?? null;
       let delay: number;
       if (suggested !== null && suggested >= 0) {
-        delay = Math.min(suggested, maxDelayMs);
+        // Respect the server's delay as a FLOOR, then add jitter within the
+        // headroom up to maxDelayMs so concurrent clients sharing one
+        // Retry-After don't all wake on the same tick.
+        const floor = Math.min(suggested, maxDelayMs);
+        const headroom = Math.max(0, maxDelayMs - floor);
+        delay = floor + random() * headroom;
       } else {
         const ceiling = Math.min(maxDelayMs, baseDelayMs * 2 ** attempt);
         delay = random() * ceiling;

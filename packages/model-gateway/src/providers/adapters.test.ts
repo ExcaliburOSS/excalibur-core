@@ -322,7 +322,7 @@ describe('retry behavior (shared base)', () => {
     expect(transport.sendCount).toBe(2);
   });
 
-  it('honors Retry-After on a 429', async () => {
+  it('honors Retry-After as a floor, adding jitter within the cap', async () => {
     const sleeps: number[] = [];
     const recordingHooks: BaseProviderHooks = {
       sleep: async (ms) => {
@@ -341,7 +341,12 @@ describe('retry behavior (shared base)', () => {
       hooks: recordingHooks,
     });
     await adapter.chat(input);
-    expect(sleeps).toEqual([2000]);
+    // Server asked for 2s; we never wait LESS than that, and add jitter in the
+    // headroom up to the 8s cap so concurrent clients don't retry in lockstep.
+    // floor 2000 + 0.9 * (8000 - 2000) = 7400.
+    expect(sleeps).toHaveLength(1);
+    expect(sleeps[0]).toBeGreaterThanOrEqual(2000);
+    expect(sleeps[0]).toBe(7400);
   });
 
   it('throws after maxRetries on repeated 500s', async () => {

@@ -73,7 +73,18 @@ export function planCompaction(
     }
   }
 
-  const cut = recentCutIndex(entries, config.keepRecentTokens);
+  let cut = recentCutIndex(entries, config.keepRecentTokens);
+  // Align the kept tail to a USER-turn boundary by moving the cut FORWARD to the
+  // next user turn. This keeps the tail user-first (Anthropic rejects an
+  // assistant-leading turn) and makes the kept set match exactly what gets
+  // reinjected on reload — no entry is silently dropped between "summarized" and
+  // "kept" (the reinject no longer skips forward). The few leading assistant
+  // entries of the natural tail are folded INTO the summary, never lost; moving
+  // forward (not back) also avoids pulling the only summarizable content into
+  // the kept tail and stalling compaction.
+  while (cut < entries.length && entries[cut]?.role !== 'user') {
+    cut += 1;
+  }
   const suffix = entries.slice(cut);
   const prefix = entries.slice(0, cut);
   const preservedFromPrefix = prefix.filter((e) => e.role === 'system' || e.pinned);

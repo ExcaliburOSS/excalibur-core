@@ -139,6 +139,21 @@ describe('selectWorkflow', () => {
         );
       }
     });
+
+    it('L4 routes sensitive task types to their specialized workflow', () => {
+      // A security task at the highest autonomy must NOT fall through to the
+      // generic structured-feature — it gets the dedicated review workflow.
+      expect(
+        select({ autonomyLevel: 4, executionStyle: 'fast', taskType: 'security' }).workflowId,
+      ).toBe('security-review');
+      expect(
+        select({ autonomyLevel: 4, executionStyle: 'structured', taskType: 'migration' }).workflowId,
+      ).toBe('migration');
+      // An explicit explore/careful style still wins over taskType.
+      expect(
+        select({ autonomyLevel: 4, executionStyle: 'careful', taskType: 'security' }).workflowId,
+      ).toBe('human-gated');
+    });
   });
 
   it('falls back to standard-feature when a config mapping names a missing workflow', () => {

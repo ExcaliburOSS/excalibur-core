@@ -58,6 +58,17 @@ function startOfDay(now: Date): Date {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
+/**
+ * The instant a finished run's work landed, for windowing reports. Uses
+ * `completedAt` (when the work actually finished) — a run that STARTED before
+ * the window but FINISHED inside it is this period's activity; one that started
+ * inside the window but isn't done yet belongs to `pending`, not "completed
+ * today". Falls back to `startedAt` only if a record somehow lacks completedAt.
+ */
+function finishedAt(run: LocalRun): Date {
+  return new Date(run.record.completedAt ?? run.record.startedAt);
+}
+
 function describeRun(t: Translator, run: LocalRun): string {
   return t('report.run-line', {
     id: run.id,
@@ -102,9 +113,14 @@ export function generateDailyReport(input: ReportInput): string {
   const sinceIso = since.toISOString();
 
   const runs = input.runManager.listRuns();
-  const todaysRuns = runs.filter((run) => new Date(run.record.startedAt) >= since);
-  const completed = todaysRuns.filter((run) => run.record.status === 'completed');
-  const failed = todaysRuns.filter((run) => run.record.status === 'failed');
+  // Completed/failed runs are windowed by when they FINISHED, not when they
+  // started (a run that finished today but began yesterday still counts today).
+  const completed = runs.filter(
+    (run) => run.record.status === 'completed' && finishedAt(run) >= since,
+  );
+  const failed = runs.filter(
+    (run) => run.record.status === 'failed' && finishedAt(run) >= since,
+  );
   const pending = runs.filter((run) => PENDING_STATUSES.has(run.record.status));
 
   const patches = new PatchStore(input.repoRoot)
@@ -142,9 +158,13 @@ export function generateWeeklyPlan(input: ReportInput): string {
   const sinceIso = since.toISOString();
 
   const runs = input.runManager.listRuns();
-  const weekRuns = runs.filter((run) => new Date(run.record.startedAt) >= since);
-  const completed = weekRuns.filter((run) => run.record.status === 'completed');
-  const failed = weekRuns.filter((run) => run.record.status === 'failed');
+  // Window finished runs by completion time (see generateDailyReport).
+  const completed = runs.filter(
+    (run) => run.record.status === 'completed' && finishedAt(run) >= since,
+  );
+  const failed = runs.filter(
+    (run) => run.record.status === 'failed' && finishedAt(run) >= since,
+  );
   const pending = runs.filter((run) => PENDING_STATUSES.has(run.record.status));
 
   const allPatches = new PatchStore(input.repoRoot).list();
@@ -171,7 +191,7 @@ export function generateWeeklyPlan(input: ReportInput): string {
       t('report.last-week'),
       [
         t('report.runs-summary', {
-          total: weekRuns.length,
+          total: completed.length + failed.length,
           completed: completed.length,
           failed: failed.length,
         }),

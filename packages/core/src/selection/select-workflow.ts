@@ -127,6 +127,21 @@ function mapLevelAndStyle(input: SelectWorkflowInput): { id: string; reason: str
             reason: 'Level 4 with the careful style maps to the human-gated workflow.',
           };
         default:
+          // Honour sensitive task types at the highest autonomy too — a security
+          // or migration task needs its specialized careful workflow, not the
+          // generic structured-feature (mirrors L0 security / L2 refactor).
+          if (taskType === 'security') {
+            return {
+              id: 'security-review',
+              reason: 'Level 4 with a security task maps to the security-review workflow.',
+            };
+          }
+          if (taskType === 'migration') {
+            return {
+              id: 'migration',
+              reason: 'Level 4 with a migration task maps to the migration workflow.',
+            };
+          }
           return {
             id: 'structured-feature',
             reason: `Level 4 with the "${executionStyle}" style maps to structured-feature.`,

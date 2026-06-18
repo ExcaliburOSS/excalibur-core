@@ -77,6 +77,29 @@ describe('reports', () => {
     expect(markdown).toContain('Waiting for approval');
   });
 
+  it('windows completed runs by completion time, not start time', () => {
+    const now = new Date();
+    now.setHours(12, 0, 0, 0); // midday local — robust against the day boundary
+    // Started 2 days ago (outside today's window) but FINISHED an hour ago (inside).
+    const startedTwoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    const finishedAnHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+    const run = runManager.createRun({
+      title: 'Overnight long run',
+      autonomyLevel: 3,
+      workflow: 'fast-fix',
+    });
+    runManager.updateRecord(run.id, {
+      status: 'completed',
+      startedAt: startedTwoDaysAgo,
+      completedAt: finishedAnHourAgo,
+    });
+    const markdown = generateDailyReport({ repoRoot, runManager, now });
+    // It finished today, so it belongs in today's Completed section — even
+    // though it started before the window (the old startedAt windowing dropped it).
+    const completedSection = markdown.split('## Failed runs')[0] ?? '';
+    expect(completedSection).toContain('Overnight long run');
+  });
+
   it('reports empty sections honestly when there is no activity', () => {
     const markdown = generateDailyReport({
       repoRoot: makeTempDir(),

@@ -58,6 +58,28 @@ describe('parseUnifiedDiff', () => {
     expect(del.text.slice(del.span![0], del.span![1])).toContain('-');
     expect(add.text.slice(add.span![0], add.span![1])).toContain('+');
   });
+
+  it('keeps surrogate pairs intact in the word span (no half-emoji)', () => {
+    // 😀 (U+1F600) and 😁 (U+1F601) share a high surrogate and differ only in
+    // the low surrogate — a UTF-16-unit prefix would split the pair mid-char.
+    const diff = [
+      '--- a/f.ts',
+      '+++ b/f.ts',
+      '@@ -1 +1 @@',
+      '-x😀y',
+      '+x😁y',
+      '',
+    ].join('\n');
+    const [file] = parseUnifiedDiff(diff);
+    const lines = file!.hunks[0]!.lines;
+    const del = lines.find((l) => l.kind === 'del')!;
+    const add = lines.find((l) => l.kind === 'add')!;
+    // The changed span is the WHOLE emoji, never a lone surrogate half.
+    expect(del.text.slice(del.span![0], del.span![1])).toBe('😀');
+    expect(add.text.slice(add.span![0], add.span![1])).toBe('😁');
+    // The common prefix ('x') sits cleanly before the span.
+    expect(del.text.slice(0, del.span![0])).toBe('x');
+  });
 });
 
 describe('renderDiff', () => {

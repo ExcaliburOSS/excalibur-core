@@ -88,6 +88,37 @@ describe('buildSessionSeed (reinjection primitive)', () => {
     // Only the verbatim tail (from the anchor) follows the summary.
     expect(seed.length).toBeLessThan(turns.length + 1);
   });
+
+  it('reinjects a user-first tail and never drops a kept entry', () => {
+    // 6 alternating 200-token turns; the recent-tail cut lands on an ASSISTANT
+    // turn (s:3), which the OLD code skipped forward over — silently dropping a
+    // kept entry. Now the plan moves the anchor forward to the next USER turn
+    // (s:4), folding s:3 into the summary, and the reinject keeps everything.
+    const turns: SessionTurn[] = [
+      turn(0, 'user', 200),
+      turn(1, 'assistant', 200),
+      turn(2, 'user', 200),
+      turn(3, 'assistant', 200),
+      turn(4, 'user', 200),
+      turn(5, 'assistant', 200),
+    ];
+    const record = compactSession(turns, {
+      config: cfg({ reserveTokens: 50, keepRecentTokens: 500 }),
+      contextWindow: 100,
+    })!;
+    // Anchor is user-aligned (s:4), and the dropped-prone assistant s:3 is in
+    // the SUMMARY (folded in), not lost.
+    expect(record.firstKeptEntryId).toBe('s:4');
+    expect(record.details.summarizedEntryIds).toContain('s:3');
+    expect(record.details.keptEntryIds).toEqual(['s:4', 's:5']);
+
+    const seed = buildSessionSeed(turns, record);
+    expect(seed[0]!.role).toBe('system'); // the summary
+    expect(seed[1]!.role).toBe('user'); // user-first tail (never assistant-leading)
+    // Exactly summary + the two kept tail entries — nothing dropped, none extra.
+    expect(seed).toHaveLength(3);
+    expect(seed.map((m) => m.role)).toEqual(['system', 'user', 'assistant']);
+  });
 });
 
 describe('SessionStore compaction persistence', () => {

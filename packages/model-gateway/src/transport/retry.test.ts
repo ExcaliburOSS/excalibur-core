@@ -116,4 +116,30 @@ describe('withRetry', () => {
     // Server asked for 5000ms but the ceiling caps it at 1000ms.
     expect(delays).toEqual([1000]);
   });
+
+  it('adds jitter within the headroom above a server retryAfterMs below maxDelayMs', async () => {
+    const delays: number[] = [];
+    const sleep = vi.fn(async (ms: number) => {
+      delays.push(ms);
+    });
+    let calls = 0;
+    await withRetry(
+      async () => {
+        calls += 1;
+        if (calls === 1) {
+          throw new Error('rate limited');
+        }
+        return 'ok';
+      },
+      {
+        isRetryable: alwaysRetryable,
+        maxDelayMs: 8000,
+        retryAfterMs: () => 2000,
+        random: () => 0.5, // half of the (8000 - 2000) headroom = +3000
+        sleep,
+      },
+    );
+    // Floor 2000 (server) + 0.5 * 6000 headroom = 5000 — spreads concurrent clients.
+    expect(delays).toEqual([5000]);
+  });
 });

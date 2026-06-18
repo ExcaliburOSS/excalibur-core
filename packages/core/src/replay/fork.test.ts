@@ -145,6 +145,22 @@ describe('fork-from-cache reconstruction', () => {
     expect(restamped.every((e) => e.payload['replayedFromRunId'] === runId)).toBe(true);
   });
 
+  it('restampEventsForFork gives fresh, non-colliding ids and keeps the original id', () => {
+    const plan = planFork(repoRoot, runId, 2);
+    const originalIds = plan.prefixEvents.map((e) => e.id);
+    const restamped = restampEventsForFork(plan.prefixEvents, 'run_fork');
+    // No restamped id collides with a source-run id (both logs are ingestable together).
+    const originalSet = new Set(originalIds);
+    expect(restamped.every((e) => !originalSet.has(e.id))).toBe(true);
+    // Ids are unique within the forked prefix.
+    expect(new Set(restamped.map((e) => e.id)).size).toBe(restamped.length);
+    // Provenance is preserved for the time-machine / Workbench.
+    restamped.forEach((e, i) => {
+      expect(e.payload['replayedFromEventId']).toBe(originalIds[i]);
+      expect(e.id).toBe(`run_fork:fork:${i}`);
+    });
+  });
+
   it('planUndo returns the target + full accumulated diffs', () => {
     const plan = planUndo(repoRoot, runId, 0);
     expect(plan.runId).toBe(runId);
