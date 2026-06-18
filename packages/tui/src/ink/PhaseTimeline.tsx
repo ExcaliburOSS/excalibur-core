@@ -1,7 +1,7 @@
 import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
 import { glyph, eventGlyph, spinnerFrames, formatCents, formatElapsed, type Palette } from '../theme.js';
-import { useColors } from '../ThemeContext.js';
+import { useColors } from './ThemeContext.js';
 
 /**
  * `<PhaseTimeline>` — the live run visualization (M-Shell seed).

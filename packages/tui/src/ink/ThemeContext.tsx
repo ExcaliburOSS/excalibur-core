@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactElement, type ReactNode } from 'react';
-import { darkColors, type Palette } from './theme.js';
+import { darkColors, type Palette } from '../theme.js';
 
 /**
  * Provides the active {@link Palette} (light or dark, chosen from the terminal

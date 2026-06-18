@@ -12,15 +12,25 @@
       "types": "./dist/rail.d.ts",
       "import": "./dist/rail.js",
       "require": "./dist/rail.cjs"
+    },
+    "./ink": {
+      "types": "./dist/ink/index.d.ts",
+      "import": "./dist/ink/index.js",
+      "require": "./dist/ink/index.cjs"
     }
   },
   "bin": {
     "excalibur-tui-demo": "./src/demo-timeline.tsx"
   },
+  "typesVersions": {
+    "*": {
+      "ink": ["dist/ink/index.d.ts"]
+    }
+  },
   "files": ["dist", "src"],
   "scripts": {
     "demo": "tsx src/demo-timeline.tsx",
-    "build": "tsup src/rail.ts --format cjs,esm --dts --sourcemap --clean",
+    "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint src"
