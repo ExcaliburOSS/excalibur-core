@@ -114,7 +114,7 @@ export function createLspSession(options: CreateLspSessionOptions): LspSession {
 
         const diagnostics = await client.diagnosticsFor(uri, version, {
           waitMs: config.diagnosticsTimeoutMs,
-          settleMs: 300,
+          settleMs: config.diagnosticsSettleMs,
           ...(options.signal !== undefined ? { signal: options.signal } : {}),
         });
 

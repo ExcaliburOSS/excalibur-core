@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { diagnosticsContextSource, runDiagnostics } from './diagnostics';
+import type { DiagnosticsPayload } from '@excalibur/shared';
+import { diagnosticsContextSource, lspDiagnosticsContextSource, runDiagnostics } from './diagnostics';
 
 const node = process.execPath;
 
@@ -53,5 +54,43 @@ describe('diagnosticsContextSource', () => {
     expect(source?.title).toContain('Compiler diagnostics');
     expect(source?.content).toContain('Cannot find name foo');
     expect(source?.content).toContain('anchor your review');
+  });
+});
+
+describe('lspDiagnosticsContextSource', () => {
+  const payload = (over: Partial<DiagnosticsPayload>): DiagnosticsPayload => ({
+    file: 'src/x.ts',
+    diagnostics: [],
+    errorCount: 0,
+    warningCount: 0,
+    ...over,
+  });
+
+  it('is null when no changed file carries an error/warning', () => {
+    expect(lspDiagnosticsContextSource([])).toBeNull();
+    expect(lspDiagnosticsContextSource([payload({})])).toBeNull(); // clean file
+    // info/hint only → no noise.
+    expect(
+      lspDiagnosticsContextSource([
+        payload({ diagnostics: [{ line: 1, column: 1, severity: 'info', message: 'fyi' }] }),
+      ]),
+    ).toBeNull();
+  });
+
+  it('renders error/warning diagnostics per changed file (anchored, with location)', () => {
+    const source = lspDiagnosticsContextSource([
+      payload({
+        file: 'src/a.ts',
+        diagnostics: [{ line: 3, column: 9, severity: 'error', message: 'Type mismatch', code: 'TS2322' }],
+        errorCount: 1,
+      }),
+      payload({ file: 'src/clean.ts' }), // clean → omitted
+    ]);
+    expect(source).not.toBeNull();
+    expect(source?.title).toContain('language server');
+    expect(source?.content).toContain('src/a.ts:3:9 error: Type mismatch [TS2322]');
+    expect(source?.content).toContain('anchor your');
+    expect(source?.content).not.toContain('src/clean.ts');
+    expect(source?.precedence).toBe(6);
   });
 });

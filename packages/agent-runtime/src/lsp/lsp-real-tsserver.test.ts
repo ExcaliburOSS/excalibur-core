@@ -18,6 +18,8 @@ const HAS_TSSERVER = binaryOnPath('typescript-language-server');
 const realConfig: LspConfig = {
   enabled: true,
   diagnosticsTimeoutMs: 8000,
+  // Generous settle: under parallel load the semantic pass trails the syntactic one.
+  diagnosticsSettleMs: 2000,
   serverStartTimeoutMs: 25000,
 };
 

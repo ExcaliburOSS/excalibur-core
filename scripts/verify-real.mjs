@@ -130,8 +130,12 @@ function replAutoTurn(dir, prompt, waitS = 55) {
 }
 
 // ── Scenario runner ──────────────────────────────────────────────────────────
+// Optional substring filter: `node scripts/verify-real.mjs <substring>` runs only
+// matching scenarios (case-insensitive) — handy for smoking a single feature.
+const FILTER = (process.argv[2] ?? '').toLowerCase();
 const results = [];
 async function scenario(name, fn) {
+  if (FILTER !== '' && !name.toLowerCase().includes(FILTER)) return;
   process.stdout.write(`▶ ${name} … `);
   const started = Date.now();
   try {
@@ -239,6 +243,80 @@ await scenario('run — LSP feeds REAL per-edit diagnostics to the model (P1.10)
     diags.some((e) => (e.payload.errorCount ?? 0) >= 1),
     'tsserver should have flagged the deliberate type error (errorCount >= 1)',
   );
+});
+
+/** Resolves the bundled typescript-language-server, or null when not installed. */
+function tsserverPath() {
+  const p = join(ROOT, 'packages/agent-runtime/node_modules/.bin/typescript-language-server');
+  return existsSync(p) ? p : null;
+}
+/** A `.excalibur/config.yaml` with the LSP server pointed at the absolute tsserver. */
+function lspConfigYaml(tsserver) {
+  return [
+    'version: 1',
+    'commands: {}',
+    'lsp:',
+    '  enabled: true',
+    '  diagnosticsTimeoutMs: 8000',
+    '  diagnosticsSettleMs: 2000',
+    '  serverStartTimeoutMs: 25000',
+    '  servers:',
+    '    typescript:',
+    `      command: ${tsserver}`,
+    '      args:',
+    '        - --stdio',
+    '',
+  ].join('\n');
+}
+
+await scenario('run --fast — patch workflow gets LSP grounding + FAILS the claim gate on a type error', () => {
+  const tsserver = tsserverPath();
+  if (tsserver === null) {
+    console.log('(skipped — typescript-language-server not installed) ');
+    return;
+  }
+  const dir = freshRepo({
+    'tsconfig.json': JSON.stringify({ compilerOptions: { strict: true, noEmit: true, skipLibCheck: true } }),
+    '.excalibur/config.yaml': lspConfigYaml(tsserver),
+  });
+  exc(
+    dir,
+    ['run', 'Create a file src/calc.ts with EXACTLY this content and nothing else, do NOT fix any type error: export const total: number = "hello";', '--fast', '--yes'],
+    180000,
+  );
+  const events = runEvents(dir);
+  // fast-fix uses patch_generation→apply_patch (NOT the agent_work loop), yet the
+  // engine's post-apply LSP grounding still emits diagnostics for the applied file.
+  const diags = events.filter((e) => e.type === 'diagnostics');
+  assert(diags.some((e) => (e.payload.errorCount ?? 0) >= 1), 'a fast-fix apply should emit an LSP diagnostics event with errors');
+  // No typecheck command configured → the LSP error refutes `no_type_errors` and fails the run.
+  const claim = events.find((e) => e.type === 'claim' && e.payload.kind === 'no_type_errors');
+  assert(claim?.payload.status === 'refuted', 'the LSP-fed claim gate should refute no_type_errors');
+  assert(
+    events.find((e) => e.type === 'run_completed')?.payload.status === 'failed',
+    'a patch introducing a type error should FAIL the run via the claim gate',
+  );
+});
+
+await scenario('review --diagnostics — diff-scoped LSP errors ground the review', () => {
+  const tsserver = tsserverPath();
+  if (tsserver === null) {
+    console.log('(skipped — typescript-language-server not installed) ');
+    return;
+  }
+  const dir = freshRepo({
+    'tsconfig.json': JSON.stringify({ compilerOptions: { strict: true, noEmit: true, skipLibCheck: true } }),
+    '.excalibur/config.yaml': lspConfigYaml(tsserver),
+  });
+  // An untracked TS file with a real type error shows up in `getLocalDiff`.
+  writeFileSync(join(dir, 'src/calc.ts'), 'export const total: number = "hello";\n');
+  exc(dir, ['review', '--diff', '--diagnostics']);
+  // The diff-scoped LSP error is injected into the review's effective instructions
+  // (deterministic — independent of the model's prose).
+  const interDir = join(dir, '.excalibur/interactions');
+  const id = execFileSync('ls', ['-t', interDir]).toString().trim().split('\n')[0];
+  const effective = readFileSync(join(interDir, id, 'effective-instructions.md'), 'utf8');
+  assert(/not assignable/i.test(effective) || /calc\.ts:\d+:\d+ error/.test(effective), 'the review should be grounded on the real LSP type error');
 });
 
 await scenario('run — runs a BASH command / script and DELETES a file', () => {

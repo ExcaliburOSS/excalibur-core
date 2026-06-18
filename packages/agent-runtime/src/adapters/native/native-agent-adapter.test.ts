@@ -458,6 +458,7 @@ describe('NativeAgentAdapter — LSP per-edit diagnostics', () => {
       lsp: {
         enabled: true,
         diagnosticsTimeoutMs: 5000,
+        diagnosticsSettleMs: 400,
         serverStartTimeoutMs: 20000,
         servers: { typescript: { command: process.execPath, args: ['-e', FAKE_LSP_SERVER] } },
       },

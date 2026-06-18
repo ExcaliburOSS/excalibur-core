@@ -14,6 +14,7 @@ function fakeConfig(extra: Partial<LspConfig> = {}): LspConfig {
   return {
     enabled: true,
     diagnosticsTimeoutMs: 2000,
+    diagnosticsSettleMs: 200,
     serverStartTimeoutMs: 4000,
     servers: { typescript: { command: process.execPath, args: ['-e', FAKE_LSP_SERVER] } },
     ...extra,

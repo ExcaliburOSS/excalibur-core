@@ -2,14 +2,18 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 import {
+  createLspSession,
   executeNativeTool,
+  languageForFile,
   PermissionEngine,
   type AgentAdapter,
+  type LspSession,
   type ToolExecutionContext,
 } from '@excalibur/agent-runtime';
 import type { ChatMessage, ChatOutput, ModelGateway } from '@excalibur/model-gateway';
 import {
   createEvent,
+  DEFAULT_LSP_CONFIG,
   generateId,
   type AgentRole,
   type ExcaliburConfig,
@@ -210,6 +214,12 @@ class LocalRunExecution {
   private claimText = '';
   /** Last exit code per command that ACTUALLY ran (verifies test/typecheck/build claims). */
   private readonly commandExits = new Map<string, number>();
+  /** Run-scoped LSP session for post-apply diagnostics (lazy; closed in execute's finally). */
+  private lsp: LspSession | null = null;
+  /** Whether the LSP session actually produced diagnostics this run (gates claim evidence). */
+  private lspRan = false;
+  /** Total LSP errors across all applied files (feeds `no_type_errors` when no typecheck cmd). */
+  private lspErrorTotal = 0;
 
   constructor(input: ExecuteLocalRunInput) {
     this.input = input;
@@ -579,6 +589,44 @@ class LocalRunExecution {
     }
     applyPatch(this.input.repoRoot, this.collectedDiff);
     this.emit('patch_applied', { filesAffected }, phase.id);
+    // LSP grounding (P1.10 fast-follow): a patch_generation→apply flow never
+    // enters the native tool loop where per-edit diagnostics fire, so query the
+    // language server for the just-applied files here — emit a `diagnostics`
+    // event each AND accumulate the error total for the claim gate.
+    await this.runLspDiagnostics(filesAffected, phase.id);
+  }
+
+  /**
+   * Runs the language server over freshly-applied files, emits a `diagnostics`
+   * event per supported file, and accumulates the error total. Lazy + totally
+   * graceful (no server / failure → no-op); gives fast-fix/patch workflows the
+   * same compiler grounding the agent_work loop already has.
+   */
+  private async runLspDiagnostics(files: ReadonlyArray<string>, phaseId: string): Promise<void> {
+    if (this.input.config.lsp?.enabled === false) {
+      return;
+    }
+    const targets = [...new Set(files)].filter((file) => languageForFile(file) !== null);
+    if (targets.length === 0) {
+      return;
+    }
+    if (this.lsp === null) {
+      this.lsp = createLspSession({
+        workdir: this.input.repoRoot,
+        config: this.input.config.lsp ?? DEFAULT_LSP_CONFIG,
+      });
+    }
+    for (const file of targets) {
+      const language = languageForFile(file);
+      if (language !== null) this.lsp.ensureStarted(language);
+    }
+    for (const file of targets) {
+      const diag = await this.lsp.diagnosticsFor(file);
+      if (diag === null) continue;
+      this.lspRan = true;
+      this.lspErrorTotal += diag.errorCount;
+      this.emit('diagnostics', diag as unknown as Record<string, unknown>, phaseId);
+    }
   }
 
   private async pullRequestPhase(phase: WorkflowPhase): Promise<void> {
@@ -739,12 +787,19 @@ class LocalRunExecution {
         const exit = this.commandExits.get(cmd);
         return exit === undefined ? null : exit === 0;
       };
+      // `no_type_errors` evidence: the configured `typecheck` command's exit code
+      // is authoritative (whole-repo). When NO typecheck command ran but the LSP
+      // server DID diagnose the applied files, use the LSP error total — so a
+      // patch that introduces type errors is caught even without a `typecheck`.
+      const typecheckFromCommand = commandFor(this.input.config.commands?.typecheck);
+      const typecheckPassed =
+        typecheckFromCommand !== null ? typecheckFromCommand : this.lspRan ? this.lspErrorTotal === 0 : null;
       const evidence: ClaimEvidence = {
         // Derive each from the EXACT configured command's own exit code (denied/
         // skipped commands are excluded) — never from a conflated test+lint+build
         // aggregate, so a lint failure can't refute the `tests pass` claim.
         testsPassed: commandFor(this.input.config.commands?.test),
-        typecheckPassed: commandFor(this.input.config.commands?.typecheck),
+        typecheckPassed,
         buildPassed: commandFor(this.input.config.commands?.build),
         diff: this.collectedDiff,
       };
@@ -875,6 +930,9 @@ class LocalRunExecution {
           : 'run_failed';
       this.emit('error', { message, code });
       return this.finish('failed');
+    } finally {
+      // Reclaim the language-server subprocess on every exit path.
+      this.lsp?.close();
     }
   }
 }

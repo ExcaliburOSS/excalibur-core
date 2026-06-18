@@ -178,6 +178,12 @@ export const lspConfigSchema = z.object({
     .optional(),
   /** Per-edit wait for the language server to publish diagnostics (ms). */
   diagnosticsTimeoutMs: z.number().int().positive().default(1500),
+  /**
+   * After the first diagnostics arrive, how long to wait for a LATER wave —
+   * tsserver emits a syntactic (often empty) pass, then the semantic errors.
+   * Higher = more reliable on a loaded machine; lower = snappier per-edit.
+   */
+  diagnosticsSettleMs: z.number().int().positive().default(400),
   /** One-time cold-start budget for the server's initialize + project load (ms). */
   serverStartTimeoutMs: z.number().int().positive().default(8000),
 });
@@ -187,6 +193,7 @@ export type LspConfig = z.infer<typeof lspConfigSchema>;
 export const DEFAULT_LSP_CONFIG: LspConfig = {
   enabled: true,
   diagnosticsTimeoutMs: 1500,
+  diagnosticsSettleMs: 400,
   serverStartTimeoutMs: 8000,
 };
 

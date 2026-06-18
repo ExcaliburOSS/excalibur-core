@@ -356,6 +356,24 @@ describe('M2 repo-context retrieval (ask / explain / review)', () => {
     removeDir(root);
   });
 
+  it('review --diagnostics falls back to the whole-repo typecheck when no LSP server is available', async () => {
+    const root = repoWithCode();
+    // LSP disabled → deterministic fallback to the configured typecheck command.
+    writeRepoFile(root, 'tc.sh', 'echo "src/escrow/escrow.service.ts(1,1): error TS9: BOOM_TYPE_ERROR"\nexit 1\n');
+    writeRepoFile(
+      root,
+      '.excalibur/config.yaml',
+      ['version: 1', 'lsp:', '  enabled: false', 'commands:', '  typecheck: sh tc.sh', ''].join('\n'),
+    );
+    const cli = createTestCli({ cwd: root });
+    await cli.run('review', 'src/escrow/escrow.service.ts', '--diagnostics');
+    const effective = effectiveOf(root);
+    // The whole-repo typecheck output was injected as compiler-diagnostics context.
+    expect(effective).toContain('BOOM_TYPE_ERROR');
+    expect(effective).toContain('anchor your review');
+    removeDir(root);
+  });
+
   it('blocked neighbor paths (.env / secrets) are excluded from injected context', async () => {
     const root = makeTempRepo();
     writeRepoFile(root, '.env', 'API_KEY=AKIAIOSFODNN7EXAMPLE\n');

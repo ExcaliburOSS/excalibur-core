@@ -114,6 +114,56 @@ class MeshBlockingGateway {
   }
 }
 
+/**
+ * For the `patch_generation` phase, returns a fenced diff that creates a TS file
+ * carrying an `__ERR__` marker (the fake LSP server below flags it); every other
+ * phase is delegated to the mock so only the LSP-fed claim gate decides the
+ * outcome.
+ */
+class TypeErrorPatchGateway {
+  constructor(private readonly inner: ModelGateway) {}
+  chat(input: ChatInput): Promise<ChatOutput> {
+    if (input.metadata?.['kind'] === 'patch') {
+      const diff = [
+        '```diff',
+        'diff --git a/src/bad.ts b/src/bad.ts',
+        'new file mode 100644',
+        '--- /dev/null',
+        '+++ b/src/bad.ts',
+        '@@ -0,0 +1 @@',
+        '+export const total = 0; // __ERR__ deliberate',
+        '```',
+      ].join('\n');
+      return Promise.resolve({
+        content: diff,
+        model: 'mock-model',
+        usage: { inputTokens: 8, outputTokens: 12 },
+        costCents: 0,
+        finishReason: 'stop',
+      });
+    }
+    return this.inner.chat(input);
+  }
+}
+
+/**
+ * A minimal fake LSP server (real Content-Length framing) — publishes ONE error
+ * for any opened document whose text contains `__ERR__`, else none. Lets the
+ * engine LSP-grounding test be deterministic (no real tsserver, no contention).
+ */
+const FAKE_LSP = String.raw`
+let buf = Buffer.alloc(0);
+function send(o){const b=Buffer.from(JSON.stringify(o),'utf8');process.stdout.write('Content-Length: '+b.length+'\r\n\r\n');process.stdout.write(b);}
+function diags(t){return t&&t.includes('__ERR__')?[{range:{start:{line:0,character:6},end:{line:0,character:7}},severity:1,message:'Type error',code:'TS2322'}]:[];}
+function handle(m){
+  if(m.method==='initialize'){send({jsonrpc:'2.0',id:m.id,result:{capabilities:{}}});return;}
+  if(m.method==='textDocument/didOpen'){const td=m.params.textDocument;send({jsonrpc:'2.0',method:'textDocument/publishDiagnostics',params:{uri:td.uri,version:td.version,diagnostics:diags(td.text)}});return;}
+  if(m.method==='textDocument/didChange'){const td=m.params.textDocument;send({jsonrpc:'2.0',method:'textDocument/publishDiagnostics',params:{uri:td.uri,version:td.version,diagnostics:diags(m.params.contentChanges[0].text)}});return;}
+  if(m.method==='exit')process.exit(0);
+}
+process.stdin.on('data',(c)=>{buf=Buffer.concat([buf,c]);for(;;){const s=buf.indexOf('\r\n\r\n');if(s===-1)break;const mm=/content-length:\s*(\d+)/i.exec(buf.slice(0,s).toString('ascii'));const st=s+4;if(!mm){buf=buf.slice(st);continue;}const len=parseInt(mm[1],10);if(buf.length<st+len)break;const body=buf.slice(st,st+len).toString('utf8');buf=buf.slice(st+len);try{handle(JSON.parse(body));}catch(e){}}});
+`;
+
 describe('executeLocalRun', () => {
   let repoRoot: string;
   let runManager: RunManager;
@@ -258,6 +308,53 @@ describe('executeLocalRun', () => {
     // onEvent saw exactly what was persisted.
     expect(streamed.map((event) => event.id)).toEqual(events.map((event) => event.id));
   });
+
+  it('grounds a patch_generation run with LSP diagnostics + fails the claim gate (no typecheck cmd)', async () => {
+    execFileSync('git', ['init', '-q'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.email', 'test@excalibur.local'], { cwd: repoRoot });
+    execFileSync('git', ['config', 'user.name', 'Excalibur Test'], { cwd: repoRoot });
+    const definition = getDefaultWorkflow('fast-fix')!;
+    const run = runManager.createRun({
+      title: 'Add a total constant',
+      autonomyLevel: 3,
+      workflow: 'fast-fix',
+      methodology: 'fast-fix',
+      executionStyle: 'fast',
+    });
+    // NO typecheck command → the LSP error total fills `no_type_errors` evidence.
+    const lspConfig: ExcaliburConfig = {
+      commands: {},
+      models: { default: 'mock' },
+      lsp: {
+        enabled: true,
+        diagnosticsTimeoutMs: 4000,
+        diagnosticsSettleMs: 200,
+        serverStartTimeoutMs: 8000,
+        servers: { typescript: { command: process.execPath, args: ['-e', FAKE_LSP] } },
+      },
+    };
+    const record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      definition,
+      gateway: new TypeErrorPatchGateway(gateway) as unknown as ModelGateway,
+      adapter,
+      config: lspConfig,
+      confirm: () => Promise.resolve(true),
+    });
+    const events = runManager.readEvents(run.id);
+
+    // A `diagnostics` event for the applied file with the flagged error.
+    const diag = events.find((e) => e.type === 'diagnostics');
+    expect(diag?.payload['file']).toBe('src/bad.ts');
+    expect(diag?.payload['errorCount']).toBeGreaterThanOrEqual(1);
+
+    // The LSP-fed claim gate refuted `no_type_errors` → the run FAILED.
+    expect(record.status).toBe('failed');
+    const claim = events.find((e) => e.type === 'claim' && e.payload['kind'] === 'no_type_errors');
+    expect(claim?.payload['status']).toBe('refuted');
+  }, 30000);
 
   it('runs structured-feature end-to-end with the REAL agent tool loop', async () => {
     // The repo must be a git repo so the implementer's patch is a real diff.

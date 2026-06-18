@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process';
 import type { AdditionalContextSource } from '@excalibur/core';
+import type { DiagnosticsPayload } from '@excalibur/shared';
 
 /**
  * Real compiler diagnostics (M3, the OpenCode-parity "LSP/diagnostics" idea in
@@ -93,6 +94,50 @@ export function diagnosticsContextSource(result: DiagnosticsResult): AdditionalC
       'The repository typecheck reported the following — anchor your review/fixes on these REAL ' +
       'errors, do not invent others:\n\n' +
       result.output,
+    precedence: 6,
+  };
+}
+
+/** Max diagnostics rendered per file (the rest are summarized as a count). */
+const MAX_DIAGNOSTICS_PER_FILE = 20;
+
+/** A compact, model-facing rendering of one file's error/warning diagnostics. */
+function formatPayload(payload: DiagnosticsPayload): string {
+  const surfaced = payload.diagnostics.filter((d) => d.severity === 'error' || d.severity === 'warning');
+  if (surfaced.length === 0) {
+    return '';
+  }
+  const lines = surfaced
+    .slice(0, MAX_DIAGNOSTICS_PER_FILE)
+    .map(
+      (d) =>
+        `  ${payload.file}:${d.line}:${d.column} ${d.severity}: ${d.message}${d.code !== undefined ? ` [${d.code}]` : ''}`,
+    );
+  const more =
+    surfaced.length > MAX_DIAGNOSTICS_PER_FILE ? `\n  …(+${surfaced.length - MAX_DIAGNOSTICS_PER_FILE} more)` : '';
+  return `${lines.join('\n')}${more}`;
+}
+
+/**
+ * Diff-scoped LSP diagnostics as an effective-instruction context source — the
+ * per-file (changed-files) counterpart to {@link diagnosticsContextSource},
+ * fed from a language server instead of a whole-repo typecheck command. Returns
+ * `null` when no changed file carries an error/warning (no noise added).
+ */
+export function lspDiagnosticsContextSource(
+  payloads: ReadonlyArray<DiagnosticsPayload>,
+): AdditionalContextSource | null {
+  const blocks = payloads.map(formatPayload).filter((block) => block.length > 0);
+  if (blocks.length === 0) {
+    return null;
+  }
+  return {
+    path: 'diagnostics',
+    title: 'Compiler diagnostics (real language server, changed files)',
+    content:
+      'The language server reported the following on the changed file(s) — anchor your ' +
+      'review/fixes on these REAL errors, do not invent others:\n\n' +
+      blocks.join('\n'),
     precedence: 6,
   };
 }
