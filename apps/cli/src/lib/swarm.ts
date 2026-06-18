@@ -338,12 +338,15 @@ export async function runSwarmFlow(
   deps.ui.write();
   deps.ui.write(result.mergedDiff);
 
+  // `--apply` and `-y/--yes` both apply without prompting (consistent with
+  // `run --yes`, which auto-approves + applies edits). Otherwise prompt — safe
+  // default NO, and a non-interactive stdin resolves to that no (never mutates
+  // the working tree unasked). Note: passing `{ yes }` to confirm would return
+  // the DEFAULT (no), not "yes" — hence the explicit short-circuit.
   const apply =
     options.apply === true ||
-    (await deps.ui.confirm(deps.t('swarm.confirmApply'), {
-      yes: options.yes,
-      defaultYes: false,
-    }));
+    options.yes === true ||
+    (await deps.ui.confirm(deps.t('swarm.confirmApply'), { defaultYes: false }));
   if (!apply) {
     deps.ui.info(deps.t('swarm.leftUnapplied'));
     return;

@@ -20,7 +20,7 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
     .option('--max-agents <n>', 'hard ceiling on the number of parallel agents')
     .option('--retries <n>', 're-dispatch a failed lane up to N times (grader/rubric retry)')
     .option('--apply', 'apply the merged changes to your working tree without prompting')
-    .option('-y, --yes', 'skip prompts and accept safe defaults')
+    .option('-y, --yes', 'skip prompts and apply the merged changes (same as --apply)')
     .action(async (taskWords: string[], options: { maxAgents?: string; retries?: string; apply?: boolean; yes?: boolean }) => {
       const task = taskWords.join(' ').trim();
       if (task.length === 0) {
