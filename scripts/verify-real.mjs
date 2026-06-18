@@ -187,6 +187,60 @@ await scenario('run — UPDATES an existing file', () => {
   assert(/subtract/.test(math) && /add/.test(math), 'math.ts must keep add and gain subtract');
 });
 
+await scenario('run — LSP feeds REAL per-edit diagnostics to the model (P1.10)', () => {
+  // Gated on the real typescript-language-server (an agent-runtime devDependency).
+  const tsserver = join(ROOT, 'packages/agent-runtime/node_modules/.bin/typescript-language-server');
+  if (!existsSync(tsserver)) {
+    console.log('(skipped — typescript-language-server not installed) ');
+    return;
+  }
+  const dir = freshRepo();
+  // A tsconfig so tsserver treats the file as a project; point the LSP config at
+  // the absolute server path (the CLI subprocess has no package .bin on PATH).
+  writeFileSync(
+    join(dir, 'tsconfig.json'),
+    JSON.stringify({ compilerOptions: { strict: true, noEmit: true, skipLibCheck: true } }),
+  );
+  writeFileSync(
+    join(dir, '.excalibur/config.yaml'),
+    [
+      'version: 1',
+      'commands: {}',
+      'lsp:',
+      '  enabled: true',
+      '  diagnosticsTimeoutMs: 8000',
+      '  serverStartTimeoutMs: 25000',
+      '  servers:',
+      '    typescript:',
+      `      command: ${tsserver}`,
+      '      args:',
+      '        - --stdio',
+      '',
+    ].join('\n'),
+  );
+  // `--structured` selects a workflow with an `agent_work` phase (the native
+  // tool loop where the LSP per-edit hook lives); fast-fix's patch_generation
+  // is a single-shot diff with no per-edit loop.
+  exc(
+    dir,
+    [
+      'run',
+      'Create a file src/calc.ts with EXACTLY this content and nothing else, do NOT fix any type error: export const total: number = "hello";',
+      '--structured',
+      '--yes',
+    ],
+    180000,
+  );
+  const diags = runEvents(dir).filter((e) => e.type === 'diagnostics');
+  // The LSP path activated end-to-end through the real CLI + real model + server.
+  assert(diags.length > 0, 'a real agentic run editing a .ts file should emit a diagnostics event');
+  // And the real type error the model wrote was caught and fed back.
+  assert(
+    diags.some((e) => (e.payload.errorCount ?? 0) >= 1),
+    'tsserver should have flagged the deliberate type error (errorCount >= 1)',
+  );
+});
+
 await scenario('run — runs a BASH command / script and DELETES a file', () => {
   const dir = freshRepo({ 'doomed.txt': 'delete me\n' });
   exc(dir, ['run', 'Delete the file doomed.txt using a shell command', '--yes']);
