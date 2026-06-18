@@ -508,6 +508,49 @@ await scenario('shell (REPL) — auto-mode asked ONCE, then edits with zero prom
   assert(/auto:\s*true/.test(cfg), 'auto-accept must be persisted to .excalibur/config.yaml');
 });
 
+// ── Coverage: the remaining commands run end-to-end via the real binary ───────
+// (Deterministic — no model — so they're fast; they catch CLI-wiring/arg-parsing
+// regressions that unit tests on the lib functions miss. Per the firm real-usage
+// directive: exercise EVERY command via the real binary.)
+await scenario('doctor — diagnoses the local setup', () => {
+  const dir = freshRepo();
+  const { out, code } = exc(dir, ['doctor']);
+  assert(code === 0, 'doctor should exit 0');
+  assert(/PASS|node version|git/i.test(out), 'doctor should report its checks');
+});
+
+await scenario('catalogs — methodologies / workflows / models list render', () => {
+  const dir = freshRepo();
+  assert(exc(dir, ['methodologies', 'list']).out.replace(/\s+/g, ' ').length > 40, 'methodologies list non-empty');
+  assert(exc(dir, ['workflows', 'list']).out.replace(/\s+/g, ' ').length > 40, 'workflows list non-empty');
+  assert(/kimi/i.test(exc(dir, ['models', 'list']).out), 'models list should show the configured kimi provider');
+  assert(/core-(methodologies|workflows)/i.test(exc(dir, ['extensions', 'list']).out), 'extensions list should show the built-in packs');
+});
+
+await scenario('instructions (ISD) — discovers an AGENTS.md source', () => {
+  const dir = freshRepo({ 'AGENTS.md': '# Project\nBe concise and idiomatic.\n' });
+  assert(exc(dir, ['instructions', 'scan']).code === 0, 'instructions scan should exit 0');
+  const { out, code } = exc(dir, ['instructions', 'list']);
+  assert(code === 0, 'instructions list should exit 0');
+  assert(/AGENTS|instruction|source/i.test(out), 'should list the AGENTS.md instruction source');
+});
+
+await scenario('theme — sets and persists the chosen theme', () => {
+  const dir = freshRepo();
+  exc(dir, ['theme', 'daltonized']);
+  assert(
+    /theme:\s*daltonized/.test(readFileSync(join(dir, '.excalibur/config.yaml'), 'utf8')),
+    'theme should persist to .excalibur/config.yaml',
+  );
+});
+
+await scenario('skills / plans / insights — run cleanly with an empty history', () => {
+  const dir = freshRepo();
+  assert(exc(dir, ['skills', 'list']).code === 0, 'skills list should exit 0');
+  assert(exc(dir, ['plans']).code === 0, 'plans should exit 0');
+  assert(exc(dir, ['insights']).code === 0, 'insights should exit 0');
+});
+
 // ── Summary ───────────────────────────────────────────────────────────────────
 for (const dir of tmpRepos) {
   try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
