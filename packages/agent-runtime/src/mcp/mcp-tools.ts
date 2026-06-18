@@ -28,12 +28,20 @@ export interface ConnectedMcp {
   warnings: string[];
 }
 
-/** A server to spawn (from config `mcp.servers.<name>`). */
+/**
+ * A server to connect (from config `mcp.servers.<name>`). Either LOCAL (a
+ * `command` to spawn over stdio) or REMOTE (a Streamable-HTTP `url` with optional
+ * auth `headers`, e.g. `{ Authorization: 'Bearer …' }`).
+ */
 export interface McpServerSpec {
-  command: string;
+  command?: string;
   args?: ReadonlyArray<string>;
   cwd?: string;
   env?: Record<string, string>;
+  /** Remote MCP endpoint (Streamable HTTP). Set this OR `command`. */
+  url?: string;
+  /** Headers sent on every remote request (auth, etc.). */
+  headers?: Record<string, string>;
 }
 
 const SEPARATOR = '__';
@@ -71,15 +79,23 @@ export async function connectMcpServers(
 
   for (const [serverName, cfg] of Object.entries(servers)) {
     try {
-      const client = await McpClient.connect({
-        command: cfg.command,
-        ...(cfg.args !== undefined ? { args: cfg.args } : {}),
-        ...(cfg.cwd !== undefined ? { cwd: cfg.cwd } : {}),
-        // Inherit the parent env (so the server finds its own auth) + non-secret
-        // config overrides on top.
-        env: { ...process.env, ...(cfg.env ?? {}) },
-        ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
-      });
+      // Remote (Streamable HTTP) when a `url` is set; otherwise spawn locally.
+      const client =
+        cfg.url !== undefined && cfg.url.length > 0
+          ? await McpClient.connectHttp({
+              url: cfg.url,
+              ...(cfg.headers !== undefined ? { headers: cfg.headers } : {}),
+              ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+            })
+          : await McpClient.connect({
+              command: cfg.command ?? '',
+              ...(cfg.args !== undefined ? { args: cfg.args } : {}),
+              ...(cfg.cwd !== undefined ? { cwd: cfg.cwd } : {}),
+              // Inherit the parent env (so the server finds its own auth) +
+              // non-secret config overrides on top.
+              env: { ...process.env, ...(cfg.env ?? {}) },
+              ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+            });
       clients.push(client);
       for (const tool of await client.listTools()) {
         const display = mcpToolDisplayName(serverName, tool.name);

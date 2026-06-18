@@ -1,12 +1,18 @@
-import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { ProviderError } from '@excalibur/shared';
+import {
+  HttpTransport,
+  StdioTransport,
+  type HttpTransportOptions,
+  type IncomingMessage,
+  type McpTransport,
+} from './mcp-transport';
 
 /**
- * Minimal Model Context Protocol (MCP) client over stdio (OSS spec §17,
- * follow-up to the native tool loop).
+ * Minimal Model Context Protocol (MCP) client (OSS spec §17 + plan P1.11).
  *
- * Spawns an MCP server as a subprocess and speaks JSON-RPC 2.0 with it over the
- * child's stdin/stdout. It performs the `initialize` handshake, then exposes
+ * Speaks JSON-RPC 2.0 over a pluggable {@link McpTransport} — local
+ * {@link StdioTransport} (spawned subprocess) or remote {@link HttpTransport}
+ * (Streamable HTTP). It performs the `initialize` handshake, then exposes
  * `listTools()` (`tools/list`) and `callTool()` (`tools/call`) and a `close()`.
  *
  * ## Framing assumption
@@ -143,6 +149,22 @@ export interface McpClientOptions {
   protocolVersion?: string;
 }
 
+/** Options for connecting to a REMOTE MCP server over Streamable HTTP. */
+export interface McpHttpClientOptions {
+  /** The MCP server endpoint URL (http/https). */
+  url: string;
+  /** Extra request headers, e.g. `{ Authorization: 'Bearer <token>' }` for OAuth. */
+  headers?: Record<string, string>;
+  /** Abort signal to cancel in-flight requests. */
+  signal?: AbortSignal;
+  /** Per-request timeout in milliseconds (default {@link DEFAULT_MCP_TIMEOUT_MS}). */
+  timeoutMs?: number;
+  /** Client identity advertised in `initialize` (default {@link DEFAULT_CLIENT_INFO}). */
+  clientInfo?: { name: string; version: string };
+  /** MCP protocol version to request (default {@link MCP_PROTOCOL_VERSION}). */
+  protocolVersion?: string;
+}
+
 /** Default per-request timeout (30s) — long enough for a slow tool, short enough to fail fast. */
 export const DEFAULT_MCP_TIMEOUT_MS = 30_000;
 
@@ -173,55 +195,64 @@ interface PendingRequest {
  * {@link McpClient.close} when done.
  */
 export class McpClient {
-  private readonly child: ChildProcessWithoutNullStreams;
+  private readonly transport: McpTransport;
   private readonly timeoutMs: number;
   private readonly pending = new Map<JsonRpcId, PendingRequest>();
   private nextId = 1;
-  /** stdout read buffer; messages are split on `\n`. */
-  private stdoutBuffer = '';
-  /** Set once the client is closed or the child has died — every later call rejects. */
+  /** Set once the client is closed or the transport has died — every later call rejects. */
   private closedReason: Error | null = null;
   private serverInfo: McpServerInfo | null = null;
 
-  private constructor(child: ChildProcessWithoutNullStreams, timeoutMs: number) {
-    this.child = child;
+  private constructor(transport: McpTransport, timeoutMs: number) {
+    this.transport = transport;
     this.timeoutMs = timeoutMs;
-    this.wireUp();
+    this.transport.attach(
+      (message) => this.handleMessage(message),
+      (reason) => {
+        if (this.closedReason === null) this.destroy(reason);
+      },
+    );
   }
 
   /**
-   * Spawns the MCP server and completes the `initialize` handshake, returning a
-   * ready client. The child is always cleaned up on failure (spawn error,
-   * handshake timeout, or a crash mid-handshake) — this never leaks a process.
+   * Spawns a LOCAL MCP server (stdio) and completes the `initialize` handshake.
+   * The subprocess is always cleaned up on failure — this never leaks a process.
    *
    * @throws ProviderError (`mcp_spawn_failed`) if the executable cannot start.
    * @throws ProviderError (`mcp_*`) if the handshake fails or times out.
    */
   static async connect(options: McpClientOptions): Promise<McpClient> {
-    if (options.command.trim().length === 0) {
-      throw new ProviderError('MCP server command must not be empty.', {
-        code: 'mcp_invalid_command',
-      });
-    }
-    const timeoutMs = options.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS;
+    const transport = new StdioTransport({
+      command: options.command,
+      ...(options.args !== undefined ? { args: options.args } : {}),
+      ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
+      ...(options.env !== undefined ? { env: options.env } : {}),
+    });
+    return McpClient.handshake(transport, options.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS, options);
+  }
 
-    let child: ChildProcessWithoutNullStreams;
-    try {
-      child = spawn(options.command, [...(options.args ?? [])], {
-        cwd: options.cwd ?? process.cwd(),
-        env: options.env ?? process.env,
-        shell: false,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      }) as ChildProcessWithoutNullStreams;
-    } catch (error) {
-      throw new ProviderError(
-        `Could not start MCP server "${options.command}": ${describe(error)}.`,
-        { code: 'mcp_spawn_failed', details: { command: options.command } },
-      );
-    }
+  /**
+   * Connects to a REMOTE MCP server over Streamable HTTP (plan P1.11) and
+   * completes the `initialize` handshake. Auth is whatever headers are passed
+   * (e.g. an OAuth `Authorization: Bearer …`); the session id is handled by the
+   * transport. The connection is torn down on a failed handshake.
+   */
+  static async connectHttp(options: McpHttpClientOptions): Promise<McpClient> {
+    const transport = new HttpTransport({
+      url: options.url,
+      ...(options.headers !== undefined ? { headers: options.headers } : {}),
+      ...(options.signal !== undefined ? { signal: options.signal } : {}),
+    } as HttpTransportOptions);
+    return McpClient.handshake(transport, options.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS, options);
+  }
 
-    const client = new McpClient(child, timeoutMs);
-
+  /** Shared `initialize` handshake over any transport. */
+  private static async handshake(
+    transport: McpTransport,
+    timeoutMs: number,
+    options: { clientInfo?: { name: string; version: string }; protocolVersion?: string },
+  ): Promise<McpClient> {
+    const client = new McpClient(transport, timeoutMs);
     try {
       const initResult = await client.request('initialize', {
         protocolVersion: options.protocolVersion ?? MCP_PROTOCOL_VERSION,
@@ -229,15 +260,11 @@ export class McpClient {
         clientInfo: options.clientInfo ?? { ...DEFAULT_CLIENT_INFO },
       });
       client.serverInfo = parseServerInfo(initResult);
-      // Per the MCP lifecycle the client confirms readiness with this
-      // notification before issuing further requests.
       client.notify('notifications/initialized');
     } catch (error) {
-      // Handshake failed — never leave the child running.
       client.destroy(error instanceof Error ? error : new Error(describe(error)));
       throw error;
     }
-
     return client;
   }
 
@@ -352,68 +379,16 @@ export class McpClient {
     }
   }
 
-  /** Serializes a message to a single newline-delimited JSON line on the child's stdin. */
+  /** Sends a message through the active transport (may throw synchronously on stdio). */
   private write(message: JsonRpcRequest | JsonRpcNotification): void {
     if (this.closedReason !== null) {
       throw this.closedReason;
     }
-    const line = `${JSON.stringify(message)}\n`;
-    const ok = this.child.stdin.write(line);
-    if (!ok && this.child.stdin.destroyed) {
-      throw new ProviderError('MCP server stdin is no longer writable.', {
-        code: 'mcp_write_failed',
-      });
-    }
+    this.transport.send(message);
   }
 
-  /** Attaches stdout parsing and lifecycle (error/exit) handlers to the child. */
-  private wireUp(): void {
-    this.child.stdout.setEncoding('utf8');
-    this.child.stdout.on('data', (chunk: string) => this.onStdout(chunk));
-    this.child.on('error', (error: Error) => {
-      this.destroy(
-        new ProviderError(`MCP server process error: ${error.message}.`, {
-          code: 'mcp_process_error',
-        }),
-      );
-    });
-    this.child.on('exit', (code, signal) => {
-      if (this.closedReason !== null) {
-        return;
-      }
-      this.destroy(
-        new ProviderError(
-          `MCP server exited unexpectedly (code ${code ?? 'null'}, signal ${signal ?? 'null'}).`,
-          { code: 'mcp_process_exited', details: { exitCode: code, signal } },
-        ),
-      );
-    });
-  }
-
-  /** Buffers stdout and dispatches each complete `\n`-terminated JSON line. */
-  private onStdout(chunk: string): void {
-    this.stdoutBuffer += chunk;
-    let newlineIndex = this.stdoutBuffer.indexOf('\n');
-    while (newlineIndex !== -1) {
-      const line = this.stdoutBuffer.slice(0, newlineIndex).trim();
-      this.stdoutBuffer = this.stdoutBuffer.slice(newlineIndex + 1);
-      if (line.length > 0) {
-        this.dispatchLine(line);
-      }
-      newlineIndex = this.stdoutBuffer.indexOf('\n');
-    }
-  }
-
-  /** Parses a single JSON-RPC line and settles the matching pending request. */
-  private dispatchLine(line: string): void {
-    let message: unknown;
-    try {
-      message = JSON.parse(line);
-    } catch {
-      // A non-JSON line (e.g. a stray log on stdout) is ignored — servers must
-      // keep stdout pure, but we tolerate noise rather than crash the client.
-      return;
-    }
+  /** Settles the matching pending request for a parsed JSON-RPC message. */
+  private handleMessage(message: IncomingMessage): void {
     if (!isObject(message) || message.jsonrpc !== '2.0') {
       return;
     }
@@ -460,21 +435,10 @@ export class McpClient {
     }
     this.pending.clear();
 
-    this.child.stdout.removeAllListeners('data');
-    this.child.removeAllListeners('error');
-    this.child.removeAllListeners('exit');
-
     try {
-      this.child.stdin.end();
+      this.transport.close();
     } catch {
-      /* stdin already closed */
-    }
-    if (this.child.exitCode === null && this.child.signalCode === null) {
-      try {
-        this.child.kill('SIGTERM');
-      } catch {
-        /* already exited */
-      }
+      /* transport already torn down */
     }
   }
 }

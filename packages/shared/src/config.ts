@@ -118,16 +118,26 @@ export const DEFAULT_COMPACTION_CONFIG: CompactionConfig = {
 
 /**
  * `mcp:` — Model Context Protocol servers whose tools the agent may call. Each
- * is a subprocess (command + args, NO shell). Absent → MCP off (no behavior
- * change). API keys/secrets belong in the process environment (inherited by the
- * server), NOT in this file; `env` here is for non-secret overrides only.
+ * is EITHER a local subprocess (`command` + args, NO shell) OR a remote server
+ * (`url`, Streamable HTTP, with optional auth `headers`). Absent → MCP off.
+ * API keys/secrets belong in the process environment (inherited by a local
+ * server), NOT in this file; `env` is for non-secret overrides only. For a
+ * remote server, prefer an env-var reference in `headers` over a literal secret.
  */
-const mcpServerConfigSchema = z.object({
-  command: z.string().min(1),
-  args: z.array(z.string()).optional(),
-  cwd: z.string().optional(),
-  env: z.record(z.string()).optional(),
-});
+const mcpServerConfigSchema = z
+  .object({
+    command: z.string().min(1).optional(),
+    args: z.array(z.string()).optional(),
+    cwd: z.string().optional(),
+    env: z.record(z.string()).optional(),
+    /** Remote MCP endpoint (Streamable HTTP). Set this OR `command`. */
+    url: z.string().url().optional(),
+    /** Headers sent on every remote request, e.g. `{ Authorization: "Bearer …" }`. */
+    headers: z.record(z.string()).optional(),
+  })
+  .refine((s) => s.command !== undefined || s.url !== undefined, {
+    message: 'an MCP server needs a `command` (local stdio) or a `url` (remote http)',
+  });
 export type McpServerConfig = z.infer<typeof mcpServerConfigSchema>;
 
 export const mcpSectionSchema = z.object({
