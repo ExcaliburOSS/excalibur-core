@@ -299,6 +299,37 @@ function stderrReason(error: unknown): string {
  * Security: we never pass `--unsafe-paths`, so git refuses diffs touching
  * paths outside the repository (`..` traversal, absolute paths).
  */
+/**
+ * The `-p<n>` strip level for a diff. Standard git diffs prefix paths with `a/`
+ * and `b/` (so `-p1` strips that prefix); model-generated diffs very often OMIT
+ * them (`--- src/math.ts` instead of `--- a/src/math.ts`), where the default
+ * `-p1` would strip the first REAL component (`src/`) and fail "No such file or
+ * directory" — those need `-p0`. Detected deterministically (NOT a blind -p1→-p0
+ * fallback, which would let `-p0` reinterpret `b/foo` as a literal path and
+ * spuriously pass `--check` for a new file, masking a genuine non-applying diff).
+ */
+function diffStripLevel(diff: string): string {
+  const prefixed =
+    /^diff --git a\/\S+ b\//m.test(diff) || /^\+\+\+ b\//m.test(diff) || /^--- a\//m.test(diff);
+  return prefixed ? '-p1' : '-p0';
+}
+
+/** Runs `git apply <baseArgs> -p<n> -` over STDIN at the detected strip level.
+ * Returns null on success, else the stderr reason (never a false success). */
+function gitApplyTry(repoRoot: string, diff: string, baseArgs: ReadonlyArray<string>): string | null {
+  try {
+    execFileSync('git', ['apply', ...baseArgs, diffStripLevel(diff), '-'], {
+      cwd: repoRoot,
+      input: withTrailingNewline(diff),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    return null;
+  } catch (error) {
+    const reason = stderrReason(error);
+    return reason.length > 0 ? reason : 'patch did not apply';
+  }
+}
+
 export function checkPatchApplies(
   repoRoot: string,
   diff: string,
@@ -311,22 +342,14 @@ export function checkPatchApplies(
   // a model-generated diff whose line numbers are slightly off (a very common
   // LLM mistake) still validates as long as the CONTEXT lines match. It never
   // changes what the hunk does.
-  const args = ['apply', '--check', '--recount'];
-  if (opts?.reverse === true) {
-    args.push('-R');
-  }
-  args.push('-');
-  try {
-    execFileSync('git', args, {
-      cwd: repoRoot,
-      input: withTrailingNewline(diff),
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    return { applies: true, reason: null };
-  } catch (error) {
-    const reason = stderrReason(error);
-    return { applies: false, reason: reason.length > 0 ? reason : 'git apply --check failed' };
-  }
+  const reason = gitApplyTry(repoRoot, diff, [
+    '--check',
+    '--recount',
+    ...(opts?.reverse === true ? ['-R'] : []),
+  ]);
+  return reason === null
+    ? { applies: true, reason: null }
+    : { applies: false, reason: reason.length > 0 ? reason : 'git apply --check failed' };
 }
 
 /**
@@ -352,27 +375,14 @@ export function applyPatch(
   }
   // `--recount` tolerates wrong @@ line counts in model-generated diffs (see
   // checkPatchApplies); the context lines must still match, so it never applies
-  // a wrong hunk.
-  const args = ['apply', '--recount'];
-  if (opts?.threeway === true) {
-    args.push('--3way');
-  }
-  if (opts?.reverse === true) {
-    args.push('-R');
-  }
-  args.push('-');
-  try {
-    execFileSync('git', args, {
-      cwd: repoRoot,
-      input: withTrailingNewline(diff),
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-  } catch (error) {
-    const reason = stderrReason(error);
-    throw new GitOperationError(
-      `git apply failed in ${repoRoot}: ${reason.length > 0 ? reason : 'patch did not apply'}`,
-      { repoRoot, reason },
-    );
+  // a wrong hunk. `gitApplyTry` also tolerates a missing a/ b/ prefix (-p1→-p0).
+  const reason = gitApplyTry(repoRoot, diff, [
+    '--recount',
+    ...(opts?.threeway === true ? ['--3way'] : []),
+    ...(opts?.reverse === true ? ['-R'] : []),
+  ]);
+  if (reason !== null) {
+    throw new GitOperationError(`git apply failed in ${repoRoot}: ${reason}`, { repoRoot, reason });
   }
 }
 
