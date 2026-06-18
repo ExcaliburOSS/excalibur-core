@@ -296,6 +296,10 @@ export class SessionStore {
     if (existing.length > 0 && existing[existing.length - 1] === trimmed) {
       return; // dedupe-adjacent
     }
+    // Lock the file to 0600 BEFORE any sensitive prompt content is written, so
+    // the trimmed prompt never lands in a world-readable file (closes the
+    // create-then-chmod TOCTOU). The only window left is an empty file.
+    this.ensureHistoryFileSecure();
     const next = [...existing, trimmed].slice(-PROMPT_HISTORY_CAP);
     if (next.length > existing.length && next.length < PROMPT_HISTORY_CAP) {
       // Common, non-truncating case: a cheap append.
@@ -318,6 +322,18 @@ export class SessionStore {
     } catch {
       // Windows / certain mounts don't support POSIX perms — ignore.
     }
+  }
+
+  /**
+   * Ensures the history file exists and is owner-only (0600) BEFORE sensitive
+   * content is written to it. Creating it empty first means the brief
+   * default-perms window only ever exposes an empty file, never prompts.
+   */
+  private ensureHistoryFileSecure(): void {
+    if (!existsSync(this.historyPath)) {
+      writeFileEnsured(this.historyPath, '');
+    }
+    this.restrictHistoryPerms();
   }
 
   // --- persistence -------------------------------------------------------------

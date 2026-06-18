@@ -69,6 +69,20 @@ export function validatePermissions(manifest: ExtensionManifest): string[] {
     }
   }
 
+  // READ scopes are validated too: an extension may legitimately read repo
+  // files, but absolute paths, home-dir (`~`), parent-escapes (`..`) and
+  // root-level wildcards can exfiltrate credentials (e.g. ~/.ssh, ~/.aws,
+  // /etc) and must be flagged.
+  for (const pattern of permissions.filesystem?.read ?? []) {
+    if (isHighRiskReadPattern(pattern)) {
+      warnings.push(
+        `Extension '${manifest.id}' requests high-risk filesystem read access ('${pattern}') — ` +
+          'reads outside the workspace (absolute, ~, .. or root-level wildcards) can exfiltrate ' +
+          'credentials and will require approval (M5); scope reads to repo-relative paths.',
+      );
+    }
+  }
+
   for (const envName of permissions.secrets?.env ?? []) {
     if (!ENV_VAR_NAME_PATTERN.test(envName)) {
       warnings.push(
@@ -93,4 +107,29 @@ export function validatePermissions(manifest: ExtensionManifest): string[] {
 function isScopedToExcaliburDir(pattern: string): boolean {
   const normalized = pattern.replace(/^\.\//, '');
   return normalized === '.excalibur' || normalized.startsWith('.excalibur/');
+}
+
+/**
+ * A read pattern is high-risk if it can reach outside the repository working
+ * directory: absolute (`/etc/...`), home-relative (`~/.ssh`), a parent escape
+ * (`../`), or a root-level wildcard that would match the whole filesystem
+ * (`*`, `**`, `/**`).
+ */
+function isHighRiskReadPattern(pattern: string): boolean {
+  const trimmed = pattern.trim();
+  if (trimmed.length === 0) {
+    return false;
+  }
+  if (trimmed.startsWith('/') || trimmed.startsWith('~')) {
+    return true; // absolute or home-dir
+  }
+  // A `..` segment anywhere lets the glob climb out of the workspace.
+  if (/(^|\/)\.\.(\/|$)/.test(trimmed)) {
+    return true;
+  }
+  // Bare top-level wildcards match everything under the cwd.
+  if (trimmed === '*' || trimmed === '**' || trimmed === '**/*') {
+    return true;
+  }
+  return false;
 }

@@ -1,6 +1,7 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {
+  redactSecrets,
   resolveDefaultTrust,
   type InstructionSource,
   type InstructionSourceScope,
@@ -9,6 +10,11 @@ import { globFiles, isDirectory, readTextFile, sha256Hex } from '../internal/fs-
 import { RepoAnalysisError } from '../errors';
 import type { ScanInstructionSourcesInput } from '../types';
 import { classifySourcePath, extractTitle, FORMAT_ORDER, makeSourceId } from './classify';
+
+/** Redacts a possibly-null instruction title (untrusted file content). */
+function redactTitle(title: string | null): string | null {
+  return title === null ? null : redactSecrets(title);
+}
 
 /** Project-scope candidate globs (instructions-skills-core.md §1). */
 const PROJECT_PATTERNS: readonly string[] = [
@@ -89,7 +95,9 @@ async function scanTarget(
       format,
       kind,
       path: target.scope === 'user_global' ? `~/${relPath}` : relPath,
-      title: extractTitle(content),
+      // Title is derived from untrusted file content (front matter / first
+      // heading) and surfaces in `instructions list/inspect` — redact secrets.
+      title: redactTitle(extractTitle(content)),
       contentHash: sha256Hex(content),
       trustLevel,
       // Only sources trusted by default are enabled automatically;

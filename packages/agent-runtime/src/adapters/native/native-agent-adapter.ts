@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import {
   createEvent,
   type AgentRole,
+  type ExcaliburConfig,
   type ExcaliburEvent,
   type ExcaliburEventType,
 } from '@excalibur/shared';
@@ -469,7 +470,22 @@ export class NativeAgentAdapter implements AgentAdapter {
     });
 
     // Confirm-or-decline gate for any tool the engine marks requiresConfirmation.
-    const gate = this.confirmationGate(ctx.permissions, toolName, call.arguments);
+    const gate = this.confirmationGate(ctx.permissions, toolName, call.arguments, ctx.config);
+    // A HARD DENY (e.g. permissions.tools.apply_patch = false, or a blocked
+    // path) is never overridable by confirmation — short-circuit like a decline.
+    if (!gate.allowed) {
+      const result = `denied: ${gate.reason}`;
+      events.push({
+        event: emit('policy_decision', {
+          kind: 'confirmation',
+          tool: toolName,
+          decision: 'deny',
+          message: result,
+        }),
+        toolMessage: { role: 'tool', toolCallId: call.id, content: result },
+      });
+      return events;
+    }
     if (gate.requiresConfirmation) {
       const detail = describeCall(toolName, call.arguments);
       const approved =
@@ -591,34 +607,37 @@ export class NativeAgentAdapter implements AgentAdapter {
     permissions: PermissionEngine,
     name: NativeToolName,
     args: Record<string, unknown>,
-  ): { requiresConfirmation: boolean; reason: string } {
+    config: ExcaliburConfig,
+  ): { allowed: boolean; requiresConfirmation: boolean; reason: string } {
+    const pass = (d: { allowed: boolean; requiresConfirmation: boolean; reason: string }): {
+      allowed: boolean;
+      requiresConfirmation: boolean;
+      reason: string;
+    } => ({ allowed: d.allowed, requiresConfirmation: d.requiresConfirmation, reason: d.reason });
     if (name === 'update_tasks') {
       // The checklist is pure declaration — never gated.
-      return { requiresConfirmation: false, reason: 'checklist update (no side effect)' };
+      return { allowed: true, requiresConfirmation: false, reason: 'checklist update (no side effect)' };
     }
     if (name === 'write_file') {
-      const d = permissions.checkPath(String(args['path'] ?? ''), 'write');
-      return { requiresConfirmation: d.requiresConfirmation, reason: d.reason };
+      return pass(permissions.checkPath(String(args['path'] ?? ''), 'write'));
     }
     if (name === 'read_file' || name === 'list_files') {
-      const d = permissions.checkPath(String(args['path'] ?? '.'), 'read');
-      return { requiresConfirmation: d.requiresConfirmation, reason: d.reason };
+      return pass(permissions.checkPath(String(args['path'] ?? '.'), 'read'));
     }
     if (name === 'run_command') {
-      const d = permissions.checkCommand(String(args['command'] ?? ''));
-      return { requiresConfirmation: d.requiresConfirmation, reason: d.reason };
+      return pass(permissions.checkCommand(String(args['command'] ?? '')));
     }
     if (name === 'run_tests') {
-      const command =
-        (args['command'] as string | undefined) ??
-        // Mirrors the executor's default-command resolution.
-        'npm test';
-      const d = permissions.checkCommand(command);
-      return { requiresConfirmation: d.requiresConfirmation, reason: d.reason };
+      // Gate the EXACT command the executor will run (base + pattern), not just
+      // the base — otherwise the user approves `npm test` while the shell runs
+      // `npm test <model-controlled pattern>`.
+      const base = (args['command'] as string | undefined) ?? config.commands?.test ?? 'npm test';
+      const pattern = args['pattern'] as string | undefined;
+      const command = pattern !== undefined ? `${base} ${pattern}` : base;
+      return pass(permissions.checkCommand(command));
     }
     // apply_patch / create_branch / git_diff / search_code use the tool flag.
-    const d = permissions.checkTool(name);
-    return { requiresConfirmation: d.requiresConfirmation, reason: d.reason };
+    return pass(permissions.checkTool(name));
   }
 
   /**

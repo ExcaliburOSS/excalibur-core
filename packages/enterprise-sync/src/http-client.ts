@@ -20,6 +20,19 @@ import type { EnterpriseConfig, EnterpriseSyncClient } from './types';
 export const SYNC_FAILED_CODE = 'sync_failed';
 
 /**
+ * Reduces a run's `dir` to a repo-relative path so syncing never discloses the
+ * local absolute path (OS username, home directory, on-disk layout). Keeps the
+ * `.excalibur/...` tail when present; otherwise falls back to the canonical
+ * `.excalibur/runs/<id>` (the schema requires a non-empty string).
+ */
+export function sanitizeRunDir(run: LocalRun): LocalRun {
+  const normalized = run.dir.replace(/\\/g, '/');
+  const marker = normalized.indexOf('.excalibur/');
+  const relativeDir = marker >= 0 ? normalized.slice(marker) : `.excalibur/runs/${run.id}`;
+  return { ...run, dir: relativeDir };
+}
+
+/**
  * Constructor options for {@link HttpEnterpriseSyncClient}.
  *
  * @experimental
@@ -73,7 +86,10 @@ export class HttpEnterpriseSyncClient implements EnterpriseSyncClient {
 
   /** Pushes a local run record to `POST {base}/api/sync/runs`. @experimental */
   async pushRun(run: LocalRun): Promise<void> {
-    await this.request('POST', '/api/sync/runs', run);
+    // Never leak the local absolute path (it exposes the OS username, home dir
+    // and on-disk layout) — the control plane identifies runs by `id`. Reduce
+    // `dir` to its repo-relative `.excalibur/...` tail before sending.
+    await this.request('POST', '/api/sync/runs', sanitizeRunDir(run));
   }
 
   /** Pushes a single event to `POST {base}/api/sync/events`. @experimental */

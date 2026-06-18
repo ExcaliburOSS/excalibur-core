@@ -204,13 +204,20 @@ describe('NativeAgentAdapter — permission denial', () => {
     // The blocked file was NOT created.
     expect(existsSync(join(tmpRepo, '.env'))).toBe(false);
 
-    // The model received a permission-denied result and the loop continued.
-    const fileWrite = events.find((e) => e.type === 'file_write');
-    expect(fileWrite?.payload['ok']).toBe(false);
-    expect(String(fileWrite?.payload['result'])).toContain('permission denied');
+    // A blocked path is a HARD DENY at the gate: an explicit, replayable
+    // policy_decision deny is emitted and the executor is never invoked (so no
+    // file_write event is produced for the denied call).
+    const deny = events.find(
+      (e) => e.type === 'policy_decision' && e.payload['decision'] === 'deny',
+    );
+    expect(deny).toBeDefined();
+    expect(String(deny?.payload['message'])).toContain('blocked');
+    expect(events.some((e) => e.type === 'file_write')).toBe(false);
 
+    // The model received the denial as the tool result and the loop continued.
     const toolMsg = gateway.received[1]?.messages.find((m) => m.role === 'tool');
-    expect(String(toolMsg?.content)).toContain('permission denied');
+    expect(String(toolMsg?.content)).toContain('denied');
+    expect(String(toolMsg?.content)).toContain('blocked');
 
     // The loop reached the model's final answer.
     expect(events.some((e) => e.type === 'assistant_message')).toBe(true);

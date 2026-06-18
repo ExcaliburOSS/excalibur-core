@@ -1,5 +1,5 @@
 import * as YAML from 'yaml';
-import type { DetectedSkill, InstructionSource } from '@excalibur/shared';
+import { redactSecrets, type DetectedSkill, type InstructionSource } from '@excalibur/shared';
 import { isRecord, readTextFile, slugify } from '../internal/fs-utils';
 import type { ParsedSkillMd, ScanInstructionSourcesInput } from '../types';
 import { scanInstructionSources } from './scan';
@@ -151,14 +151,22 @@ export function parseSkillMd(content: string, path: string): ParsedSkillMd {
 
   const instructionsSection = findSection(sections, /instructions|usage|how to/i);
 
+  // SECURITY (ISD §3): a SKILL.md is untrusted, user-authored content that flows
+  // straight into `skills list/inspect` output, run summaries and — once enabled
+  // — model prompts. Redact secrets at the parse boundary so no downstream
+  // consumer ever has to remember to. A `null` field stays `null`.
+  const redact = (value: string | null): string | null =>
+    value === null ? null : redactSecrets(value);
+  const redactAll = (values: string[]): string[] => values.map((v) => redactSecrets(v));
+
   return {
     sourcePath: path,
-    name,
-    description,
-    triggers,
-    dependencies,
-    toolsRequired,
-    instructions: instructionsSection ? instructionsSection.body : null,
+    name: redact(name),
+    description: redact(description),
+    triggers: redactAll(triggers),
+    dependencies: redactAll(dependencies),
+    toolsRequired: redactAll(toolsRequired),
+    instructions: instructionsSection ? redactSecrets(instructionsSection.body) : null,
   };
 }
 

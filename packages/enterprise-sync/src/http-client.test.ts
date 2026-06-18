@@ -115,7 +115,21 @@ describe('HttpEnterpriseSyncClient', () => {
       const headers = headersOf(call);
       expect(headers['Authorization']).toBe(`Bearer ${API_KEY}`);
       expect(headers['Content-Type']).toBe('application/json');
-      expect(JSON.parse(call.init?.body as string)).toEqual(RUN);
+      // The local absolute `dir` is sanitized to a repo-relative path so the
+      // OS username / home directory / on-disk layout never leaks to the
+      // control plane; everything else is sent verbatim.
+      expect(JSON.parse(call.init?.body as string)).toEqual({
+        ...RUN,
+        dir: '.excalibur/runs/run_20260613_101500',
+      });
+    });
+
+    it('never leaks the local absolute dir path in the pushed run', async () => {
+      const { client, calls } = createClient(() => new Response(null, { status: 202 }));
+      await client.pushRun(RUN);
+      const body = calls[0]!.init?.body as string;
+      expect(body).not.toContain('/repo/.excalibur');
+      expect(JSON.parse(body).dir).toBe('.excalibur/runs/run_20260613_101500');
     });
 
     it('normalizes trailing slashes in the baseUrl', async () => {
