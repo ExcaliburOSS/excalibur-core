@@ -13,6 +13,7 @@ import {
 import { renderTodos } from '../rail-todos.js';
 import type { ApprovalPrompt, Phase, PhaseEvent, RailModel } from '../rail-types.js';
 import { useColors } from './ThemeContext.js';
+import { DiffView } from './DiffView.js';
 import { stateGlyph, toneColor } from './phase-style.js';
 
 /**
@@ -47,6 +48,8 @@ export interface RunViewProps {
   tier?: ColorTier;
   mode?: ThemeMode;
   labels?: RunViewLabels;
+  /** Terminal columns, for width-adaptive inline diffs (default 80). */
+  width?: number;
   /** Route completed phases through `<Static>` (default true; off for tests). */
   useStatic?: boolean;
 }
@@ -80,11 +83,19 @@ function PhaseNode({
   active,
   spinnerFrame,
   colors,
+  diffsExpanded,
+  tier,
+  mode,
+  width,
 }: {
   phase: Phase;
   active: boolean;
   spinnerFrame: number;
   colors: Palette;
+  diffsExpanded: boolean;
+  tier?: ColorTier;
+  mode?: ThemeMode;
+  width: number;
 }): ReactElement {
   const node = stateGlyph(phase.state, spinnerFrame, colors);
   const annotation = annotationFor(phase);
@@ -101,7 +112,19 @@ function PhaseNode({
       </Box>
       {active
         ? (phase.events ?? []).map((event, index) => (
-            <EventRow key={index} event={event} colors={colors} />
+            <Box key={index} flexDirection="column">
+              <EventRow event={event} colors={colors} />
+              {event.diff !== undefined && event.diff.length > 0 ? (
+                <DiffView
+                  diff={event.diff}
+                  expanded={diffsExpanded}
+                  colors={colors}
+                  width={width}
+                  {...(tier !== undefined ? { tier } : {})}
+                  {...(mode !== undefined ? { mode } : {})}
+                />
+              ) : null}
+            </Box>
           ))
         : null}
     </Box>
@@ -173,10 +196,11 @@ function activeId(phases: ReadonlyArray<Phase>): string | null {
 
 export function RunView(props: RunViewProps): ReactElement {
   const colors = useColors();
-  const { model, spinnerFrame, diffsExpanded, tier, mode, labels } = props;
+  const { model, spinnerFrame, tier, mode, labels } = props;
   const useStatic = props.useStatic ?? true;
+  const diffsExpanded = props.diffsExpanded ?? false;
+  const width = props.width ?? 80;
   const approval = props.approval ?? model.approval ?? null;
-  void diffsExpanded; // consumed by <DiffView> in a later phase
 
   const done = (phase: Phase): boolean => phase.state === 'completed' || phase.state === 'failed';
   const completed = model.phases.filter(done);
@@ -199,6 +223,10 @@ export function RunView(props: RunViewProps): ReactElement {
       active={phase.id === active}
       spinnerFrame={spinnerFrame}
       colors={colors}
+      diffsExpanded={diffsExpanded}
+      width={width}
+      {...(tier !== undefined ? { tier } : {})}
+      {...(mode !== undefined ? { mode } : {})}
     />
   );
 

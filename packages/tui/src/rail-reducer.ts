@@ -52,12 +52,14 @@ function railEventFor(event: ExcaliburEvent): PhaseEvent | null {
     case 'test_result':
       return { text: `tests ${str(p, 'status') || 'passed'}`, tone: 'success', kind: 'test' };
     case 'patch_generated': {
-      const note = formatDiffStat(parseDiffStat(str(p, 'diff')));
+      const diff = str(p, 'diff');
+      const note = formatDiffStat(parseDiffStat(diff));
       return {
         text: 'patch generated',
         tone: 'warn',
         kind: 'patch',
         ...(note.length > 0 ? { note } : {}),
+        ...(diff.length > 0 ? { diff } : {}),
       };
     }
     case 'patch_applied':

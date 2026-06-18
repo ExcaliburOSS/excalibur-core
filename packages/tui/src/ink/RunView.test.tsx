@@ -7,8 +7,17 @@ import { darkColors } from '../theme.js';
 import type { RailModel } from '../rail-types.js';
 import { ThemeProvider } from './ThemeContext.js';
 import { RunView } from './RunView.js';
+import { DiffView } from './DiffView.js';
 import { mountRunView } from './mount.js';
 import { applyRunViewKey, createRunViewStore } from './store.js';
+
+const SAMPLE_DIFF =
+  'diff --git a/src/calc.ts b/src/calc.ts\n' +
+  '--- a/src/calc.ts\n' +
+  '+++ b/src/calc.ts\n' +
+  '@@ -1 +1 @@\n' +
+  '-export const total = 0;\n' +
+  '+export const total: number = rate * amount;\n';
 
 function model(overrides: Partial<RailModel> = {}): RailModel {
   return {
@@ -116,6 +125,70 @@ describe('<RunView>', () => {
     expect(live).toContain('Verify');
     // The completed phase was flushed once (it appears across the written frames).
     expect(stripAnsi(frames.join('\n'))).toContain('Context');
+  });
+});
+
+describe('<DiffView>', () => {
+  function diffFrame(props: Parameters<typeof DiffView>[0]): string {
+    const { lastFrame } = render(
+      <ThemeProvider colors={darkColors}>
+        <DiffView {...props} />
+      </ThemeProvider>,
+    );
+    return stripAnsi(lastFrame() ?? '');
+  }
+
+  it('collapsed: shows only an expand hint, not the diff body', () => {
+    const frame = diffFrame({ diff: SAMPLE_DIFF, expanded: false, colors: darkColors });
+    expect(frame).toContain('expand diff');
+    expect(frame).not.toContain('rate * amount');
+  });
+
+  it('expanded: renders the diff body (added/removed lines)', () => {
+    const frame = diffFrame({ diff: SAMPLE_DIFF, expanded: true, colors: darkColors, tier: 'truecolor' });
+    expect(frame).toContain('rate * amount');
+    expect(frame).toContain('export const total');
+  });
+
+  it('renders nothing for an empty diff', () => {
+    const frame = diffFrame({ diff: '', expanded: true, colors: darkColors });
+    expect(frame.trim()).toBe('');
+  });
+
+  it('height-caps a long diff and summarises the remainder', () => {
+    const body = Array.from({ length: 40 }, (_, i) => `+line ${i}`).join('\n');
+    const big = `diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -0,0 +1,40 @@\n${body}\n`;
+    const frame = diffFrame({ diff: big, expanded: true, colors: darkColors, maxLines: 8 });
+    expect(frame).toContain('more lines');
+  });
+});
+
+describe('<RunView> inline diff', () => {
+  it('shows the diff hint collapsed and the body when diffsExpanded', () => {
+    const patchModel = model({
+      phases: [
+        {
+          id: 'implement',
+          name: 'Implement',
+          state: 'running',
+          events: [
+            { text: 'patch generated', note: '+1 −1', tone: 'warn', kind: 'patch', diff: SAMPLE_DIFF },
+          ],
+        },
+      ],
+    });
+    const collapsed = frameOf({ model: patchModel, spinnerFrame: 0, useStatic: false });
+    expect(collapsed).toContain('expand diff');
+    expect(collapsed).not.toContain('rate * amount');
+
+    const expanded = frameOf({
+      model: patchModel,
+      spinnerFrame: 0,
+      useStatic: false,
+      diffsExpanded: true,
+      tier: 'truecolor',
+    });
+    expect(expanded).toContain('rate * amount');
   });
 });
 

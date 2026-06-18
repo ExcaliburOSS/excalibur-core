@@ -154,6 +154,9 @@ describe('reduceRail', () => {
     const patchEvent = rail.phases[0]?.events?.[0];
     expect(patchEvent?.kind).toBe('patch');
     expect(patchEvent?.note).toBe('+2 −1 · 1 file');
+    // The raw diff is preserved on the event so the Ink presenter can render it
+    // inline; the string renderer ignores it and shows only the note.
+    expect(patchEvent?.diff).toBe(diff);
   });
 
   it('marks the phase failed + errored on an error event', () => {

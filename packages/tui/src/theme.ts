@@ -185,6 +185,8 @@ type GlyphSet = {
   boxBL: string;
   boxBR: string;
   boxH: string;
+  diffExpand: string;
+  diffCollapse: string;
 };
 
 const unicode: GlyphSet = {
@@ -205,6 +207,8 @@ const unicode: GlyphSet = {
   boxBL: '└',
   boxBR: '┘',
   boxH: '─',
+  diffExpand: '▸',
+  diffCollapse: '▾',
 };
 
 const asciiSet: GlyphSet = {
@@ -225,6 +229,8 @@ const asciiSet: GlyphSet = {
   boxBL: '+',
   boxBR: '+',
   boxH: '-',
+  diffExpand: '>',
+  diffCollapse: 'v',
 };
 
 export const glyph: GlyphSet = ascii ? asciiSet : unicode;

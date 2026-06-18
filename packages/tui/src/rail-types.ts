@@ -36,6 +36,12 @@ export interface PhaseEvent {
   tone?: 'muted' | 'accent' | 'success' | 'warn';
   /** Semantic kind, used by the renderer to pick a per-tool glyph. */
   kind?: PhaseEventKind;
+  /**
+   * Raw unified diff, set on a `patch` event. The Ink presenter renders it
+   * inline (collapsible, syntax-coloured); the pure string renderer ignores it
+   * and shows only the diffstat `note`, so non-TTY output stays unchanged.
+   */
+  diff?: string;
 }
 
 export interface Phase {

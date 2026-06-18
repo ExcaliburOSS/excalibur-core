@@ -1,4 +1,4 @@
-import { render, useInput, useStdin } from 'ink';
+import { render, useInput, useStdin, useStdout } from 'ink';
 import { useMemo, useSyncExternalStore, type ReactElement } from 'react';
 import type { ExcaliburEvent } from '@excalibur/shared';
 import type { ColorTier } from '../color.js';
@@ -64,6 +64,7 @@ function RunViewApp({
   options: MountRunViewOptions;
 }): ReactElement {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  const { stdout } = useStdout();
   const now = options.now ?? Date.now;
   const model = useMemo(
     () => reduceRail(snapshot.events, { ...(options.reduce ?? {}), nowMs: now() }),
@@ -79,6 +80,7 @@ function RunViewApp({
         approval={snapshot.approval}
         diffsExpanded={snapshot.diffsExpanded}
         tier={options.tier}
+        width={stdout?.columns ?? 80}
         {...(options.mode !== undefined ? { mode: options.mode } : {})}
         {...(options.labels !== undefined ? { labels: options.labels } : {})}
       />
