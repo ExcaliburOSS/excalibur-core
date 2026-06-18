@@ -328,17 +328,20 @@ async function driveLoop(
   spinner?.start(() => spinnerText(null));
 
   // A conversation turn has no workflow phases, so synthesize ONE "working" node
-  // (view-only — not persisted) under which the rail expands the live tool
-  // activity (read/edit/run). Without it, reduceRail would drop the phase-less
-  // events and the rail would show only the status line.
+  // under which the rail expands the live tool activity (read/edit/run). Without
+  // it, reduceRail would drop the phase-less events and show only the status
+  // line. PERSIST it to the run (not just the view) so a later replay/`logs`
+  // folds the SAME stream → live == replay (the byte-identical invariant). Only
+  // on the Ink path: the non-TTY spinner never showed a phase, so its persisted
+  // stream stays phase-less (and its output unchanged).
   if (view !== null) {
-    view.push(
-      createEvent({
-        runId: run.id,
-        type: 'phase_started',
-        payload: { name: deps.t(gerundForRole(options.role)), phaseId: 'turn' },
-      }),
-    );
+    const started = createEvent({
+      runId: run.id,
+      type: 'phase_started',
+      payload: { name: deps.t(gerundForRole(options.role)), phaseId: 'turn' },
+    });
+    runManager.appendEvent(run.id, started);
+    view.push(started);
   }
 
   try {
@@ -404,11 +407,17 @@ async function driveLoop(
         spinner!.start(() => spinnerText(activity));
       }
     }
-    // Complete the synthetic working node so the final rail frame reads as done.
-    if (view !== null && !aborted) {
-      view.push(
-        createEvent({ runId: run.id, type: 'phase_completed', payload: { phaseId: 'turn' } }),
-      );
+    // Close the synthetic working node — ALSO on abort, else the rail freezes a
+    // spinning node in scrollback (the run-level cancellation lands AFTER unmount
+    // via finishRun, which the view never sees). Persisted to match replay.
+    if (view !== null) {
+      const completed = createEvent({
+        runId: run.id,
+        type: 'phase_completed',
+        payload: { phaseId: 'turn' },
+      });
+      runManager.appendEvent(run.id, completed);
+      view.push(completed);
     }
   } finally {
     ctrl.signal.removeEventListener('abort', onAbort);

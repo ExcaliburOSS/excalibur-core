@@ -12,7 +12,12 @@ import type { ApprovalPrompt } from '../rail-types.js';
 export type ApprovalAnswer = 'yes' | 'no' | 'auto';
 
 export interface RunViewSnapshot {
+  /** The accumulated event log. MUTABLE (appended in place) — re-fold off
+   * `eventsRev`, never off this array's identity. */
   events: ExcaliburEvent[];
+  /** Bumped on each appended event — the re-fold key (so push stays O(1), not a
+   * full-array copy per event → O(n²) over a run). */
+  eventsRev: number;
   /** Spinner/clock tick — bumped to re-render the breathing indicator + elapsed. */
   frame: number;
   diffsExpanded: boolean;
@@ -68,8 +73,14 @@ export function applyRunViewKey(store: RunViewStore, input: string, key: KeyFlag
 }
 
 export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunViewStore {
+  // The event log is a single mutable array; `push` appends in place (O(1)) and
+  // bumps `eventsRev`, so a long run is O(n) not O(n²). Each `set` still yields a
+  // fresh snapshot object (with the same `events` ref) so useSyncExternalStore
+  // detects the change; the component re-folds reduceRail keyed on `eventsRev`.
+  const events = initialEvents.slice();
   let snapshot: RunViewSnapshot = {
-    events: initialEvents.slice(),
+    events,
+    eventsRev: 0,
     frame: 0,
     diffsExpanded: false,
     approval: null,
@@ -96,7 +107,8 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
       };
     },
     push(event) {
-      set({ events: [...snapshot.events, event] });
+      events.push(event); // O(1) append in place
+      set({ eventsRev: snapshot.eventsRev + 1 });
     },
     tick() {
       set({ frame: snapshot.frame + 1 });

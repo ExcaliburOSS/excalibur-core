@@ -68,9 +68,11 @@ function RunViewApp({
   const now = options.now ?? Date.now;
   const model = useMemo(
     () => reduceRail(snapshot.events, { ...(options.reduce ?? {}), nowMs: now() }),
-    // Re-fold when the event log grows or the clock ticks (spinner/elapsed).
+    // Re-fold when the event log grows (eventsRev) or the clock ticks (frame —
+    // for live elapsed). NOT keyed on the events array identity (it's mutated in
+    // place); an approval/diff toggle re-renders without re-folding.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [snapshot.events, snapshot.frame],
+    [snapshot.eventsRev, snapshot.frame],
   );
   return (
     <ThemeProvider colors={options.palette}>

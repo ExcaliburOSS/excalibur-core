@@ -154,8 +154,12 @@ export class LspClient {
    * carries a `version` older than `sentVersion`, ignore it (a stale wave); on
    * the first acceptable publish, wait a short SETTLE window for a later wave —
    * tsserver emits a syntactic (often empty) pass, then the semantic errors —
-   * and take the last. Hard-bounded by `waitMs`; on timeout returns the
-   * last-acceptable (or empty = a real "clean" signal). Never throws.
+   * and take the last. `waitMs` bounds the wait for the FIRST publish; the
+   * settle then adds up to `2 × settleMs` MORE (deliberately past `waitMs`, so a
+   * semantic wave that lands just after a late syntactic pass isn't missed) —
+   * total ceiling `waitMs + 2·settleMs`, still hard-bounded and abortable. On
+   * timeout returns the last-acceptable (or empty = a real "clean" signal).
+   * Never throws.
    */
   async diagnosticsFor(
     uri: string,
