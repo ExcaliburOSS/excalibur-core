@@ -26,6 +26,7 @@ export type PhaseEventKind =
   | 'compaction'
   | 'verification'
   | 'claim'
+  | 'diagnostics'
   | 'error';
 
 export interface PhaseEvent {

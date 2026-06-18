@@ -651,6 +651,7 @@ export const EN: Catalog = {
   "event.policy-decision": "  ⛨ policy: {decision}{message}",
   "event.task-update": "  ☑ tasks: {done}/{total}",
   "event.compaction": "  ⊟ context compacted: {before}→{after} tokens",
+  "event.diagnostics": "  ⚠ diagnostics {file}: {errors} error(s), {warnings} warning(s)",
   "event.run-completed": "■ run completed ({status})",
   "event.unknown": "  {type}",
   "event.simulated": " (simulated)",

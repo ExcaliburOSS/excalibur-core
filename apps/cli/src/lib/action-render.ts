@@ -277,6 +277,18 @@ export class ActionRenderer {
         );
         return;
       }
+      case 'diagnostics': {
+        // LSP per-edit diagnostics ride as the result of the just-rendered edit:
+        // surface only when there are errors/warnings (clean is silent).
+        const errors = typeof event.payload['errorCount'] === 'number' ? (event.payload['errorCount'] as number) : 0;
+        const warnings = typeof event.payload['warningCount'] === 'number' ? (event.payload['warningCount'] as number) : 0;
+        if (errors === 0 && warnings === 0) return;
+        const hex = errors > 0 ? this.palette.danger : this.palette.warn;
+        this.ui.write(
+          `    ${this.c(this.g('⚠', '!'), hex)} ${this.c(`${s(event, 'file')}: ${errors} error(s), ${warnings} warning(s)`, hex)}`.trimEnd(),
+        );
+        return;
+      }
       default:
         return; // run_started/completed, phase_completed, *_selected → not actions
     }

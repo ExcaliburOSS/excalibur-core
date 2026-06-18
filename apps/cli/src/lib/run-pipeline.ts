@@ -193,6 +193,17 @@ export function describeEvent(t: Translator, event: ExcaliburEvent): string | nu
         typeof payload[key] === 'number' ? (payload[key] as number) : 0;
       return pc.dim(t('event.compaction', { before: num('tokensBefore'), after: num('tokensAfter') }));
     }
+    case 'diagnostics': {
+      const num = (key: string): number =>
+        typeof payload[key] === 'number' ? (payload[key] as number) : 0;
+      const errors = num('errorCount');
+      const warnings = num('warningCount');
+      if (errors === 0 && warnings === 0) {
+        return null; // a clean file — don't add noise to the log
+      }
+      const text = t('event.diagnostics', { file: str('file'), errors, warnings });
+      return errors > 0 ? pc.red(text) : pc.yellow(text);
+    }
     case 'run_completed':
       return pc.bold(t('event.run-completed', { status: str('status') || 'completed' }));
     default:

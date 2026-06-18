@@ -14,6 +14,7 @@ import type { ChatInput, ChatOutput, ToolCall } from '@excalibur/model-gateway';
 import type { AgentRunInput } from '../../types';
 import { NATIVE_TOOL_NAMES } from '../../tools/native-tools';
 import { MAX_ITERATIONS, NativeAgentAdapter } from './native-agent-adapter';
+import { FAKE_LSP_SERVER } from '../../lsp/__fixtures__/fake-lsp-server';
 
 /**
  * Offline tests for the REAL native agentic loop (OSS-7). The model gateway is
@@ -441,6 +442,72 @@ describe('NativeAgentAdapter — abort finalContent', () => {
     expect(String(final?.payload['content'])).toBe('Run aborted.');
     // Distinct from the iteration-limit "truncated" summary content.
     expect(String(final?.payload['content'])).not.toContain('step limit');
+  });
+});
+
+describe('NativeAgentAdapter — LSP per-edit diagnostics', () => {
+  /**
+   * permissiveConfig + an LSP server pointed at the fake language server.
+   * Timeouts are generous: each test spawns a FRESH node subprocess and, under
+   * vitest's parallel pool, cold-start + the initialize round-trip can spike on
+   * a loaded machine (a real persistent language server is faster to reach).
+   */
+  function lspConfig(): ExcaliburConfig {
+    return {
+      ...permissiveConfig(),
+      lsp: {
+        enabled: true,
+        diagnosticsTimeoutMs: 5000,
+        serverStartTimeoutMs: 20000,
+        servers: { typescript: { command: process.execPath, args: ['-e', FAKE_LSP_SERVER] } },
+      },
+    };
+  }
+  const LSP_TEST_TIMEOUT_MS = 30000;
+
+  it('emits a diagnostics event AND appends the errors to the edit tool result', async () => {
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'write_file', { path: 'bad.ts', content: '__ERR__ const x: number = "s";\n' })] },
+      { content: 'I will fix the type error.' },
+    ]);
+    const events = await collect(new NativeAgentAdapter().run(makeInput(gateway, { config: lspConfig() })));
+
+    // A typed diagnostics event was emitted for the edited file.
+    const diag = events.find((e) => e.type === 'diagnostics');
+    expect(diag).toBeDefined();
+    expect(diag?.payload['file']).toBe('bad.ts');
+    expect(diag?.payload['errorCount']).toBe(1);
+
+    // The SAME errors were appended to the write_file tool result fed to the
+    // model on the next turn (the self-correction substrate).
+    const toolMsg = gateway.received[1]?.messages.find((m) => m.role === 'tool' && m.toolCallId === 'c1');
+    expect(String(toolMsg?.content)).toContain('Compiler diagnostics (LSP)');
+    expect(String(toolMsg?.content)).toContain('bad.ts:1:7');
+    expect(String(toolMsg?.content)).toContain('Type error');
+  }, LSP_TEST_TIMEOUT_MS);
+
+  it('emits a clean diagnostics event and appends NOTHING when the edit has no errors', async () => {
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'write_file', { path: 'ok.ts', content: 'export const ok = 1;\n' })] },
+      { content: 'done' },
+    ]);
+    const events = await collect(new NativeAgentAdapter().run(makeInput(gateway, { config: lspConfig() })));
+
+    const diag = events.find((e) => e.type === 'diagnostics');
+    expect(diag?.payload['errorCount']).toBe(0);
+    const toolMsg = gateway.received[1]?.messages.find((m) => m.role === 'tool' && m.toolCallId === 'c1');
+    expect(String(toolMsg?.content)).toContain('wrote'); // the normal result
+    expect(String(toolMsg?.content)).not.toContain('Compiler diagnostics');
+  }, LSP_TEST_TIMEOUT_MS);
+
+  it('stays inert (no diagnostics event) when LSP is disabled', async () => {
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'write_file', { path: 'bad.ts', content: '__ERR__ x\n' })] },
+      { content: 'done' },
+    ]);
+    const disabled: ExcaliburConfig = { ...lspConfig(), lsp: { ...lspConfig().lsp!, enabled: false } };
+    const events = await collect(new NativeAgentAdapter().run(makeInput(gateway, { config: disabled })));
+    expect(events.some((e) => e.type === 'diagnostics')).toBe(false);
   });
 });
 

@@ -14,3 +14,4 @@ export * from './adapters/resolve-agent-adapter';
 export * from './mcp/mcp-client';
 export * from './mcp/mcp-tools';
 export * from './sandbox/docker-sandbox';
+export * from './lsp';

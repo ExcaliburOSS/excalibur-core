@@ -39,6 +39,7 @@ export const excaliburEventTypeSchema = z.enum([
   'task_update',
   'verification',
   'claim',
+  'diagnostics',
 ]);
 export type ExcaliburEventType = z.infer<typeof excaliburEventTypeSchema>;
 
@@ -115,6 +116,31 @@ export const claimPayloadSchema = z.object({
   evidence: z.string().optional(),
 });
 export type ClaimPayload = z.infer<typeof claimPayloadSchema>;
+
+/**
+ * Payload of a `diagnostics` event (event #28): real compiler diagnostics from a
+ * Language Server for a file the agent JUST edited (P1.10 / M3). Emitted after a
+ * `write_file`/`apply_patch`; the same errors are fed back to the model so it
+ * self-corrects on the next turn. Lines/columns are 1-based (human/editor
+ * convention; converted from LSP's 0-based positions).
+ */
+export const diagnosticItemSchema = z.object({
+  line: z.number().int().nonnegative(),
+  column: z.number().int().nonnegative(),
+  severity: z.enum(['error', 'warning', 'info', 'hint']),
+  message: z.string(),
+  code: z.string().optional(),
+});
+export type DiagnosticItem = z.infer<typeof diagnosticItemSchema>;
+
+export const diagnosticsPayloadSchema = z.object({
+  /** Repo-relative path of the edited file. */
+  file: z.string(),
+  diagnostics: z.array(diagnosticItemSchema),
+  errorCount: z.number().int().nonnegative(),
+  warningCount: z.number().int().nonnegative(),
+});
+export type DiagnosticsPayload = z.infer<typeof diagnosticsPayloadSchema>;
 
 export interface CreateEventInput {
   runId: string | null;

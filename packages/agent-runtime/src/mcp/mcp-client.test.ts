@@ -185,7 +185,10 @@ describe('McpClient.callTool', () => {
 
 describe('McpClient robustness', () => {
   it('times out a request that never gets a response', async () => {
-    const client = await connectFake(SILENT_AFTER_INIT, 150);
+    // A 1s request timeout: still proves the timeout path fires, but is robust
+    // to CI/parallel load (a sub-150ms budget assumed faster-than-safe
+    // subprocess startup and flaked when other suites spawned children at once).
+    const client = await connectFake(SILENT_AFTER_INIT, 1000);
     try {
       const error = await client.listTools().catch((e: unknown) => e);
       expect(isExcaliburError(error)).toBe(true);

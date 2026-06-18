@@ -2,7 +2,9 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import {
   createEvent,
+  DEFAULT_LSP_CONFIG,
   type AgentRole,
+  type DiagnosticsPayload,
   type ExcaliburConfig,
   type ExcaliburEvent,
   type ExcaliburEventType,
@@ -25,6 +27,7 @@ import {
 import { zodToJsonSchema } from '../../tools/zod-to-json-schema';
 import { executeNativeTool, type ToolExecutionContext } from '../../tools/execute-tool';
 import { PermissionEngine } from '../../permissions/permission-engine';
+import { createLspSession, languageForFile, type LspSession } from '../../lsp';
 import {
   asJsonObject,
   closeMcp,
@@ -238,6 +241,11 @@ export class NativeAgentAdapter implements AgentAdapter {
       clients: [],
       warnings: [],
     };
+    // LSP per-edit diagnostics (P1.10): a run-scoped session that spawns a
+    // language server lazily on the first edit and feeds compiler errors back to
+    // the model. Declared here so the `finally` can always close it; created in
+    // the try (it spawns nothing until an edit of a supported, installed language).
+    let lsp: LspSession | null = null;
     const responseKind = ROLE_TO_RESPONSE_KIND[input.role] ?? 'ask';
     const mutated = new Set<string>();
     const totals: RunningTotals = { inputTokens: 0, outputTokens: 0, costCents: null };
@@ -280,6 +288,16 @@ export class NativeAgentAdapter implements AgentAdapter {
       }
       for (const warning of mcp.warnings) {
         yield emit('policy_decision', { kind: 'log', decision: 'allow', message: warning });
+      }
+      // Editing roles get an LSP session (read-only roles never mutate files).
+      // Gated by config; inert until the first edit of an installed language.
+      const lspCfg = input.config.lsp;
+      if (!READ_ONLY_ROLES.has(input.role) && (lspCfg?.enabled ?? true)) {
+        lsp = createLspSession({
+          workdir: input.workdir,
+          config: lspCfg ?? DEFAULT_LSP_CONFIG,
+          ...(input.signal !== undefined ? { signal: input.signal } : {}),
+        });
       }
       const tools = [...toolSpecsFor(input.role), ...mcp.specs];
 
@@ -384,6 +402,7 @@ export class NativeAgentAdapter implements AgentAdapter {
             mutated,
             emit,
             mcp.byName,
+            lsp,
           )) {
             yield ev.event;
             if (ev.toolMessage !== undefined) {
@@ -398,6 +417,7 @@ export class NativeAgentAdapter implements AgentAdapter {
       }
     } finally {
       closeMcp(mcp);
+      lsp?.close();
     }
 
     // Reached only on abort, a provider/tool-call error, or iteration-limit
@@ -444,6 +464,7 @@ export class NativeAgentAdapter implements AgentAdapter {
     mutated: Set<string>,
     emit: (type: ExcaliburEventType, payload: Record<string, unknown>) => ExcaliburEvent,
     mcpByName: ReadonlyMap<string, McpToolEntry>,
+    lsp: LspSession | null,
   ): Promise<Array<{ event: ExcaliburEvent; toolMessage?: ChatMessage }>> {
     const events: Array<{ event: ExcaliburEvent; toolMessage?: ChatMessage }> = [];
 
@@ -516,23 +537,49 @@ export class NativeAgentAdapter implements AgentAdapter {
 
     const { ok, result } = await executeNativeTool(toolName, call.arguments, ctx);
 
+    // The files THIS call just edited (the per-call delta) — used both to grow
+    // the run-wide `mutated` set and to scope the per-edit LSP diagnostics query.
+    const editedNow: string[] = [];
     if (ok) {
       const target = pathArgOf(toolName, call.arguments);
       if (target !== undefined && (toolName === 'write_file' || toolName === 'apply_patch')) {
-        mutated.add(target);
+        editedNow.push(target);
       }
       if (toolName === 'apply_patch') {
-        for (const p of filesAffectedFromDiff(String(call.arguments['diff'] ?? ''))) {
-          mutated.add(p);
+        editedNow.push(...filesAffectedFromDiff(String(call.arguments['diff'] ?? '')));
+      }
+      for (const path of editedNow) {
+        mutated.add(path);
+      }
+    }
+
+    // Per-edit diagnostics: query the language server for the just-edited files
+    // of a supported language, emit a typed `diagnostics` event each, and append
+    // the errors to THIS tool result so the model self-corrects next turn.
+    let diagnosticsNote = '';
+    if (lsp !== null && editedNow.length > 0) {
+      const targets = [...new Set(editedNow)].filter((path) => languageForFile(path) !== null);
+      for (const path of targets) {
+        const language = languageForFile(path);
+        if (language !== null) lsp.ensureStarted(language);
+      }
+      for (const path of targets) {
+        const diag = await lsp.diagnosticsFor(path);
+        if (diag === null) continue;
+        events.push({ event: emit('diagnostics', diag as unknown as Record<string, unknown>) });
+        if (diag.errorCount > 0 || diag.warningCount > 0) {
+          diagnosticsNote += formatDiagnosticsForModel(diag);
         }
       }
     }
 
     const eventType = eventTypeForTool(toolName);
     const payload = toolEventPayload(toolName, call.arguments, ok, result);
+    const content =
+      diagnosticsNote.length > 0 ? `${result}\n\n${redactSecrets(diagnosticsNote)}` : result;
     events.push({
       event: emit(eventType, payload),
-      toolMessage: { role: 'tool', toolCallId: call.id, content: result },
+      toolMessage: { role: 'tool', toolCallId: call.id, content },
     });
     return events;
   }
@@ -700,6 +747,26 @@ export class NativeAgentAdapter implements AgentAdapter {
 }
 
 // --- helpers ----------------------------------------------------------------
+
+/** Max diagnostics shown to the model per edited file (the rest are summarized). */
+const MAX_DIAGNOSTICS_SHOWN = 20;
+
+/**
+ * Formats a file's diagnostics as a compact, model-facing block appended to the
+ * edit's tool result — only errors/warnings (info/hint are noise), capped, so
+ * the agent anchors its next turn on REAL compiler output, not invented errors.
+ */
+function formatDiagnosticsForModel(diag: DiagnosticsPayload): string {
+  const surfaced = diag.diagnostics.filter((d) => d.severity === 'error' || d.severity === 'warning');
+  if (surfaced.length === 0) {
+    return '';
+  }
+  const lines = surfaced
+    .slice(0, MAX_DIAGNOSTICS_SHOWN)
+    .map((d) => `  ${diag.file}:${d.line}:${d.column} ${d.severity}: ${d.message}${d.code !== undefined ? ` [${d.code}]` : ''}`);
+  const more = surfaced.length > MAX_DIAGNOSTICS_SHOWN ? `\n  …(+${surfaced.length - MAX_DIAGNOSTICS_SHOWN} more)` : '';
+  return `Compiler diagnostics (LSP) — fix these real errors, do not invent others:\n${lines.join('\n')}${more}\n`;
+}
 
 /** Reads `+++ b/<path>` lines from a unified diff. */
 function filesAffectedFromDiff(diff: string): string[] {

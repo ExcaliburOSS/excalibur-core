@@ -81,6 +81,29 @@ describe('reduceRail', () => {
     expect(done).toBeLessThan(60_000);
   });
 
+  it('renders a diagnostics event under the active phase (warn when errors)', () => {
+    const rail = reduceRail([
+      ev('phase_started', { name: 'Implement' }, 'p1'),
+      ev('file_write', { path: 'bad.ts' }, 'p1'),
+      ev('diagnostics', { file: 'bad.ts', errorCount: 2, warningCount: 1, diagnostics: [] }, 'p1'),
+    ]);
+    const events = rail.phases[0]?.events ?? [];
+    const diag = events.find((e) => e.kind === 'diagnostics');
+    expect(diag).toBeDefined();
+    expect(diag?.text).toContain('bad.ts');
+    expect(diag?.text).toContain('2E');
+    expect(diag?.tone).toBe('warn');
+  });
+
+  it('renders a clean diagnostics event with a success tone', () => {
+    const rail = reduceRail([
+      ev('phase_started', { name: 'Implement' }, 'p1'),
+      ev('diagnostics', { file: 'ok.ts', errorCount: 0, warningCount: 0, diagnostics: [] }, 'p1'),
+    ]);
+    const diag = (rail.phases[0]?.events ?? []).find((e) => e.kind === 'diagnostics');
+    expect(diag?.tone).toBe('success');
+  });
+
   it('folds task_update snapshots into the checklist (last snapshot wins)', () => {
     const rail = reduceRail([
       ev('phase_started', { name: 'Implement' }, 'p1'),

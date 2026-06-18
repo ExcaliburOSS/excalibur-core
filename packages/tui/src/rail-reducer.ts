@@ -66,6 +66,16 @@ function railEventFor(event: ExcaliburEvent): PhaseEvent | null {
       return { text: `branch ${str(p, 'branch')}`, tone: 'accent', kind: 'branch' };
     case 'compaction':
       return { text: 'compacted context', tone: 'muted', kind: 'compaction' };
+    case 'diagnostics': {
+      const errors = typeof p['errorCount'] === 'number' ? (p['errorCount'] as number) : 0;
+      const warnings = typeof p['warningCount'] === 'number' ? (p['warningCount'] as number) : 0;
+      const file = str(p, 'file');
+      return {
+        text: `diagnostics ${file}: ${errors}E ${warnings}W`.trim(),
+        tone: errors > 0 ? 'warn' : 'success',
+        kind: 'diagnostics',
+      };
+    }
     default:
       return null;
   }

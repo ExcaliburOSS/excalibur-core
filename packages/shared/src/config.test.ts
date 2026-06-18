@@ -130,6 +130,19 @@ describe('excaliburConfigSchema', () => {
     expect((mcp({ command: 'npx', url: 'https://x/rpc' }) as { success: boolean }).success).toBe(false);
   });
 
+  it('accepts an lsp section with defaults, overrides, and rejects a malformed server', () => {
+    const parse = (lsp: unknown): unknown => excaliburConfigSchema.safeParse({ lsp });
+    // Defaults fill in when fields are omitted.
+    const ok = excaliburConfigSchema.parse({ lsp: {} });
+    expect(ok.lsp).toMatchObject({ enabled: true, diagnosticsTimeoutMs: 1500, serverStartTimeoutMs: 8000 });
+    // A per-language command override is accepted.
+    expect((parse({ servers: { typescript: { command: '/opt/tsserver', args: ['--lsp'] } } }) as { success: boolean }).success).toBe(true);
+    // A server entry missing `command` is invalid.
+    expect((parse({ servers: { typescript: { args: ['x'] } } }) as { success: boolean }).success).toBe(false);
+    // disabled is allowed.
+    expect(excaliburConfigSchema.parse({ lsp: { enabled: false } }).lsp?.enabled).toBe(false);
+  });
+
   it('rejects autonomy levels outside 0..4', () => {
     expect(excaliburConfigSchema.safeParse({ autonomy: { default: 5 } }).success).toBe(false);
     expect(

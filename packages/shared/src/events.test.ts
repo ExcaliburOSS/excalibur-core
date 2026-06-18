@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createEvent,
+  diagnosticsPayloadSchema,
   excaliburEventSchema,
   excaliburEventTypeSchema,
   parseEventsJsonl,
@@ -40,12 +41,13 @@ describe('createEvent', () => {
     expect(attributed.sessionId).toBe('sess_1');
   });
 
-  it('supports all 27 pinned event types', () => {
-    expect(excaliburEventTypeSchema.options).toHaveLength(27);
+  it('supports all 28 pinned event types', () => {
+    expect(excaliburEventTypeSchema.options).toHaveLength(28);
     expect(excaliburEventTypeSchema.options).toContain('compaction'); // the 24th (context compaction)
     expect(excaliburEventTypeSchema.options).toContain('task_update'); // the 25th (in-session checklist)
     expect(excaliburEventTypeSchema.options).toContain('verification'); // the 26th (mesh verdict)
     expect(excaliburEventTypeSchema.options).toContain('claim'); // the 27th (claim ledger)
+    expect(excaliburEventTypeSchema.options).toContain('diagnostics'); // the 28th (LSP per-edit diagnostics)
     for (const type of excaliburEventTypeSchema.options) {
       const event = createEvent({ runId: 'run_1', type, payload: {} });
       expect(excaliburEventSchema.safeParse(event).success).toBe(true);
@@ -81,6 +83,34 @@ describe('verificationPayloadSchema', () => {
         lenses: [],
         summary: 'x',
         issues: [{ lens: 'correctness', severity: 'critical', problem: 'p' }],
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('diagnosticsPayloadSchema', () => {
+  it('validates a per-edit diagnostics payload and round-trips through the event JSONL', () => {
+    const payload = {
+      file: 'src/a.ts',
+      diagnostics: [{ line: 3, column: 9, severity: 'error', message: 'Type error', code: 'TS2322' }],
+      errorCount: 1,
+      warningCount: 0,
+    };
+    expect(diagnosticsPayloadSchema.safeParse(payload).success).toBe(true);
+    expect(excaliburEventTypeSchema.safeParse('diagnostics').success).toBe(true);
+    const event = createEvent({ runId: 'run_1', type: 'diagnostics', payload });
+    const [parsed] = parseEventsJsonl(serializeEventLine(event));
+    expect(parsed?.type).toBe('diagnostics');
+    expect(parsed?.payload['errorCount']).toBe(1);
+  });
+
+  it('rejects an unknown severity', () => {
+    expect(
+      diagnosticsPayloadSchema.safeParse({
+        file: 'a.ts',
+        diagnostics: [{ line: 1, column: 1, severity: 'fatal', message: 'x' }],
+        errorCount: 1,
+        warningCount: 0,
       }).success,
     ).toBe(false);
   });

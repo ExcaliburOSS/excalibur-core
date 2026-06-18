@@ -162,6 +162,34 @@ export const sandboxConfigSchema = z.object({
 });
 export type SandboxConfig = z.infer<typeof sandboxConfigSchema>;
 
+/**
+ * `lsp:` — feed REAL compiler diagnostics from a Language Server to the agent
+ * after each edit, so it self-corrects on the next turn (P1.10 / M3). On by
+ * default but INERT unless a server binary for the edited language is on PATH
+ * (graceful: no server installed → behaves exactly as before, no spawn). v1
+ * verifies TypeScript/JavaScript (`typescript-language-server --stdio`); other
+ * languages work if their server is installed. `servers` overrides the default
+ * command per language id (`typescript`/`python`/`go`/`rust`).
+ */
+export const lspConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  servers: z
+    .record(z.object({ command: z.string().min(1), args: z.array(z.string()).optional() }))
+    .optional(),
+  /** Per-edit wait for the language server to publish diagnostics (ms). */
+  diagnosticsTimeoutMs: z.number().int().positive().default(1500),
+  /** One-time cold-start budget for the server's initialize + project load (ms). */
+  serverStartTimeoutMs: z.number().int().positive().default(8000),
+});
+export type LspConfig = z.infer<typeof lspConfigSchema>;
+
+/** Default LSP config when `.excalibur/config.yaml` has no `lsp:` block. */
+export const DEFAULT_LSP_CONFIG: LspConfig = {
+  enabled: true,
+  diagnosticsTimeoutMs: 1500,
+  serverStartTimeoutMs: 8000,
+};
+
 const instructionSourceRefSchema = z.object({
   path: z.string().min(1),
   format: instructionSourceFormatSchema.optional(),
@@ -236,6 +264,7 @@ const baseExcaliburConfigSchema = z.object({
   compaction: compactionConfigSchema.optional(),
   mcp: mcpSectionSchema.optional(),
   sandbox: sandboxConfigSchema.optional(),
+  lsp: lspConfigSchema.optional(),
   instructions: z.object({ sources: z.array(instructionSourceRefSchema).optional() }).optional(),
   skills: z.object({ sources: z.array(skillSourceRefSchema).optional() }).optional(),
 });
@@ -317,6 +346,7 @@ export const DEFAULT_CONFIG: ExcaliburConfig = {
   models: { default: 'mock' },
   agents: { default: 'native' },
   compaction: DEFAULT_COMPACTION_CONFIG,
+  lsp: DEFAULT_LSP_CONFIG,
   permissions: {
     tools: {
       read_file: true,

@@ -244,6 +244,7 @@ const unicodeEventGlyph: Record<PhaseEventKind, string> = {
   compaction: '≡',
   verification: '⚖',
   claim: '⊨',
+  diagnostics: '⚠',
   error: '✗',
 };
 
@@ -259,6 +260,7 @@ const asciiEventGlyph: Record<PhaseEventKind, string> = {
   compaction: '#',
   verification: '!',
   claim: '=',
+  diagnostics: '!',
   error: 'x',
 };
 
