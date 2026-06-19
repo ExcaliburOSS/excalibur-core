@@ -1,6 +1,7 @@
 {
   "name": "@excalibur/declarative-schemas",
   "version": "1.0.0",
+  "private": true,
   "description": "Zod schemas for all Excalibur declarative extension types (question packs, prompts, artifacts, policies, routing, reports, roles, command mappings)",
   "license": "Apache-2.0",
   "main": "./dist/index.js",

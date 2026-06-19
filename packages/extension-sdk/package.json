@@ -1,6 +1,7 @@
 {
   "name": "@excalibur/extension-sdk",
   "version": "1.0.0",
+  "private": true,
   "description": "TypeScript SDK for building Excalibur programmatic extensions: defineExtension, ExtensionContext and the contribution interfaces",
   "license": "Apache-2.0",
   "main": "./dist/index.js",

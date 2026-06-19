@@ -1,6 +1,7 @@
 {
   "name": "@excalibur/context-engine",
   "version": "1.0.0",
+  "private": true,
   "description": "Repository analysis: stack detection, command detection, instruction discovery and pattern detection for Excalibur",
   "license": "Apache-2.0",
   "main": "./dist/index.js",
