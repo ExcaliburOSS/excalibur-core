@@ -19,6 +19,17 @@ function vlen(s: string): number {
   return s.replace(/\[[0-9;]*m/g, '').length;
 }
 
+/**
+ * Strips full ANSI SGR sequences for content assertions. picocolors enables
+ * color whenever `CI` is in the environment, so on CI the greeting name is
+ * bolded (`Welcome back, <bold>Rafael…`) and a raw substring match would miss
+ * it — assert on stripped text so the checks hold with color on or off.
+ */
+function strip(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
 describe('renderWelcome', () => {
   it('renders a perfectly rectangular frame at several widths and modes', () => {
     for (const cfg of [
@@ -34,7 +45,7 @@ describe('renderWelcome', () => {
   });
 
   it('includes the title, greeting, identity and the two right-column sections', () => {
-    const out = renderWelcome(base);
+    const out = strip(renderWelcome(base));
     expect(out).toContain('EXCALIBUR');
     expect(out).toContain('v0.1.0');
     expect(out).toContain('Welcome back, Rafael');
@@ -47,12 +58,12 @@ describe('renderWelcome', () => {
 
   it('handles an empty name and a garbage width without crashing', () => {
     const out = renderWelcome({ ...base, name: '', width: 0 });
-    expect(out).toContain('Welcome back, there');
+    expect(strip(out)).toContain('Welcome back, there');
     expect(new Set(out.split('\n').map((line) => vlen(line))).size).toBe(1);
   });
 
   it('hides org/user rows when empty', () => {
-    const out = renderWelcome({ ...base, org: '', user: '' });
+    const out = strip(renderWelcome({ ...base, org: '', user: '' }));
     expect(out).not.toContain('ExcaliburOSS');
     expect(out).not.toContain('rafael@calliope.so');
     expect(out).toContain('Welcome back, Rafael');

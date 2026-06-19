@@ -317,6 +317,28 @@ function fakeStdin(): NodeJS.ReadStream {
   return inp;
 }
 
+/**
+ * Settles a mounted Ink view and returns the rendered text written to `stdout`.
+ *
+ * Ink renders differently under a CI environment (`is-in-ci`, captured at import
+ * time): it *buffers* the dynamic (non-`<Static>`) frame and only writes it to
+ * stdout on `unmount()` — so asserting on intermediate frames is empty on CI but
+ * not on a dev box, which is exactly why a fixed-sleep assertion flaked. Reading
+ * after `unmount()` is the one assertion point that holds in BOTH environments.
+ * The awaited ticks first let React reconcile the pushed events/updates into
+ * Ink's tree so the final frame reflects them.
+ */
+async function settleAndRead(
+  handle: { unmount: () => void },
+  stdout: { frames: string[] },
+): Promise<string> {
+  for (let i = 0; i < 5; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  handle.unmount();
+  return stripAnsi(stdout.frames.join('\n'));
+}
+
 describe('createLanesStore', () => {
   it('transitions lanes empty → running → done/failed', () => {
     const store = createLanesStore([
@@ -348,8 +370,6 @@ describe('mountLanesView', () => {
     });
     handle.update({ index: 0, phase: 'started' });
     handle.update({ index: 0, phase: 'settled' });
-    await new Promise((resolve) => setTimeout(resolve, 40));
-    expect(stripAnsi(stdout.frames.join('\n'))).toContain('Lane A');
     handle.setFinal({
       lanes: [
         { id: 'a', title: 'Lane A', state: 'done' },
@@ -358,9 +378,9 @@ describe('mountLanesView', () => {
       applied: 2,
       conflicts: 0,
     });
-    await new Promise((resolve) => setTimeout(resolve, 40));
-    expect(stripAnsi(stdout.frames.join('\n'))).toContain('Lane B');
-    handle.unmount();
+    const out = await settleAndRead(handle, stdout);
+    expect(out).toContain('Lane A');
+    expect(out).toContain('Lane B');
   });
 });
 
@@ -377,10 +397,8 @@ describe('mountRunView', () => {
       stdin: fakeStdin(),
     });
     handle.push(createEvent({ runId: 'r', type: 'run_started', payload: { title: 'Test run' } }));
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    const out = stripAnsi(stdout.frames.join('\n'));
+    const out = await settleAndRead(handle, stdout);
     expect(out).toContain('kimi');
     expect(out).toContain('standard-safe');
-    handle.unmount();
   });
 });
