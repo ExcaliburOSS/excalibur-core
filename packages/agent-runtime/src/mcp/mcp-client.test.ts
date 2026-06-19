@@ -185,10 +185,12 @@ describe('McpClient.callTool', () => {
 
 describe('McpClient robustness', () => {
   it('times out a request that never gets a response', async () => {
-    // A 1s request timeout: still proves the timeout path fires, but is robust
-    // to CI/parallel load (a sub-150ms budget assumed faster-than-safe
-    // subprocess startup and flaked when other suites spawned children at once).
-    const client = await connectFake(SILENT_AFTER_INIT, 1000);
+    // A short per-request timeout proves the timeout path fires quickly. It is
+    // robust to CI/parallel load because the handshake now has its OWN, generous
+    // budget (DEFAULT_MCP_HANDSHAKE_TIMEOUT_MS) — so slow subprocess cold-start
+    // no longer flakes this; only the never-answered tools/list is on the short
+    // budget, and its client-side timer is deterministic regardless of load.
+    const client = await connectFake(SILENT_AFTER_INIT, 250);
     try {
       const error = await client.listTools().catch((e: unknown) => e);
       expect(isExcaliburError(error)).toBe(true);

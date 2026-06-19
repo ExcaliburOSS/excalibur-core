@@ -141,6 +141,12 @@ export interface McpClientOptions {
   /** Per-request timeout in milliseconds (default {@link DEFAULT_MCP_TIMEOUT_MS}). */
   timeoutMs?: number;
   /**
+   * Timeout for the one-time `initialize` handshake (default
+   * {@link DEFAULT_MCP_HANDSHAKE_TIMEOUT_MS}). Separate from {@link timeoutMs}
+   * so a short per-request budget doesn't flake on slow subprocess cold-start.
+   */
+  handshakeTimeoutMs?: number;
+  /**
    * Client identity advertised in the `initialize` handshake (default
    * {@link DEFAULT_CLIENT_INFO}).
    */
@@ -159,6 +165,12 @@ export interface McpHttpClientOptions {
   signal?: AbortSignal;
   /** Per-request timeout in milliseconds (default {@link DEFAULT_MCP_TIMEOUT_MS}). */
   timeoutMs?: number;
+  /**
+   * Timeout for the one-time `initialize` handshake (default
+   * {@link DEFAULT_MCP_HANDSHAKE_TIMEOUT_MS}). Separate from {@link timeoutMs}
+   * so a short per-request budget doesn't flake on slow connection setup.
+   */
+  handshakeTimeoutMs?: number;
   /** Client identity advertised in `initialize` (default {@link DEFAULT_CLIENT_INFO}). */
   clientInfo?: { name: string; version: string };
   /** MCP protocol version to request (default {@link MCP_PROTOCOL_VERSION}). */
@@ -167,6 +179,15 @@ export interface McpHttpClientOptions {
 
 /** Default per-request timeout (30s) — long enough for a slow tool, short enough to fail fast. */
 export const DEFAULT_MCP_TIMEOUT_MS = 30_000;
+
+/**
+ * Default timeout for the one-time `initialize` handshake (60s). The handshake
+ * covers subprocess/connection cold-start (spawn, runtime warm-up, first I/O),
+ * which can be far slower than a steady-state request — especially when many
+ * servers start at once — so it gets its own, more generous budget independent
+ * of the per-request {@link DEFAULT_MCP_TIMEOUT_MS}.
+ */
+export const DEFAULT_MCP_HANDSHAKE_TIMEOUT_MS = 60_000;
 
 /**
  * MCP protocol version this client requests in `initialize`. A compliant server
@@ -228,7 +249,12 @@ export class McpClient {
       ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
       ...(options.env !== undefined ? { env: options.env } : {}),
     });
-    return McpClient.handshake(transport, options.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS, options);
+    return McpClient.handshake(
+      transport,
+      options.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS,
+      options.handshakeTimeoutMs ?? DEFAULT_MCP_HANDSHAKE_TIMEOUT_MS,
+      options,
+    );
   }
 
   /**
@@ -243,22 +269,32 @@ export class McpClient {
       ...(options.headers !== undefined ? { headers: options.headers } : {}),
       ...(options.signal !== undefined ? { signal: options.signal } : {}),
     } as HttpTransportOptions);
-    return McpClient.handshake(transport, options.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS, options);
+    return McpClient.handshake(
+      transport,
+      options.timeoutMs ?? DEFAULT_MCP_TIMEOUT_MS,
+      options.handshakeTimeoutMs ?? DEFAULT_MCP_HANDSHAKE_TIMEOUT_MS,
+      options,
+    );
   }
 
   /** Shared `initialize` handshake over any transport. */
   private static async handshake(
     transport: McpTransport,
     timeoutMs: number,
+    handshakeTimeoutMs: number,
     options: { clientInfo?: { name: string; version: string }; protocolVersion?: string },
   ): Promise<McpClient> {
     const client = new McpClient(transport, timeoutMs);
     try {
-      const initResult = await client.request('initialize', {
-        protocolVersion: options.protocolVersion ?? MCP_PROTOCOL_VERSION,
-        capabilities: { tools: {} },
-        clientInfo: options.clientInfo ?? { ...DEFAULT_CLIENT_INFO },
-      });
+      const initResult = await client.request(
+        'initialize',
+        {
+          protocolVersion: options.protocolVersion ?? MCP_PROTOCOL_VERSION,
+          capabilities: { tools: {} },
+          clientInfo: options.clientInfo ?? { ...DEFAULT_CLIENT_INFO },
+        },
+        handshakeTimeoutMs,
+      );
       client.serverInfo = parseServerInfo(initResult);
       client.notify('notifications/initialized');
     } catch (error) {
@@ -325,8 +361,16 @@ export class McpClient {
     this.destroy(new ProviderError('MCP client closed.', { code: 'mcp_closed' }));
   }
 
-  /** Sends a request and resolves with its JSON-RPC `result` (or rejects on error/timeout). */
-  private request(method: string, params: JsonObject): Promise<JsonValue> {
+  /**
+   * Sends a request and resolves with its JSON-RPC `result` (or rejects on
+   * error/timeout). `timeoutMs` overrides the client-wide budget for this one
+   * call (used to give the `initialize` handshake a more generous deadline).
+   */
+  private request(
+    method: string,
+    params: JsonObject,
+    timeoutMs: number = this.timeoutMs,
+  ): Promise<JsonValue> {
     if (this.closedReason !== null) {
       return Promise.reject(this.closedReason);
     }
@@ -337,12 +381,12 @@ export class McpClient {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(
-          new ProviderError(`MCP request "${method}" timed out after ${this.timeoutMs}ms.`, {
+          new ProviderError(`MCP request "${method}" timed out after ${timeoutMs}ms.`, {
             code: 'mcp_timeout',
             details: { method },
           }),
         );
-      }, this.timeoutMs);
+      }, timeoutMs);
       // Don't let a pending request keep the event loop alive.
       timer.unref?.();
 
