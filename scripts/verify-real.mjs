@@ -456,7 +456,7 @@ await scenario('branch — applies a patch onto a new git branch', () => {
   const { out } = exc(dir, ['patch', 'Add a multiply(a, b) function to src/math.ts', '--yes']);
   const id = /patch_\d{8}_\d{6}/.exec(out)?.[0];
   assert(id, 'a patch id should be printed');
-  const res = exc(dir, ['branch', id, '--yes']);
+  exc(dir, ['branch', id, '--yes']);
   const branches = execFileSync('git', ['branch'], { cwd: dir, encoding: 'utf8' });
   assert(/excalibur\//.test(branches), `an excalibur/* branch must be created (got: ${branches.trim()})`);
 });

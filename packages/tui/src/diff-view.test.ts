@@ -160,6 +160,7 @@ describe('renderDiff', () => {
   it('downsamples to ansi16 (background = fg code + 10)', () => {
     const colored = renderDiff(MOD_DIFF, { tier: 'ansi16', mode: 'dark', width: 60 }).join('\n');
     // Some 4x/10x background SGR present (40–47 or 100–107).
+    // eslint-disable-next-line no-control-regex -- matching the ANSI ESC byte is intentional
     expect(/\x1b\[(4[0-7]|10[0-7])m/.test(colored)).toBe(true);
   });
 

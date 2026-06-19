@@ -3,7 +3,6 @@ import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
 import { join } from 'node:path';
 import { collectInsights, RunManager } from '@excalibur/core';
-import type { ExcaliburEvent } from '@excalibur/shared';
 import { reduceRail } from '@excalibur/tui';
 import { dashboardHtml } from './dashboard';
 

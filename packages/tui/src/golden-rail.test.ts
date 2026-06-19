@@ -48,6 +48,7 @@ const STREAM: ExcaliburEvent[] = [
   ev('command_completed', { exitCode: 0 }, 'p-impl'),
 ];
 
+// eslint-disable-next-line no-control-regex -- matching the ANSI ESC byte is intentional
 const esc = (lines: string[]): string => lines.join('\n').replace(/\x1b/g, 'ESC');
 
 describe('golden: renderRail', () => {

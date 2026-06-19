@@ -71,7 +71,6 @@ function RunViewApp({
     // Re-fold when the event log grows (eventsRev) or the clock ticks (frame —
     // for live elapsed). NOT keyed on the events array identity (it's mutated in
     // place); an approval/diff toggle re-renders without re-folding.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [snapshot.eventsRev, snapshot.frame],
   );
   return (

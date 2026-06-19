@@ -21,7 +21,7 @@ import {
   type RunRecord,
   type Translator,
 } from '@excalibur/shared';
-import { getDefaultWorkflow, type WorkflowDefinition } from '@excalibur/workflow-schema';
+import { type WorkflowDefinition } from '@excalibur/workflow-schema';
 import {
   detectColorTier,
   detectThemeSync,
