@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isCommandOnPath } from '@excalibur/agent-runtime';
@@ -10,8 +11,9 @@ import { chatWithGuidance, loadGatewayContext } from '../lib/context';
 
 /**
  * `excalibur pr-summary` — prints the latest run's pr-summary.md, generating
- * one from the run record when missing. `pr-create` is an honest OSS-9 stub
- * that checks for the `gh` CLI.
+ * one from the run record when missing. `pr-create` opens a real pull request
+ * from the current branch via the GitHub CLI (`gh`), using a run's summary as
+ * the body.
  */
 export function registerPrCommands(program: Command, deps: CliDeps): void {
   program
@@ -53,15 +55,72 @@ export function registerPrCommands(program: Command, deps: CliDeps): void {
 
   program
     .command('pr-create')
-    .description('open a pull request via the GitHub CLI (arrives in OSS-9 / M2)')
-    .action(() => {
-      const ghAvailable = isCommandOnPath('gh', deps.env);
-      deps.ui.warn(deps.t('pr.stub'));
-      if (ghAvailable) {
-        deps.ui.success(deps.t('pr.ghDetected'));
-      } else {
-        deps.ui.info(deps.t('pr.ghMissing'));
-      }
-      deps.ui.info(deps.t('pr.untilThen'));
-    });
+    .description('open a pull request from the current branch via the GitHub CLI (gh)')
+    .argument('[runId]', "run whose summary becomes the PR body (defaults to the latest run)")
+    .option('--base <branch>', 'base branch for the PR (default: the repo default branch)')
+    .option('--title <title>', 'PR title (default: the run title)')
+    .option('--draft', 'open the PR as a draft')
+    .option('--web', 'open the PR creation page in the browser instead of creating it headlessly')
+    .option('-y, --yes', 'skip the confirmation prompt')
+    .action(
+      async (
+        runId: string | undefined,
+        options: { base?: string; title?: string; draft?: boolean; web?: boolean; yes?: boolean },
+      ) => {
+        const repoRoot = deps.cwd();
+        // gh is the real dependency — refuse clearly when it's not installed/authed.
+        if (!isCommandOnPath('gh', deps.env)) {
+          throw new CliUsageError(deps.t('pr.ghRequired'));
+        }
+        const runManager = new RunManager(repoRoot);
+        const run = runId !== undefined ? runManager.getRun(runId) : runManager.latestRun();
+        const title = options.title ?? run?.record.title ?? 'Excalibur changes';
+        // Body: prefer the run's generated PR summary, then its receipt, else a default.
+        let bodyFile: string | undefined;
+        if (run !== null) {
+          const prSummary = join(run.dir, 'pr-summary.md');
+          const summary = join(run.dir, 'summary.md');
+          if (existsSync(prSummary)) bodyFile = prSummary;
+          else if (existsSync(summary)) bodyFile = summary;
+        }
+
+        deps.ui.info(deps.t('pr.creating', { title }));
+        // Opening a PR is outward-facing — confirm first unless --yes (or --web,
+        // which is itself an interactive, abortable browser flow).
+        const go =
+          options.yes === true ||
+          options.web === true ||
+          (await deps.ui.confirm(deps.t('pr.confirmCreate'), { defaultYes: true }));
+        if (!go) {
+          deps.ui.info(deps.t('pr.cancelled'));
+          return;
+        }
+
+        const args = ['pr', 'create', '--title', title];
+        if (bodyFile !== undefined) args.push('--body-file', bodyFile);
+        else args.push('--body', deps.t('pr.defaultBody'));
+        if (options.base !== undefined) args.push('--base', options.base);
+        if (options.draft === true) args.push('--draft');
+        if (options.web === true) args.push('--web');
+
+        try {
+          const out = execFileSync('gh', args, {
+            cwd: repoRoot,
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'pipe'],
+          });
+          // gh prints the PR URL on success (last non-empty stdout line).
+          const url = out.trim().split('\n').filter((l) => l.trim().length > 0).pop() ?? '';
+          deps.ui.success(deps.t('pr.created', { url }));
+        } catch (error) {
+          const stderr =
+            typeof (error as { stderr?: unknown }).stderr === 'string'
+              ? ((error as { stderr: string }).stderr).trim()
+              : '';
+          throw new CliUsageError(
+            deps.t('pr.createFailed', { reason: stderr.length > 0 ? stderr : String(error) }),
+          );
+        }
+      },
+    );
 }

@@ -268,10 +268,13 @@ export const EN: Catalog = {
   // pr
   "pr.noRuns": "No local runs yet. Start one with: excalibur run \"<task>\"",
   "pr.saved": "Saved to {path}",
-  "pr.stub": "Honest stub: `pr-create` activates in milestone OSS-9 (M2), opening pull requests through the GitHub CLI.",
-  "pr.ghDetected": "GitHub CLI (gh) detected — you are ready for M2.",
-  "pr.ghMissing": "GitHub CLI (gh) not found on PATH. Install it from https://cli.github.com to be ready.",
-  "pr.untilThen": "Until then: excalibur pr-summary prints a summary you can paste into a PR.",
+  "pr.ghRequired": "pr-create needs the GitHub CLI. Install it from https://cli.github.com and run `gh auth login`.",
+  "pr.creating": "Opening a pull request: {title}",
+  "pr.confirmCreate": "Create this pull request now?",
+  "pr.cancelled": "Cancelled — no pull request was opened.",
+  "pr.defaultBody": "Opened by Excalibur.",
+  "pr.created": "Pull request opened: {url}",
+  "pr.createFailed": "gh could not open the pull request: {reason}",
 
   // replay
   "replay.at-must-be-positive": "--at must be a positive step number (got \"{at}\").",

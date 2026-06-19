@@ -264,10 +264,13 @@ export const ES: Catalog = {
   // pr
   "pr.noRuns": "Aún no hay ejecuciones locales. Inicia una con: excalibur run \"<task>\"",
   "pr.saved": "Guardado en {path}",
-  "pr.stub": "Stub honesto: `pr-create` se activa en el hito OSS-9 (M2), abriendo pull requests a través de la CLI de GitHub.",
-  "pr.ghDetected": "CLI de GitHub (gh) detectada — estás listo para M2.",
-  "pr.ghMissing": "CLI de GitHub (gh) no encontrada en PATH. Instálala desde https://cli.github.com para estar listo.",
-  "pr.untilThen": "Mientras tanto: excalibur pr-summary imprime un resumen que puedes pegar en un PR.",
+  "pr.ghRequired": "pr-create necesita la CLI de GitHub. Instálala desde https://cli.github.com y ejecuta `gh auth login`.",
+  "pr.creating": "Abriendo un pull request: {title}",
+  "pr.confirmCreate": "¿Crear este pull request ahora?",
+  "pr.cancelled": "Cancelado — no se abrió ningún pull request.",
+  "pr.defaultBody": "Abierto por Excalibur.",
+  "pr.created": "Pull request abierto: {url}",
+  "pr.createFailed": "gh no pudo abrir el pull request: {reason}",
 
   // replay
   "replay.at-must-be-positive": "--at debe ser un número de paso positivo (se recibió \"{at}\").",

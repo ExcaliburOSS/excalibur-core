@@ -70,12 +70,10 @@ describe('login / connect / sync (experimental, OSS spec §13)', () => {
   });
 });
 
-describe('honest stubs (pr-create, cmux)', () => {
-  it('pr-create names its activation milestone and checks for gh', async () => {
-    const cli = createTestCli({ cwd: repo, env: { PATH: '' } });
-    await cli.run('pr-create');
-    expect(cli.stdout()).toContain('OSS-9');
-    expect(cli.stdout()).toContain('gh');
+describe('real gh-backed pr-create + the cmux stub', () => {
+  it('pr-create requires the GitHub CLI and errors clearly when it is absent', async () => {
+    const cli = createTestCli({ cwd: repo, env: { PATH: '' } }); // gh not on PATH
+    await expect(cli.run('pr-create')).rejects.toThrow(/GitHub CLI/);
   });
 
   it('cmux names its activation milestone and stays optional', async () => {
