@@ -1,6 +1,6 @@
 {
   "name": "@excalibur/shared",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Shared domain types, autonomy levels, event format, artifact format and config schema for Excalibur",
   "license": "Apache-2.0",
   "main": "./dist/index.js",

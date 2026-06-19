@@ -1,6 +1,6 @@
 {
   "name": "@excalibur/work-items",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Normalized work item model, provider interface, command parser and comment templates for Excalibur",
   "license": "Apache-2.0",
   "main": "./dist/index.js",

@@ -1,6 +1,6 @@
 {
   "name": "@excalibur/model-gateway",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Model provider adapters, provider config loading, cost metadata and secret redaction for Excalibur",
   "license": "Apache-2.0",
   "main": "./dist/index.js",

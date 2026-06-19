@@ -4,7 +4,7 @@ All notable changes to Excalibur Core are documented here. The format is based o
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0] - 2026-06-19
 
 The first public release. Highlights of what Excalibur Core does today:
 

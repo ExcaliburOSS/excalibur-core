@@ -1,6 +1,6 @@
 {
   "name": "@excalibur/workflow-schema",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Workflow and methodology definition schemas, validators and default catalogs for Excalibur",
   "license": "Apache-2.0",
   "main": "./dist/index.js",
