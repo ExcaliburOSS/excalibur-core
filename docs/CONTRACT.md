@@ -199,7 +199,7 @@ Everything in `docs/spec/work-items-core.md`, plus pins:
 - `class HttpEnterpriseSyncClient implements EnterpriseSyncClient { constructor(opts: { baseUrl: string; apiKey: string }) }` — `fetch` against `POST {base}/api/sync/runs`, `POST {base}/api/sync/events`, `GET {base}/api/sync/config`; treat non-2xx as `ProviderError` code `sync_failed`. Experimental (the Enterprise sync server lands in a later milestone — see [docs/ROADMAP.md](ROADMAP.md)).
 - Credentials helpers: `loadCliCredentials() / saveCliCredentials({ baseUrl, apiKey })` at `~/.config/excalibur/credentials.json`, file mode 0600, `EXCALIBUR_API_KEY`/`EXCALIBUR_BASE_URL` env vars take precedence.
 
-### 4.9 `@excalibur/cli`
+### 4.9 `@excalibur-oss/excalibur`
 
 `src/main.ts` (shebang `#!/usr/bin/env node`) + one module per command in `src/commands/` (file names per oss-spec §2 plus `daily.ts`, `weekly-plan.ts`, `login.ts`, `reject.ts`). Shared `src/ui.ts` (picocolors; respects `NO_COLOR`; `--json` flag on list/status commands prints machine-readable JSON). Exit codes: 0 success, 1 runtime error, 2 usage/validation. Behavior summary:
 

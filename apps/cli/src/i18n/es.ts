@@ -176,15 +176,15 @@ export const ES: Catalog = {
   'update.checking': 'Buscando actualizaciones… (instalada {current})',
   'update.check-failed':
     'No se pudieron comprobar las actualizaciones{errSuffix}. Puedes actualizar en cualquier momento con: {cmd}',
-  'update.up-to-date': 'Estás al día — @excalibur/cli {current} es la última versión.',
+  'update.up-to-date': 'Estás al día — @excalibur-oss/excalibur {current} es la última versión.',
   'update.ahead':
-    'La versión instalada de @excalibur/cli {current} es más reciente que la última publicada ({latest}). No hay nada que actualizar.',
+    'La versión instalada de @excalibur-oss/excalibur {current} es más reciente que la última publicada ({latest}). No hay nada que actualizar.',
   'update.available': 'Actualización disponible: {current} → {latest}',
   'update.upgrade-with': 'Actualiza con: {cmd}',
   'update.confirm-run': '¿Ejecutar "{cmd}" ahora?',
   'update.running': 'Ejecutando: {cmd}',
   'update.upgraded':
-    'Actualizado a @excalibur/cli@latest ({latest}). Reinicia tu terminal para usarlo.',
+    'Actualizado a @excalibur-oss/excalibur@latest ({latest}). Reinicia tu terminal para usarlo.',
   'update.upgrade-failed':
     'El comando de actualización falló: {message}. Ejecútalo manualmente: {cmd}',
 

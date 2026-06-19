@@ -35,7 +35,7 @@ if (KEY.length === 0) {
   process.exit(0);
 }
 if (!existsSync(CLI)) {
-  console.error('✗ CLI not built — run `pnpm --filter @excalibur/cli build` first.');
+  console.error('✗ CLI not built — run `pnpm --filter @excalibur-oss/excalibur build` first.');
   process.exit(1);
 }
 

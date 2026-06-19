@@ -11,7 +11,7 @@ coding. It runs entirely on your machine, keeps every artifact in a portable
 ## Install
 
 ```bash
-npm install -g @excalibur/cli
+npm install -g @excalibur-oss/excalibur
 ```
 
 That installs a single, self-contained binary — no extra setup, no peer

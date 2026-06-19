@@ -7,7 +7,7 @@ import { CLI_VERSION } from '../program';
 const execFileAsync = promisify(execFile);
 
 /** The published package this CLI ships as (used by both the lookup and the upgrade hint). */
-const PACKAGE_NAME = '@excalibur/cli';
+const PACKAGE_NAME = '@excalibur-oss/excalibur';
 /** Upgrade command surfaced to the user (and offered to run when interactive). */
 const UPGRADE_COMMAND = `npm i -g ${PACKAGE_NAME}@latest`;
 /** Hard ceiling on the `npm view` lookup so an offline/slow registry never hangs the CLI. */
@@ -132,7 +132,7 @@ export function compareVersions(a: string, b: string): number {
 }
 
 /**
- * Default {@link LatestVersionLookup}: `npm view @excalibur/cli version`. Runs
+ * Default {@link LatestVersionLookup}: `npm view @excalibur-oss/excalibur version`. Runs
  * with the command's environment (so a proxy/registry config is honored), a
  * short timeout, and total failure isolation — any error (npm missing, offline,
  * timeout, junk output) becomes `{ version: null, error }`.
@@ -157,7 +157,7 @@ export const npmViewLatestVersion: LatestVersionLookup = async (deps) => {
 };
 
 /**
- * `excalibur update` — checks whether a newer `@excalibur/cli` is published and,
+ * `excalibur update` — checks whether a newer `@excalibur-oss/excalibur` is published and,
  * when interactive, offers to run the global upgrade. Never throws on a failed
  * lookup: an offline/registry error becomes a friendly note. The version lookup
  * is injectable (defaults to {@link npmViewLatestVersion}) so tests are
@@ -170,7 +170,7 @@ export function registerUpdateCommand(
 ): void {
   program
     .command('update')
-    .description('check for a newer @excalibur/cli and upgrade')
+    .description('check for a newer @excalibur-oss/excalibur and upgrade')
     .option('--json', 'machine-readable JSON output')
     .option('-y, --yes', 'run the upgrade without prompting (when an update is available)')
     .action(async (options: { json?: boolean; yes?: boolean }) => {

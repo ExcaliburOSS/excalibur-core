@@ -1,5 +1,5 @@
 {
-  "name": "@excalibur/cli",
+  "name": "@excalibur-oss/excalibur",
   "version": "1.0.0",
   "description": "Excalibur CLI — local-first AI-assisted and agentic development from the terminal",
   "license": "Apache-2.0",

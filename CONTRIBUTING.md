@@ -25,7 +25,7 @@ Run the CLI from source:
 ```bash
 node apps/cli/dist/main.js --help     # the built binary
 # or, during development:
-pnpm --filter @excalibur/cli exec tsx src/main.ts --help
+pnpm --filter @excalibur-oss/excalibur exec tsx src/main.ts --help
 ```
 
 By default Excalibur runs on a built-in **mock** provider (no API key, offline).
@@ -55,7 +55,7 @@ agent loop, run pipeline, or a command's behavior.
 
 ## Repository layout
 
-- `apps/cli` — the `excalibur` CLI (`@excalibur/cli`), built as a single
+- `apps/cli` — the `excalibur` CLI (`@excalibur-oss/excalibur`), built as a single
   self-contained binary.
 - `packages/*` — `@excalibur/{shared, workflow-schema, model-gateway,
 agent-runtime, context-engine, core, tui, enterprise-sync, work-items,

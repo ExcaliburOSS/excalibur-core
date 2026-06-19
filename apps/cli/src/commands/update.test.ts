@@ -123,7 +123,7 @@ describe('excalibur update', () => {
     await cli.run('update');
     const stdout = cli.stdout();
     expect(stdout).toContain(`Update available: ${CLI_VERSION} → ${newer}`);
-    expect(stdout).toContain('npm i -g @excalibur/cli@latest');
+    expect(stdout).toContain('npm i -g @excalibur-oss/excalibur@latest');
   });
 
   it('does not prompt to upgrade when non-interactive (just surfaces the hint)', async () => {
@@ -150,7 +150,7 @@ describe('excalibur update', () => {
     const out = cli.stdout();
     expect(out).toContain('Could not check for updates');
     expect(out).toContain('ENOTFOUND');
-    expect(out).toContain('npm i -g @excalibur/cli@latest');
+    expect(out).toContain('npm i -g @excalibur-oss/excalibur@latest');
   });
 
   it('emits machine-readable JSON for each status', async () => {
@@ -188,7 +188,7 @@ describe('excalibur update', () => {
     cli.send('n'); // decline the "Run ... now?" prompt
     await cli.run('update');
     const stdout = cli.stdout();
-    expect(stdout).toContain(`Run "npm i -g @excalibur/cli@latest" now?`);
+    expect(stdout).toContain(`Run "npm i -g @excalibur-oss/excalibur@latest" now?`);
     // Declined → it never claims to have run/upgraded.
     expect(stdout).not.toContain('Running:');
   });

@@ -170,14 +170,16 @@ export const EN: Catalog = {
   'update.checking': 'Checking for updates… (installed {current})',
   'update.check-failed':
     'Could not check for updates{errSuffix}. You can upgrade anytime with: {cmd}',
-  'update.up-to-date': "You're up to date — @excalibur/cli {current} is the latest release.",
+  'update.up-to-date':
+    "You're up to date — @excalibur-oss/excalibur {current} is the latest release.",
   'update.ahead':
-    'Installed @excalibur/cli {current} is newer than the latest published release ({latest}). Nothing to update.',
+    'Installed @excalibur-oss/excalibur {current} is newer than the latest published release ({latest}). Nothing to update.',
   'update.available': 'Update available: {current} → {latest}',
   'update.upgrade-with': 'Upgrade with: {cmd}',
   'update.confirm-run': 'Run "{cmd}" now?',
   'update.running': 'Running: {cmd}',
-  'update.upgraded': 'Upgraded to @excalibur/cli@latest ({latest}). Restart your shell to use it.',
+  'update.upgraded':
+    'Upgraded to @excalibur-oss/excalibur@latest ({latest}). Restart your shell to use it.',
   'update.upgrade-failed': 'Upgrade command failed: {message}. Run it manually: {cmd}',
 
   // workflows
