@@ -76,13 +76,14 @@ Policy presets are declarative extensions — `excalibur init --team` exports `p
 - Secrets found in imported instruction files are redacted in the copy.
 - User-global instructions can never weaken repository or enterprise safety rules.
 
-## M1 guarantees
+## Safety guarantees
 
-In this milestone the guarantees are even stronger than the preset:
+Excalibur acts on your tree only through gated, auditable steps:
 
-- Runs **never** modify your working tree — all file writes are simulated events.
-- Commands inside runs are **never executed** — simulated with `simulated: true` payloads.
-- The only real git mutation is `excalibur branch <patch-id>` (after confirmation).
-- The only model provider that executes is the local deterministic mock — nothing leaves your machine.
+- Every mutating tool (`write_file`, `run_command`, `apply_patch`) passes the **Permission Engine**: blocked paths (`.env`, secret files, `.git/…`) are hard-denied, mutating tools default to *ask*, and commands outside the allowlist need confirmation.
+- File writes are confined to the working directory — path traversal (`..`) and symlink escapes are refused.
+- With the default **mock** provider nothing leaves your machine; once you configure a real provider, only the redacted prompt is sent (secrets are stripped).
+- Every action is an event in `.excalibur/runs/<id>/events.jsonl` — fully auditable and replayable with `excalibur logs` / `excalibur rewind`.
+- Prefer `excalibur branch <patch-id>` to land a patch on a fresh branch when you'd rather not modify the current one.
 
 Verify your setup anytime with `excalibur doctor`.

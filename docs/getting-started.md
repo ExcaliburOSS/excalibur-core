@@ -2,7 +2,7 @@
 
 Excalibur Core works in minutes, without choosing methodologies, workflows or policies first. This guide walks through the first session in a real repository.
 
-> **M1 note.** This milestone uses a built-in deterministic **mock** model provider — no API keys needed, no real model calls made, and runs never modify your files (everything mutating is simulated and labeled). The full command surface is real; the model behind it arrives in M2.
+> **Models & safety.** Out of the box Excalibur runs on a built-in deterministic **mock** provider, so you can try every command offline with no API key. Point it at a real model (`.excalibur/models/providers.yaml` + an env-var key — see [providers.md](providers.md)) for real model-driven work. Real runs **do** edit files and run commands — but never without your approval and the Permission Engine's safety floor (see [security.md](security.md)).
 
 ## 1. Build the CLI
 
@@ -48,7 +48,7 @@ excalibur patch "Fix duplicated escrow release on webhook retry"
 `patch` (Level 2) proposes a unified diff and stores it under `.excalibur/patches/<patch-id>/`. It never applies anything automatically — you decide:
 
 ```bash
-excalibur apply patch_20260613_102501     # mark applied (simulated in M1)
+excalibur apply patch_20260613_102501     # apply the patch to your working tree
 excalibur branch patch_20260613_102501    # create a real git branch excalibur/<id>
 excalibur reject patch_20260613_102501
 ```

@@ -67,7 +67,7 @@ Phase options worth knowing:
 
 - `approval: required | optional | none` — human gates.
 - `requiresHumanConfirmation: true` — confirm before the phase acts.
-- `commandsFromConfig: true` — run the commands detected in `config.yaml` (simulated in M1).
+- `commandsFromConfig: true` — run the commands detected in `config.yaml`.
 - `optional: true` — the phase may be skipped without failing the run.
 - `onFailure: abort | continue | retry`.
 

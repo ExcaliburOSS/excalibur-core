@@ -2,7 +2,7 @@
 
 Excalibur talks to models through the **Model Gateway**, configured in `.excalibur/models/providers.yaml`.
 
-> **M1 honesty.** Only the built-in **mock** provider executes in M1. You can configure real providers today — the configuration is validated and stored — but every call runs on the deterministic mock until real adapters land in M2. Mock output always begins with `> Mock provider (M1)` so it can never be mistaken for a real model.
+> **Mock vs real.** With no provider configured, Excalibur runs on a built-in deterministic **mock** — zero-config, offline, output always prefixed `> Mock provider` so it's never mistaken for a real model (great for trying commands and for CI). Configure a real provider below for actual model-driven work: the `anthropic`, `openai-compatible` (incl. vLLM and custom OpenAI-style endpoints), and `ollama` adapters are supported, with streaming, real token/cost accounting, and secret redaction.
 
 ## Configuring
 
@@ -42,7 +42,7 @@ providers:
 Provider types: `openai-compatible`, `anthropic`, `ollama`, `vllm`, `custom`, `mock`. OpenRouter is `openai-compatible` with `baseUrl: https://openrouter.ai/api/v1`.
 
 ```bash
-excalibur models list      # shows providers; real ones are flagged "available in M2"
+excalibur models list      # shows configured providers and the active one
 excalibur doctor           # also checks that the named env vars are set
 ```
 

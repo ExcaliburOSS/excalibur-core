@@ -35,10 +35,10 @@ autonomy:
 
 Paths mentioned in a task that match a restrictive `autonomy.paths` entry mark the task as **sensitive**: the run prompt recommends a careful workflow with stronger approvals.
 
-## What each level guarantees in M1
+## What each level guarantees
 
-- Levels 0–2 **never touch your working tree**. Artifacts are written under `.excalibur/` only.
-- Level 3–4 runs are **fully simulated** in M1: file writes, command executions and patch applications are events marked `simulated: true`. The only real git mutation in M1 is `excalibur branch <patch-id>`, which creates a branch after confirmation.
+- Levels 0–2 **never touch your working tree** — they read, review and write artifacts under `.excalibur/` only.
+- Levels 3–4 act for **real**: file writes, command execution and patch application happen on your working tree — but every mutating action is gated by the Permission Engine and your approval (mutating tools default to *ask*; blocked paths are hard-denied; commands outside the allowlist need confirmation). Prefer `excalibur branch <patch-id>` to land a patch on a fresh branch.
 - All levels honor the active safety preset, printed at the start of every run:
 
 ```text

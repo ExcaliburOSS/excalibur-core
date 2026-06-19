@@ -25,11 +25,11 @@ The default adapter, built on the Model Gateway and nine native tools:
 
 Every tool call passes through the **Permission Engine**: blocked paths are denied, mutating tools default to *ask*, commands outside the allowlist require confirmation (see [security.md](security.md)).
 
-> **M1 behavior.** The native adapter produces a scripted, realistic event stream from the mock provider. It **never touches your filesystem** — file writes and command executions are events marked `simulated: true`, and generated diffs travel inside the `patch_generated` event payload. The real tool loop arrives in M2.
+> **Real execution, gated.** The native adapter runs a real model→tool loop: `write_file` writes, `run_command` executes, `apply_patch` applies — confined to the working directory, gated by the Permission Engine, and approval-gated (mutating tools default to *ask*). With the built-in mock provider it instead produces a realistic offline event stream (nothing on disk changes) so you can explore without a key.
 
 ### `custom-command`
 
-Wraps any CLI coding agent (Claude Code, Aider, Codex CLI, …) as an adapter. Configuration shape (activates in M3):
+Wraps any CLI coding agent (Claude Code, Aider, Codex CLI, …) as an adapter — `run()` drives it as a real subprocess. Configuration shape:
 
 ```yaml
 agents:
@@ -44,7 +44,7 @@ agents:
     args: ["--message", "{{prompt}}"]
 ```
 
-In M1 `detect()` is real (checks the binary on PATH) and `run()` honestly reports that execution activates in M3.
+`detect()` checks the binary on PATH; `run()` spawns the configured CLI agent as a subprocess (in the working directory, abortable) and folds its output into the event stream.
 
 ## Agent roles
 

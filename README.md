@@ -133,7 +133,7 @@ The built-in catalogs ship as extension packs through the same mechanism — pro
 
 Excalibur Core is the open-source, local-first foundation. **Excalibur Enterprise** builds on the exact same schemas, event format, workflow definitions and artifacts, and adds the organizational control plane: web workbench, SSO/RBAC, team management, audit logs, cost and model governance, GitHub/GitLab Apps, hybrid runners and compliance.
 
-Everything stays local unless you explicitly connect: `excalibur login` / `excalibur sync` are optional, transparent and experimental in M1. See [docs/enterprise-sync.md](docs/enterprise-sync.md).
+Everything stays local unless you explicitly connect: `excalibur login` / `excalibur sync` are optional, transparent and experimental. See [docs/enterprise-sync.md](docs/enterprise-sync.md).
 
 ## Documentation
 
