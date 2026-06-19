@@ -207,11 +207,18 @@ function runProcess(
       });
       return;
     }
+    const onUnix = process.platform !== 'win32';
     const child = spawn(file, args, {
       cwd: options.cwd,
       env: options.env ?? { PATH: process.env['PATH'] ?? '', HOME: process.env['HOME'] ?? '' },
       shell: options.shell ?? false,
       stdio: ['pipe', 'pipe', 'pipe'],
+      // Run in its own process group (group leader pid == child.pid) so an abort
+      // can SIGKILL the WHOLE command tree, not just the shell. With `shell:true`
+      // the child is `/bin/sh -c "<cmd>"`; killing only the shell leaves the real
+      // command (e.g. `sleep`) orphaned, still holding the stdio pipes open, so
+      // Node's 'close' never fires and the run hangs to the 120s timeout.
+      detached: onUnix,
     });
 
     let output = '';
@@ -222,22 +229,33 @@ function runProcess(
     let spawned = false;
     let killPending = false;
 
-    // `child.kill()` is a no-op until the OS has actually spawned the process
-    // (no pid yet). An abort that lands in that spawn window — likely on a busy
-    // CI box — would be dropped and the command would run free to its 120s
-    // timeout. Gate the SIGKILL on the 'spawn' event and replay a pending kill
-    // the moment the process is really running, so abort is always honoured.
-    const killChild = (): void => {
-      if (spawned) {
-        child.kill('SIGKILL');
-      } else {
+    // SIGKILL the whole process group. `child.kill()` is also a no-op until the
+    // OS has actually spawned the process (no pid yet), so an abort that lands in
+    // that spawn window would be dropped — gate on the 'spawn' event and replay a
+    // pending kill once the process is really running, so abort is always honoured.
+    const killTree = (): void => {
+      if (!spawned) {
         killPending = true;
+        return;
       }
+      const pid = child.pid;
+      if (onUnix && pid !== undefined) {
+        try {
+          // Negative pid → the whole group (the shell + every child it spawned).
+          // Safe only because we spawned `detached` (own group); without that a
+          // negative pid would target the test runner's own group.
+          process.kill(-pid, 'SIGKILL');
+          return;
+        } catch {
+          // Group already gone — fall through to a direct kill.
+        }
+      }
+      child.kill('SIGKILL');
     };
     child.once('spawn', () => {
       spawned = true;
       if (killPending) {
-        child.kill('SIGKILL');
+        killTree();
       }
     });
 
@@ -255,14 +273,14 @@ function runProcess(
 
     const timer = setTimeout(() => {
       timedOut = true;
-      killChild();
+      killTree();
     }, COMMAND_TIMEOUT_MS);
 
     // Kill the spawned process the moment the run is aborted (ESC / signal),
     // rather than letting it run to completion or the 120s timeout.
     const onAbort = (): void => {
       aborted = true;
-      killChild();
+      killTree();
     };
     signal?.addEventListener('abort', onAbort, { once: true });
 

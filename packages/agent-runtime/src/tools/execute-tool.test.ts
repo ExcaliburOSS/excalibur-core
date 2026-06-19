@@ -318,6 +318,22 @@ describe('executeNativeTool — run_command / run_tests', () => {
     expect(result.result).toContain('aborted');
   }, 20000);
 
+  it('kills the whole process tree on abort, not just the shell (no orphaned child)', async () => {
+    const controller = new AbortController();
+    const abortCtx: ToolExecutionContext = { ...ctx(), signal: controller.signal };
+    setTimeout(() => controller.abort(), 50);
+    const startedAt = Date.now();
+    // `sleep 30 & wait` makes the shell FORK a long-lived child rather than
+    // exec into it (as a simple command would on some shells). Killing only the
+    // shell would orphan that child, which keeps the inherited stdio pipes open
+    // so Node's 'close' never fires and the run hangs to the 120s timeout. The
+    // process-group SIGKILL must reap the whole tree. (This is the dash-on-CI
+    // shape that a bare `sleep 30` doesn't reproduce under bash.)
+    const result = await executeNativeTool('run_command', { command: 'sleep 30 & wait' }, abortCtx);
+    expect(Date.now() - startedAt).toBeLessThan(10000);
+    expect(result.result).toContain('aborted');
+  }, 20000);
+
   it('does not start a command when the signal is already aborted', async () => {
     const controller = new AbortController();
     controller.abort();
