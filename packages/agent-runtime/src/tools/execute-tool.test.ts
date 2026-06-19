@@ -308,12 +308,15 @@ describe('executeNativeTool — run_command / run_tests', () => {
     setTimeout(() => controller.abort(), 50);
     const startedAt = Date.now();
     // `sleep 30` would block for 30s (and the executor's own timeout is 120s);
-    // an honoured abort must kill it within a fraction of that.
+    // an honoured abort must kill it long before either. The bound is generous
+    // (and the test timeout larger still) so a saturated CI runner's spawn/timer
+    // latency can't flake it — but a *dropped* abort still fails hard, because
+    // the command would then run on to the 120s executor timeout.
     const result = await executeNativeTool('run_command', { command: 'sleep 30' }, abortCtx);
     const elapsedMs = Date.now() - startedAt;
-    expect(elapsedMs).toBeLessThan(4000);
+    expect(elapsedMs).toBeLessThan(10000);
     expect(result.result).toContain('aborted');
-  });
+  }, 20000);
 
   it('does not start a command when the signal is already aborted', async () => {
     const controller = new AbortController();

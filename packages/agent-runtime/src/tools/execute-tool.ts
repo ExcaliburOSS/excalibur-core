@@ -219,6 +219,27 @@ function runProcess(
     let timedOut = false;
     let aborted = false;
     let settled = false;
+    let spawned = false;
+    let killPending = false;
+
+    // `child.kill()` is a no-op until the OS has actually spawned the process
+    // (no pid yet). An abort that lands in that spawn window — likely on a busy
+    // CI box — would be dropped and the command would run free to its 120s
+    // timeout. Gate the SIGKILL on the 'spawn' event and replay a pending kill
+    // the moment the process is really running, so abort is always honoured.
+    const killChild = (): void => {
+      if (spawned) {
+        child.kill('SIGKILL');
+      } else {
+        killPending = true;
+      }
+    };
+    child.once('spawn', () => {
+      spawned = true;
+      if (killPending) {
+        child.kill('SIGKILL');
+      }
+    });
 
     const capture = (chunk: Buffer): void => {
       if (bytes >= COMMAND_OUTPUT_MAX) {
@@ -234,14 +255,14 @@ function runProcess(
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGKILL');
+      killChild();
     }, COMMAND_TIMEOUT_MS);
 
     // Kill the spawned process the moment the run is aborted (ESC / signal),
     // rather than letting it run to completion or the 120s timeout.
     const onAbort = (): void => {
       aborted = true;
-      child.kill('SIGKILL');
+      killChild();
     };
     signal?.addEventListener('abort', onAbort, { once: true });
 
