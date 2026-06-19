@@ -21,9 +21,7 @@ export interface SSEMessage {
  * line dispatches the accumulated message. A trailing message with no final
  * blank line is still flushed at end-of-stream.
  */
-export async function* parseSSE(
-  lines: AsyncIterable<string>,
-): AsyncIterable<SSEMessage> {
+export async function* parseSSE(lines: AsyncIterable<string>): AsyncIterable<SSEMessage> {
   let event: string | undefined;
   const dataLines: string[] = [];
   let hasData = false;
@@ -77,9 +75,7 @@ export async function* parseSSE(
 }
 
 /** Parses each non-empty line as a JSON value (newline-delimited JSON). */
-export async function* parseNdjson(
-  lines: AsyncIterable<string>,
-): AsyncIterable<unknown> {
+export async function* parseNdjson(lines: AsyncIterable<string>): AsyncIterable<unknown> {
   for await (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.length === 0) {

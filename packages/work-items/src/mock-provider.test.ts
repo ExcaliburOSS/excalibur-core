@@ -133,9 +133,9 @@ describe('MockWorkItemProvider — listWorkItems filters', () => {
   });
 
   it('filters by project and team', async () => {
-    expect(
-      await provider.listWorkItems({ ...INTEGRATION, project: 'quickcontract' }),
-    ).toHaveLength(3);
+    expect(await provider.listWorkItems({ ...INTEGRATION, project: 'quickcontract' })).toHaveLength(
+      3,
+    );
     expect(await provider.listWorkItems({ ...INTEGRATION, team: 'Platform' })).toHaveLength(3);
     expect(await provider.listWorkItems({ ...INTEGRATION, team: 'Design' })).toHaveLength(0);
   });
@@ -174,7 +174,11 @@ describe('MockWorkItemProvider — writes are recorded in memory', () => {
     await provider.addComment({ ...INTEGRATION, externalIdOrKey: 'DEMO-2', body: 'Plan ready.' });
 
     expect(provider.recordedComments).toEqual([
-      { integrationId: 'int-1', externalIdOrKey: 'DEMO-1', body: 'Excalibur started an agentic run.' },
+      {
+        integrationId: 'int-1',
+        externalIdOrKey: 'DEMO-1',
+        body: 'Excalibur started an agentic run.',
+      },
       { integrationId: 'int-1', externalIdOrKey: 'DEMO-2', body: 'Plan ready.' },
     ]);
 

@@ -333,9 +333,7 @@ export async function readUserSuppliedFile(
   const decision = engine.checkPath(relPath, 'read');
 
   if (!decision.allowed) {
-    throw new CliUsageError(
-      deps.t('context.refuseRead', { relPath, reason: decision.reason }),
-    );
+    throw new CliUsageError(deps.t('context.refuseRead', { relPath, reason: decision.reason }));
   }
   if (decision.requiresConfirmation) {
     const proceed = await deps.ui.confirm(

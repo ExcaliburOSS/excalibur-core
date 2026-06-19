@@ -37,7 +37,9 @@ describe('run (local mock loop, Build Contract §4.9)', () => {
     expect(dirs.length).toBe(1);
     const runDir = join(repo, '.excalibur', 'runs', dirs[0] as string);
 
-    const record = runRecordSchema.parse(JSON.parse(readFileSync(join(runDir, 'run.json'), 'utf8')));
+    const record = runRecordSchema.parse(
+      JSON.parse(readFileSync(join(runDir, 'run.json'), 'utf8')),
+    );
     expect(record.status).toBe('completed');
     expect(record.workflow).toBe('fast-fix');
     expect(record.autonomyLevel).toBe(3);
@@ -79,7 +81,9 @@ describe('run (local mock loop, Build Contract §4.9)', () => {
 
     const dirs = runDirs();
     const latest = join(repo, '.excalibur', 'runs', dirs[dirs.length - 1] as string);
-    const record = runRecordSchema.parse(JSON.parse(readFileSync(join(latest, 'run.json'), 'utf8')));
+    const record = runRecordSchema.parse(
+      JSON.parse(readFileSync(join(latest, 'run.json'), 'utf8')),
+    );
 
     expect(record.workflow).toBe('structured-feature');
     // spec-driven declares defaultWorkflow: structured-feature.
@@ -92,7 +96,9 @@ describe('run (local mock loop, Build Contract §4.9)', () => {
 
   it('rejects an invalid --level (usage error)', async () => {
     const cli = createTestCli({ cwd: repo });
-    await expect(cli.run('run', 'Fix bug', '--level', '9')).rejects.toThrow(/--level must be 0\.\.4/);
+    await expect(cli.run('run', 'Fix bug', '--level', '9')).rejects.toThrow(
+      /--level must be 0\.\.4/,
+    );
   });
 
   it('rejects conflicting style flags', async () => {
@@ -102,9 +108,9 @@ describe('run (local mock loop, Build Contract §4.9)', () => {
 
   it('rejects an unknown explicit workflow', async () => {
     const cli = createTestCli({ cwd: repo });
-    await expect(cli.run('run', 'Fix bug now please', '--workflow', 'does-not-exist', '--yes')).rejects.toThrow(
-      /Unknown workflow/,
-    );
+    await expect(
+      cli.run('run', 'Fix bug now please', '--workflow', 'does-not-exist', '--yes'),
+    ).rejects.toThrow(/Unknown workflow/);
   });
 });
 

@@ -196,10 +196,9 @@ export function loadManifest(filePath: string): ExtensionManifest {
     value = parseYaml(text);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    throw new ConfigValidationError(
-      `Extension manifest ${filePath} is not valid YAML: ${reason}`,
-      { filePath },
-    );
+    throw new ConfigValidationError(`Extension manifest ${filePath} is not valid YAML: ${reason}`, {
+      filePath,
+    });
   }
   const result = validateManifest(value);
   if (!result.success || result.data === undefined) {

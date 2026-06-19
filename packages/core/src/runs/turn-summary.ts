@@ -298,7 +298,7 @@ function nextHintOf(
 export function buildTurnSummary(model: ReplayModel): TurnSummary {
   const events = model.steps.map((step) => step.event);
   const assistant = lastAssistant(events);
-  const narrative = assistant !== null ? str(assistant, 'content') ?? '' : '';
+  const narrative = assistant !== null ? (str(assistant, 'content') ?? '') : '';
 
   const changedFiles = changedFilesFrom(model, events);
   const checks = checksFrom(events);
@@ -356,20 +356,27 @@ export function turnSummaryToMarkdown(summary: TurnSummary): string {
     lines.push('');
   }
   if (summary.changedFiles.length > 0) {
-    lines.push(`## Changed (${summary.metrics.files} files, +${summary.metrics.insertions} −${summary.metrics.deletions})`);
+    lines.push(
+      `## Changed (${summary.metrics.files} files, +${summary.metrics.insertions} −${summary.metrics.deletions})`,
+    );
     for (const file of summary.changedFiles) {
-      lines.push(`- ${changeGlyph(file.status)} ${file.path}  +${file.insertions} −${file.deletions}`);
+      lines.push(
+        `- ${changeGlyph(file.status)} ${file.path}  +${file.insertions} −${file.deletions}`,
+      );
     }
     lines.push('');
   }
   if (summary.checks.length > 0) {
     lines.push('## Checks');
     for (const check of summary.checks) {
-      lines.push(`- ${check.ok ? '✓' : '✗'} ${check.label}${check.detail !== null ? ` · ${check.detail}` : ''}`);
+      lines.push(
+        `- ${check.ok ? '✓' : '✗'} ${check.label}${check.detail !== null ? ` · ${check.detail}` : ''}`,
+      );
     }
     lines.push('');
   }
-  const cost = summary.metrics.costCents !== null ? `$${(summary.metrics.costCents / 100).toFixed(2)}` : '—';
+  const cost =
+    summary.metrics.costCents !== null ? `$${(summary.metrics.costCents / 100).toFixed(2)}` : '—';
   lines.push(
     `## Cost\n${summary.metrics.inputTokens + summary.metrics.outputTokens} tokens · ${cost}`,
   );

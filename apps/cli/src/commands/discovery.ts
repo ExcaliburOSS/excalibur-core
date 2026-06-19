@@ -130,7 +130,11 @@ export function registerDiscoveryCommand(program: Command, deps: CliDeps): void 
     .option('--from-github-issue <id>', 'start from a GitHub issue (available in M4)')
     .option('-y, --yes', 'skip the questions (recorded as unanswered)')
     .action(async (inputWords: string[], options: DiscoveryOptions) => {
-      if (options.fromLinear !== undefined || options.fromJira !== undefined || options.fromGithubIssue !== undefined) {
+      if (
+        options.fromLinear !== undefined ||
+        options.fromJira !== undefined ||
+        options.fromGithubIssue !== undefined
+      ) {
         deps.ui.warn(deps.t('discovery.workItemSourcesM4'));
         return;
       }

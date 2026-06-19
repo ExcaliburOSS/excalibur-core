@@ -18,9 +18,23 @@ First-run feeling: "Excalibur found your existing AI/project instructions and wi
 ```ts
 export type InstructionSourceScope = 'project' | 'workspace' | 'user_global' | 'enterprise';
 export type InstructionSourceFormat =
-  | 'claude_md' | 'skill_md' | 'agents_md' | 'cursor_rules' | 'copilot_instructions'
-  | 'gemini_md' | 'codex' | 'aider' | 'docs' | 'adr' | 'custom';
-export type InstructionSourceKind = 'instruction' | 'skill' | 'context' | 'policy_hint' | 'workflow_hint';
+  | 'claude_md'
+  | 'skill_md'
+  | 'agents_md'
+  | 'cursor_rules'
+  | 'copilot_instructions'
+  | 'gemini_md'
+  | 'codex'
+  | 'aider'
+  | 'docs'
+  | 'adr'
+  | 'custom';
+export type InstructionSourceKind =
+  | 'instruction'
+  | 'skill'
+  | 'context'
+  | 'policy_hint'
+  | 'workflow_hint';
 export type TrustLevel = 'trusted' | 'review_required' | 'untrusted';
 
 export type InstructionSource = {

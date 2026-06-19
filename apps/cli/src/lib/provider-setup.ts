@@ -32,10 +32,10 @@ async function askEnvVarName(deps: CliDeps, defaultName: string, yes: boolean): 
     deps.ui.info(deps.t('provider-setup.detected_env', { defaultName }));
   }
   for (;;) {
-    const answer = await deps.ui.ask(
-      deps.t('provider-setup.ask_env_var_name', { defaultName }),
-      { yes, defaultAnswer: defaultName },
-    );
+    const answer = await deps.ui.ask(deps.t('provider-setup.ask_env_var_name', { defaultName }), {
+      yes,
+      defaultAnswer: defaultName,
+    });
     if (SECRET_LOOKING_PATTERN.test(answer)) {
       deps.ui.warn(deps.t('provider-setup.looks_like_key_value'));
       continue;
@@ -81,10 +81,9 @@ async function askEnvVarNameOptional(
     deps.ui.info(deps.t('provider-setup.detected_env_optional', { suggestion }));
   }
   const answer = (
-    await deps.ui.ask(
-      deps.t('provider-setup.ask_env_var_optional', { suggestion }),
-      { defaultAnswer: '' },
-    )
+    await deps.ui.ask(deps.t('provider-setup.ask_env_var_optional', { suggestion }), {
+      defaultAnswer: '',
+    })
   ).trim();
   if (answer.length === 0) {
     return undefined;
@@ -288,17 +287,19 @@ export async function promptProviderSetup(
           hint: deps.t('provider-setup.hint_self_hosted'),
         };
       case 'mock':
-        return { label: deps.t('provider-setup.opt_mock'), hint: deps.t('provider-setup.hint_mock') };
+        return {
+          label: deps.t('provider-setup.opt_mock'),
+          hint: deps.t('provider-setup.hint_mock'),
+        };
       case 'later':
         return { label: deps.t('provider-setup.opt_later') };
     }
   });
 
-  const index = await deps.ui.select(
-    deps.t('provider-setup.select_provider'),
-    labels,
-    { yes: false, defaultIndex: 0 },
-  );
+  const index = await deps.ui.select(deps.t('provider-setup.select_provider'), labels, {
+    yes: false,
+    defaultIndex: 0,
+  });
   const choice = choices[index] ?? { kind: 'later' };
 
   switch (choice.kind) {
@@ -309,7 +310,10 @@ export async function promptProviderSetup(
         const how = await deps.ui.select(
           deps.t('provider-setup.how_do_you_use', { label: entry.label }),
           [
-            { label: deps.t('provider-setup.opt_subscription'), hint: subscriptionHint(deps, entry) },
+            {
+              label: deps.t('provider-setup.opt_subscription'),
+              hint: subscriptionHint(deps, entry),
+            },
             {
               label: deps.t('provider-setup.opt_api_key'),
               hint: deps.t('provider-setup.hint_api_key'),

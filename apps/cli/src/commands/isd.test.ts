@@ -73,7 +73,9 @@ describe('instructions (ISD spec §7)', () => {
 
     await cli.run('instructions', 'enable', 'claude-project');
     config = parseYaml(readFileSync(configPath, 'utf8')) as typeof config;
-    expect(config.instructions?.sources?.find((source) => source.path.includes('CLAUDE.md'))?.enabled).toBe(true);
+    expect(
+      config.instructions?.sources?.find((source) => source.path.includes('CLAUDE.md'))?.enabled,
+    ).toBe(true);
   });
 
   it('inspect shows source details', async () => {
@@ -87,7 +89,9 @@ describe('instructions (ISD spec §7)', () => {
   it('unknown ids are usage errors with guidance', async () => {
     const repo = tempRepo();
     const cli = createTestCli({ cwd: repo });
-    await expect(cli.run('instructions', 'inspect', 'nope')).rejects.toThrow(/Unknown instruction source/);
+    await expect(cli.run('instructions', 'inspect', 'nope')).rejects.toThrow(
+      /Unknown instruction source/,
+    );
   });
 
   it('import copies a project source into .excalibur/instructions/', async () => {
@@ -178,6 +182,8 @@ describe('skills (ISD spec §7)', () => {
     const config = parseYaml(readFileSync(join(repo, '.excalibur', 'config.yaml'), 'utf8')) as {
       skills?: { sources?: Array<{ path: string; enabled?: boolean }> };
     };
-    expect(config.skills?.sources?.find((source) => source.path.includes('SKILL.md'))?.enabled).toBe(false);
+    expect(
+      config.skills?.sources?.find((source) => source.path.includes('SKILL.md'))?.enabled,
+    ).toBe(false);
   });
 });

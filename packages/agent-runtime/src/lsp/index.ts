@@ -4,7 +4,11 @@
  * JSON-RPC-over-stdio shape with Content-Length framing + inbound dispatch.
  */
 export { encodeMessage, MessageBuffer, LspFramingError } from './lsp-framing';
-export { LspStdioTransport, type LspIncomingMessage, type LspStdioTransportOptions } from './lsp-transport';
+export {
+  LspStdioTransport,
+  type LspIncomingMessage,
+  type LspStdioTransportOptions,
+} from './lsp-transport';
 export { LspClient, type LspClientStartOptions, type DiagnosticsWaitOptions } from './lsp-client';
 export {
   languageForFile,
@@ -13,13 +17,5 @@ export {
   resolveBinary,
   type LspServerCommand,
 } from './lsp-servers';
-export {
-  createLspSession,
-  type LspSession,
-  type CreateLspSessionOptions,
-} from './lsp-session';
-export type {
-  LspDiagnostic,
-  DiagnosticSeverity,
-  PublishDiagnosticsParams,
-} from './lsp-protocol';
+export { createLspSession, type LspSession, type CreateLspSessionOptions } from './lsp-session';
+export type { LspDiagnostic, DiagnosticSeverity, PublishDiagnosticsParams } from './lsp-protocol';

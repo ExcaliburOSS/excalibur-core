@@ -240,7 +240,11 @@ async function driveLoop(
         model: turn.providerName,
         push: false,
       },
-      labels: { push: deps.t('rail.push'), noPush: deps.t('rail.noPush'), tasks: deps.t('rail.tasks') },
+      labels: {
+        push: deps.t('rail.push'),
+        noPush: deps.t('rail.noPush'),
+        tasks: deps.t('rail.tasks'),
+      },
     });
     view.onEscape(() => ctrl.abort());
   }
@@ -616,7 +620,9 @@ export async function runPlanTurn(
     };
   }
 
-  const answer = (await turn.deps.ui.ask(turn.deps.t('agent-turn.plan_gate_prompt'), { defaultAnswer: 'cancel' }))
+  const answer = (
+    await turn.deps.ui.ask(turn.deps.t('agent-turn.plan_gate_prompt'), { defaultAnswer: 'cancel' })
+  )
     .trim()
     .toLowerCase();
   const gate: PlanGate =

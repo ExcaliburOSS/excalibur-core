@@ -60,15 +60,15 @@ interface ScanTarget {
   patterns: readonly string[];
 }
 
-async function scanTarget(
-  target: ScanTarget,
-  usedIds: Set<string>,
-): Promise<InstructionSource[]> {
+async function scanTarget(target: ScanTarget, usedIds: Set<string>): Promise<InstructionSource[]> {
   if (!(await isDirectory(target.root))) {
     return [];
   }
   const relPaths = await globFiles(target.root, [...target.patterns]);
-  const candidates: Array<{ relPath: string; format: NonNullable<ReturnType<typeof classifySourcePath>> }> = [];
+  const candidates: Array<{
+    relPath: string;
+    format: NonNullable<ReturnType<typeof classifySourcePath>>;
+  }> = [];
   for (const relPath of relPaths) {
     const format = classifySourcePath(relPath, target.scope);
     if (format !== null) {

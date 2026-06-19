@@ -283,7 +283,10 @@ export class Ui {
    * caller persists it), so the user approves ONCE and Excalibur never asks
    * again. Non-interactive / `yes` resolves to the default ('yes' when defaultYes).
    */
-  async confirmTool(question: string, options: ConfirmOptions = {}): Promise<'yes' | 'no' | 'auto'> {
+  async confirmTool(
+    question: string,
+    options: ConfirmOptions = {},
+  ): Promise<'yes' | 'no' | 'auto'> {
     const defaultYes = options.defaultYes ?? false;
     if (options.yes === true || !this.interactive) {
       return defaultYes ? 'yes' : 'no';
@@ -303,7 +306,11 @@ export class Ui {
   }
 
   /** Numbered chooser; returns the zero-based index of the selection. */
-  async select(question: string, choices: SelectChoice[], options: SelectOptions = {}): Promise<number> {
+  async select(
+    question: string,
+    choices: SelectChoice[],
+    options: SelectOptions = {},
+  ): Promise<number> {
     const defaultIndex = options.defaultIndex ?? 0;
     this.write(question);
     choices.forEach((choice, index) => {
@@ -665,7 +672,15 @@ export class Ui {
         return Promise.resolve(null);
       }
       currentPrompt = prompt;
-      state = { ...state, awaiting: true, buffer: '', cursor: 0, historyIndex: -1, draft: '', ghost: '' };
+      state = {
+        ...state,
+        awaiting: true,
+        buffer: '',
+        cursor: 0,
+        historyIndex: -1,
+        draft: '',
+        ghost: '',
+      };
       out.write(renderInput(state, prompt));
       return new Promise((resolve) => {
         waiters.push((line) => {

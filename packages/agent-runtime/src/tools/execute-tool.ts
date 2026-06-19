@@ -162,7 +162,10 @@ function assertConfined(workdir: string, relPath: string): { abs: string } | { e
 }
 
 /** Validates raw args against the tool's zod schema; returns parsed args or an error. */
-function validate(name: NativeToolName, args: unknown): { data: Record<string, unknown> } | { error: string } {
+function validate(
+  name: NativeToolName,
+  args: unknown,
+): { data: Record<string, unknown> } | { error: string } {
   const def = getNativeTool(name);
   if (def === undefined) {
     return { error: `unknown tool "${name}"` };
@@ -196,7 +199,12 @@ function runProcess(
   return new Promise((resolve) => {
     const { signal } = options;
     if (signal?.aborted === true) {
-      resolve({ code: null, output: '(command aborted before start)', timedOut: false, aborted: true });
+      resolve({
+        code: null,
+        output: '(command aborted before start)',
+        timedOut: false,
+        aborted: true,
+      });
       return;
     }
     const child = spawn(file, args, {
@@ -387,8 +395,7 @@ function execListFiles(args: Record<string, unknown>, ctx: ToolExecutionContext)
   };
   walk(confined.abs, 0);
   entries.sort();
-  const header =
-    entries.length >= MAX_LIST_ENTRIES ? `(capped at ${MAX_LIST_ENTRIES})\n` : '';
+  const header = entries.length >= MAX_LIST_ENTRIES ? `(capped at ${MAX_LIST_ENTRIES})\n` : '';
   return ok(header + (entries.length > 0 ? entries.join('\n') : '(no files)'));
 }
 
@@ -525,7 +532,12 @@ async function execRunCommand(
       ...(sandbox.network !== undefined ? { allowNetwork: sandbox.network } : {}),
     };
     const sb = runInDockerSandbox(cwd, command, limits);
-    return formatCommandResult(command, sb.exitCode, `${sb.stdout}${sb.stderr}`.trim(), sb.timedOut);
+    return formatCommandResult(
+      command,
+      sb.exitCode,
+      `${sb.stdout}${sb.stderr}`.trim(),
+      sb.timedOut,
+    );
   }
   // Host execution: the command is gated by the allowlist/confirm path before
   // reaching here, so it runs through the shell as-is. We pin a minimal env
@@ -568,7 +580,12 @@ async function execRunTests(
       ...(sandbox.network !== undefined ? { allowNetwork: sandbox.network } : {}),
     };
     const sb = runInDockerSandbox(path.resolve(ctx.workdir), command, limits);
-    return formatCommandResult(command, sb.exitCode, `${sb.stdout}${sb.stderr}`.trim(), sb.timedOut);
+    return formatCommandResult(
+      command,
+      sb.exitCode,
+      `${sb.stdout}${sb.stderr}`.trim(),
+      sb.timedOut,
+    );
   }
   const { code, output, timedOut } = await runProcess(command, [], {
     cwd: path.resolve(ctx.workdir),
@@ -651,11 +668,15 @@ async function execApplyPatch(
     }
   }
   // `git apply` (no --unsafe-paths) refuses out-of-tree / absolute paths itself.
-  const { code, output, timedOut } = await runProcess('git', ['apply', '--whitespace=nowarn', '-'], {
-    cwd: path.resolve(ctx.workdir),
-    input: diff.endsWith('\n') ? diff : `${diff}\n`,
-    ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
-  });
+  const { code, output, timedOut } = await runProcess(
+    'git',
+    ['apply', '--whitespace=nowarn', '-'],
+    {
+      cwd: path.resolve(ctx.workdir),
+      input: diff.endsWith('\n') ? diff : `${diff}\n`,
+      ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
+    },
+  );
   if (timedOut) {
     return fail('git apply timed out');
   }

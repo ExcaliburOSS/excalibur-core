@@ -57,9 +57,7 @@ export function registerWorkflowsCommand(program: Command, deps: CliDeps): void 
     .argument('<id>', 'workflow id')
     .action(async (id: string) => {
       const registry = await createExtensionHost(deps.cwd());
-      const definition = registry.contributions
-        .workflows()
-        .find((workflow) => workflow.id === id);
+      const definition = registry.contributions.workflows().find((workflow) => workflow.id === id);
       if (definition === undefined) {
         const known = registry.contributions
           .workflows()
@@ -83,7 +81,9 @@ export function registerWorkflowsCommand(program: Command, deps: CliDeps): void 
       definition.phases.forEach((phase, index) => {
         const parts = [
           `${index + 1}. ${phase.name} ${pc.dim(`[${phase.type}]`)}`,
-          phase.role !== undefined ? pc.dim(deps.t('workflows.phase-role', { role: phase.role })) : '',
+          phase.role !== undefined
+            ? pc.dim(deps.t('workflows.phase-role', { role: phase.role }))
+            : '',
           phase.required === false ? pc.dim(deps.t('workflows.phase-optional')) : '',
           phase.approval !== undefined && phase.approval !== 'none'
             ? pc.yellow(deps.t('workflows.phase-approval', { approval: phase.approval }))

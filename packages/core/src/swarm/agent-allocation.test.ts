@@ -25,9 +25,15 @@ describe('planAgentAllocation — pre-plan estimate (no decomposition)', () => {
   });
 
   it('scales a feature/refactor gently (~one agent per two modules)', () => {
-    expect(planAgentAllocation({ taskType: 'feature', sensitive: false, affectedUnits: 1 }).agentCount).toBe(1);
-    expect(planAgentAllocation({ taskType: 'feature', sensitive: false, affectedUnits: 6 }).agentCount).toBe(3);
-    expect(planAgentAllocation({ taskType: 'refactor', sensitive: false, affectedUnits: 5 }).agentCount).toBe(3);
+    expect(
+      planAgentAllocation({ taskType: 'feature', sensitive: false, affectedUnits: 1 }).agentCount,
+    ).toBe(1);
+    expect(
+      planAgentAllocation({ taskType: 'feature', sensitive: false, affectedUnits: 6 }).agentCount,
+    ).toBe(3);
+    expect(
+      planAgentAllocation({ taskType: 'refactor', sensitive: false, affectedUnits: 5 }).agentCount,
+    ).toBe(3);
   });
 
   it('fans a migration out across modules (one per module)', () => {
@@ -123,7 +129,12 @@ describe('planAgentAllocation — caps and biases', () => {
       { id: 't2', title: 'b' },
       { id: 't3', title: 'c' },
     ];
-    const a = planAgentAllocation({ taskType: 'feature', sensitive: false, subtasks, maxAgents: 2 });
+    const a = planAgentAllocation({
+      taskType: 'feature',
+      sensitive: false,
+      subtasks,
+      maxAgents: 2,
+    });
     expect(a.agentCount).toBe(2);
     expect(a.decomposition.map((s) => s.id)).toEqual(['t1', 't2']);
   });
@@ -145,15 +156,24 @@ describe('planAgentAllocation — caps and biases', () => {
   });
 
   it('always allocates at least one agent', () => {
-    expect(planAgentAllocation({ taskType: 'feature', sensitive: false, requested: 0 }).agentCount).toBe(1);
-    expect(planAgentAllocation({ taskType: 'feature', sensitive: false, maxAgents: 0 }).agentCount).toBe(1);
+    expect(
+      planAgentAllocation({ taskType: 'feature', sensitive: false, requested: 0 }).agentCount,
+    ).toBe(1);
+    expect(
+      planAgentAllocation({ taskType: 'feature', sensitive: false, maxAgents: 0 }).agentCount,
+    ).toBe(1);
     expect(
       planAgentAllocation({ taskType: 'feature', sensitive: false, subtasks: [] }).agentCount,
     ).toBe(1);
   });
 
   it('is deterministic — identical input yields identical output', () => {
-    const input = { taskType: 'migration' as const, sensitive: false, affectedUnits: 6, maxAgents: 4 };
+    const input = {
+      taskType: 'migration' as const,
+      sensitive: false,
+      affectedUnits: 6,
+      maxAgents: 4,
+    };
     expect(planAgentAllocation(input)).toEqual(planAgentAllocation(input));
   });
 });

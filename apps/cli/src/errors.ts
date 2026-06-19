@@ -23,7 +23,11 @@ export class CliUsageError extends ExcaliburError {
 }
 
 /** Commander codes that mean "help/version displayed", not an error. */
-const COMMANDER_OK_CODES = new Set(['commander.helpDisplayed', 'commander.help', 'commander.version']);
+const COMMANDER_OK_CODES = new Set([
+  'commander.helpDisplayed',
+  'commander.help',
+  'commander.version',
+]);
 
 /** Maps any thrown value onto the contract exit codes. */
 export function exitCodeForError(error: unknown): number {

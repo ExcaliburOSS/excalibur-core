@@ -49,19 +49,19 @@ and network disabled by default). Nothing else is required before you get value.
 
 ## What you can do
 
-| Command | What it does |
-| --- | --- |
-| `excalibur init [--team\|--full]` | Detect the stack and scaffold `.excalibur/` |
-| `excalibur ask "…"` / `explain` | Ask questions about the repo (autonomy L1) |
-| `excalibur review [--diff]` | Review working changes (autonomy L0) |
-| `excalibur patch "…"` + `apply\|branch\|reject` | Propose and apply a diff (L2) |
-| `excalibur run "…"` | Run an agentic workflow phase by phase (L3) |
-| `excalibur discovery "<idea>"` | Decide *whether* to build — deterministic scoring |
-| `excalibur daily` / `weekly-plan` | Generate local activity reports |
-| `excalibur workflows list\|explain` | Inspect the 14 built-in workflows |
-| `excalibur instructions scan\|list` | Detect existing CLAUDE.md / AGENTS.md / skills |
-| `excalibur extensions …` | Author and load declarative/programmatic extensions |
-| `excalibur doctor` | Diagnose your setup |
+| Command                                         | What it does                                        |
+| ----------------------------------------------- | --------------------------------------------------- |
+| `excalibur init [--team\|--full]`               | Detect the stack and scaffold `.excalibur/`         |
+| `excalibur ask "…"` / `explain`                 | Ask questions about the repo (autonomy L1)          |
+| `excalibur review [--diff]`                     | Review working changes (autonomy L0)                |
+| `excalibur patch "…"` + `apply\|branch\|reject` | Propose and apply a diff (L2)                       |
+| `excalibur run "…"`                             | Run an agentic workflow phase by phase (L3)         |
+| `excalibur discovery "<idea>"`                  | Decide _whether_ to build — deterministic scoring   |
+| `excalibur daily` / `weekly-plan`               | Generate local activity reports                     |
+| `excalibur workflows list\|explain`             | Inspect the 14 built-in workflows                   |
+| `excalibur instructions scan\|list`             | Detect existing CLAUDE.md / AGENTS.md / skills      |
+| `excalibur extensions …`                        | Author and load declarative/programmatic extensions |
+| `excalibur doctor`                              | Diagnose your setup                                 |
 
 Run `excalibur <command> --help` for the full set of flags. Autonomy levels
 (0–4), workflows, model routing and tool permissions are all configurable in

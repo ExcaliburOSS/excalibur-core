@@ -49,11 +49,7 @@ export {
   type HookHandlerError,
 } from './hooks';
 
-export {
-  ExtensionRegistry,
-  type BuiltInExtensionPack,
-  type LoadedExtension,
-} from './registry';
+export { ExtensionRegistry, type BuiltInExtensionPack, type LoadedExtension } from './registry';
 
 export { PROJECT_EXTENSION_ID, loadExtensions, type LoadExtensionsInput } from './loader';
 

@@ -34,7 +34,10 @@ function todoGlyph(status: TodoItem['status'], palette: Palette): { ch: string; 
 }
 
 /** Renders the checklist band to text lines (empty array when there are no todos). */
-export function renderTodos(todos: ReadonlyArray<TodoItem>, options: RenderTodosOptions = {}): string[] {
+export function renderTodos(
+  todos: ReadonlyArray<TodoItem>,
+  options: RenderTodosOptions = {},
+): string[] {
   if (todos.length === 0) {
     return [];
   }

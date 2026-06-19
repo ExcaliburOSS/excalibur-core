@@ -62,7 +62,7 @@ layout and can be used as templates, as can
 
 ## Preparing for the npm ecosystem (M8)
 
-If you publish a programmatic extension to npm *now* (as a normal package),
+If you publish a programmatic extension to npm _now_ (as a normal package),
 nothing consumes it yet — but you can make it future-proof:
 
 - keep `excalibur.extension.yaml` at the package root and `dist/` in the

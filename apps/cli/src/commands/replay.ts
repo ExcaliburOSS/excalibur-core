@@ -39,9 +39,7 @@ export function registerReplayCommand(program: Command, deps: CliDeps): void {
       if (options.at !== undefined) {
         const at = Number.parseInt(options.at, 10);
         if (Number.isNaN(at) || at < 1) {
-          throw new CliUsageError(
-            deps.t('replay.at-must-be-positive', { at: options.at }),
-          );
+          throw new CliUsageError(deps.t('replay.at-must-be-positive', { at: options.at }));
         }
         const replay = loadReplay(repoRoot, runId);
         printStateAt(deps, replay, loadAnnotations(repoRoot, runId), at - 1);

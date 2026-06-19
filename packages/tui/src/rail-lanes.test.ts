@@ -61,10 +61,13 @@ describe('renderLanes', () => {
     const running = { id: 'r1', title: 'refactor auth', state: 'running' as const };
     const plain = renderLanes({ lanes: [running], applied: 0, conflicts: 0 });
     expect(plain.join('\n')).toContain('refactor auth'); // renders fine in plain form
-    const coloured = renderLanes({ lanes: [running], applied: 0, conflicts: 0 }, {
-      tier: 'truecolor',
-      mode: 'dark',
-    }).join('\n');
+    const coloured = renderLanes(
+      { lanes: [running], applied: 0, conflicts: 0 },
+      {
+        tier: 'truecolor',
+        mode: 'dark',
+      },
+    ).join('\n');
     // accent #5BC8FF → 91;200;255 marks the in-flight lane (distinct from done/green).
     expect(coloured).toContain('\x1b[38;2;91;200;255m');
   });

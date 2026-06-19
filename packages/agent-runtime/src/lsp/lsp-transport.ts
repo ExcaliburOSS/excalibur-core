@@ -37,7 +37,9 @@ export class LspStdioTransport {
 
   constructor(options: LspStdioTransportOptions) {
     if (options.command.trim().length === 0) {
-      throw new ProviderError('LSP server command must not be empty.', { code: 'lsp_invalid_command' });
+      throw new ProviderError('LSP server command must not be empty.', {
+        code: 'lsp_invalid_command',
+      });
     }
     try {
       this.child = spawn(options.command, [...(options.args ?? [])], {
@@ -49,10 +51,13 @@ export class LspStdioTransport {
         stdio: ['pipe', 'pipe', 'pipe'],
       }) as ChildProcessWithoutNullStreams;
     } catch (error) {
-      throw new ProviderError(`Could not start LSP server "${options.command}": ${describe(error)}.`, {
-        code: 'lsp_spawn_failed',
-        details: { command: options.command },
-      });
+      throw new ProviderError(
+        `Could not start LSP server "${options.command}": ${describe(error)}.`,
+        {
+          code: 'lsp_spawn_failed',
+          details: { command: options.command },
+        },
+      );
     }
   }
 
@@ -64,7 +69,11 @@ export class LspStdioTransport {
     // Drain (but don't parse) stderr so a chatty server can't block on a full pipe.
     this.child.stderr.on('data', () => {});
     this.child.on('error', (error: Error) => {
-      this.onClose(new ProviderError(`LSP server process error: ${error.message}.`, { code: 'lsp_process_error' }));
+      this.onClose(
+        new ProviderError(`LSP server process error: ${error.message}.`, {
+          code: 'lsp_process_error',
+        }),
+      );
     });
     this.child.on('exit', (code, signal) => {
       if (this.closed) return;
@@ -80,7 +89,9 @@ export class LspStdioTransport {
   send(message: OutgoingMessage): void {
     const ok = this.child.stdin.write(encodeMessage(message));
     if (!ok && this.child.stdin.destroyed) {
-      throw new ProviderError('LSP server stdin is no longer writable.', { code: 'lsp_write_failed' });
+      throw new ProviderError('LSP server stdin is no longer writable.', {
+        code: 'lsp_write_failed',
+      });
     }
   }
 
@@ -116,8 +127,12 @@ export class LspStdioTransport {
       if (this.closed) return;
       const reason =
         error instanceof LspFramingError
-          ? new ProviderError(`LSP stream framing error: ${error.message}.`, { code: 'lsp_process_error' })
-          : new ProviderError(`LSP stream error: ${describe(error)}.`, { code: 'lsp_process_error' });
+          ? new ProviderError(`LSP stream framing error: ${error.message}.`, {
+              code: 'lsp_process_error',
+            })
+          : new ProviderError(`LSP stream error: ${describe(error)}.`, {
+              code: 'lsp_process_error',
+            });
       this.onClose(reason);
     }
   }

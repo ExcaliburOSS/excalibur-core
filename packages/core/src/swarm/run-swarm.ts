@@ -187,7 +187,9 @@ export async function runSwarm<T>(
   options: RunSwarmOptions<T> = {},
 ): Promise<SwarmResult<T>> {
   if (!getGitInfo(repoRoot).isRepo) {
-    throw new Error('Swarm fan-out needs a git repository (each lane runs in an isolated worktree).');
+    throw new Error(
+      'Swarm fan-out needs a git repository (each lane runs in an isolated worktree).',
+    );
   }
   if (!hasCommits(repoRoot)) {
     throw new Error('Swarm fan-out needs at least one commit to base each worktree on.');
@@ -201,7 +203,12 @@ export async function runSwarm<T>(
 
   // 1. SETUP (sequential — git locks the worktree admin, so never parallel here).
   const setups = lanes.map((lane, index) => {
-    const worktreePath = join(repoRoot, EXCALIBUR_DIR, 'worktrees', `${prefix}-${index}-${lane.id}`);
+    const worktreePath = join(
+      repoRoot,
+      EXCALIBUR_DIR,
+      'worktrees',
+      `${prefix}-${index}-${lane.id}`,
+    );
     const branch = `excalibur/${prefix}-${index}-${lane.id}`;
     addWorktree(repoRoot, worktreePath, { branch, baseRef });
     return { lane, index, worktreePath, branch };
@@ -210,7 +217,13 @@ export async function runSwarm<T>(
   try {
     // 2. RUN (parallel — the slow agent work, bounded by maxConcurrency).
     const maxAttempts = Math.max(1, options.maxAttempts ?? 1);
-    type LaneRun = { failed: boolean; error?: string; result?: T; attempts: number; grade?: SwarmGrade };
+    type LaneRun = {
+      failed: boolean;
+      error?: string;
+      result?: T;
+      attempts: number;
+      grade?: SwarmGrade;
+    };
     const runResults = await pool(
       setups.map((setup) => async (): Promise<LaneRun> => {
         let lastError = '';
@@ -243,8 +256,18 @@ export async function runSwarm<T>(
                 if (attempt < maxAttempts) {
                   continue; // revise
                 }
-                emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled', failed: true });
-                return { failed: true, error: `rubric not met: ${lastError}`, attempts: attempt, grade };
+                emitLane(options.onLane, {
+                  index: setup.index,
+                  id: setup.lane.id,
+                  phase: 'settled',
+                  failed: true,
+                });
+                return {
+                  failed: true,
+                  error: `rubric not met: ${lastError}`,
+                  attempts: attempt,
+                  grade,
+                };
               }
               emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled' });
               return { failed: false, result, attempts: attempt, grade };

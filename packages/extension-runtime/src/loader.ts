@@ -10,17 +10,9 @@ import {
 import { isExcaliburError, WorkflowValidationError } from '@excalibur/shared';
 import { type ProgrammaticContributionKind } from './contributions';
 import { loadExtensionsFile, type ExtensionsFileConfig } from './extensions-file';
-import {
-  loadManifest,
-  type ExtensionContributions,
-  type ExtensionManifest,
-} from './manifest';
+import { loadManifest, type ExtensionContributions, type ExtensionManifest } from './manifest';
 import { validatePermissions } from './permissions';
-import {
-  ExtensionRegistry,
-  type BuiltInExtensionPack,
-  type LoadedExtension,
-} from './registry';
+import { ExtensionRegistry, type BuiltInExtensionPack, type LoadedExtension } from './registry';
 
 /**
  * Extension loader (extensions spec §7). Load order:

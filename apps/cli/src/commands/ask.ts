@@ -54,7 +54,10 @@ export function registerAskCommand(program: Command, deps: CliDeps): void {
       Number.parseInt(value, 10),
     )
     .option('--no-stream', 'disable live streaming of the answer')
-    .option('--json-schema <schema>', 'constrain the answer to a JSON Schema (file path or inline JSON); prints JSON')
+    .option(
+      '--json-schema <schema>',
+      'constrain the answer to a JSON Schema (file path or inline JSON); prints JSON',
+    )
     .option('-y, --yes', 'skip prompts and accept safe defaults')
     .action(
       async (

@@ -11,18 +11,18 @@ Two equivalent ways to ship declarative content:
 **1. Loose files** in the ten `.excalibur/` declarative directories. The
 directory determines the expected type, so the `type:` field may be omitted:
 
-| Directory | Declarative type |
-|---|---|
-| `.excalibur/methodologies/` | `methodology` |
-| `.excalibur/workflows/` | `workflow` |
-| `.excalibur/question-packs/` | `question_pack` |
-| `.excalibur/prompts/` | `prompt_template` |
-| `.excalibur/artifacts/` | `artifact_template` |
-| `.excalibur/policies/` | `policy_preset` |
-| `.excalibur/models/` | `model_routing` (`providers.yaml` is skipped — it is the provider config) |
-| `.excalibur/reports/` | `report_template` |
-| `.excalibur/roles/` | `role_definition` |
-| `.excalibur/command-mappings/` | `command_mapping` |
+| Directory                      | Declarative type                                                          |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| `.excalibur/methodologies/`    | `methodology`                                                             |
+| `.excalibur/workflows/`        | `workflow`                                                                |
+| `.excalibur/question-packs/`   | `question_pack`                                                           |
+| `.excalibur/prompts/`          | `prompt_template`                                                         |
+| `.excalibur/artifacts/`        | `artifact_template`                                                       |
+| `.excalibur/policies/`         | `policy_preset`                                                           |
+| `.excalibur/models/`           | `model_routing` (`providers.yaml` is skipped — it is the provider config) |
+| `.excalibur/reports/`          | `report_template`                                                         |
+| `.excalibur/roles/`            | `role_definition`                                                         |
+| `.excalibur/command-mappings/` | `command_mapping`                                                         |
 
 Extra files outside those directories can be added explicitly in
 `.excalibur/extensions.yaml` (paths relative to `.excalibur/`):
@@ -58,7 +58,7 @@ id: agent-readiness
 type: question_pack
 name: Agent Readiness
 description: Optional.
-questions:            # at least one
+questions: # at least one
   - id: problem
     text: Is the goal clear enough for an agent?
 ```
@@ -83,13 +83,13 @@ tolerated (`{{ user }}`).
 ```yaml
 id: standard-safe
 type: policy_preset
-rules:                 # at least one
+rules: # at least one
   - id: block-secrets
-    when:              # empty `when` matches everything
-      filePathMatches: ["**/*.pem"]   # optional
-      action: read                     # optional
-      command: pnpm test               # optional
-    decision: deny     # allow | deny | redact | require_approval
+    when: # empty `when` matches everything
+      filePathMatches: ['**/*.pem'] # optional
+      action: read # optional
+      command: pnpm test # optional
+    decision: deny # allow | deny | redact | require_approval
 ```
 
 ### `model_routing`
@@ -97,9 +97,9 @@ rules:                 # at least one
 ```yaml
 id: default-routing
 type: model_routing
-default: mock          # all fields optional
+default: mock # all fields optional
 byRole: { planner: mock }
-byPath: { "src/billing/**": careful-model }
+byPath: { 'src/billing/**': careful-model }
 byWorkflow: { security-review: careful-model }
 ```
 
@@ -116,8 +116,8 @@ byWorkflow: { security-review: careful-model }
 ```yaml
 id: work-item-commands
 type: command_mapping
-commands:              # at least one
-  - trigger: "@excalibur run"
+commands: # at least one
+  - trigger: '@excalibur run'
     action: run
     defaults: { autonomyLevel: 3, executionStyle: team_default }
 ```
@@ -142,6 +142,7 @@ A Markdown file can define a `prompt_template` or an `artifact_template`
 name: Pull Request Summary (team format)
 description: Optional description.
 ---
+
 Summarize the change below…
 
 {{task}}

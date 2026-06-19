@@ -1,12 +1,6 @@
 import { createHash } from 'node:crypto';
 import { estimateTokens } from '../cost/cost';
-import type {
-  ChatDelta,
-  ChatInput,
-  ChatMessage,
-  ChatOutput,
-  ModelProviderAdapter,
-} from '../types';
+import type { ChatDelta, ChatInput, ChatMessage, ChatOutput, ModelProviderAdapter } from '../types';
 
 /**
  * Deterministic mock provider (Build Contract §7).
@@ -57,9 +51,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function isMockResponseKind(value: unknown): value is MockResponseKind {
-  return (
-    typeof value === 'string' && (MOCK_RESPONSE_KINDS as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (MOCK_RESPONSE_KINDS as readonly string[]).includes(value);
 }
 
 function resolveKind(metadata: Record<string, unknown> | undefined): MockResponseKind {
@@ -84,9 +76,7 @@ function excerptOf(messages: ChatMessage[]): string {
   if (content.length === 0) {
     return '(empty prompt)';
   }
-  return content.length > EXCERPT_MAX_LENGTH
-    ? `${content.slice(0, EXCERPT_MAX_LENGTH)}…`
-    : content;
+  return content.length > EXCERPT_MAX_LENGTH ? `${content.slice(0, EXCERPT_MAX_LENGTH)}…` : content;
 }
 
 function detectFilePaths(messages: ChatMessage[]): string[] {
@@ -109,9 +99,7 @@ function classNameFromPath(filePath: string): string {
   if (parts.length === 0) {
     return 'ExampleService';
   }
-  return parts
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join('');
+  return parts.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('');
 }
 
 /**
@@ -132,7 +120,7 @@ function buildUnifiedDiff(paths: string[]): string {
     const body = [
       `export class ${className} {`,
       '  // Idempotency guard: a repeated release request must be a no-op.',
-      "  released(status: string): boolean {",
+      '  released(status: string): boolean {',
       "    return status === 'released';",
       '  }',
     ];
@@ -280,11 +268,7 @@ const TEMPLATES: Record<MockResponseKind, (ctx: RenderContext) => string> = {
       '',
       `> ${excerpt}`,
       '',
-      pick(variant, [
-        'Key points, condensed:',
-        'The essentials:',
-        'In short:',
-      ]),
+      pick(variant, ['Key points, condensed:', 'The essentials:', 'In short:']),
       '',
       '- The scope is clear and small enough for a single iteration.',
       '- The main risk is a non-idempotent state transition.',
@@ -389,9 +373,7 @@ export class MockProvider implements ModelProviderAdapter {
       content,
       model: input.model ?? this.defaultModel,
       usage: {
-        inputTokens: estimateTokens(
-          input.messages.map((message) => message.content).join('\n'),
-        ),
+        inputTokens: estimateTokens(input.messages.map((message) => message.content).join('\n')),
         outputTokens: estimateTokens(content),
       },
       costCents: null,

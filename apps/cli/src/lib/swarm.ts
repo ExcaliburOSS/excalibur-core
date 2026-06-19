@@ -90,13 +90,18 @@ export async function decomposeTask(
       const e = entry as Record<string, unknown>;
       const instruction = typeof e['instruction'] === 'string' ? e['instruction'].trim() : '';
       if (instruction.length === 0) return null;
-      const title = typeof e['title'] === 'string' && e['title'].trim().length > 0 ? e['title'].trim() : `subtask ${index + 1}`;
+      const title =
+        typeof e['title'] === 'string' && e['title'].trim().length > 0
+          ? e['title'].trim()
+          : `subtask ${index + 1}`;
       return { id: `t${index + 1}`, title, instruction };
     })
     .filter((s): s is SwarmSubtask => s !== null)
     .slice(0, max);
   // Fallback: one lane that runs the whole task.
-  return subtasks.length > 0 ? subtasks : [{ id: 't1', title: task.slice(0, 60), instruction: task }];
+  return subtasks.length > 0
+    ? subtasks
+    : [{ id: 't1', title: task.slice(0, 60), instruction: task }];
 }
 
 /** Maps decomposed subtasks to the allocator's `Subtask[]` (all independent). */

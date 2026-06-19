@@ -238,7 +238,9 @@ function buildSteps(events: ExcaliburEvent[]): ReplayStep[] {
     const event = events[index] as ExcaliburEvent;
 
     if (event.type === 'phase_started') {
-      activePhaseName = str(event, 'name') ?? (event.phaseId != null ? phaseNames.get(event.phaseId) ?? null : null);
+      activePhaseName =
+        str(event, 'name') ??
+        (event.phaseId != null ? (phaseNames.get(event.phaseId) ?? null) : null);
     }
 
     if (event.type === 'model_call') {
@@ -252,8 +254,7 @@ function buildSteps(events: ExcaliburEvent[]): ReplayStep[] {
 
     // The phase name attributed to THIS event: prefer the event's own phaseId
     // mapping, fall back to the active phase tracked across the timeline.
-    const ownPhaseName =
-      event.phaseId != null ? phaseNames.get(event.phaseId) ?? null : null;
+    const ownPhaseName = event.phaseId != null ? (phaseNames.get(event.phaseId) ?? null) : null;
     const phaseName = ownPhaseName ?? activePhaseName;
 
     // Events replayed from cache by a fork carry `cached: true` — mark them so

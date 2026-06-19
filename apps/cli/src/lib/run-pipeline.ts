@@ -72,7 +72,8 @@ export interface RunTaskOptions {
 function formatEstimate(deps: CliDeps, est: RunEstimate): string {
   const cost = `~$${(est.estCostCents / 100).toFixed(2)}`;
   const secs = Math.round(est.estDurationMs / 1000);
-  const eta = secs < 60 ? `~${secs}s` : `~${Math.floor(secs / 60)}m${String(secs % 60).padStart(2, '0')}s`;
+  const eta =
+    secs < 60 ? `~${secs}s` : `~${Math.floor(secs / 60)}m${String(secs % 60).padStart(2, '0')}s`;
   const files = deps.t('run-pipeline.estimateFiles', { count: est.blastRadius });
   const basis =
     est.basedOnRuns > 0
@@ -115,11 +116,21 @@ export function describeEvent(t: Translator, event: ExcaliburEvent): string | nu
     case 'workflow_selected':
       return pc.dim(t('event.workflow', { workflow: str('workflow') || str('workflowId') }));
     case 'methodology_selected':
-      return pc.dim(t('event.methodology', { methodology: str('methodology') || str('methodologyId') }));
+      return pc.dim(
+        t('event.methodology', { methodology: str('methodology') || str('methodologyId') }),
+      );
     case 'phase_started':
-      return pc.cyan(t('event.phase-started', { name: str('name') || str('phaseId') || event.phaseId || 'phase' }));
+      return pc.cyan(
+        t('event.phase-started', {
+          name: str('name') || str('phaseId') || event.phaseId || 'phase',
+        }),
+      );
     case 'phase_completed':
-      return pc.green(t('event.phase-completed', { name: str('name') || str('phaseId') || event.phaseId || 'phase' }));
+      return pc.green(
+        t('event.phase-completed', {
+          name: str('name') || str('phaseId') || event.phaseId || 'phase',
+        }),
+      );
     case 'assistant_message':
       return pc.dim(t('event.assistant-message'));
     case 'model_call':
@@ -171,7 +182,11 @@ export function describeEvent(t: Translator, event: ExcaliburEvent): string | nu
     case 'claim': {
       const status = str('status');
       const text = t('event.claim', { statement: str('statement'), status });
-      return status === 'refuted' ? pc.red(text) : status === 'verified' ? pc.green(text) : pc.dim(text);
+      return status === 'refuted'
+        ? pc.red(text)
+        : status === 'verified'
+          ? pc.green(text)
+          : pc.dim(text);
     }
     case 'policy_decision': {
       const decision = str('decision') || 'decision';
@@ -180,7 +195,11 @@ export function describeEvent(t: Translator, event: ExcaliburEvent): string | nu
         decision,
         message: message.length > 0 ? ` — ${message}` : '',
       });
-      return decision === 'deny' ? pc.red(text) : decision === 'ask' ? pc.yellow(text) : pc.dim(text);
+      return decision === 'deny'
+        ? pc.red(text)
+        : decision === 'ask'
+          ? pc.yellow(text)
+          : pc.dim(text);
     }
     case 'task_update': {
       const tasks = Array.isArray(payload['tasks']) ? (payload['tasks'] as unknown[]) : [];
@@ -192,7 +211,9 @@ export function describeEvent(t: Translator, event: ExcaliburEvent): string | nu
     case 'compaction': {
       const num = (key: string): number =>
         typeof payload[key] === 'number' ? (payload[key] as number) : 0;
-      return pc.dim(t('event.compaction', { before: num('tokensBefore'), after: num('tokensAfter') }));
+      return pc.dim(
+        t('event.compaction', { before: num('tokensBefore'), after: num('tokensAfter') }),
+      );
     }
     case 'diagnostics': {
       const num = (key: string): number =>
@@ -267,7 +288,10 @@ export async function runTask(
     useIntentDefaults = false;
   }
 
-  const choose = (style: ExecutionStyle | undefined, level: AutonomyLevel | undefined): RunChoice => {
+  const choose = (
+    style: ExecutionStyle | undefined,
+    level: AutonomyLevel | undefined,
+  ): RunChoice => {
     const executionStyle: ExecutionStyle = style ?? 'team_default';
     const autonomyLevel: AutonomyLevel =
       level ??
@@ -306,9 +330,7 @@ export async function runTask(
 
   let choice = choose(explicitStyle, explicitLevel);
   if (options.workflow !== undefined && choice.workflowId !== options.workflow) {
-    throw new CliUsageError(
-      deps.t('run-pipeline.unknownWorkflow', { workflow: options.workflow }),
-    );
+    throw new CliUsageError(deps.t('run-pipeline.unknownWorkflow', { workflow: options.workflow }));
   }
 
   const tier = detectColorTier();
@@ -394,10 +416,22 @@ export async function runTask(
       const index = await deps.ui.select(
         deps.t('run-pipeline.executionModePrompt'),
         [
-          { label: deps.t('run-pipeline.modeFastLabel'), hint: deps.t('run-pipeline.modeFastHint') },
-          { label: deps.t('run-pipeline.modeCarefulLabel'), hint: deps.t('run-pipeline.modeCarefulHint') },
-          { label: deps.t('run-pipeline.modeStructuredLabel'), hint: deps.t('run-pipeline.modeStructuredHint') },
-          { label: deps.t('run-pipeline.modeExploreLabel'), hint: deps.t('run-pipeline.modeExploreHint') },
+          {
+            label: deps.t('run-pipeline.modeFastLabel'),
+            hint: deps.t('run-pipeline.modeFastHint'),
+          },
+          {
+            label: deps.t('run-pipeline.modeCarefulLabel'),
+            hint: deps.t('run-pipeline.modeCarefulHint'),
+          },
+          {
+            label: deps.t('run-pipeline.modeStructuredLabel'),
+            hint: deps.t('run-pipeline.modeStructuredHint'),
+          },
+          {
+            label: deps.t('run-pipeline.modeExploreLabel'),
+            hint: deps.t('run-pipeline.modeExploreHint'),
+          },
           { label: deps.t('run-pipeline.modeTeamDefaultLabel') },
         ],
         { defaultIndex: 4 },
@@ -423,7 +457,9 @@ export async function runTask(
       const source = diagnosticsContextSource(result);
       if (source !== null) {
         diagnosticSources.push(source);
-        deps.ui.warn(deps.t('review.typecheckErrors', { count: result.diagnostics.length || 'some' }));
+        deps.ui.warn(
+          deps.t('review.typecheckErrors', { count: result.diagnostics.length || 'some' }),
+        );
       } else if (result.ok === true) {
         deps.ui.success(deps.t('review.typecheckClean'));
       }
@@ -496,7 +532,9 @@ export async function runTask(
   const confirm = (question: string): Promise<boolean> => {
     if (inkHandle !== null) {
       // The approval renders inline in the Ink rail; y/Return/a → yes, n → no.
-      return inkHandle.requestApproval({ question, options: '[Y/n]' }).then((answer) => answer !== 'no');
+      return inkHandle
+        .requestApproval({ question, options: '[Y/n]' })
+        .then((answer) => answer !== 'no');
     }
     return deps.ui.confirm(question, { defaultYes: true });
   };
@@ -510,7 +548,9 @@ export async function runTask(
     adapter: new NativeAgentAdapter(),
     config,
     // Hard budget cap: a `--budget` flag (USD→cents) overrides config.budget.maxRunUsd.
-    ...(options.budgetUsd !== undefined ? { budgetCents: Math.round(options.budgetUsd * 100) } : {}),
+    ...(options.budgetUsd !== undefined
+      ? { budgetCents: Math.round(options.budgetUsd * 100) }
+      : {}),
     // Without a confirm fn the engine auto-approves ({ auto: true }) —
     // exactly what --yes / non-interactive runs want.
     ...(interactive ? { confirm } : {}),

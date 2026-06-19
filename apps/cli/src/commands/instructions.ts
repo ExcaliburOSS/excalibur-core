@@ -54,7 +54,9 @@ export function registerInstructionsCommand(program: Command, deps: CliDeps): vo
         deps.ui.json(sources);
         return;
       }
-      const project = sources.filter((source) => source.scope === 'project' && source.kind === 'instruction');
+      const project = sources.filter(
+        (source) => source.scope === 'project' && source.kind === 'instruction',
+      );
       const context = sources.filter((source) => source.kind === 'context');
       const skills = sources.filter((source) => source.kind === 'skill');
       const global = sources.filter((source) => source.scope === 'user_global');
@@ -181,7 +183,9 @@ export function registerInstructionsCommand(program: Command, deps: CliDeps): vo
       if (source.scope === 'user_global' && options.includeGlobal !== true) {
         // ISD §3/§7: user-global files are NEVER copied into the repository
         // without explicit consent — bare --yes is not enough.
-        throw new CliUsageError(deps.t('instructions.importGlobalBlocked', { id, path: source.path }));
+        throw new CliUsageError(
+          deps.t('instructions.importGlobalBlocked', { id, path: source.path }),
+        );
       }
 
       // For user-global sources --include-global is the explicit consent

@@ -89,7 +89,11 @@ describe('<RunView>', () => {
 
   it('shows a done marker when the run completed', () => {
     const phases = model().phases.map((p) => ({ ...p, state: 'completed' as const }));
-    const frame = frameOf({ model: model({ phases, done: true }), spinnerFrame: 0, useStatic: false });
+    const frame = frameOf({
+      model: model({ phases, done: true }),
+      spinnerFrame: 0,
+      useStatic: false,
+    });
     expect(frame).toContain('done');
   });
 
@@ -146,7 +150,12 @@ describe('<DiffView>', () => {
   });
 
   it('expanded: renders the diff body (added/removed lines)', () => {
-    const frame = diffFrame({ diff: SAMPLE_DIFF, expanded: true, colors: darkColors, tier: 'truecolor' });
+    const frame = diffFrame({
+      diff: SAMPLE_DIFF,
+      expanded: true,
+      colors: darkColors,
+      tier: 'truecolor',
+    });
     expect(frame).toContain('rate * amount');
     expect(frame).toContain('export const total');
   });
@@ -173,7 +182,13 @@ describe('<RunView> inline diff', () => {
           name: 'Implement',
           state: 'running',
           events: [
-            { text: 'patch generated', note: '+1 −1', tone: 'warn', kind: 'patch', diff: SAMPLE_DIFF },
+            {
+              text: 'patch generated',
+              note: '+1 −1',
+              tone: 'warn',
+              kind: 'patch',
+              diff: SAMPLE_DIFF,
+            },
           ],
         },
       ],

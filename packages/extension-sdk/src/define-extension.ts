@@ -40,10 +40,10 @@ export type ExcaliburExtension = Readonly<ExtensionDefinition>;
 function assertNonEmpty(def: Record<string, unknown>, field: 'id' | 'name' | 'version'): string {
   const value = def[field];
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new ExtensionDefinitionError(
-      `defineExtension requires a non-empty string "${field}"`,
-      { field, received: typeof value },
-    );
+    throw new ExtensionDefinitionError(`defineExtension requires a non-empty string "${field}"`, {
+      field,
+      received: typeof value,
+    });
   }
   return value;
 }
@@ -62,10 +62,10 @@ export function defineExtension(def: ExtensionDefinition): ExcaliburExtension {
   const record = def as unknown as Record<string, unknown>;
   const id = assertNonEmpty(record, 'id');
   if (/\s/.test(id)) {
-    throw new ExtensionDefinitionError(
-      `Extension id "${id}" must not contain whitespace`,
-      { field: 'id', value: id },
-    );
+    throw new ExtensionDefinitionError(`Extension id "${id}" must not contain whitespace`, {
+      field: 'id',
+      value: id,
+    });
   }
   const name = assertNonEmpty(record, 'name');
   const version = assertNonEmpty(record, 'version');
@@ -76,10 +76,10 @@ export function defineExtension(def: ExtensionDefinition): ExcaliburExtension {
     });
   }
   if (typeof record['register'] !== 'function') {
-    throw new ExtensionDefinitionError(
-      `Extension "${id}" must provide a register(ctx) function`,
-      { field: 'register', received: typeof record['register'] },
-    );
+    throw new ExtensionDefinitionError(`Extension "${id}" must provide a register(ctx) function`, {
+      field: 'register',
+      received: typeof record['register'],
+    });
   }
   const extension: ExtensionDefinition = {
     id,

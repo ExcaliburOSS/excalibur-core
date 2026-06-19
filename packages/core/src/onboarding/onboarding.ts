@@ -149,7 +149,10 @@ export function permissionEngineForConfig(config: ExcaliburConfig): PermissionEn
 
   const tools = { ...preset.permissions.tools, ...config.permissions?.tools };
   const blockedPaths = [
-    ...new Set([...(preset.permissions.blockedPaths ?? []), ...(config.permissions?.blockedPaths ?? [])]),
+    ...new Set([
+      ...(preset.permissions.blockedPaths ?? []),
+      ...(config.permissions?.blockedPaths ?? []),
+    ]),
   ];
   const detectedCommands = Object.values(config.commands ?? {}).filter(
     (command): command is string => typeof command === 'string' && command.length > 0,
@@ -194,15 +197,29 @@ interface SensitiveRule {
 
 /** Onboarding §6 sensitive-area keyword list. */
 const SENSITIVE_RULES: ReadonlyArray<SensitiveRule> = [
-  { area: 'auth', pattern: /\b(auth|authn|authz|authentication|authorization|login|logout|session|sso|oauth|jwt)\b/i },
+  {
+    area: 'auth',
+    pattern:
+      /\b(auth|authn|authz|authentication|authorization|login|logout|session|sso|oauth|jwt)\b/i,
+  },
   { area: 'billing', pattern: /\b(billing|invoice|invoicing|subscription|pricing)\b/i },
-  { area: 'payments', pattern: /\b(payment|payments|payout|escrow|charge|refund|checkout|stripe)\b/i },
+  {
+    area: 'payments',
+    pattern: /\b(payment|payments|payout|escrow|charge|refund|checkout|stripe)\b/i,
+  },
   { area: 'contracts/signing', pattern: /\b(signing|signature|e-?sign)\b/i },
-  { area: 'security', pattern: /\b(security|vulnerab\w*|exploit|secret|secrets|credential\w*|token|password|encryption|csrf|xss)\b/i },
+  {
+    area: 'security',
+    pattern:
+      /\b(security|vulnerab\w*|exploit|secret|secrets|credential\w*|token|password|encryption|csrf|xss)\b/i,
+  },
   { area: 'pii', pattern: /\b(pii|gdpr|personal data|privacy)\b/i },
   { area: 'legal', pattern: /\b(legal|compliance|consent|audit)\b/i },
   { area: 'migrations', pattern: /\b(migration|migrations|migrate|schema change)\b/i },
-  { area: 'infrastructure', pattern: /\b(infrastructure|terraform|kubernetes|k8s|helm|deploy pipeline|ci\/cd)\b/i },
+  {
+    area: 'infrastructure',
+    pattern: /\b(infrastructure|terraform|kubernetes|k8s|helm|deploy pipeline|ci\/cd)\b/i,
+  },
 ];
 
 const ALTERNATIVES_PATTERN =
@@ -277,7 +294,10 @@ function sensitiveAreasFor(
 }
 
 function isAmbiguous(task: string, matchedCategory: boolean): boolean {
-  const words = task.trim().split(/\s+/).filter((word) => word.length > 0);
+  const words = task
+    .trim()
+    .split(/\s+/)
+    .filter((word) => word.length > 0);
   return words.length < 3 || !matchedCategory;
 }
 

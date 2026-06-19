@@ -39,7 +39,11 @@ describe('discovery (D-7, discovery-core.md §6)', () => {
   });
 
   it('uses customer_feedback for --from-file inputs', async () => {
-    writeFileSync(join(repo, 'feedback.md'), 'Customers keep asking for renewal reminders.\n', 'utf8');
+    writeFileSync(
+      join(repo, 'feedback.md'),
+      'Customers keep asking for renewal reminders.\n',
+      'utf8',
+    );
     const cli = createTestCli({ cwd: repo });
     await cli.run('discovery', '--from-file', 'feedback.md', '--yes');
     const dirs = sessionDirs();

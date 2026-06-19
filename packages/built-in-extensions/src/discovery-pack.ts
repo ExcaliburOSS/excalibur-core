@@ -8,7 +8,11 @@ import {
   type RoleDefinition,
 } from '@excalibur/declarative-schemas';
 import type { Contribution, ExtensionManifest } from '@excalibur/extension-runtime';
-import { BUILT_IN_EXTENSION_VERSION, builtInContribution, type BuiltInExtensionPack } from './types';
+import {
+  BUILT_IN_EXTENSION_VERSION,
+  builtInContribution,
+  type BuiltInExtensionPack,
+} from './types';
 
 const EXTENSION_ID = 'discovery-pack';
 

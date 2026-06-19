@@ -215,7 +215,12 @@ function buildRecord(
   plan: CompactionPlan,
   rawSummary: string,
   structuredSummary: StructuredSummary,
-  options: { config: CompactionConfig; model?: string; locale?: string; redact?: (text: string) => string },
+  options: {
+    config: CompactionConfig;
+    model?: string;
+    locale?: string;
+    redact?: (text: string) => string;
+  },
 ): CompactionRecord {
   const redact = options.redact ?? redactSecrets;
   const summary = redact(rawSummary);

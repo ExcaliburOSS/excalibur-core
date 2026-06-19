@@ -110,7 +110,9 @@ describe('generateInitPlan (examples/demo-repo)', () => {
     expect(paths).toContain('.excalibur/models/providers.yaml');
     expect(paths).toContain('.excalibur/models/routing.yaml');
 
-    const providers = plan.files.find((file) => file.relPath === '.excalibur/models/providers.yaml');
+    const providers = plan.files.find(
+      (file) => file.relPath === '.excalibur/models/providers.yaml',
+    );
     const parsed = parseYaml(providers?.content ?? '') as {
       providers: { default: string; mock: { type: string } };
     };
@@ -128,18 +130,30 @@ describe('generateInitPlan (examples/demo-repo)', () => {
     for (const methodology of DEFAULT_METHODOLOGIES) {
       expect(paths).toContain(`.excalibur/methodologies/${methodology.id}.yaml`);
     }
-    expect(paths.filter((path) => path.startsWith('.excalibur/question-packs/')).length).toBeGreaterThan(0);
-    expect(paths.filter((path) => path.startsWith('.excalibur/prompts/')).length).toBeGreaterThan(0);
-    expect(paths.filter((path) => path.startsWith('.excalibur/artifacts/')).length).toBeGreaterThan(0);
-    expect(paths.filter((path) => path.startsWith('.excalibur/reports/')).length).toBeGreaterThan(0);
+    expect(
+      paths.filter((path) => path.startsWith('.excalibur/question-packs/')).length,
+    ).toBeGreaterThan(0);
+    expect(paths.filter((path) => path.startsWith('.excalibur/prompts/')).length).toBeGreaterThan(
+      0,
+    );
+    expect(paths.filter((path) => path.startsWith('.excalibur/artifacts/')).length).toBeGreaterThan(
+      0,
+    );
+    expect(paths.filter((path) => path.startsWith('.excalibur/reports/')).length).toBeGreaterThan(
+      0,
+    );
     expect(paths.filter((path) => path.startsWith('.excalibur/roles/')).length).toBeGreaterThan(0);
-    expect(paths.filter((path) => path.startsWith('.excalibur/command-mappings/')).length).toBeGreaterThan(0);
+    expect(
+      paths.filter((path) => path.startsWith('.excalibur/command-mappings/')).length,
+    ).toBeGreaterThan(0);
     expect(paths).toContain('.excalibur/memory/decisions.md');
     expect(paths).toContain('.excalibur/memory/known-risks.md');
     expect(paths).toContain('.excalibur/memory/domain-glossary.md');
 
     // Exported workflow files are the authored YAML sources.
-    const fastFix = plan.files.find((file) => file.relPath === '.excalibur/workflows/fast-fix.yaml');
+    const fastFix = plan.files.find(
+      (file) => file.relPath === '.excalibur/workflows/fast-fix.yaml',
+    );
     expect(fastFix?.content).toContain('id: fast-fix');
   });
 });

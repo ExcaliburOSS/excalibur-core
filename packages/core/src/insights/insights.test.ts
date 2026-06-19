@@ -21,8 +21,22 @@ function run(partial: Partial<RunInsight> & Pick<RunInsight, 'id'>): RunInsight 
 describe('aggregateInsights', () => {
   it('aggregates spend, tokens, status, and the completion rate', () => {
     const report = aggregateInsights([
-      run({ id: 'a', status: 'completed', costCents: 10, inputTokens: 100, outputTokens: 50, modelCalls: 2 }),
-      run({ id: 'b', status: 'failed', costCents: 6, inputTokens: 40, outputTokens: 20, modelCalls: 1 }),
+      run({
+        id: 'a',
+        status: 'completed',
+        costCents: 10,
+        inputTokens: 100,
+        outputTokens: 50,
+        modelCalls: 2,
+      }),
+      run({
+        id: 'b',
+        status: 'failed',
+        costCents: 6,
+        inputTokens: 40,
+        outputTokens: 20,
+        modelCalls: 1,
+      }),
       run({ id: 'c', status: 'cancelled', costCents: 0 }),
     ]);
 

@@ -1,9 +1,5 @@
 import { ProviderError } from '@excalibur/shared';
-import type {
-  NormalizedWorkItem,
-  NormalizedWorkItemUser,
-  WorkItemProviderType,
-} from './types';
+import type { NormalizedWorkItem, NormalizedWorkItemUser, WorkItemProviderType } from './types';
 import type {
   AddWorkItemCommentInput,
   GetWorkItemInput,

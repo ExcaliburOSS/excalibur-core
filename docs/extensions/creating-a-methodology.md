@@ -12,31 +12,31 @@ schema of the 14 built-ins (`@excalibur/workflow-schema`).
 
 ```yaml
 id: safe-refactor-strict
-type: methodology            # optional in .excalibur/methodologies/, recommended
+type: methodology # optional in .excalibur/methodologies/, recommended
 name: Safe Refactor (Strict)
-category: delivery           # free-form; defaults to 'delivery'; Discovery uses 'pre_work'
-description: >               # required
+category: delivery # free-form; defaults to 'delivery'; Discovery uses 'pre_work'
+description: > # required
   Refactor with no intended behavior change, gated by humans at both ends.
-recommendedAutonomyLevels: [2, 3]     # 0..4
+recommendedAutonomyLevels: [2, 3] # 0..4
 useWhen:
   - No behavior change is intended
   - The code is load-bearing and weakly tested
 avoidWhen:
   - Behavior changes are expected
 defaultWorkflow: safe-refactor-strict
-workflows: [safe-refactor-strict]     # all workflows this methodology may use
-phases:                      # conceptual phase names (not executable)
+workflows: [safe-refactor-strict] # all workflows this methodology may use
+phases: # conceptual phase names (not executable)
   - scope
   - invariants
   - refactor
 artifacts: [scope.md, invariants.md, review.md]
-questions:                   # questions the team should answer before starting
+questions: # questions the team should answer before starting
   - id: invariants
     text: Which observable behaviors must remain identical?
 agentRoles: [planner, architect, implementer, reviewer]
-approval:                    # free-form keys → required|optional|recommended|none
+approval: # free-form keys → required|optional|recommended|none
   beforeApply: required
-riskProfile: medium          # low|medium|high, defaults to medium
+riskProfile: medium # low|medium|high, defaults to medium
 ```
 
 Field reference: `id`, `name`, `description` are required; everything else

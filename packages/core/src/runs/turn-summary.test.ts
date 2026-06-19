@@ -79,7 +79,10 @@ describe('buildTurnSummary', () => {
       manager.appendEvent(created.id, event);
     }
     if (opts?.complete !== false) {
-      manager.updateRecord(created.id, { status: 'completed', completedAt: new Date().toISOString() });
+      manager.updateRecord(created.id, {
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+      });
     }
     return buildTurnSummary(loadReplay(repoRoot, created.id));
   }
@@ -92,10 +95,29 @@ describe('buildTurnSummary', () => {
         type: 'model_call',
         payload: { model: 'mock', inputTokens: 900, outputTokens: 260, costCents: 4 },
       }),
-      createEvent({ runId, type: 'patch_generated', payload: { diff: `${ADD_DIFF}\n${MOD_DIFF}`, filesAffected: ['src/billing/charge.test.ts', 'src/billing/charge.ts'] } }),
-      createEvent({ runId, type: 'command_completed', payload: { command: 'npm test', exitCode: 0 } }),
-      createEvent({ runId, type: 'test_result', payload: { status: 'passed', passed: 142, total: 142 } }),
-      createEvent({ runId, type: 'assistant_message', payload: { content: 'Added a guard + test.' } }),
+      createEvent({
+        runId,
+        type: 'patch_generated',
+        payload: {
+          diff: `${ADD_DIFF}\n${MOD_DIFF}`,
+          filesAffected: ['src/billing/charge.test.ts', 'src/billing/charge.ts'],
+        },
+      }),
+      createEvent({
+        runId,
+        type: 'command_completed',
+        payload: { command: 'npm test', exitCode: 0 },
+      }),
+      createEvent({
+        runId,
+        type: 'test_result',
+        payload: { status: 'passed', passed: 142, total: 142 },
+      }),
+      createEvent({
+        runId,
+        type: 'assistant_message',
+        payload: { content: 'Added a guard + test.' },
+      }),
     ]);
 
     expect(summary.tier).toBe('action');
@@ -111,11 +133,27 @@ describe('buildTurnSummary', () => {
 
   it('classifies a failed turn and points at the failing checks', () => {
     const summary = run((runId) => [
-      createEvent({ runId, type: 'model_call', payload: { model: 'mock', inputTokens: 700, outputTokens: 190, costCents: 3 } }),
-      createEvent({ runId, type: 'patch_generated', payload: { diff: MOD_DIFF, filesAffected: ['src/billing/charge.ts'] } }),
-      createEvent({ runId, type: 'command_completed', payload: { command: 'npm test', exitCode: 1 } }),
+      createEvent({
+        runId,
+        type: 'model_call',
+        payload: { model: 'mock', inputTokens: 700, outputTokens: 190, costCents: 3 },
+      }),
+      createEvent({
+        runId,
+        type: 'patch_generated',
+        payload: { diff: MOD_DIFF, filesAffected: ['src/billing/charge.ts'] },
+      }),
+      createEvent({
+        runId,
+        type: 'command_completed',
+        payload: { command: 'npm test', exitCode: 1 },
+      }),
       createEvent({ runId, type: 'test_result', payload: { status: 'failed' } }),
-      createEvent({ runId, type: 'assistant_message', payload: { content: 'Two tests still fail.' } }),
+      createEvent({
+        runId,
+        type: 'assistant_message',
+        payload: { content: 'Two tests still fail.' },
+      }),
     ]);
 
     expect(summary.tier).toBe('failed');
@@ -125,8 +163,16 @@ describe('buildTurnSummary', () => {
 
   it('classifies an answer turn (no changes) with no next hint', () => {
     const summary = run((runId) => [
-      createEvent({ runId, type: 'model_call', payload: { model: 'mock', inputTokens: 300, outputTokens: 80, costCents: 0 } }),
-      createEvent({ runId, type: 'assistant_message', payload: { content: 'It uses selectWorkflow.' } }),
+      createEvent({
+        runId,
+        type: 'model_call',
+        payload: { model: 'mock', inputTokens: 300, outputTokens: 80, costCents: 0 },
+      }),
+      createEvent({
+        runId,
+        type: 'assistant_message',
+        payload: { content: 'It uses selectWorkflow.' },
+      }),
     ]);
 
     expect(summary.tier).toBe('answer');
@@ -136,9 +182,21 @@ describe('buildTurnSummary', () => {
 
   it('marks a partial turn (truncated) and counts declined approvals', () => {
     const summary = run((runId) => [
-      createEvent({ runId, type: 'model_call', payload: { model: 'mock', inputTokens: 500, outputTokens: 120, costCents: 2 } }),
-      createEvent({ runId, type: 'policy_decision', payload: { kind: 'confirmation', decision: 'deny', tool: 'write_file' } }),
-      createEvent({ runId, type: 'assistant_message', payload: { content: 'Stopped early.', truncated: true } }),
+      createEvent({
+        runId,
+        type: 'model_call',
+        payload: { model: 'mock', inputTokens: 500, outputTokens: 120, costCents: 2 },
+      }),
+      createEvent({
+        runId,
+        type: 'policy_decision',
+        payload: { kind: 'confirmation', decision: 'deny', tool: 'write_file' },
+      }),
+      createEvent({
+        runId,
+        type: 'assistant_message',
+        payload: { content: 'Stopped early.', truncated: true },
+      }),
     ]);
 
     expect(summary.tier).toBe('partial');
@@ -147,8 +205,16 @@ describe('buildTurnSummary', () => {
 
   it('recovers the file list from filesAffected when the diff is empty (mock)', () => {
     const summary = run((runId) => [
-      createEvent({ runId, type: 'model_call', payload: { model: 'mock', inputTokens: 400, outputTokens: 100, costCents: 1 } }),
-      createEvent({ runId, type: 'patch_generated', payload: { diff: '', filesAffected: ['src/a.ts', 'src/b.ts'] } }),
+      createEvent({
+        runId,
+        type: 'model_call',
+        payload: { model: 'mock', inputTokens: 400, outputTokens: 100, costCents: 1 },
+      }),
+      createEvent({
+        runId,
+        type: 'patch_generated',
+        payload: { diff: '', filesAffected: ['src/a.ts', 'src/b.ts'] },
+      }),
       createEvent({ runId, type: 'assistant_message', payload: { content: 'done' } }),
     ]);
 
@@ -159,9 +225,21 @@ describe('buildTurnSummary', () => {
 
   it('serializes to a summary.md with the narrative, changes and checks', () => {
     const summary = run((runId) => [
-      createEvent({ runId, type: 'patch_generated', payload: { diff: MOD_DIFF, filesAffected: ['src/billing/charge.ts'] } }),
-      createEvent({ runId, type: 'test_result', payload: { status: 'passed', passed: 1, total: 1 } }),
-      createEvent({ runId, type: 'assistant_message', payload: { content: 'Guarded the charge path.' } }),
+      createEvent({
+        runId,
+        type: 'patch_generated',
+        payload: { diff: MOD_DIFF, filesAffected: ['src/billing/charge.ts'] },
+      }),
+      createEvent({
+        runId,
+        type: 'test_result',
+        payload: { status: 'passed', passed: 1, total: 1 },
+      }),
+      createEvent({
+        runId,
+        type: 'assistant_message',
+        payload: { content: 'Guarded the charge path.' },
+      }),
     ]);
     const md = turnSummaryToMarkdown(summary);
     expect(md).toContain('Guarded the charge path.');

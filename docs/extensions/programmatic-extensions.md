@@ -26,11 +26,12 @@ export (a CommonJS `module.exports` works too).
 import { defineExtension } from '@excalibur/extension-sdk';
 
 export default defineExtension({
-  id: 'linear',            // must match the manifest id
+  id: 'linear', // must match the manifest id
   name: 'Linear',
   version: '0.1.0',
   description: 'Optional.',
-  register(ctx) {          // sync or async; called once at load time
+  register(ctx) {
+    // sync or async; called once at load time
     ctx.workItems.registerProvider(new LinearWorkItemProvider());
   },
 });
@@ -47,22 +48,22 @@ code `extension_definition`). If the exported `id` differs from the manifest
 `register(ctx)` receives the context with 11 typed registries plus hooks,
 logger and config:
 
-| Property | Registers | Method |
-|---|---|---|
-| `ctx.methodologies` | declarative `methodology` definitions | `register(definition)` |
-| `ctx.workflows` | declarative `workflow` definitions | `register(definition)` |
-| `ctx.workItems` | `WorkItemProvider` (from `@excalibur/work-items`) | `registerProvider(provider)` |
-| `ctx.communication` | `CommunicationProvider` | `registerProvider(provider)` |
-| `ctx.models` | `ModelProviderAdapter` (from `@excalibur/model-gateway`) | `registerProvider(provider)` |
-| `ctx.agents` | `AgentAdapter` (from `@excalibur/agent-runtime`) | `registerAdapter(adapter)` |
-| `ctx.tools` | `AgentTool` | `registerTool(tool)` |
-| `ctx.contextSources` | `ContextSource` | `registerSource(source)` |
-| `ctx.policies` | `PolicyEvaluator` | `registerEvaluator(evaluator)` |
-| `ctx.reports` | `ReportGenerator` | `registerGenerator(generator)` |
-| `ctx.exporters` | `Exporter` | `registerExporter(exporter)` |
-| `ctx.hooks` | lifecycle hook handlers | `on(hookName, handler)` |
-| `ctx.logger` | — | `info/warn/error(msg)` |
-| `ctx.config` | — | `Record<string, unknown>` resolved by the host against the manifest's `configSchema` |
+| Property             | Registers                                                | Method                                                                               |
+| -------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `ctx.methodologies`  | declarative `methodology` definitions                    | `register(definition)`                                                               |
+| `ctx.workflows`      | declarative `workflow` definitions                       | `register(definition)`                                                               |
+| `ctx.workItems`      | `WorkItemProvider` (from `@excalibur/work-items`)        | `registerProvider(provider)`                                                         |
+| `ctx.communication`  | `CommunicationProvider`                                  | `registerProvider(provider)`                                                         |
+| `ctx.models`         | `ModelProviderAdapter` (from `@excalibur/model-gateway`) | `registerProvider(provider)`                                                         |
+| `ctx.agents`         | `AgentAdapter` (from `@excalibur/agent-runtime`)         | `registerAdapter(adapter)`                                                           |
+| `ctx.tools`          | `AgentTool`                                              | `registerTool(tool)`                                                                 |
+| `ctx.contextSources` | `ContextSource`                                          | `registerSource(source)`                                                             |
+| `ctx.policies`       | `PolicyEvaluator`                                        | `registerEvaluator(evaluator)`                                                       |
+| `ctx.reports`        | `ReportGenerator`                                        | `registerGenerator(generator)`                                                       |
+| `ctx.exporters`      | `Exporter`                                               | `registerExporter(exporter)`                                                         |
+| `ctx.hooks`          | lifecycle hook handlers                                  | `on(hookName, handler)`                                                              |
+| `ctx.logger`         | —                                                        | `info/warn/error(msg)`                                                               |
+| `ctx.config`         | —                                                        | `Record<string, unknown>` resolved by the host against the manifest's `configSchema` |
 
 Every registry is a thin typed wrapper over the runtime's
 `ContributionRegistry`: it validates the contribution's identity (non-empty

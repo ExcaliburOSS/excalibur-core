@@ -540,23 +540,81 @@ export const DEFAULT_METHODOLOGIES: ReadonlyArray<{
   yaml: string;
   definition: Methodology;
 }> = [
-  { id: 'lightweight', yaml: LIGHTWEIGHT_METHODOLOGY_YAML, definition: parseMethodologyYaml(LIGHTWEIGHT_METHODOLOGY_YAML) },
-  { id: 'review-first', yaml: REVIEW_FIRST_METHODOLOGY_YAML, definition: parseMethodologyYaml(REVIEW_FIRST_METHODOLOGY_YAML) },
-  { id: 'patch-proposal', yaml: PATCH_PROPOSAL_METHODOLOGY_YAML, definition: parseMethodologyYaml(PATCH_PROPOSAL_METHODOLOGY_YAML) },
-  { id: 'fast-fix', yaml: FAST_FIX_METHODOLOGY_YAML, definition: parseMethodologyYaml(FAST_FIX_METHODOLOGY_YAML) },
-  { id: 'plan-then-execute', yaml: PLAN_THEN_EXECUTE_METHODOLOGY_YAML, definition: parseMethodologyYaml(PLAN_THEN_EXECUTE_METHODOLOGY_YAML) },
-  { id: 'spec-driven', yaml: SPEC_DRIVEN_METHODOLOGY_YAML, definition: parseMethodologyYaml(SPEC_DRIVEN_METHODOLOGY_YAML) },
-  { id: 'tdd-agentic', yaml: TDD_AGENTIC_METHODOLOGY_YAML, definition: parseMethodologyYaml(TDD_AGENTIC_METHODOLOGY_YAML) },
-  { id: 'safe-refactor', yaml: SAFE_REFACTOR_METHODOLOGY_YAML, definition: parseMethodologyYaml(SAFE_REFACTOR_METHODOLOGY_YAML) },
-  { id: 'security-first', yaml: SECURITY_FIRST_METHODOLOGY_YAML, definition: parseMethodologyYaml(SECURITY_FIRST_METHODOLOGY_YAML) },
-  { id: 'migration', yaml: MIGRATION_METHODOLOGY_YAML, definition: parseMethodologyYaml(MIGRATION_METHODOLOGY_YAML) },
-  { id: 'explore-then-choose', yaml: EXPLORE_THEN_CHOOSE_METHODOLOGY_YAML, definition: parseMethodologyYaml(EXPLORE_THEN_CHOOSE_METHODOLOGY_YAML) },
-  { id: 'human-gated', yaml: HUMAN_GATED_METHODOLOGY_YAML, definition: parseMethodologyYaml(HUMAN_GATED_METHODOLOGY_YAML) },
-  { id: 'discovery', yaml: DISCOVERY_METHODOLOGY_YAML, definition: parseMethodologyYaml(DISCOVERY_METHODOLOGY_YAML) },
-  { id: 'agentic-agile-light', yaml: AGENTIC_AGILE_LIGHT_METHODOLOGY_YAML, definition: parseMethodologyYaml(AGENTIC_AGILE_LIGHT_METHODOLOGY_YAML) },
+  {
+    id: 'lightweight',
+    yaml: LIGHTWEIGHT_METHODOLOGY_YAML,
+    definition: parseMethodologyYaml(LIGHTWEIGHT_METHODOLOGY_YAML),
+  },
+  {
+    id: 'review-first',
+    yaml: REVIEW_FIRST_METHODOLOGY_YAML,
+    definition: parseMethodologyYaml(REVIEW_FIRST_METHODOLOGY_YAML),
+  },
+  {
+    id: 'patch-proposal',
+    yaml: PATCH_PROPOSAL_METHODOLOGY_YAML,
+    definition: parseMethodologyYaml(PATCH_PROPOSAL_METHODOLOGY_YAML),
+  },
+  {
+    id: 'fast-fix',
+    yaml: FAST_FIX_METHODOLOGY_YAML,
+    definition: parseMethodologyYaml(FAST_FIX_METHODOLOGY_YAML),
+  },
+  {
+    id: 'plan-then-execute',
+    yaml: PLAN_THEN_EXECUTE_METHODOLOGY_YAML,
+    definition: parseMethodologyYaml(PLAN_THEN_EXECUTE_METHODOLOGY_YAML),
+  },
+  {
+    id: 'spec-driven',
+    yaml: SPEC_DRIVEN_METHODOLOGY_YAML,
+    definition: parseMethodologyYaml(SPEC_DRIVEN_METHODOLOGY_YAML),
+  },
+  {
+    id: 'tdd-agentic',
+    yaml: TDD_AGENTIC_METHODOLOGY_YAML,
+    definition: parseMethodologyYaml(TDD_AGENTIC_METHODOLOGY_YAML),
+  },
+  {
+    id: 'safe-refactor',
+    yaml: SAFE_REFACTOR_METHODOLOGY_YAML,
+    definition: parseMethodologyYaml(SAFE_REFACTOR_METHODOLOGY_YAML),
+  },
+  {
+    id: 'security-first',
+    yaml: SECURITY_FIRST_METHODOLOGY_YAML,
+    definition: parseMethodologyYaml(SECURITY_FIRST_METHODOLOGY_YAML),
+  },
+  {
+    id: 'migration',
+    yaml: MIGRATION_METHODOLOGY_YAML,
+    definition: parseMethodologyYaml(MIGRATION_METHODOLOGY_YAML),
+  },
+  {
+    id: 'explore-then-choose',
+    yaml: EXPLORE_THEN_CHOOSE_METHODOLOGY_YAML,
+    definition: parseMethodologyYaml(EXPLORE_THEN_CHOOSE_METHODOLOGY_YAML),
+  },
+  {
+    id: 'human-gated',
+    yaml: HUMAN_GATED_METHODOLOGY_YAML,
+    definition: parseMethodologyYaml(HUMAN_GATED_METHODOLOGY_YAML),
+  },
+  {
+    id: 'discovery',
+    yaml: DISCOVERY_METHODOLOGY_YAML,
+    definition: parseMethodologyYaml(DISCOVERY_METHODOLOGY_YAML),
+  },
+  {
+    id: 'agentic-agile-light',
+    yaml: AGENTIC_AGILE_LIGHT_METHODOLOGY_YAML,
+    definition: parseMethodologyYaml(AGENTIC_AGILE_LIGHT_METHODOLOGY_YAML),
+  },
 ];
 
-const methodologiesById = new Map(DEFAULT_METHODOLOGIES.map((entry) => [entry.id, entry.definition]));
+const methodologiesById = new Map(
+  DEFAULT_METHODOLOGIES.map((entry) => [entry.id, entry.definition]),
+);
 
 /** Look up a built-in methodology definition by id. */
 export function getDefaultMethodology(id: string): Methodology | undefined {

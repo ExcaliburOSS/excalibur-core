@@ -84,7 +84,9 @@ describe('selectWorkflow', () => {
 
     it('L2 → propose-patch (refactor → safe-refactor)', () => {
       for (const style of styles) {
-        expect(select({ autonomyLevel: 2, executionStyle: style }).workflowId).toBe('propose-patch');
+        expect(select({ autonomyLevel: 2, executionStyle: style }).workflowId).toBe(
+          'propose-patch',
+        );
       }
       expect(
         select({ autonomyLevel: 2, executionStyle: 'fast', taskType: 'refactor' }).workflowId,
@@ -132,7 +134,9 @@ describe('selectWorkflow', () => {
       expect(select({ autonomyLevel: 4, executionStyle: 'explore' }).workflowId).toBe(
         'explore-alternatives',
       );
-      expect(select({ autonomyLevel: 4, executionStyle: 'careful' }).workflowId).toBe('human-gated');
+      expect(select({ autonomyLevel: 4, executionStyle: 'careful' }).workflowId).toBe(
+        'human-gated',
+      );
       for (const style of ['fast', 'team_default', 'structured', 'custom'] as ExecutionStyle[]) {
         expect(select({ autonomyLevel: 4, executionStyle: style }).workflowId).toBe(
           'structured-feature',
@@ -147,7 +151,8 @@ describe('selectWorkflow', () => {
         select({ autonomyLevel: 4, executionStyle: 'fast', taskType: 'security' }).workflowId,
       ).toBe('security-review');
       expect(
-        select({ autonomyLevel: 4, executionStyle: 'structured', taskType: 'migration' }).workflowId,
+        select({ autonomyLevel: 4, executionStyle: 'structured', taskType: 'migration' })
+          .workflowId,
       ).toBe('migration');
       // An explicit explore/careful style still wins over taskType.
       expect(

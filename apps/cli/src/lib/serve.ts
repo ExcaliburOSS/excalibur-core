@@ -87,11 +87,18 @@ function route(repoRoot: string, url: URL): Json | Html | 'sse' | null {
         Math.max(0, Number.parseInt(url.searchParams.get('after') ?? '0', 10) || 0),
         events.length,
       );
-      const limit = Math.min(5000, Math.max(1, Number.parseInt(url.searchParams.get('limit') ?? '5000', 10) || 5000));
+      const limit = Math.min(
+        5000,
+        Math.max(1, Number.parseInt(url.searchParams.get('limit') ?? '5000', 10) || 5000),
+      );
       const slice = events.slice(after, after + limit);
       return {
         status: 200,
-        body: { events: slice, total: events.length, nextCursor: Math.min(after + slice.length, events.length) },
+        body: {
+          events: slice,
+          total: events.length,
+          nextCursor: Math.min(after + slice.length, events.length),
+        },
       };
     }
     // The run detail: record + the reduced rail (live = scrub = replay = web).
@@ -104,12 +111,7 @@ function route(repoRoot: string, url: URL): Json | Html | 'sse' | null {
 }
 
 /** Streams a run's events as SSE: replay all, then tail appended lines until done. */
-function streamRun(
-  repoRoot: string,
-  id: string,
-  res: ServerResponse,
-  pollMs: number,
-): void {
+function streamRun(repoRoot: string, id: string, res: ServerResponse, pollMs: number): void {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',

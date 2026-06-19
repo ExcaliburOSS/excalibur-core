@@ -105,7 +105,11 @@ describe('classifyTaskIntent', () => {
       },
     });
     // "src/database.ts" merely CONTAINS "src/data" — must not read as sensitive.
-    const falsePositive = classifyTaskIntent('Refactor src/database.ts pagination', withSensitive, {});
+    const falsePositive = classifyTaskIntent(
+      'Refactor src/database.ts pagination',
+      withSensitive,
+      {},
+    );
     expect(falsePositive.sensitiveAreas).not.toContain('src/data');
     expect(falsePositive.sensitive).toBe(false);
     // A real path-boundary mention IS flagged.
@@ -139,11 +143,7 @@ describe('classifyTaskIntent', () => {
   });
 
   it('classifies alternative-seeking tasks as explore-alternatives', () => {
-    const intent = classifyTaskIntent(
-      'Explore approaches for contract versioning',
-      analysis,
-      {},
-    );
+    const intent = classifyTaskIntent('Explore approaches for contract versioning', analysis, {});
     expect(intent.taskType).toBe('alternatives');
     expect(intent.recommendedWorkflow).toBe('explore-alternatives');
     expect(intent.recommendedAutonomy).toBe(3);

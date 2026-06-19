@@ -168,18 +168,18 @@ Agentic Agile commands (same parser):
 
 Command → action mapping (used by Enterprise):
 
-| Command | Creates | autonomyLevel / notes |
-|---|---|---|
-| refine | AssistantInteraction `work_item_refinement` | 0 |
-| plan | AssistantInteraction `work_item_plan` | 0 |
-| review | AssistantInteraction `work_item_review` | 0 |
-| suggest-patch | PatchRequest | 2 |
-| generate-tests | PatchRequest (default) or AgentRun per config | 2 / 3 |
-| implement | AgentRun | 3, executionStyle `team_default` |
-| careful | AgentRun | 4, executionStyle `careful` |
-| explore | AssistantInteraction (alternatives) by default, AgentRun if requested | — |
-| status | comment with linked runs/patches/interactions | — |
-| cancel | cancel active run if permitted | — |
+| Command        | Creates                                                               | autonomyLevel / notes            |
+| -------------- | --------------------------------------------------------------------- | -------------------------------- |
+| refine         | AssistantInteraction `work_item_refinement`                           | 0                                |
+| plan           | AssistantInteraction `work_item_plan`                                 | 0                                |
+| review         | AssistantInteraction `work_item_review`                               | 0                                |
+| suggest-patch  | PatchRequest                                                          | 2                                |
+| generate-tests | PatchRequest (default) or AgentRun per config                         | 2 / 3                            |
+| implement      | AgentRun                                                              | 3, executionStyle `team_default` |
+| careful        | AgentRun                                                              | 4, executionStyle `careful`      |
+| explore        | AssistantInteraction (alternatives) by default, AgentRun if requested | —                                |
+| status         | comment with linked runs/patches/interactions                         | —                                |
+| cancel         | cancel active run if permitted                                        | —                                |
 
 Optional flags: `--repo <name>`, `--branch <name>`, `--workflow <key>`, `--output <type>`, plus bare flags such as `--branch` on generate-tests. Examples:
 
@@ -195,6 +195,7 @@ Optional flags: `--repo <name>`, `--branch <name>`, `--workflow <key>`, `--outpu
 Templates rendered with `{{variable}}` placeholders:
 
 **run_started**
+
 ```text
 Excalibur started an agentic run.
 
@@ -208,6 +209,7 @@ Run: {{runUrl}}
 ```
 
 **plan_generated**
+
 ```text
 Excalibur generated an implementation plan.
 
@@ -217,6 +219,7 @@ Run/Interaction: {{url}}
 ```
 
 **patch_suggested**
+
 ```text
 Excalibur generated a patch suggestion.
 
@@ -230,6 +233,7 @@ Patch: {{patchUrl}}
 ```
 
 **pr_opened**
+
 ```text
 Excalibur opened a pull request.
 
@@ -241,6 +245,7 @@ Summary:
 ```
 
 **run_failed**
+
 ```text
 Excalibur run failed.
 
@@ -251,6 +256,7 @@ Run: {{runUrl}}
 ```
 
 **need_repository**
+
 ```text
 Excalibur needs a target repository before it can continue.
 
@@ -259,6 +265,7 @@ Please use:
 ```
 
 **identity_not_verified**
+
 ```text
 Excalibur could not verify your identity. Please connect your Excalibur account before running this command.
 ```

@@ -60,7 +60,13 @@ describe('replay time-machine model', () => {
       createEvent({
         runId,
         type: 'model_call',
-        payload: { model: 'mock-model', kind: 'patch', inputTokens: 1200, outputTokens: 340, costCents: 5 },
+        payload: {
+          model: 'mock-model',
+          kind: 'patch',
+          inputTokens: 1200,
+          outputTokens: 340,
+          costCents: 5,
+        },
         phaseId: PHASE_IMPL,
       }),
       createEvent({
@@ -96,7 +102,13 @@ describe('replay time-machine model', () => {
       createEvent({
         runId,
         type: 'model_call',
-        payload: { model: 'mock-model', kind: 'patch', inputTokens: 800, outputTokens: 120, costCents: 3 },
+        payload: {
+          model: 'mock-model',
+          kind: 'patch',
+          inputTokens: 800,
+          outputTokens: 120,
+          costCents: 3,
+        },
         phaseId: PHASE_VERIFY,
       }),
       createEvent({
@@ -242,8 +254,16 @@ describe('replay time-machine model', () => {
 
   it('round-trips annotations (add → load)', () => {
     expect(loadAnnotations(repoRoot, runId)).toEqual([]);
-    const a1 = addAnnotation(repoRoot, runId, { stepIndex: 3, note: 'this is the fix', at: '2026-06-14T10:00:00.000Z' });
-    const a2 = addAnnotation(repoRoot, runId, { stepIndex: 7, note: 'tests fail here', at: '2026-06-14T10:01:00.000Z' });
+    const a1 = addAnnotation(repoRoot, runId, {
+      stepIndex: 3,
+      note: 'this is the fix',
+      at: '2026-06-14T10:00:00.000Z',
+    });
+    const a2 = addAnnotation(repoRoot, runId, {
+      stepIndex: 7,
+      note: 'tests fail here',
+      at: '2026-06-14T10:01:00.000Z',
+    });
     expect(a1.stepIndex).toBe(3);
     expect(a2.note).toBe('tests fail here');
 

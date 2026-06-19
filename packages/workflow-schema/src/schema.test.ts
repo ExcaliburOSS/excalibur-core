@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  methodologySchema,
-  workflowDefinitionSchema,
-  workflowPhaseSchema,
-} from './schema';
+import { methodologySchema, workflowDefinitionSchema, workflowPhaseSchema } from './schema';
 
 const minimalPhase = { id: 'review', name: 'Review', type: 'agent_review' } as const;
 
@@ -34,7 +30,11 @@ describe('workflowPhaseSchema', () => {
   });
 
   it("accepts agents: 'auto' (swarm auto-sizing) and a numeric override + parallelism", () => {
-    const auto = workflowPhaseSchema.parse({ ...minimalPhase, agents: 'auto', parallelism: 'parallel' });
+    const auto = workflowPhaseSchema.parse({
+      ...minimalPhase,
+      agents: 'auto',
+      parallelism: 'parallel',
+    });
     expect(auto.agents).toBe('auto');
     expect(auto.parallelism).toBe('parallel');
     const capped = workflowPhaseSchema.parse({ ...minimalPhase, agents: 3 });
@@ -43,7 +43,9 @@ describe('workflowPhaseSchema', () => {
 
   it('rejects agents: 0 and an unknown parallelism', () => {
     expect(() => workflowPhaseSchema.parse({ ...minimalPhase, agents: 0 })).toThrow();
-    expect(() => workflowPhaseSchema.parse({ ...minimalPhase, parallelism: 'concurrent' })).toThrow();
+    expect(() =>
+      workflowPhaseSchema.parse({ ...minimalPhase, parallelism: 'concurrent' }),
+    ).toThrow();
   });
 
   it('keeps an explicit required: false', () => {
@@ -76,9 +78,9 @@ describe('workflowPhaseSchema', () => {
   });
 
   it('rejects invalid approval values', () => {
-    expect(
-      workflowPhaseSchema.safeParse({ ...minimalPhase, approval: 'mandatory' }).success,
-    ).toBe(false);
+    expect(workflowPhaseSchema.safeParse({ ...minimalPhase, approval: 'mandatory' }).success).toBe(
+      false,
+    );
   });
 });
 
@@ -179,9 +181,9 @@ describe('methodologySchema', () => {
     expect(
       methodologySchema.safeParse({ ...minimalMethodology, type: 'methodology' }).success,
     ).toBe(true);
-    expect(
-      methodologySchema.safeParse({ ...minimalMethodology, type: 'workflow' }).success,
-    ).toBe(false);
+    expect(methodologySchema.safeParse({ ...minimalMethodology, type: 'workflow' }).success).toBe(
+      false,
+    );
   });
 
   it('requires a description', () => {

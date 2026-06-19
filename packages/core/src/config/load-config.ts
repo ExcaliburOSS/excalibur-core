@@ -96,7 +96,8 @@ export function loadExcaliburConfig(repoRoot: string): LoadedExcaliburConfig {
   }
 
   // An empty config file is valid: it simply selects all defaults.
-  const fileConfig = parsed === null || parsed === undefined ? {} : validateConfig(parsed, filePath);
+  const fileConfig =
+    parsed === null || parsed === undefined ? {} : validateConfig(parsed, filePath);
 
   const merged = deepMerge(
     DEFAULT_CONFIG as Record<string, unknown>,

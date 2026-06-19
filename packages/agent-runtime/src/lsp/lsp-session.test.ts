@@ -71,7 +71,9 @@ describe('createLspSession', () => {
   it('returns null (never spawns) when the server binary is missing', async () => {
     const session = createLspSession({
       workdir,
-      config: fakeConfig({ servers: { typescript: { command: 'definitely-not-installed-xyzzy' } } }),
+      config: fakeConfig({
+        servers: { typescript: { command: 'definitely-not-installed-xyzzy' } },
+      }),
     });
     try {
       writeFileSync(join(workdir, 'a.ts'), '__ERR__ bad\n');

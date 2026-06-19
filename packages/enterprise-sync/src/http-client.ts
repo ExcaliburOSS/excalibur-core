@@ -134,7 +134,11 @@ export class HttpEnterpriseSyncClient implements EnterpriseSyncClient {
     return result.data;
   }
 
-  private async request(method: 'GET' | 'POST', pathname: string, body?: unknown): Promise<Response> {
+  private async request(
+    method: 'GET' | 'POST',
+    pathname: string,
+    body?: unknown,
+  ): Promise<Response> {
     const url = `${this.baseUrl}${pathname}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.apiKey}`,

@@ -3,10 +3,7 @@
  * stack/command/instruction/pattern detection (Build Contract §4.5) and the
  * Instruction/Skill Discovery scanner (instructions-skills-core.md §1–§3).
  */
-export {
-  analyzeRepository,
-  type AnalyzeRepositoryOptions,
-} from './analyze';
+export { analyzeRepository, type AnalyzeRepositoryOptions } from './analyze';
 export { detectStack } from './stack';
 export { detectCommands } from './commands';
 export { detectInstructionFiles } from './instruction-files';

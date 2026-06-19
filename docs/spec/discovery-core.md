@@ -1,6 +1,6 @@
 # Discovery — Excalibur Core scope
 
-Discovery is a lightweight, conversational, optional pre-work methodology: it clarifies ideas, tickets, customer feedback or technical initiatives **before** they become assisted or agentic engineering work, and it must be able to recommend *not* building. It is never a mandatory PRD process, a heavy PM tool or a waterfall gate.
+Discovery is a lightweight, conversational, optional pre-work methodology: it clarifies ideas, tickets, customer feedback or technical initiatives **before** they become assisted or agentic engineering work, and it must be able to recommend _not_ building. It is never a mandatory PRD process, a heavy PM tool or a waterfall gate.
 
 > Before Excalibur builds, Excalibur helps teams decide what should be built.
 
@@ -15,6 +15,7 @@ The full Enterprise module (DB sessions, web UI, Slack, work-item commands) live
 Keyed by `DiscoveryInputType`. Each question: `{ id: string; text: string }`. Scoring inspects well-known ids: `problem, user, current_workaround, urgency, mvp, out_of_scope, success, evidence, risks, readiness`.
 
 **base** (used for `incident`, `mvp_scope`, `other`):
+
 ```text
 problem: What problem are we trying to solve?
 user: Who has this problem?
@@ -29,6 +30,7 @@ readiness: Is this ready for implementation?
 ```
 
 **idea** (product idea):
+
 ```text
 user: Who specifically has this problem?
 problem: What painful workflow are they experiencing?
@@ -41,6 +43,7 @@ kill_criteria: What would make this not worth building?
 ```
 
 **work_item** (existing ticket):
+
 ```text
 problem: Is the user/problem clear from this ticket?
 acceptance: Are acceptance criteria present?
@@ -53,6 +56,7 @@ readiness: Is this ready for implementation?
 ```
 
 **customer_feedback**:
+
 ```text
 verbatim: What did the customer actually say?
 problem: Is this a request, a symptom or a real problem?
@@ -64,6 +68,7 @@ validation: What cheap validation could we run?
 ```
 
 **technical_initiative**:
+
 ```text
 problem: What technical problem are we solving?
 urgency: What happens if we do nothing?
@@ -76,6 +81,7 @@ reviewer: Who should review this?
 ```
 
 **agent_readiness**:
+
 ```text
 problem: Is the goal clear enough for an agent?
 acceptance: Are acceptance criteria present?

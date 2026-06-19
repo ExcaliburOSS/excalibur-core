@@ -12,7 +12,15 @@ import { createInteractiveCli } from '../test-utils';
  */
 
 function ev(type: string, payload: Record<string, unknown>): ExcaliburEvent {
-  return { id: 'e', runId: 'run_x', type, timestamp: '', phaseId: null, sessionId: null, payload } as ExcaliburEvent;
+  return {
+    id: 'e',
+    runId: 'run_x',
+    type,
+    timestamp: '',
+    phaseId: null,
+    sessionId: null,
+    payload,
+  } as ExcaliburEvent;
 }
 
 function render(events: ExcaliburEvent[]): string {
@@ -101,7 +109,13 @@ describe('ActionRenderer (live per-action view)', () => {
   it('renders a failed command in place with its error tail', () => {
     const out = render([
       ev('tool_call', { tool: 'run_command', arguments: { command: 'npm run build' } }),
-      ev('command_completed', { tool: 'run_command', ok: false, command: 'npm run build', exitCode: 1, result: 'error TS2554: Expected 1 arguments.' }),
+      ev('command_completed', {
+        tool: 'run_command',
+        ok: false,
+        command: 'npm run build',
+        exitCode: 1,
+        result: 'error TS2554: Expected 1 arguments.',
+      }),
     ]);
     expect(out).toContain('Bash');
     expect(out).toContain('error TS2554');
@@ -123,7 +137,12 @@ describe('ActionRenderer (live per-action view)', () => {
   it('does NOT label a real write as simulated', () => {
     const out = render([
       ev('tool_call', { tool: 'write_file', arguments: { path: 'src/new.ts' } }),
-      ev('file_write', { tool: 'write_file', ok: true, path: 'src/new.ts', result: 'wrote 40 bytes to "src/new.ts"' }),
+      ev('file_write', {
+        tool: 'write_file',
+        ok: true,
+        path: 'src/new.ts',
+        result: 'wrote 40 bytes to "src/new.ts"',
+      }),
     ]);
     expect(out).toContain('Write');
     expect(out).not.toContain('simulated');
@@ -132,7 +151,12 @@ describe('ActionRenderer (live per-action view)', () => {
   it('renders a declined mutation indented as a result line', () => {
     const out = render([
       ev('tool_call', { tool: 'write_file', arguments: { path: '.env' } }),
-      ev('policy_decision', { kind: 'confirmation', decision: 'deny', tool: 'write_file', message: 'user declined: blocked path' }),
+      ev('policy_decision', {
+        kind: 'confirmation',
+        decision: 'deny',
+        tool: 'write_file',
+        message: 'user declined: blocked path',
+      }),
     ]);
     expect(out).toContain('user declined: blocked path');
   });

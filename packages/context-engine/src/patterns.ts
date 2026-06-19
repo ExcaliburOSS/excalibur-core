@@ -56,12 +56,7 @@ const NON_DOMAIN_DIR_NAMES: ReadonlySet<string> = new Set([
   'migrations',
 ]);
 
-const BACKEND_FRAMEWORKS: ReadonlySet<string> = new Set([
-  'nestjs',
-  'express',
-  'fastify',
-  'prisma',
-]);
+const BACKEND_FRAMEWORKS: ReadonlySet<string> = new Set(['nestjs', 'express', 'fastify', 'prisma']);
 const FRONTEND_FRAMEWORKS: ReadonlySet<string> = new Set([
   'react',
   'vue',
@@ -94,9 +89,7 @@ export async function detectPatterns(dir: string): Promise<RepoPatterns> {
   const domainDirs = allDirs.filter((d) => {
     const segments = d.split('/');
     return (
-      segments.length === 2 &&
-      segments[0] === 'src' &&
-      !NON_DOMAIN_DIR_NAMES.has(segments[1] ?? '')
+      segments.length === 2 && segments[0] === 'src' && !NON_DOMAIN_DIR_NAMES.has(segments[1] ?? '')
     );
   });
 

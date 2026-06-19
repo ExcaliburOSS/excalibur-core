@@ -79,13 +79,13 @@ Prefer to keep your hands on the keyboard? The same engine does lighter, non-age
 
 ## Autonomy levels
 
-| Level | Name | What the AI may do | Typical command |
-|---|---|---|---|
-| 0 | Review | Read and review; never changes code | `excalibur review --diff` |
-| 1 | Assist | Explain, answer, suggest | `excalibur ask "..."` |
-| 2 | Propose Patch | Generate a diff; never applies it automatically | `excalibur patch "..."` |
-| 3 | Implement in Branch | Work in an isolated branch/worktree | `excalibur run "..."` |
-| 4 | Full Agentic Workflow | Multi-phase workflow with tools, tests, outputs | `excalibur run "..." --careful` |
+| Level | Name                  | What the AI may do                              | Typical command                 |
+| ----- | --------------------- | ----------------------------------------------- | ------------------------------- |
+| 0     | Review                | Read and review; never changes code             | `excalibur review --diff`       |
+| 1     | Assist                | Explain, answer, suggest                        | `excalibur ask "..."`           |
+| 2     | Propose Patch         | Generate a diff; never applies it automatically | `excalibur patch "..."`         |
+| 3     | Implement in Branch   | Work in an isolated branch/worktree             | `excalibur run "..."`           |
+| 4     | Full Agentic Workflow | Multi-phase workflow with tools, tests, outputs | `excalibur run "..." --careful` |
 
 Levels can be set per command, per path (`autonomy.paths`), per task type and per workflow. See [docs/autonomy-levels.md](docs/autonomy-levels.md).
 

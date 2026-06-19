@@ -94,7 +94,11 @@ function LanesView(props: {
   mode?: ThemeMode;
   labels?: LanesViewLabels;
 }): ReactElement {
-  const snapshot = useSyncExternalStore(props.store.subscribe, props.store.getSnapshot, props.store.getSnapshot);
+  const snapshot = useSyncExternalStore(
+    props.store.subscribe,
+    props.store.getSnapshot,
+    props.store.getSnapshot,
+  );
   const options: RenderLanesOptions = {
     tier: props.tier,
     palette: props.palette,

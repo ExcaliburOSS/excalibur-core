@@ -1,6 +1,6 @@
 # Creating a Tool
 
-Tools extend what agents can *do*: query an internal database, fetch a ticket,
+Tools extend what agents can _do_: query an internal database, fetch a ticket,
 call an internal service. A tool is a **programmatic** contribution
 implementing the `AgentTool` interface from `@excalibur/extension-sdk`; once
 registered it sits alongside the native tools of `@excalibur/agent-runtime`
@@ -13,9 +13,10 @@ registered it sits alongside the native tools of `@excalibur/agent-runtime`
 import type { AgentTool, ToolContext, ToolResult } from '@excalibur/extension-sdk';
 
 export const fetchTicketTool: AgentTool = {
-  name: 'fetch_ticket',                 // unique tool name
+  name: 'fetch_ticket', // unique tool name
   description: 'Fetches a ticket by key from the internal tracker.',
-  inputSchema: {                        // JSON-schema-like; shown to the model
+  inputSchema: {
+    // JSON-schema-like; shown to the model
     type: 'object',
     properties: {
       key: { type: 'string', description: 'Ticket key, e.g. ACME-123' },
@@ -32,7 +33,7 @@ export const fetchTicketTool: AgentTool = {
     return {
       success: true,
       output: `# ${key}\n…markdown the model can read…`,
-      data: { key },                    // optional structured payload
+      data: { key }, // optional structured payload
     };
   },
 };

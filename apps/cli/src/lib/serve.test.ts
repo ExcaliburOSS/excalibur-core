@@ -25,11 +25,40 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
       executionStyle: 'fast',
     });
     runId = run.id;
-    manager.appendEvent(run.id, createEvent({ runId: run.id, type: 'run_started', payload: { title: 'Add a feature' } }));
-    manager.appendEvent(run.id, createEvent({ runId: run.id, type: 'phase_started', payload: { name: 'Analyze' }, phaseId: 'p1' }));
-    manager.appendModelCall(run.id, { provider: 'kimi', model: 'kimi-k2.7-code', inputTokens: 100, outputTokens: 50, costCents: 2, timestamp: new Date().toISOString() });
-    manager.appendEvent(run.id, createEvent({ runId: run.id, type: 'model_call', payload: { model: 'kimi-k2.7-code', costCents: 2, inputTokens: 100, outputTokens: 50 }, phaseId: 'p1' }));
-    manager.appendEvent(run.id, createEvent({ runId: run.id, type: 'run_completed', payload: { status: 'completed' } }));
+    manager.appendEvent(
+      run.id,
+      createEvent({ runId: run.id, type: 'run_started', payload: { title: 'Add a feature' } }),
+    );
+    manager.appendEvent(
+      run.id,
+      createEvent({
+        runId: run.id,
+        type: 'phase_started',
+        payload: { name: 'Analyze' },
+        phaseId: 'p1',
+      }),
+    );
+    manager.appendModelCall(run.id, {
+      provider: 'kimi',
+      model: 'kimi-k2.7-code',
+      inputTokens: 100,
+      outputTokens: 50,
+      costCents: 2,
+      timestamp: new Date().toISOString(),
+    });
+    manager.appendEvent(
+      run.id,
+      createEvent({
+        runId: run.id,
+        type: 'model_call',
+        payload: { model: 'kimi-k2.7-code', costCents: 2, inputTokens: 100, outputTokens: 50 },
+        phaseId: 'p1',
+      }),
+    );
+    manager.appendEvent(
+      run.id,
+      createEvent({ runId: run.id, type: 'run_completed', payload: { status: 'completed' } }),
+    );
     manager.updateRecord(run.id, { status: 'completed', completedAt: new Date().toISOString() });
 
     server = createExcaliburServer({ repoRoot, token: TOKEN, pollMs: 50 });
@@ -83,7 +112,10 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
   it('returns a run detail with the reduced rail', async () => {
     const res = await get(`/api/runs/${runId}`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { record: { title: string }; rail: { phases: unknown[]; status: { costCents: number } } };
+    const body = (await res.json()) as {
+      record: { title: string };
+      rail: { phases: unknown[]; status: { costCents: number } };
+    };
     expect(body.record.title).toBe('Add a feature');
     expect(Array.isArray(body.rail.phases)).toBe(true);
     expect(body.rail.status.costCents).toBe(2);
@@ -119,14 +151,41 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
 
   it('TAILS events appended AFTER the stream opens (incremental byte-offset tail)', async () => {
     const manager = new RunManager(repoRoot);
-    const run = manager.createRun({ title: 'live', autonomyLevel: 3, workflow: 'fast-fix', executionStyle: 'fast' });
+    const run = manager.createRun({
+      title: 'live',
+      autonomyLevel: 3,
+      workflow: 'fast-fix',
+      executionStyle: 'fast',
+    });
     // Only run_started exists when the client connects (no run_completed yet).
-    manager.appendEvent(run.id, createEvent({ runId: run.id, type: 'run_started', payload: { title: 'live' } }));
+    manager.appendEvent(
+      run.id,
+      createEvent({ runId: run.id, type: 'run_started', payload: { title: 'live' } }),
+    );
     const res = await get(`/api/runs/${run.id}/stream`);
     // Append more events AFTER the stream is open — the tail must pick them up.
-    manager.appendEvent(run.id, createEvent({ runId: run.id, type: 'phase_started', payload: { name: 'Analyze' }, phaseId: 'p1' }));
-    manager.appendEvent(run.id, createEvent({ runId: run.id, type: 'file_write', payload: { path: 'src/x.ts' }, phaseId: 'p1' }));
-    manager.appendEvent(run.id, createEvent({ runId: run.id, type: 'run_completed', payload: { status: 'completed' } }));
+    manager.appendEvent(
+      run.id,
+      createEvent({
+        runId: run.id,
+        type: 'phase_started',
+        payload: { name: 'Analyze' },
+        phaseId: 'p1',
+      }),
+    );
+    manager.appendEvent(
+      run.id,
+      createEvent({
+        runId: run.id,
+        type: 'file_write',
+        payload: { path: 'src/x.ts' },
+        phaseId: 'p1',
+      }),
+    );
+    manager.appendEvent(
+      run.id,
+      createEvent({ runId: run.id, type: 'run_completed', payload: { status: 'completed' } }),
+    );
     const text = await res.text(); // resolves once run_completed → end closes the stream
     expect(text).toContain('event: run_started'); // replayed on connect
     expect(text).toContain('event: phase_started'); // tailed after connect

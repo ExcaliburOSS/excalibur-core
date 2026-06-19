@@ -83,7 +83,9 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
           add(
             '.excalibur/config.yaml',
             'PASS',
-            loaded.source === 'file' ? deps.t('doctor.detail.configValid') : deps.t('doctor.detail.configMissing'),
+            loaded.source === 'file'
+              ? deps.t('doctor.detail.configValid')
+              : deps.t('doctor.detail.configMissing'),
           );
           const presetId = loaded.config.safety?.preset ?? DEFAULT_SAFETY_PRESET_ID;
           add(
@@ -91,7 +93,10 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
             SAFETY_PRESETS[presetId] !== undefined ? 'PASS' : 'WARN',
             SAFETY_PRESETS[presetId] !== undefined
               ? deps.t('doctor.detail.presetActive', { presetId })
-              : deps.t('doctor.detail.presetUnknown', { presetId, fallback: DEFAULT_SAFETY_PRESET_ID }),
+              : deps.t('doctor.detail.presetUnknown', {
+                  presetId,
+                  fallback: DEFAULT_SAFETY_PRESET_ID,
+                }),
           );
 
           // Instruction sources reachable.
@@ -107,7 +112,9 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
             missing.length === 0 ? 'PASS' : 'WARN',
             missing.length === 0
               ? deps.t('doctor.detail.sourcesReachable', { count: sources.length })
-              : deps.t('doctor.detail.sourcesMissing', { paths: missing.map((source) => source.path).join(', ') }),
+              : deps.t('doctor.detail.sourcesMissing', {
+                  paths: missing.map((source) => source.path).join(', '),
+                }),
           );
         } catch (error) {
           add('.excalibur/config.yaml', 'FAIL', describe(error));
@@ -117,11 +124,19 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
       // Providers config + API key env presence.
       const providersPath = providersFilePath(repoRoot);
       if (!existsSync(providersPath)) {
-        add(deps.t('doctor.check.modelProviders'), 'WARN', deps.t('doctor.detail.providersMissing'));
+        add(
+          deps.t('doctor.check.modelProviders'),
+          'WARN',
+          deps.t('doctor.detail.providersMissing'),
+        );
       } else {
         try {
           const providers = loadProvidersFile(providersPath);
-          add(deps.t('doctor.check.modelProviders'), 'PASS', deps.t('doctor.detail.providersValid'));
+          add(
+            deps.t('doctor.check.modelProviders'),
+            'PASS',
+            deps.t('doctor.detail.providersValid'),
+          );
           for (const [name, config] of Object.entries(providers.providers)) {
             if (name === 'default' || typeof config === 'string') {
               continue;
@@ -132,7 +147,9 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
               add(
                 deps.t('doctor.check.apiKeyEnv', { name }),
                 present ? 'PASS' : 'WARN',
-                present ? deps.t('doctor.detail.keyEnvSet', { keyEnv }) : deps.t('doctor.detail.keyEnvUnset', { keyEnv }),
+                present
+                  ? deps.t('doctor.detail.keyEnvSet', { keyEnv })
+                  : deps.t('doctor.detail.keyEnvUnset', { keyEnv }),
               );
             }
           }
@@ -164,15 +181,22 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
         const failed = registry.extensions().filter((extension) => extension.status === 'error');
         // Unbuilt local scaffolds (missing entrypoint) are expected until the
         // user compiles them: WARN here, FAIL only on real load errors.
-        const unbuilt = failed.filter((extension) => (extension.error ?? '').includes('entrypoint'));
-        const broken = failed.filter((extension) => !(extension.error ?? '').includes('entrypoint'));
+        const unbuilt = failed.filter((extension) =>
+          (extension.error ?? '').includes('entrypoint'),
+        );
+        const broken = failed.filter(
+          (extension) => !(extension.error ?? '').includes('entrypoint'),
+        );
         add(
           deps.t('doctor.check.extensions'),
           broken.length > 0 ? 'FAIL' : unbuilt.length > 0 ? 'WARN' : 'PASS',
           failed.length === 0
             ? deps.t('doctor.detail.extensionsLoaded', { count: registry.extensions().length })
             : failed
-                .map((extension) => `${extension.manifest.id}: ${extension.error ?? deps.t('doctor.detail.loadError')}`)
+                .map(
+                  (extension) =>
+                    `${extension.manifest.id}: ${extension.error ?? deps.t('doctor.detail.loadError')}`,
+                )
                 .join('; '),
         );
         const warnings = registry.contributions.warnings();
@@ -213,7 +237,10 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
       const failed = results.filter((result) => result.status === 'FAIL');
       if (failed.length > 0) {
         // Runtime error → exit code 1 (Build Contract: doctor exits 1 on FAIL).
-        throw new ExcaliburError(deps.t('doctor.error.failed', { count: failed.length }), 'doctor_failed');
+        throw new ExcaliburError(
+          deps.t('doctor.error.failed', { count: failed.length }),
+          'doctor_failed',
+        );
       }
     });
 }

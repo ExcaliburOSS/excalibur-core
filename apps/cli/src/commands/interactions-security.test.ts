@@ -23,7 +23,11 @@ beforeEach(() => {
   // file under secrets/ (also blocked).
   writeFileSync(join(repo, '.env'), `API_KEY=${SK_KEY}\n`, 'utf8');
   mkdirSync(join(repo, 'src', 'secrets'), { recursive: true });
-  writeFileSync(join(repo, 'src', 'secrets', 'keys.ts'), `export const key = '${SK_KEY}';\n`, 'utf8');
+  writeFileSync(
+    join(repo, 'src', 'secrets', 'keys.ts'),
+    `export const key = '${SK_KEY}';\n`,
+    'utf8',
+  );
 });
 
 afterEach(() => removeDir(repo));
@@ -67,11 +71,7 @@ describe('review blocked-path enforcement and diff redaction', () => {
   it('never leaks a diff secret into the prompt output or stored interaction', async () => {
     // Modify an already-tracked file so the credential shows up in
     // `git diff HEAD` (untracked files do not appear there).
-    writeFileSync(
-      join(repo, 'src', 'service.ts'),
-      `export const apiKey = '${SK_KEY}';\n`,
-      'utf8',
-    );
+    writeFileSync(join(repo, 'src', 'service.ts'), `export const apiKey = '${SK_KEY}';\n`, 'utf8');
     const cli = createTestCli({ cwd: repo });
     await cli.run('review', '--diff');
 
@@ -92,11 +92,7 @@ describe('ask blocked-path enforcement and file redaction', () => {
 
   it('redacts secrets in an allowed context file', async () => {
     // Allowed file (not blocked) that nonetheless carries a credential.
-    writeFileSync(
-      join(repo, 'src', 'settings.ts'),
-      `export const token = '${SK_KEY}';\n`,
-      'utf8',
-    );
+    writeFileSync(join(repo, 'src', 'settings.ts'), `export const token = '${SK_KEY}';\n`, 'utf8');
     const cli = createTestCli({ cwd: repo });
     await cli.run('ask', 'Summarise the settings', '--file', 'src/settings.ts');
 

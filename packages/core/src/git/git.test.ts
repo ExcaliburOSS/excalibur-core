@@ -165,7 +165,10 @@ describe('git helpers', () => {
 
     it('treats an empty diff as not-applying / throwing', () => {
       initGitRepo(repoRoot);
-      expect(checkPatchApplies(repoRoot, '   \n')).toEqual({ applies: false, reason: 'empty diff' });
+      expect(checkPatchApplies(repoRoot, '   \n')).toEqual({
+        applies: false,
+        reason: 'empty diff',
+      });
       expect(() => applyPatch(repoRoot, '')).toThrowError(GitOperationError);
     });
 

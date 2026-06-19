@@ -7,7 +7,12 @@ import { reduceRail, type ReduceRailOptions } from '../rail-reducer.js';
 import type { ApprovalPrompt } from '../rail-types.js';
 import { ThemeProvider } from './ThemeContext.js';
 import { RunView, type RunViewLabels } from './RunView.js';
-import { applyRunViewKey, createRunViewStore, type ApprovalAnswer, type RunViewStore } from './store.js';
+import {
+  applyRunViewKey,
+  createRunViewStore,
+  type ApprovalAnswer,
+  type RunViewStore,
+} from './store.js';
 
 /**
  * `mountRunView` — the bridge the CLI calls to render a live run with Ink. It

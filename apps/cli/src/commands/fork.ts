@@ -48,7 +48,9 @@ function resolveStep(deps: CliDeps, runId: string, at: string | undefined): numb
 export function registerForkCommand(program: Command, deps: CliDeps): void {
   program
     .command('fork')
-    .description('fork a run from a step, reusing the cached prefix — run a new instruction from there')
+    .description(
+      'fork a run from a step, reusing the cached prefix — run a new instruction from there',
+    )
     .argument('[id]', 'source run id (defaults to the latest run)')
     .argument('<instruction>', 'what to do from the fork point')
     .option('--at <n>', 'fork at step n (1-based; defaults to the last step)')

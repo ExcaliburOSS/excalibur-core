@@ -14,12 +14,12 @@
 
 ## Two numbering systems (and how they relate)
 
-- **OSS-0 … OSS-11** — fine-grained *build phases* of Core (from `docs/spec/oss-spec.md §19`):
+- **OSS-0 … OSS-11** — fine-grained _build phases_ of Core (from `docs/spec/oss-spec.md §19`):
   OSS-0 skeleton · OSS-1 config/init · OSS-2 workflow+methodology schema ·
   OSS-3 local artifacts/events · OSS-4 model gateway · OSS-5 lightweight interactions ·
   OSS-6 patch generation · OSS-7 native agent runtime · OSS-8 local agentic runs ·
   OSS-9 GitHub CLI (`pr`) · OSS-10 CMUX · OSS-11 enterprise-sync hooks.
-- **M1 … M8** — coarse *production milestones* spanning BOTH repos. The single
+- **M1 … M8** — coarse _production milestones_ spanning BOTH repos. The single
   authoritative enumeration is the roadmap line in `~/excalibur/README.md`:
   > M1 foundations(mock) · **M2** real AI · **M3** real agents + sandbox ·
   > **M4** GitHub/work-items (·M4b Linear/Jira ·M4c Slack/agile) ·
@@ -31,7 +31,7 @@
   OSS-10 (CMUX)≈M7, OSS-11 (sync) spans M1→M7.
 
 There is also a **third track** — the **P0/P1/P2 "superación competitiva"
-backlog** (below) — which is *not* M-numbered. Most recent work lives there; it
+backlog** (below) — which is _not_ M-numbered. Most recent work lives there; it
 advanced the product well beyond M3.
 
 Status legend: ✅ done · 🟡 partial · 🔴 pending · (Core / Ent = per repo).
@@ -41,8 +41,10 @@ Status legend: ✅ done · 🟡 partial · 🔴 pending · (Core / Ent = per rep
 ## The 8 production milestones
 
 ### M1 — Foundations + mock loop ✅ DONE (Core + Ent)
+
 Everything scaffolded and end-to-end on a deterministic **mock** provider; no real
 model calls, no real file mutation, commands `simulated:true`.
+
 - **Core:** full command surface (init, run, ask/explain/review, patch lifecycle,
   daily/weekly-plan, Discovery, extensions, onboarding); event stream + RunManager;
   single self-contained CLI bundle.
@@ -51,7 +53,9 @@ model calls, no real file mutation, commands `simulated:true`.
   (mock); Policy engine + Audit + AES-GCM secret encryption.
 
 ### M2 — Real AI ✅ DONE (Core ✅ · Ent ✅ gateway slice)
+
 Real model providers replace the mock.
+
 - **Core ✅:** real adapters (`anthropic`, `openai-compatible`/vLLM/custom, `ollama`)
   wired via `CORE_PROVIDER_FACTORIES`; streaming, cost, redaction, retry/timeout;
   real repo-context in ask/review; real patch apply; compaction summarizer;
@@ -61,48 +65,57 @@ Real model providers replace the mock.
   budget, single-hop fallback, sanitized logging).
 
 ### M3 — Real agents + sandbox ✅ DONE (Core) · 🔴 PENDING (Ent)
+
 Real agentic execution.
+
 - **Core ✅:** native chat→tool loop (real `spawn`/atomic writes, permission-gated,
   bounded); **swarm** fan-out/fan-in over isolated git worktrees (+ `excalibur swarm`
-  + in-shell `/swarm` + grader `--grade`); **per-session Docker sandbox** (network
-  none, no host secrets); **LSP** per-edit diagnostics fed to the loop; **MCP** client
-  (stdio + Streamable-HTTP) wired into the loop; custom-command adapter.
+  - in-shell `/swarm` + grader `--grade`); **per-session Docker sandbox** (network
+    none, no host secrets); **LSP** per-edit diagnostics fed to the loop; **MCP** client
+    (stdio + Streamable-HTTP) wired into the loop; custom-command adapter.
 - **Ent 🔴:** server-side real agent sessions + sandbox (`AgentSession.adapter`
   native/claude_code/codex/aider/opencode, `sandboxId`/`worktreePath`) NOT shipped —
   Enterprise still tracks Core M2 + event-sync compatibility.
 
 ### M4 — GitHub / work-items 🟡 PARTIAL
+
 Real external ticket↔code integration. Sub-phases: **M4** GitHub · **M4b** Linear/Jira
-+ status-sync/PR-linking · **M4c** Slack/Teams + agentic-agile scheduling.
-- **Done:** Core `excalibur work-items list/show/run/comment` over the real `gh` CLI
+
+- status-sync/PR-linking · **M4c** Slack/Teams + agentic-agile scheduling.
+
+* **Done:** Core `excalibur work-items list/show/run/comment` over the real `gh` CLI
   (`GitHubCliProvider`, P2.9).
-- **Pending:** GitHub **App** (webhook `@excalibur review`/`generate-tests`); Discovery
+* **Pending:** GitHub **App** (webhook `@excalibur review`/`generate-tests`); Discovery
   remote intake `--from-linear/--from-jira/--from-github-issue` (honest stubs today);
   OSS Linear/Jira providers (none in `packages/work-items`); `pr-create` (stub);
   M4c Slack/Teams provider + BullMQ scheduled daily/weekly jobs (Ent: manual triggers
   only today).
-- **Blocks:** needs GitHub App credentials, Linear/Jira API keys, Slack app.
+* **Blocks:** needs GitHub App credentials, Linear/Jira API keys, Slack app.
 
 ### M5 — Governance / SSO 🔴 PENDING (Enterprise-heavy)
+
 - **SSO** (beyond M1 API-key auth).
 - **Extension** permission **enforcement** — today `validatePermissions()` is
   WARN-ONLY by design (`packages/extension-runtime/src/permissions.ts`); strict
-  hard-block lands here. *(NB: the **agent** runtime already hard-blocks via
-  `PermissionEngine` — that is separate from extension-manifest enforcement.)*
+  hard-block lands here. _(NB: the **agent** runtime already hard-blocks via
+  `PermissionEngine` — that is separate from extension-manifest enforcement.)_
 - Extension **version locks**; enterprise-managed extensions; central skill approval;
   per-run instruction-source audit + precedence enforcement.
 
 ### M6 — Deploy / scale 🔴 PENDING (Enterprise + infra)
+
 Customer-managed / **hybrid runners**, self-hosted deployment
 (`Organization.deploymentMode` cloud/hybrid/self_hosted becomes real). Needs infra.
 
 ### M7 — IDE / sync / CMUX 🔴 PENDING
+
 IDE integrations (`AssistantInteraction.source` vscode/jetbrains), Core↔Enterprise
 **sync maturation** (M1 ships an ingestion endpoint + Core keeps the event-compat
 maps current), and **CMUX** integration (`excalibur cmux` is an honest stub today,
 OSS-10).
 
 ### M8 — Commercial beta 🟡 PARTIAL (packaging done, not published)
+
 - **Done:** CLI fully packaged (`bin: excalibur`, zero-runtime-dep self-contained
   bundle: `dist/main.js` CJS + `dist/ink-ui.mjs` ESM, `prepublishOnly` build).
 - **Pending:** actual **npm publish** (registry returns 404; still `0.1.0`) — needs
@@ -139,6 +152,7 @@ OpenCode. **Nearly all shipped.**
 green, `verify:real` 31/31 vs real Kimi.
 
 **Remaining, by what blocks it:**
+
 - **Needs your credentials / a go-decision:** M4 (GitHub App, Linear/Jira, Slack),
   M8 (npm auth + publish go-ahead).
 - **Enterprise + infra (the `~/excalibur` repo):** M3-Enterprise (server-side real

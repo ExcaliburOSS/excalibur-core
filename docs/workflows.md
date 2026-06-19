@@ -1,6 +1,6 @@
 # Workflows
 
-A **workflow** is executable: an ordered list of phases with declared types, roles, approvals and artifacts. (A *methodology* is the conceptual counterpart — see [methodologies.md](methodologies.md).)
+A **workflow** is executable: an ordered list of phases with declared types, roles, approvals and artifacts. (A _methodology_ is the conceptual counterpart — see [methodologies.md](methodologies.md).)
 
 ```bash
 excalibur workflows list
@@ -11,22 +11,22 @@ The catalog comes from the extension host: the 14 built-ins are registered as ex
 
 ## Built-in catalog (14)
 
-| ID | Mode | Levels | Purpose |
-|---|---|---|---|
-| `ask-repo` | fast | 1 | Answer a question about the repository |
-| `review-only` | review | 0 | Review code/diffs; never changes anything |
-| `assist` | fast | 1 | Explain and suggest |
-| `propose-patch` | standard | 2 | Analyze → generate diff → human decides |
-| `fast-fix` | fast | 2–3 | Analyze → patch → optional apply → verify → summary |
-| `standard-feature` | standard | 3–4 | Context → plan → implement → verify → review → PR summary |
-| `structured-feature` | structured | 3–4 | Context → spec → plan → implement → verify → review → PR summary |
-| `safe-refactor` | standard | 2–4 | Invariants → baseline tests → refactor → verify → diff review |
-| `pr-review` | review | 0–1 | Review an existing change set |
-| `security-review` | review | 0–4 | Risk analysis → review → human approval |
-| `migration` | structured | 3–4 | Plan → backward-compat check → implement → rollback notes → verify |
-| `explore-alternatives` | explore | 3–4 | Generate approaches → compare trade-offs → choose → implement |
-| `human-gated` | structured | 3–4 | Plan → **human approval** → implement → verify → **human approval** → PR |
-| `discovery` | discovery | 0–1 | Intake → guided questions → synthesis → readiness → recommendation |
+| ID                     | Mode       | Levels | Purpose                                                                  |
+| ---------------------- | ---------- | ------ | ------------------------------------------------------------------------ |
+| `ask-repo`             | fast       | 1      | Answer a question about the repository                                   |
+| `review-only`          | review     | 0      | Review code/diffs; never changes anything                                |
+| `assist`               | fast       | 1      | Explain and suggest                                                      |
+| `propose-patch`        | standard   | 2      | Analyze → generate diff → human decides                                  |
+| `fast-fix`             | fast       | 2–3    | Analyze → patch → optional apply → verify → summary                      |
+| `standard-feature`     | standard   | 3–4    | Context → plan → implement → verify → review → PR summary                |
+| `structured-feature`   | structured | 3–4    | Context → spec → plan → implement → verify → review → PR summary         |
+| `safe-refactor`        | standard   | 2–4    | Invariants → baseline tests → refactor → verify → diff review            |
+| `pr-review`            | review     | 0–1    | Review an existing change set                                            |
+| `security-review`      | review     | 0–4    | Risk analysis → review → human approval                                  |
+| `migration`            | structured | 3–4    | Plan → backward-compat check → implement → rollback notes → verify       |
+| `explore-alternatives` | explore    | 3–4    | Generate approaches → compare trade-offs → choose → implement            |
+| `human-gated`          | structured | 3–4    | Plan → **human approval** → implement → verify → **human approval** → PR |
+| `discovery`            | discovery  | 0–1    | Intake → guided questions → synthesis → readiness → recommendation       |
 
 ## Anatomy of a workflow
 
@@ -54,7 +54,7 @@ phases:
     name: Verify
     type: command_group
     optional: true
-    commandsFromConfig: true      # uses your detected test/lint commands
+    commandsFromConfig: true # uses your detected test/lint commands
   - id: summarize
     name: Summarize
     type: agent_output

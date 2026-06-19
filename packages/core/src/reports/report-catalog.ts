@@ -58,7 +58,8 @@ const ES: Catalog = {
   'report.run-line': '- {id} — {title} ({workflow}, {level}) — {status}',
   'report.patch-line': '- {id} — {command} ({workflow}) — {status}',
   'report.commit-line': '- {hash} {subject} ({author})',
-  'report.runs-summary': '- Ejecuciones: {total} en total, {completed} completadas, {failed} fallidas.',
+  'report.runs-summary':
+    '- Ejecuciones: {total} en total, {completed} completadas, {failed} fallidas.',
   'report.commits-summary': '- Commits: {count}.',
   'report.patches-summary': '- Parches: {total} en total, {open} abiertos.',
   'report.plan-resume': '- Retomar {id} — {title} ({status}).',

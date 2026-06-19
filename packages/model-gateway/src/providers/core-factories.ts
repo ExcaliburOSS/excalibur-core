@@ -42,17 +42,11 @@ export const CORE_PROVIDER_FACTORIES: ProviderFactoryMap = {
   anthropic: (name, cfg, deps) =>
     new AnthropicAdapter(withApiKey({ name, cfg, transport: deps.transport }, deps.apiKey)),
   'openai-compatible': (name, cfg, deps) =>
-    new OpenAICompatibleAdapter(
-      withApiKey({ name, cfg, transport: deps.transport }, deps.apiKey),
-    ),
+    new OpenAICompatibleAdapter(withApiKey({ name, cfg, transport: deps.transport }, deps.apiKey)),
   vllm: (name, cfg, deps) =>
-    new OpenAICompatibleAdapter(
-      withApiKey({ name, cfg, transport: deps.transport }, deps.apiKey),
-    ),
+    new OpenAICompatibleAdapter(withApiKey({ name, cfg, transport: deps.transport }, deps.apiKey)),
   custom: (name, cfg, deps) =>
-    new OpenAICompatibleAdapter(
-      withApiKey({ name, cfg, transport: deps.transport }, deps.apiKey),
-    ),
+    new OpenAICompatibleAdapter(withApiKey({ name, cfg, transport: deps.transport }, deps.apiKey)),
   ollama: (name, cfg, deps) =>
     new OllamaAdapter(withApiKey({ name, cfg, transport: deps.transport }, deps.apiKey)),
 };

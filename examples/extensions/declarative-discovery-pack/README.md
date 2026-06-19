@@ -3,14 +3,14 @@
 A declarative extension pack — pure YAML/Markdown, no code — that customizes
 the Excalibur Discovery flow for a product team. It contributes:
 
-| File | Contribution | Id |
-|---|---|---|
-| `question-packs/product-discovery.yaml` | `question_pack` | `product-discovery` |
-| `question-packs/agent-readiness.yaml` | `question_pack` | `agent-readiness` |
-| `roles/product-strategist.yaml` | `role_definition` | `product-strategist` |
-| `roles/scope-guardian.yaml` | `role_definition` | `scope-guardian` |
-| `artifacts/refined-ticket.md` | `artifact_template` | `refined-ticket` |
-| `prompts/discovery-kickoff.md` | `prompt_template` | `discovery-kickoff` |
+| File                                    | Contribution        | Id                   |
+| --------------------------------------- | ------------------- | -------------------- |
+| `question-packs/product-discovery.yaml` | `question_pack`     | `product-discovery`  |
+| `question-packs/agent-readiness.yaml`   | `question_pack`     | `agent-readiness`    |
+| `roles/product-strategist.yaml`         | `role_definition`   | `product-strategist` |
+| `roles/scope-guardian.yaml`             | `role_definition`   | `scope-guardian`     |
+| `artifacts/refined-ticket.md`           | `artifact_template` | `refined-ticket`     |
+| `prompts/discovery-kickoff.md`          | `prompt_template`   | `discovery-kickoff`  |
 
 ## What it demonstrates
 
@@ -18,7 +18,7 @@ the Excalibur Discovery flow for a product team. It contributes:
   `contributes` keys list files relative to the extension directory.
 - **Adding new contributions**: the question packs, roles and the kickoff
   prompt use ids that do not exist in the built-in catalogs, so they appear
-  *alongside* the built-ins.
+  _alongside_ the built-ins.
 - **Overriding a built-in**: `artifacts/refined-ticket.md` deliberately keeps
   the id `refined-ticket` (derived from the file name), which matches the
   built-in template contributed by the `discovery-pack` built-in extension.

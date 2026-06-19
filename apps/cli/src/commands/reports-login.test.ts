@@ -51,9 +51,9 @@ describe('login / connect / sync (experimental, OSS spec §13)', () => {
 
   it('login without an api key is a usage error', async () => {
     const cli = createTestCli({ cwd: repo, homeDir: makeTempDir('home3') });
-    await expect(
-      cli.run('login', '--base-url', 'https://ent.example', '--yes'),
-    ).rejects.toThrow(/API key is required/);
+    await expect(cli.run('login', '--base-url', 'https://ent.example', '--yes')).rejects.toThrow(
+      /API key is required/,
+    );
   });
 
   it('connect reports the connection status', async () => {

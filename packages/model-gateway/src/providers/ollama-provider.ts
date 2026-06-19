@@ -13,13 +13,7 @@ import { ProviderError } from '@excalibur/shared';
 import { parseToolArguments } from '../errors/provider-errors';
 import { parseNdjson } from '../transport/sse';
 import type { TransportRequest, TransportResponse } from '../transport/transport';
-import type {
-  ChatFinishReason,
-  ChatInput,
-  ChatMessage,
-  ChatUsage,
-  ToolCall,
-} from '../types';
+import type { ChatFinishReason, ChatInput, ChatMessage, ChatUsage, ToolCall } from '../types';
 import {
   BaseHttpProvider,
   type BaseHttpProviderOptions,

@@ -54,7 +54,13 @@ describe('extensions create (scaffold generators, extensions spec §9)', () => {
       const name = `prog-${type}`;
       const result = scaffoldExtension(targetDir, type, name);
       expect(result.kind).toBe('programmatic');
-      for (const file of ['excalibur.extension.yaml', 'package.json', 'tsconfig.json', 'src/index.ts', 'README.md']) {
+      for (const file of [
+        'excalibur.extension.yaml',
+        'package.json',
+        'tsconfig.json',
+        'src/index.ts',
+        'README.md',
+      ]) {
         expect(existsSync(join(result.dir, file)), `${type}/${file} must exist`).toBe(true);
       }
       const manifest = validateManifest(
@@ -62,7 +68,9 @@ describe('extensions create (scaffold generators, extensions spec §9)', () => {
       );
       expect(manifest.success).toBe(true);
       expect(manifest.data?.entrypoint).toBe('dist/index.js');
-      expect(readFileSync(join(result.dir, 'src', 'index.ts'), 'utf8')).toContain('defineExtension');
+      expect(readFileSync(join(result.dir, 'src', 'index.ts'), 'utf8')).toContain(
+        'defineExtension',
+      );
     }
     const report = validateRepoExtensions(repo);
     expect(report.errors).toEqual([]);
@@ -95,10 +103,16 @@ describe('extensions create (scaffold generators, extensions spec §9)', () => {
   it('rejects unknown types and duplicate names (usage errors)', async () => {
     const repo = tempRepo();
     const cli = createTestCli({ cwd: repo });
-    await expect(cli.run('extensions', 'create', 'nonsense', 'thing')).rejects.toThrow(/Unknown extension type/);
+    await expect(cli.run('extensions', 'create', 'nonsense', 'thing')).rejects.toThrow(
+      /Unknown extension type/,
+    );
     await cli.run('extensions', 'create', 'workflow', 'dupe');
-    await expect(cli.run('extensions', 'create', 'workflow', 'dupe')).rejects.toThrow(/already exists/);
-    await expect(cli.run('extensions', 'create', 'workflow', 'Bad Name')).rejects.toThrow(/lowercase/);
+    await expect(cli.run('extensions', 'create', 'workflow', 'dupe')).rejects.toThrow(
+      /already exists/,
+    );
+    await expect(cli.run('extensions', 'create', 'workflow', 'Bad Name')).rejects.toThrow(
+      /lowercase/,
+    );
   });
 });
 
@@ -124,7 +138,11 @@ describe('extensions validate / list / enable / disable / install', () => {
     const repo = tempRepo();
     const workflowsDir = join(repo, '.excalibur', 'workflows');
     mkdirSync(workflowsDir, { recursive: true });
-    writeFileSync(join(workflowsDir, 'broken.yaml'), 'id: broken\nname: Broken\n# missing mode/phases\n', 'utf8');
+    writeFileSync(
+      join(workflowsDir, 'broken.yaml'),
+      'id: broken\nname: Broken\n# missing mode/phases\n',
+      'utf8',
+    );
     const cli = createTestCli({ cwd: repo });
     await expect(cli.run('extensions', 'validate')).rejects.toThrow(/invalid file/);
     expect(cli.stderr()).toContain('broken.yaml');
@@ -135,7 +153,10 @@ describe('extensions validate / list / enable / disable / install', () => {
     const cli = createTestCli({ cwd: repo });
     await cli.run('extensions', 'disable', 'discovery-pack');
     const extensionsPath = join(repo, '.excalibur', 'extensions.yaml');
-    let parsed = parseYaml(readFileSync(extensionsPath, 'utf8')) as { disabled?: string[]; enabled?: string[] };
+    let parsed = parseYaml(readFileSync(extensionsPath, 'utf8')) as {
+      disabled?: string[];
+      enabled?: string[];
+    };
     expect(parsed.disabled).toContain('discovery-pack');
 
     cli.reset();
@@ -143,7 +164,10 @@ describe('extensions validate / list / enable / disable / install', () => {
     expect(cli.stdout()).not.toContain('discovery-pack');
 
     await cli.run('extensions', 'enable', 'discovery-pack');
-    parsed = parseYaml(readFileSync(extensionsPath, 'utf8')) as { disabled?: string[]; enabled?: string[] };
+    parsed = parseYaml(readFileSync(extensionsPath, 'utf8')) as {
+      disabled?: string[];
+      enabled?: string[];
+    };
     expect(parsed.disabled ?? []).not.toContain('discovery-pack');
     expect(parsed.enabled).toContain('discovery-pack');
   });
@@ -156,7 +180,9 @@ describe('extensions validate / list / enable / disable / install', () => {
 
     const cli = createTestCli({ cwd: repo });
     await cli.run('extensions', 'install', join(source, 'risk-pack'), '--yes');
-    expect(existsSync(join(repo, '.excalibur', 'extensions', 'risk-pack', 'excalibur.extension.yaml'))).toBe(true);
+    expect(
+      existsSync(join(repo, '.excalibur', 'extensions', 'risk-pack', 'excalibur.extension.yaml')),
+    ).toBe(true);
 
     // Installed pack participates in validation.
     const report = validateRepoExtensions(repo);

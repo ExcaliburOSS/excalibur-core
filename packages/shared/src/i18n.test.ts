@@ -3,7 +3,9 @@ import { detectLocale, isLocale, makeTranslator, type Catalog, type Locale } fro
 
 describe('detectLocale', () => {
   it('honors EXCALIBUR_LANG above everything', () => {
-    expect(detectLocale({ env: { EXCALIBUR_LANG: 'es', LANG: 'en_US.UTF-8' }, configLanguage: 'en' })).toBe('es');
+    expect(
+      detectLocale({ env: { EXCALIBUR_LANG: 'es', LANG: 'en_US.UTF-8' }, configLanguage: 'en' }),
+    ).toBe('es');
   });
 
   it('falls to the explicit config language when no EXCALIBUR_LANG', () => {

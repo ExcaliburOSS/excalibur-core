@@ -95,9 +95,7 @@ export function registerExtensionsCommand(program: Command, deps: CliDeps): void
           deps.ui.error(`${issue.file}: ${issue.message}`);
         }
         if (report.errors.length === 0) {
-          deps.ui.success(
-            deps.t('extensions.validate_ok', { count: report.checked.length }),
-          );
+          deps.ui.success(deps.t('extensions.validate_ok', { count: report.checked.length }));
         }
       }
       if (report.errors.length > 0) {
@@ -149,7 +147,10 @@ export function registerExtensionsCommand(program: Command, deps: CliDeps): void
         deps.ui.warn(warning);
       }
       if (registry.extensions().some((extension) => extension.status === 'error')) {
-        throw new ExcaliburError('extensions doctor found load errors.', 'extensions_doctor_failed');
+        throw new ExcaliburError(
+          'extensions doctor found load errors.',
+          'extensions_doctor_failed',
+        );
       }
       if (problems === 0) {
         deps.ui.success(deps.t('extensions.doctor_all_healthy'));

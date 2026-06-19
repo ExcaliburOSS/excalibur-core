@@ -466,9 +466,7 @@ export async function searchRepoCode(
 
   // Exclude secret-bearing paths up front (security invariant). The negated
   // ignore patterns above are best-effort; this is the authoritative filter.
-  const candidates = globbed
-    .map(toPosixPath)
-    .filter((relPath) => !isSecretPath(relPath));
+  const candidates = globbed.map(toPosixPath).filter((relPath) => !isSecretPath(relPath));
 
   const truncatedScan = candidates.length > maxScanFiles;
   const scanList = candidates.slice(0, maxScanFiles);

@@ -50,7 +50,9 @@ describe('enrichAgentsMd', () => {
   });
 
   it('throws when the model returns no parseable JSON (caller falls back to deterministic)', async () => {
-    await expect(enrichAgentsMd(fakeAnalysis(), { chat: fakeChat('sorry, no json here') })).rejects.toThrow();
+    await expect(
+      enrichAgentsMd(fakeAnalysis(), { chat: fakeChat('sorry, no json here') }),
+    ).rejects.toThrow();
   });
 
   it('throws when the model yields empty conventions AND empty architecture', async () => {
@@ -63,7 +65,10 @@ describe('enrichAgentsMd', () => {
     const secret = 'sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ012345';
     const md = await enrichAgentsMd(fakeAnalysis(), {
       chat: fakeChat(
-        JSON.stringify({ conventions: [`never hardcode ${secret}`], architecture: `uses ${secret} for auth` }),
+        JSON.stringify({
+          conventions: [`never hardcode ${secret}`],
+          architecture: `uses ${secret} for auth`,
+        }),
       ),
     });
     expect(md).not.toContain(secret);

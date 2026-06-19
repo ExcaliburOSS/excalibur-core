@@ -21,7 +21,8 @@ describe('PatchStore', () => {
   it('round-trips a patch artifact set', () => {
     const created = store.create({
       input: 'Fix duplicated webhook handling',
-      effectiveInstructions: 'Effective project instructions:\n\n[Source: CLAUDE.md]\n\nBe careful.',
+      effectiveInstructions:
+        'Effective project instructions:\n\n[Source: CLAUDE.md]\n\nBe careful.',
       diff: '--- a/src/x.ts\n+++ b/src/x.ts\n@@ -1 +1,2 @@\n+guard();\n',
       summary: '# Patch summary\nAdds an idempotency guard.',
       model: 'mock-model',
@@ -67,7 +68,12 @@ describe('PatchStore', () => {
     const a = store.create({ input: 'a', effectiveInstructions: '', diff: '', summary: '' });
     const b = store.create({ input: 'b', effectiveInstructions: '', diff: '', summary: '' });
     expect(a.id).not.toBe(b.id);
-    expect(store.list().map((patch) => patch.id).sort()).toEqual([a.id, b.id].sort());
+    expect(
+      store
+        .list()
+        .map((patch) => patch.id)
+        .sort(),
+    ).toEqual([a.id, b.id].sort());
   });
 
   it('throws PatchNotFoundError with a stable code', () => {
@@ -111,7 +117,12 @@ describe('InteractionStore', () => {
     expect(created.metadata.autonomyLevel).toBe(1);
     expect(created.metadata.warnings).toHaveLength(1);
 
-    for (const fileName of ['input.md', 'effective-instructions.md', 'output.md', 'metadata.json']) {
+    for (const fileName of [
+      'input.md',
+      'effective-instructions.md',
+      'output.md',
+      'metadata.json',
+    ]) {
       expect(existsSync(join(created.dir, fileName)), fileName).toBe(true);
     }
     expect(store.readArtifact(created.id, 'output.md')).toContain('escrow.service.ts');

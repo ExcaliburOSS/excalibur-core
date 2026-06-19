@@ -18,7 +18,10 @@ describe('public API surface (Build Contract §4.2)', () => {
   });
 
   it('exposes yaml + definition for every catalog entry', () => {
-    for (const entry of [...workflowSchema.DEFAULT_WORKFLOWS, ...workflowSchema.DEFAULT_METHODOLOGIES]) {
+    for (const entry of [
+      ...workflowSchema.DEFAULT_WORKFLOWS,
+      ...workflowSchema.DEFAULT_METHODOLOGIES,
+    ]) {
       expect(typeof entry.id).toBe('string');
       expect(typeof entry.yaml).toBe('string');
       expect(entry.definition.id).toBe(entry.id);

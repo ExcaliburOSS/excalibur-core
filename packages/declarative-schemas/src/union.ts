@@ -72,41 +72,38 @@ function describeValue(value: unknown): string {
  * behavior is identical: the `type` field selects exactly one member schema
  * and only that member's issues are reported.
  */
-export const declarativeDefinitionSchema: z.ZodType<
-  DeclarativeDefinition,
-  z.ZodTypeDef,
-  unknown
-> = z.unknown().transform((value, ctx): DeclarativeDefinition => {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: `expected a declarative definition object, got ${describeValue(value)}`,
-    });
-    return z.NEVER;
-  }
-  const declaredType = (value as Record<string, unknown>).type;
-  if (declaredType === undefined) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['type'],
-      message: `missing "type" — declarative definitions must declare one of: ${DECLARATIVE_TYPES.join(', ')}`,
-    });
-    return z.NEVER;
-  }
-  if (!isDeclarativeType(declaredType)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['type'],
-      message: `unknown declarative type ${JSON.stringify(declaredType)} — expected one of: ${DECLARATIVE_TYPES.join(', ')}`,
-    });
-    return z.NEVER;
-  }
-  const result = declarativeSchemasByType[declaredType].safeParse(value);
-  if (!result.success) {
-    for (const issue of result.error.issues) {
-      ctx.addIssue(issue);
+export const declarativeDefinitionSchema: z.ZodType<DeclarativeDefinition, z.ZodTypeDef, unknown> =
+  z.unknown().transform((value, ctx): DeclarativeDefinition => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `expected a declarative definition object, got ${describeValue(value)}`,
+      });
+      return z.NEVER;
     }
-    return z.NEVER;
-  }
-  return result.data as DeclarativeDefinition;
-});
+    const declaredType = (value as Record<string, unknown>).type;
+    if (declaredType === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['type'],
+        message: `missing "type" — declarative definitions must declare one of: ${DECLARATIVE_TYPES.join(', ')}`,
+      });
+      return z.NEVER;
+    }
+    if (!isDeclarativeType(declaredType)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['type'],
+        message: `unknown declarative type ${JSON.stringify(declaredType)} — expected one of: ${DECLARATIVE_TYPES.join(', ')}`,
+      });
+      return z.NEVER;
+    }
+    const result = declarativeSchemasByType[declaredType].safeParse(value);
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        ctx.addIssue(issue);
+      }
+      return z.NEVER;
+    }
+    return result.data as DeclarativeDefinition;
+  });

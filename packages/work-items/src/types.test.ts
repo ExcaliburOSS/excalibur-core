@@ -80,9 +80,9 @@ describe('normalized model schemas', () => {
   });
 
   it('rejects an unknown provider', () => {
-    expect(
-      normalizedWorkItemSchema.safeParse({ ...VALID_ITEM, provider: 'trello' }).success,
-    ).toBe(false);
+    expect(normalizedWorkItemSchema.safeParse({ ...VALID_ITEM, provider: 'trello' }).success).toBe(
+      false,
+    );
   });
 
   it('rejects missing required fields', () => {
@@ -113,9 +113,9 @@ describe('normalized model schemas', () => {
 
   it('validates comments and rejects malformed ones', () => {
     expect(normalizedWorkItemCommentSchema.safeParse(VALID_ITEM.comments[0]).success).toBe(true);
-    expect(
-      normalizedWorkItemCommentSchema.safeParse({ externalId: 'c1', body: 42 }).success,
-    ).toBe(false);
+    expect(normalizedWorkItemCommentSchema.safeParse({ externalId: 'c1', body: 42 }).success).toBe(
+      false,
+    );
   });
 
   it('validates link types against the closed enum', () => {

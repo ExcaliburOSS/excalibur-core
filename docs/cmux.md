@@ -1,6 +1,6 @@
 # CMUX integration
 
-> **Arrives in milestone OSS-10.** `excalibur cmux` currently prints an honest notice. CMUX is an *interface*, never a hard dependency — every workflow works in a single terminal without it.
+> **Arrives in milestone OSS-10.** `excalibur cmux` currently prints an honest notice. CMUX is an _interface_, never a hard dependency — every workflow works in a single terminal without it.
 
 [CMUX](https://github.com/wandb/cmux) is a terminal multiplexer for agentic coding sessions. The planned integration:
 

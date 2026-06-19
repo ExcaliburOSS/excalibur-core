@@ -18,26 +18,13 @@ async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
 describe('parseSSE', () => {
   it('groups data fields into messages on blank-line boundaries', async () => {
     const messages = await collect(
-      parseSSE(
-        fromLines([
-          'event: a',
-          'data: {"x":1}',
-          '',
-          'data: {"y":2}',
-          '',
-        ]),
-      ),
+      parseSSE(fromLines(['event: a', 'data: {"x":1}', '', 'data: {"y":2}', ''])),
     );
-    expect(messages).toEqual<SSEMessage[]>([
-      { event: 'a', data: '{"x":1}' },
-      { data: '{"y":2}' },
-    ]);
+    expect(messages).toEqual<SSEMessage[]>([{ event: 'a', data: '{"x":1}' }, { data: '{"y":2}' }]);
   });
 
   it('accumulates multi-line data fields joined by newline', async () => {
-    const [message] = await collect(
-      parseSSE(fromLines(['data: line1', 'data: line2', ''])),
-    );
+    const [message] = await collect(parseSSE(fromLines(['data: line1', 'data: line2', ''])));
     expect(message?.data).toBe('line1\nline2');
   });
 
@@ -62,9 +49,7 @@ describe('parseSSE', () => {
 
 describe('parseNdjson', () => {
   it('parses each non-empty line as JSON', async () => {
-    const values = await collect(
-      parseNdjson(fromLines(['{"a":1}', '', '  ', '{"b":2}'])),
-    );
+    const values = await collect(parseNdjson(fromLines(['{"a":1}', '', '  ', '{"b":2}'])));
     expect(values).toEqual([{ a: 1 }, { b: 2 }]);
   });
 

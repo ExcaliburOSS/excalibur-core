@@ -7,7 +7,11 @@ describe('estimateRun', () => {
   it('falls back to a per-task-type heuristic on a cold start (no history)', () => {
     const repoRoot = makeTempDir();
     try {
-      const est = estimateRun(repoRoot, { workflow: 'fast-fix', taskType: 'bugfix', affectedUnits: 2 });
+      const est = estimateRun(repoRoot, {
+        workflow: 'fast-fix',
+        taskType: 'bugfix',
+        affectedUnits: 2,
+      });
       expect(est.basedOnRuns).toBe(0);
       expect(est.estCostCents).toBeGreaterThan(0);
       expect(est.estDurationMs).toBeGreaterThan(0);
@@ -46,9 +50,17 @@ describe('estimateRun', () => {
           costCents: cost,
           timestamp: startSec,
         });
-        manager.updateRecord(run.id, { status: 'completed', startedAt: startSec, completedAt: endSec });
+        manager.updateRecord(run.id, {
+          status: 'completed',
+          startedAt: startSec,
+          completedAt: endSec,
+        });
       }
-      const est = estimateRun(repoRoot, { workflow: 'fast-fix', taskType: 'bugfix', affectedUnits: 1 });
+      const est = estimateRun(repoRoot, {
+        workflow: 'fast-fix',
+        taskType: 'bugfix',
+        affectedUnits: 1,
+      });
       expect(est.basedOnRuns).toBe(2);
       expect(est.estCostCents).toBeCloseTo(5);
       expect(est.estDurationMs).toBeCloseTo(15_000);
@@ -64,14 +76,31 @@ describe('estimateRun', () => {
       // Created (started) in order A, B, C — but A COMPLETES last. With sampleSize
       // 2, completion-order selection must pick {A, C}, not start-order {B, C}.
       const mk = (cost: number, completedAt: string): void => {
-        const run = manager.createRun({ title: 't', autonomyLevel: 3, workflow: 'fast-fix', executionStyle: 'fast' });
-        manager.appendModelCall(run.id, { provider: 'k', model: 'k', inputTokens: 1, outputTokens: 1, costCents: cost, timestamp: completedAt });
+        const run = manager.createRun({
+          title: 't',
+          autonomyLevel: 3,
+          workflow: 'fast-fix',
+          executionStyle: 'fast',
+        });
+        manager.appendModelCall(run.id, {
+          provider: 'k',
+          model: 'k',
+          inputTokens: 1,
+          outputTokens: 1,
+          costCents: cost,
+          timestamp: completedAt,
+        });
         manager.updateRecord(run.id, { status: 'completed', completedAt });
       };
       mk(100, '2026-06-17T13:00:00.000Z'); // A — started first, completed LAST
       mk(2, '2026-06-17T11:10:00.000Z'); // B — completed earliest
       mk(4, '2026-06-17T12:05:00.000Z'); // C
-      const est = estimateRun(repoRoot, { workflow: 'fast-fix', taskType: 'bugfix', affectedUnits: 1, sampleSize: 2 });
+      const est = estimateRun(repoRoot, {
+        workflow: 'fast-fix',
+        taskType: 'bugfix',
+        affectedUnits: 1,
+        sampleSize: 2,
+      });
       expect(est.basedOnRuns).toBe(2);
       expect(est.estCostCents).toBeCloseTo(52); // (A 100 + C 4) / 2, NOT (B 2 + C 4)/2 = 3
     } finally {
@@ -83,12 +112,25 @@ describe('estimateRun', () => {
     const repoRoot = makeTempDir();
     try {
       const manager = new RunManager(repoRoot);
-      const a = manager.createRun({ title: 'a', autonomyLevel: 3, workflow: 'structured-feature', executionStyle: 'structured' });
+      const a = manager.createRun({
+        title: 'a',
+        autonomyLevel: 3,
+        workflow: 'structured-feature',
+        executionStyle: 'structured',
+      });
       manager.updateRecord(a.id, { status: 'completed', completedAt: '2026-06-17T10:00:05.000Z' });
-      const b = manager.createRun({ title: 'b', autonomyLevel: 3, workflow: 'fast-fix', executionStyle: 'fast' });
+      const b = manager.createRun({
+        title: 'b',
+        autonomyLevel: 3,
+        workflow: 'fast-fix',
+        executionStyle: 'fast',
+      });
       manager.updateRecord(b.id, { status: 'failed' }); // not completed
       // No completed fast-fix runs → cold-start heuristic.
-      expect(estimateRun(repoRoot, { workflow: 'fast-fix', taskType: 'bugfix', affectedUnits: 1 }).basedOnRuns).toBe(0);
+      expect(
+        estimateRun(repoRoot, { workflow: 'fast-fix', taskType: 'bugfix', affectedUnits: 1 })
+          .basedOnRuns,
+      ).toBe(0);
     } finally {
       removeDir(repoRoot);
     }

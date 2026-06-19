@@ -25,9 +25,7 @@ function describeValue(value: unknown): string {
 }
 
 function typeLabel(declarativeType: DeclarativeType | undefined): string {
-  return declarativeType === undefined
-    ? 'declarative definition'
-    : `${declarativeType} definition`;
+  return declarativeType === undefined ? 'declarative definition' : `${declarativeType} definition`;
 }
 
 function definitionLabel(
@@ -100,11 +98,7 @@ export function parseDeclarativeYaml(
     const result = declarativeDefinitionSchema.safeParse(value);
     if (!result.success) {
       const declared = value.type;
-      throwValidationError(
-        value,
-        isDeclarativeType(declared) ? declared : undefined,
-        result.error,
-      );
+      throwValidationError(value, isDeclarativeType(declared) ? declared : undefined, result.error);
     }
     return result.data;
   }

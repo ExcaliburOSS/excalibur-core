@@ -6,7 +6,11 @@ import {
   resolveBinary,
   resolveServerFor,
 } from '@excalibur/agent-runtime';
-import { DEFAULT_LSP_CONFIG, type DiagnosticsPayload, type ExcaliburConfig } from '@excalibur/shared';
+import {
+  DEFAULT_LSP_CONFIG,
+  type DiagnosticsPayload,
+  type ExcaliburConfig,
+} from '@excalibur/shared';
 import type { Command } from 'commander';
 import type { CliDeps } from '../deps';
 import {
@@ -115,7 +119,9 @@ export function registerReviewCommand(program: Command, deps: CliDeps): void {
               const source = diagnosticsContextSource(result);
               if (source !== null) {
                 additionalSources = [...additionalSources, source];
-                deps.ui.warn(deps.t('review.typecheckErrors', { count: result.diagnostics.length || 'some' }));
+                deps.ui.warn(
+                  deps.t('review.typecheckErrors', { count: result.diagnostics.length || 'some' }),
+                );
               } else if (result.ok === true) {
                 deps.ui.success(deps.t('review.typecheckClean'));
               }

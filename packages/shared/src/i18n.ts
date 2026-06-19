@@ -21,10 +21,12 @@ export function isLocale(value: unknown): value is Locale {
  * > `en`. Only `en`/`es` are recognized; anything else is skipped (an unknown
  * `es_AR.UTF-8` still maps to `es`, `C`/`POSIX` fall through to `en`).
  */
-export function detectLocale(options: {
-  env?: NodeJS.ProcessEnv;
-  configLanguage?: string | undefined;
-} = {}): Locale {
+export function detectLocale(
+  options: {
+    env?: NodeJS.ProcessEnv;
+    configLanguage?: string | undefined;
+  } = {},
+): Locale {
   const env = options.env ?? {};
   const candidates = [
     env['EXCALIBUR_LANG'],

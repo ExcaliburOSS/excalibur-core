@@ -132,7 +132,8 @@ export function validateAgainstSchema(value: unknown, schema: JsonSchema, path =
   }
   // Object/array checks key off the schema's KEYWORDS (or the value's shape), not
   // a `type` that JSON Schema lets you omit — so `{ required: [...] }` still validates.
-  const objectish = schema.type === 'object' || schema.properties !== undefined || schema.required !== undefined;
+  const objectish =
+    schema.type === 'object' || schema.properties !== undefined || schema.required !== undefined;
   if (objectish && typeof value === 'object' && value !== null && !Array.isArray(value)) {
     const obj = value as Record<string, unknown>;
     for (const req of schema.required ?? []) {
@@ -142,7 +143,11 @@ export function validateAgainstSchema(value: unknown, schema: JsonSchema, path =
       if (key in obj) errors.push(...validateAgainstSchema(obj[key], sub, `${path}.${key}`));
     }
   }
-  if ((schema.type === 'array' || schema.items !== undefined) && Array.isArray(value) && schema.items !== undefined) {
+  if (
+    (schema.type === 'array' || schema.items !== undefined) &&
+    Array.isArray(value) &&
+    schema.items !== undefined
+  ) {
     value.forEach((item, i) => {
       errors.push(...validateAgainstSchema(item, schema.items as JsonSchema, `${path}[${i}]`));
     });
@@ -216,7 +221,11 @@ export async function askStructured(
     if (valid !== undefined) {
       return { value: valid, errors: [], raw: out.content };
     }
-    return { value: values[0], errors: validateAgainstSchema(values[0], input.schema), raw: out.content };
+    return {
+      value: values[0],
+      errors: validateAgainstSchema(values[0], input.schema),
+      raw: out.content,
+    };
   };
 
   const first = await attempt([

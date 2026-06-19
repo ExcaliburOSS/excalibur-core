@@ -1,6 +1,10 @@
 import type { CommandMappingDefinition } from '@excalibur/declarative-schemas';
 import type { ExtensionManifest } from '@excalibur/extension-runtime';
-import { BUILT_IN_EXTENSION_VERSION, builtInContribution, type BuiltInExtensionPack } from './types';
+import {
+  BUILT_IN_EXTENSION_VERSION,
+  builtInContribution,
+  type BuiltInExtensionPack,
+} from './types';
 
 const EXTENSION_ID = 'core-command-mappings';
 
@@ -110,8 +114,7 @@ const manifest: ExtensionManifest = {
   name: 'Core Command Mappings',
   version: BUILT_IN_EXTENSION_VERSION,
   kind: 'declarative',
-  description:
-    'Built-in mapping of @excalibur work-item comment commands to Excalibur actions.',
+  description: 'Built-in mapping of @excalibur work-item comment commands to Excalibur actions.',
   contributes: {
     commandMappings: [WORK_ITEM_COMMAND_MAPPING.id],
   },

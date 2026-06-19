@@ -172,7 +172,9 @@ describe('scanInstructionSources', () => {
   });
 
   it('computes contentHash as the sha256 of the file content', () => {
-    const expected = createHash('sha256').update(PROJECT_FILES['CLAUDE.md'] ?? '', 'utf8').digest('hex');
+    const expected = createHash('sha256')
+      .update(PROJECT_FILES['CLAUDE.md'] ?? '', 'utf8')
+      .digest('hex');
     expect(byId('claude-project').contentHash).toBe(expected);
     expect(byId('claude-project').contentHash).toMatch(/^[0-9a-f]{64}$/);
   });

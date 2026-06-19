@@ -50,10 +50,7 @@ describe('validateAgainstSchema', () => {
   });
 
   it('reports missing required, wrong types, bad enum, and bad array items', () => {
-    const errs = validateAgainstSchema(
-      { priority: 'urgent', tags: [1], count: 1.5 },
-      schema,
-    );
+    const errs = validateAgainstSchema({ priority: 'urgent', tags: [1], count: 1.5 }, schema);
     expect(errs.some((e) => e.includes('.name') && e.includes('required'))).toBe(true);
     expect(errs.some((e) => e.includes('.priority') && e.includes('enum'))).toBe(true);
     expect(errs.some((e) => e.includes('.tags[0]') && e.includes('string'))).toBe(true);
@@ -67,7 +64,9 @@ describe('validateAgainstSchema', () => {
   it('validates required/properties even when the schema OMITS `type` (review fix)', () => {
     const typeless: JsonSchema = { required: ['name'], properties: { name: { type: 'string' } } };
     expect(validateAgainstSchema({ name: 'ok' }, typeless)).toEqual([]);
-    expect(validateAgainstSchema({}, typeless).some((e) => e.includes('name') && e.includes('required'))).toBe(true);
+    expect(
+      validateAgainstSchema({}, typeless).some((e) => e.includes('name') && e.includes('required')),
+    ).toBe(true);
   });
 
   it('compares object/array enum members structurally, not by reference (review fix)', () => {

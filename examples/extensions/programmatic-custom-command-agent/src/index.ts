@@ -1,9 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import {
-  defineExtension,
-  type AgentAdapter,
-  type AgentRunInput,
-} from '@excalibur/extension-sdk';
+import { defineExtension, type AgentAdapter, type AgentRunInput } from '@excalibur/extension-sdk';
 import { createEvent, type ExcaliburEvent } from '@excalibur/shared';
 
 /**

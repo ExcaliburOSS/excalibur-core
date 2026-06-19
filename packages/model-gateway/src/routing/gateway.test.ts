@@ -69,9 +69,7 @@ describe('ModelGateway provider resolution', () => {
   });
 
   it('rejects when several providers exist and no default is configured', async () => {
-    const gateway = new ModelGateway(
-      config({ a: { type: 'mock' }, b: { type: 'mock' } }),
-    );
+    const gateway = new ModelGateway(config({ a: { type: 'mock' }, b: { type: 'mock' } }));
     await expect(gateway.chat({ messages })).rejects.toMatchObject({
       code: 'provider_not_found',
     });

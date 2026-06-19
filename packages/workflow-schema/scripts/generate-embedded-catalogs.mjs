@@ -60,7 +60,17 @@ function escapeTemplateLiteral(text) {
   return text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
 }
 
-function generateModule({ ids, dir, suffix, header, typeName, parserName, arrayName, getterName, mapName }) {
+function generateModule({
+  ids,
+  dir,
+  suffix,
+  header,
+  typeName,
+  parserName,
+  arrayName,
+  getterName,
+  mapName,
+}) {
   const lines = [header, ''];
   for (const id of ids) {
     const yamlText = readFileSync(join(packageRoot, dir, `${id}.yaml`), 'utf8');

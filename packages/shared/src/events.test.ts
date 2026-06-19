@@ -92,7 +92,9 @@ describe('diagnosticsPayloadSchema', () => {
   it('validates a per-edit diagnostics payload and round-trips through the event JSONL', () => {
     const payload = {
       file: 'src/a.ts',
-      diagnostics: [{ line: 3, column: 9, severity: 'error', message: 'Type error', code: 'TS2322' }],
+      diagnostics: [
+        { line: 3, column: 9, severity: 'error', message: 'Type error', code: 'TS2322' },
+      ],
       errorCount: 1,
       warningCount: 0,
     };

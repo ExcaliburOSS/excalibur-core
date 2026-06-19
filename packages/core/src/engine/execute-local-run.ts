@@ -141,7 +141,13 @@ function meshMarkdown(runId: string, result: MeshResult): string {
 /** Renders the claim ledger as the `claims.md` artifact. */
 function claimsMarkdown(
   runId: string,
-  verdicts: ReadonlyArray<{ kind: string; statement: string; status: string; asserted: boolean; evidence?: string }>,
+  verdicts: ReadonlyArray<{
+    kind: string;
+    statement: string;
+    status: string;
+    asserted: boolean;
+    evidence?: string;
+  }>,
   summary: string,
 ): string {
   const glyph = (status: string): string =>
@@ -182,7 +188,8 @@ function filesAffectedFromDiff(diff: string): string[] {
 
 /** Deterministic fallback diff for non-mock providers without a ```diff block. */
 function fallbackDiff(title: string): string {
-  const target = /[\w./-]+\.(?:ts|js|tsx|py|go|rb|java)\b/.exec(title)?.[0] ?? 'src/example.service.ts';
+  const target =
+    /[\w./-]+\.(?:ts|js|tsx|py|go|rb|java)\b/.exec(title)?.[0] ?? 'src/example.service.ts';
   return [
     `--- a/${target}`,
     `+++ b/${target}`,
@@ -259,14 +266,8 @@ class LocalRunExecution {
     }
   }
 
-  private emit(
-    type: ExcaliburEventType,
-    payload: Record<string, unknown>,
-    phaseId?: string,
-  ): void {
-    this.forward(
-      createEvent({ runId: this.run.id, type, payload, phaseId: phaseId ?? null }),
-    );
+  private emit(type: ExcaliburEventType, payload: Record<string, unknown>, phaseId?: string): void {
+    this.forward(createEvent({ runId: this.run.id, type, payload, phaseId: phaseId ?? null }));
   }
 
   // --- gateway plumbing ------------------------------------------------------
@@ -288,13 +289,17 @@ class LocalRunExecution {
     // has reached the ceiling. We check BEFORE the call (the cap is a ceiling,
     // not a target) — at worst we overshoot by the single call that crossed it.
     if (this.budgetCapCents !== null && this.spentCents >= this.budgetCapCents) {
-      this.emit('policy_decision', {
-        kind: 'budget',
-        decision: 'deny',
-        message: `Budget cap $${(this.budgetCapCents / 100).toFixed(2)} reached ($${(this.spentCents / 100).toFixed(2)} spent) — denying further model calls.`,
-        spentCents: this.spentCents,
-        capCents: this.budgetCapCents,
-      }, phase?.id);
+      this.emit(
+        'policy_decision',
+        {
+          kind: 'budget',
+          decision: 'deny',
+          message: `Budget cap $${(this.budgetCapCents / 100).toFixed(2)} reached ($${(this.spentCents / 100).toFixed(2)} spent) — denying further model calls.`,
+          spentCents: this.spentCents,
+          capCents: this.budgetCapCents,
+        },
+        phase?.id,
+      );
       throw new BudgetExceededError(this.spentCents, this.budgetCapCents);
     }
     const messages: ChatMessage[] = [
@@ -427,9 +432,10 @@ class LocalRunExecution {
         const inputTokens = event.payload['inputTokens'];
         const outputTokens = event.payload['outputTokens'];
         const model = event.payload['model'];
-        const cost = typeof event.payload['costCents'] === 'number'
-          ? (event.payload['costCents'] as number)
-          : null;
+        const cost =
+          typeof event.payload['costCents'] === 'number'
+            ? (event.payload['costCents'] as number)
+            : null;
         if (typeof inputTokens === 'number' && typeof outputTokens === 'number') {
           this.input.runManager.appendModelCall(this.run.id, {
             provider: this.input.config.models?.default ?? 'mock',
@@ -445,13 +451,17 @@ class LocalRunExecution {
         // — otherwise an agent_work-heavy run could blow past the cap unseen.
         this.spentCents += cost ?? 0;
         if (this.budgetCapCents !== null && this.spentCents >= this.budgetCapCents) {
-          this.emit('policy_decision', {
-            kind: 'budget',
-            decision: 'deny',
-            message: `Budget cap $${(this.budgetCapCents / 100).toFixed(2)} reached ($${(this.spentCents / 100).toFixed(2)} spent) — stopping the agent loop.`,
-            spentCents: this.spentCents,
-            capCents: this.budgetCapCents,
-          }, phase.id);
+          this.emit(
+            'policy_decision',
+            {
+              kind: 'budget',
+              decision: 'deny',
+              message: `Budget cap $${(this.budgetCapCents / 100).toFixed(2)} reached ($${(this.spentCents / 100).toFixed(2)} spent) — stopping the agent loop.`,
+              spentCents: this.spentCents,
+              capCents: this.budgetCapCents,
+            },
+            phase.id,
+          );
           throw new BudgetExceededError(this.spentCents, this.budgetCapCents);
         }
       }
@@ -506,10 +516,7 @@ class LocalRunExecution {
         logLines.push(`$ ${command}\n[denied] ${decision.reason}`);
         continue;
       }
-      if (
-        decision.requiresConfirmation &&
-        !(await this.confirm(`Run "${command}"?`, phase.id))
-      ) {
+      if (decision.requiresConfirmation && !(await this.confirm(`Run "${command}"?`, phase.id))) {
         this.emit('command_completed', { command, exitCode: -1, skipped: true }, phase.id);
         logLines.push(`$ ${command}\n[skipped — not approved]`);
         continue;
@@ -569,7 +576,10 @@ class LocalRunExecution {
     if (this.collectedDiff === null || this.collectedDiff.trim().length === 0) {
       return; // nothing was generated to apply (e.g. agent_work mutated the tree directly)
     }
-    const approved = await this.confirm(`Apply the generated patch for run ${this.run.id}?`, phase.id);
+    const approved = await this.confirm(
+      `Apply the generated patch for run ${this.run.id}?`,
+      phase.id,
+    );
     if (!approved) {
       return;
     }
@@ -582,7 +592,11 @@ class LocalRunExecution {
       // mutated the tree directly, and a bad generated diff shouldn't nuke it).
       this.emit(
         'error',
-        { message: `patch did not apply: ${check.reason ?? 'unknown'}`, filesAffected, fatal: false },
+        {
+          message: `patch did not apply: ${check.reason ?? 'unknown'}`,
+          filesAffected,
+          fatal: false,
+        },
         phase.id,
       );
       return;
@@ -636,11 +650,7 @@ class LocalRunExecution {
       phase,
     );
     const fileName = phase.output ?? 'pr-summary.md';
-    const path = this.input.runManager.writeArtifact(
-      this.run.id,
-      fileName,
-      `${output.content}\n`,
-    );
+    const path = this.input.runManager.writeArtifact(this.run.id, fileName, `${output.content}\n`);
     this.emit('artifact_created', { artifact: fileName, path }, phase.id);
   }
 
@@ -793,7 +803,11 @@ class LocalRunExecution {
       // patch that introduces type errors is caught even without a `typecheck`.
       const typecheckFromCommand = commandFor(this.input.config.commands?.typecheck);
       const typecheckPassed =
-        typecheckFromCommand !== null ? typecheckFromCommand : this.lspRan ? this.lspErrorTotal === 0 : null;
+        typecheckFromCommand !== null
+          ? typecheckFromCommand
+          : this.lspRan
+            ? this.lspErrorTotal === 0
+            : null;
       const evidence: ClaimEvidence = {
         // Derive each from the EXACT configured command's own exit code (denied/
         // skipped commands are excluded) — never from a conflated test+lint+build

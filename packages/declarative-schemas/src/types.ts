@@ -24,7 +24,5 @@ export type DeclarativeType = (typeof DECLARATIVE_TYPES)[number];
 
 /** Narrowing helper for unknown `type` values read from YAML/front matter. */
 export function isDeclarativeType(value: unknown): value is DeclarativeType {
-  return (
-    typeof value === 'string' && (DECLARATIVE_TYPES as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (DECLARATIVE_TYPES as readonly string[]).includes(value);
 }

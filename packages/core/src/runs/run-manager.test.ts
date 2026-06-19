@@ -78,7 +78,11 @@ describe('RunManager', () => {
   });
 
   it('lists runs in id order and resolves the latest run', () => {
-    const first = manager.createRun({ title: 'First', autonomyLevel: 2, workflow: 'propose-patch' });
+    const first = manager.createRun({
+      title: 'First',
+      autonomyLevel: 2,
+      workflow: 'propose-patch',
+    });
     const second = manager.createRun({ title: 'Second', autonomyLevel: 3, workflow: 'fast-fix' });
 
     // Same-second creation must still produce unique, ordered ids.

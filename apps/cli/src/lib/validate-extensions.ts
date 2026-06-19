@@ -211,7 +211,9 @@ export function validateRepoExtensions(repoRoot: string): ValidationReport {
   }
 
   // 4. Extension directories (.excalibur/extensions/* + extensions.yaml local list).
-  const extensionDirs = new Set<string>(listDirs(join(excaliburDir, 'extensions')).map((d) => resolve(d)));
+  const extensionDirs = new Set<string>(
+    listDirs(join(excaliburDir, 'extensions')).map((d) => resolve(d)),
+  );
   for (const local of localDirs) {
     const localPath = resolve(excaliburDir, local);
     if (!existsSync(localPath)) {

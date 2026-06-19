@@ -37,28 +37,28 @@ describe('instructionSourceSchema', () => {
   });
 
   it('rejects unknown scope, format, kind or trust level', () => {
-    expect(
-      instructionSourceSchema.safeParse({ ...claudeSource, scope: 'team' }).success,
-    ).toBe(false);
-    expect(
-      instructionSourceSchema.safeParse({ ...claudeSource, format: 'markdown' }).success,
-    ).toBe(false);
-    expect(
-      instructionSourceSchema.safeParse({ ...claudeSource, kind: 'note' }).success,
-    ).toBe(false);
+    expect(instructionSourceSchema.safeParse({ ...claudeSource, scope: 'team' }).success).toBe(
+      false,
+    );
+    expect(instructionSourceSchema.safeParse({ ...claudeSource, format: 'markdown' }).success).toBe(
+      false,
+    );
+    expect(instructionSourceSchema.safeParse({ ...claudeSource, kind: 'note' }).success).toBe(
+      false,
+    );
     expect(
       instructionSourceSchema.safeParse({ ...claudeSource, trustLevel: 'verified' }).success,
     ).toBe(false);
-    expect(
-      instructionSourceSchema.safeParse({ ...claudeSource, importedAs: 'note' }).success,
-    ).toBe(false);
+    expect(instructionSourceSchema.safeParse({ ...claudeSource, importedAs: 'note' }).success).toBe(
+      false,
+    );
   });
 
   it('rejects missing required fields', () => {
     expect(instructionSourceSchema.safeParse({ ...claudeSource, id: '' }).success).toBe(false);
-    expect(
-      instructionSourceSchema.safeParse({ ...claudeSource, contentHash: '' }).success,
-    ).toBe(false);
+    expect(instructionSourceSchema.safeParse({ ...claudeSource, contentHash: '' }).success).toBe(
+      false,
+    );
   });
 });
 
@@ -104,9 +104,9 @@ describe('detectedSkillSchema', () => {
 
   it('rejects a skill with an invalid scope or a malformed source', () => {
     expect(detectedSkillSchema.safeParse({ ...skill, scope: 'enterprise' }).success).toBe(false);
-    expect(
-      detectedSkillSchema.safeParse({ ...skill, source: { id: 'broken' } }).success,
-    ).toBe(false);
+    expect(detectedSkillSchema.safeParse({ ...skill, source: { id: 'broken' } }).success).toBe(
+      false,
+    );
   });
 });
 

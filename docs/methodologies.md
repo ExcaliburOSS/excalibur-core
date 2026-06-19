@@ -11,22 +11,22 @@ Like workflows, the catalog comes from the extension host: 14 built-ins, overrid
 
 ## Built-in catalog (14)
 
-| ID | Levels | Flow |
-|---|---|---|
-| `lightweight` | 0–1 | Question → AI response → developer decides |
-| `review-first` | 0–2 | Developer writes code → AI reviews → developer fixes → PR |
-| `patch-proposal` | 2 | Task → AI patch → human reviews → human applies |
-| `fast-fix` | 2–3 | Task → branch → AI patch → tests → summary |
-| `plan-then-execute` | 3–4 | Task → short plan → implementation → tests → review |
-| `spec-driven` | 3–4 | Task → spec → plan → tasks → implementation → verification |
-| `tdd-agentic` | 2–4 | Failing test first → implementation → tests pass → review |
-| `safe-refactor` | 2–4 | Scope → invariants → baseline tests → refactor → diff review |
-| `security-first` | 0–4 | Risk analysis → plan → implementation → security review → approval |
-| `migration` | 3–4 | Migration plan → compat check → implementation → rollback notes |
-| `explore-then-choose` | 3–4 | Alternatives → trade-offs → choose → implement |
-| `human-gated` | 3–4 | Plan → human approval → implementation → human approval → PR |
-| `discovery` | 0–1 | Clarify before building; can recommend **not** building |
-| `agentic-agile-light` | 0–1 | Lightweight async rituals: daily summaries, weekly plans |
+| ID                    | Levels | Flow                                                               |
+| --------------------- | ------ | ------------------------------------------------------------------ |
+| `lightweight`         | 0–1    | Question → AI response → developer decides                         |
+| `review-first`        | 0–2    | Developer writes code → AI reviews → developer fixes → PR          |
+| `patch-proposal`      | 2      | Task → AI patch → human reviews → human applies                    |
+| `fast-fix`            | 2–3    | Task → branch → AI patch → tests → summary                         |
+| `plan-then-execute`   | 3–4    | Task → short plan → implementation → tests → review                |
+| `spec-driven`         | 3–4    | Task → spec → plan → tasks → implementation → verification         |
+| `tdd-agentic`         | 2–4    | Failing test first → implementation → tests pass → review          |
+| `safe-refactor`       | 2–4    | Scope → invariants → baseline tests → refactor → diff review       |
+| `security-first`      | 0–4    | Risk analysis → plan → implementation → security review → approval |
+| `migration`           | 3–4    | Migration plan → compat check → implementation → rollback notes    |
+| `explore-then-choose` | 3–4    | Alternatives → trade-offs → choose → implement                     |
+| `human-gated`         | 3–4    | Plan → human approval → implementation → human approval → PR       |
+| `discovery`           | 0–1    | Clarify before building; can recommend **not** building            |
+| `agentic-agile-light` | 0–1    | Lightweight async rituals: daily summaries, weekly plans           |
 
 ## Choosing guidance
 
@@ -34,7 +34,7 @@ Like workflows, the catalog comes from the extension host: 14 built-ins, overrid
 - **tdd-agentic** — bugs, regression prevention, critical business logic.
 - **safe-refactor** — when no behavior change is intended.
 - **security-first** — auth, payments, contracts, PII, permissions, secrets.
-- **explore-then-choose** — complex decisions; presented as *approach exploration* (`Approach A — Minimal Change / Approach B — Clean Architecture / Approach C — Performance-Oriented`), never as model comparison.
+- **explore-then-choose** — complex decisions; presented as _approach exploration_ (`Approach A — Minimal Change / Approach B — Clean Architecture / Approach C — Performance-Oriented`), never as model comparison.
 - **discovery** — when the idea/ticket itself is unclear; see [getting-started.md](getting-started.md#5-discovery-decide-before-you-build).
 
 ## Anatomy of a methodology

@@ -103,9 +103,7 @@ export class PermissionEngine {
 
   /** Returns the first blocked-path pattern matching the path, if any. */
   private blockedBy(normalizedPath: string): string | undefined {
-    return this.blockedPaths.find((pattern) =>
-      minimatch(normalizedPath, pattern, { dot: true }),
-    );
+    return this.blockedPaths.find((pattern) => minimatch(normalizedPath, pattern, { dot: true }));
   }
 
   private commandIsAllowlisted(command: string): boolean {
@@ -117,8 +115,7 @@ export class PermissionEngine {
       return false;
     }
     return this.allowedCommands.some(
-      (entry) =>
-        normalizeCommand(entry) === command || minimatch(command, entry, { dot: true }),
+      (entry) => normalizeCommand(entry) === command || minimatch(command, entry, { dot: true }),
     );
   }
 

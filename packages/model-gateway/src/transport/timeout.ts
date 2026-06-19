@@ -25,10 +25,7 @@ export interface TimeoutHandle {
  * (propagating the caller's reason). `clear()` must be called once the request
  * settles to release the timer/listener.
  */
-export function withTimeout(
-  timeoutMs: number,
-  callerSignal?: AbortSignal,
-): TimeoutHandle {
+export function withTimeout(timeoutMs: number, callerSignal?: AbortSignal): TimeoutHandle {
   const controller = new AbortController();
 
   const onCallerAbort = (): void => {

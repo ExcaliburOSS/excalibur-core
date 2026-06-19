@@ -1,6 +1,6 @@
 # Agents
 
-The **Agent Runtime** executes the working phases of a workflow through pluggable *agent adapters*.
+The **Agent Runtime** executes the working phases of a workflow through pluggable _agent adapters_.
 
 ```ts
 interface AgentAdapter {
@@ -23,9 +23,9 @@ The default adapter, built on the Model Gateway and nine native tools:
 
 `read_file · write_file · list_files · search_code · run_command · git_diff · apply_patch · create_branch · run_tests`
 
-Every tool call passes through the **Permission Engine**: blocked paths are denied, mutating tools default to *ask*, commands outside the allowlist require confirmation (see [security.md](security.md)).
+Every tool call passes through the **Permission Engine**: blocked paths are denied, mutating tools default to _ask_, commands outside the allowlist require confirmation (see [security.md](security.md)).
 
-> **Real execution, gated.** The native adapter runs a real model→tool loop: `write_file` writes, `run_command` executes, `apply_patch` applies — confined to the working directory, gated by the Permission Engine, and approval-gated (mutating tools default to *ask*). With the built-in mock provider it instead produces a realistic offline event stream (nothing on disk changes) so you can explore without a key.
+> **Real execution, gated.** The native adapter runs a real model→tool loop: `write_file` writes, `run_command` executes, `apply_patch` applies — confined to the working directory, gated by the Permission Engine, and approval-gated (mutating tools default to _ask_). With the built-in mock provider it instead produces a realistic offline event stream (nothing on disk changes) so you can explore without a key.
 
 ### `custom-command`
 
@@ -36,12 +36,12 @@ agents:
   default: native
   claude-code:
     type: custom-command
-    command: "claude"
-    args: ["--print", "{{prompt}}"]
+    command: 'claude'
+    args: ['--print', '{{prompt}}']
   aider:
     type: custom-command
-    command: "aider"
-    args: ["--message", "{{prompt}}"]
+    command: 'aider'
+    args: ['--message', '{{prompt}}']
 ```
 
 `detect()` checks the binary on PATH; `run()` spawns the configured CLI agent as a subprocess (in the working directory, abortable) and folds its output into the event stream.

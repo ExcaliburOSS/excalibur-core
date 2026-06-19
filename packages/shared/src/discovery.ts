@@ -165,7 +165,8 @@ export function scoreDiscoveryTranscript(input: {
         : 'low';
 
   const evidence = answerFor(answers, 'evidence');
-  const hasQuantifiedEvidence = /\d/.test(evidence) || /customer|user|client|ticket/i.test(evidence);
+  const hasQuantifiedEvidence =
+    /\d/.test(evidence) || /customer|user|client|ticket/i.test(evidence);
   const userEvidence: DiscoveryScore =
     evidence.length >= SUBSTANTIAL_ANSWER && hasQuantifiedEvidence
       ? 'high'
@@ -200,7 +201,14 @@ export function scoreDiscoveryTranscript(input: {
     agentReadiness = 'not_ready';
   }
 
-  return { problemClarity, userEvidence, scopeClarity, technicalRisk, agentReadiness, touchesSensitivePaths };
+  return {
+    problemClarity,
+    userEvidence,
+    scopeClarity,
+    technicalRisk,
+    agentReadiness,
+    touchesSensitivePaths,
+  };
 }
 
 export interface DiscoveryRecommendationInput extends DiscoveryScores {
@@ -232,7 +240,9 @@ export function recommendFromScores(
     reasons.push('Customer feedback with low evidence — validate with customers before building.');
   } else if (input.inputType === 'idea' && input.userEvidence === 'low') {
     recommendation = 'prototype';
-    reasons.push('Product idea with low user evidence — a lightweight prototype is cheaper than a full build.');
+    reasons.push(
+      'Product idea with low user evidence — a lightweight prototype is cheaper than a full build.',
+    );
   } else if (input.scopeClarity === 'low') {
     recommendation = 'split_scope';
     reasons.push('Scope clarity is low — split or refine the scope before implementation.');

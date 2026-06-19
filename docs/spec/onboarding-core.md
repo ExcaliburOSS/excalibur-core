@@ -15,7 +15,7 @@ excalibur run "Implement a small safe change"
 
 Does a lot automatically, asks almost nothing: repo/structure/language/framework/package-manager detection, command detection (omit undetectable commands — never invent), instruction discovery (ISD — see instructions-skills-core.md), optional model provider setup (one question), safety preset activation, **minimal** `.excalibur/` generation, friendly next-step output.
 
-Detection additions beyond context-engine's existing pins: monorepo markers (pnpm-workspace.yaml, turbo.json, nx.json), CI (.github/workflows/**), Docker (Dockerfile, docker-compose.yml), more frameworks (vite/nuxt/next/nest configs, pytest/pyproject, go.mod, Cargo.toml, pom.xml, build.gradle). Commands map through the detected package manager (`"test": "vitest"` + pnpm → `pnpm test`).
+Detection additions beyond context-engine's existing pins: monorepo markers (pnpm-workspace.yaml, turbo.json, nx.json), CI (.github/workflows/\*\*), Docker (Dockerfile, docker-compose.yml), more frameworks (vite/nuxt/next/nest configs, pytest/pyproject, go.mod, Cargo.toml, pom.xml, build.gradle). Commands map through the detected package manager (`"test": "vitest"` + pnpm → `pnpm test`).
 
 **Minimal mode generates ONLY:**
 
@@ -40,13 +40,13 @@ project:
   packageManager: pnpm
   languages: [typescript]
   frameworks: [nestjs]
-commands:            # top-level (project.commands remains accepted alias, normalized to this)
+commands: # top-level (project.commands remains accepted alias, normalized to this)
   test: pnpm test
   lint: pnpm lint
   typecheck: pnpm typecheck
   build: pnpm build
 instructions:
-  sources: []        # only detected sources, never non-existent paths
+  sources: [] # only detected sources, never non-existent paths
 safety:
   preset: standard-safe
 workflowDefaults:
@@ -82,15 +82,15 @@ Permissions: read allowed except blocked; write files **ask**; apply patch **ask
 
 ## 6. Command → workflow/autonomy mapping (ONB-5) + intent heuristics (§10)
 
-| Command | Entity | Level | Workflow | Notes |
-|---|---|---|---|---|
-| `ask` | interaction | 1 | `ask-repo` | never changes code |
-| `review [--diff]` | interaction | 0 | `review-only` | never changes code |
-| `patch` | patch | 2 | `propose-patch` | apply requires confirmation |
-| `run` | run | 3 | `fast-fix` or `standard-feature` by intent | branch/worktree isolation when possible |
-| `run --careful` | run | 4 | `structured-feature` / `security-review` / `migration` by intent | stronger approvals |
-| `run --explore` | run | 3–4 | `explore-alternatives` | "engineering alternatives", never "model comparison" |
-| `discovery` | discovery | 0–1 | `discovery` | never changes code |
+| Command           | Entity      | Level | Workflow                                                         | Notes                                                |
+| ----------------- | ----------- | ----- | ---------------------------------------------------------------- | ---------------------------------------------------- |
+| `ask`             | interaction | 1     | `ask-repo`                                                       | never changes code                                   |
+| `review [--diff]` | interaction | 0     | `review-only`                                                    | never changes code                                   |
+| `patch`           | patch       | 2     | `propose-patch`                                                  | apply requires confirmation                          |
+| `run`             | run         | 3     | `fast-fix` or `standard-feature` by intent                       | branch/worktree isolation when possible              |
+| `run --careful`   | run         | 4     | `structured-feature` / `security-review` / `migration` by intent | stronger approvals                                   |
+| `run --explore`   | run         | 3–4   | `explore-alternatives`                                           | "engineering alternatives", never "model comparison" |
+| `discovery`       | discovery   | 0–1   | `discovery`                                                      | never changes code                                   |
 
 `classifyTaskIntent` heuristics (deterministic, keyword/context-based): small bugfix (fix/bug/typo/broken + narrow scope) → fast-fix; normal feature → standard-feature; ambiguous (no clear verb/criteria, very short or vague) → recommend running Discovery first (`[Y/n]` prompt); asks for alternatives/approaches → explore-alternatives; sensitive (auth, billing, payments, contracts/signing, security, PII, legal, migrations, infrastructure — plus config `autonomy.paths` hits) → recommend careful with security-review/migration/structured-feature; weak/no detected tests + risky task → recommend plan-only/patch before agent run. The run prompt shows the choice and allows changing: `Using: Fast Fix  [Enter] continue [m] change mode [c] cancel`. Never present a long workflow list by default.
 

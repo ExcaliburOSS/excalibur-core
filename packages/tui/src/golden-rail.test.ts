@@ -43,7 +43,11 @@ const STREAM: ExcaliburEvent[] = [
   ev('phase_started', { name: 'Implement' }, 'p-impl'),
   ev('model_call', { model: 'qwen', costCents: 7, inputTokens: 3200, outputTokens: 540 }, 'p-impl'),
   ev('file_write', { path: 'src/webhook.ts' }, 'p-impl'),
-  ev('patch_generated', { diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1,2 @@\n-a\n+b\n+c\n' }, 'p-impl'),
+  ev(
+    'patch_generated',
+    { diff: 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1,2 @@\n-a\n+b\n+c\n' },
+    'p-impl',
+  ),
   ev('command_started', { command: 'pnpm test' }, 'p-impl'),
   ev('command_completed', { exitCode: 0 }, 'p-impl'),
 ];

@@ -78,7 +78,11 @@ export class StdioTransport implements McpTransport {
     this.child.stdout.setEncoding('utf8');
     this.child.stdout.on('data', (chunk: string) => this.onStdout(chunk));
     this.child.on('error', (error: Error) => {
-      this.onClose(new ProviderError(`MCP server process error: ${error.message}.`, { code: 'mcp_process_error' }));
+      this.onClose(
+        new ProviderError(`MCP server process error: ${error.message}.`, {
+          code: 'mcp_process_error',
+        }),
+      );
     });
     this.child.on('exit', (code, signal) => {
       if (this.closed) return;
@@ -94,7 +98,9 @@ export class StdioTransport implements McpTransport {
   send(message: JsonRpcRequest | JsonRpcNotification): void {
     const ok = this.child.stdin.write(`${JSON.stringify(message)}\n`);
     if (!ok && this.child.stdin.destroyed) {
-      throw new ProviderError('MCP server stdin is no longer writable.', { code: 'mcp_write_failed' });
+      throw new ProviderError('MCP server stdin is no longer writable.', {
+        code: 'mcp_write_failed',
+      });
     }
   }
 
@@ -223,7 +229,10 @@ export class HttpTransport implements McpTransport {
       }
       if (!res.ok) {
         const text = await res.text().catch(() => '');
-        this.deliverError(id, `HTTP ${res.status} ${res.statusText}${text ? `: ${text.slice(0, 200)}` : ''}`);
+        this.deliverError(
+          id,
+          `HTTP ${res.status} ${res.statusText}${text ? `: ${text.slice(0, 200)}` : ''}`,
+        );
         return;
       }
       if (!isRequest) {

@@ -10,23 +10,35 @@ external API behind the normalized `WorkItemProvider` interface from
 ```ts
 import type {
   WorkItemProvider,
-  GetWorkItemInput,            // { integrationId, externalIdOrKey }
-  ListWorkItemsInput,          // { integrationId, query?, status?, assignee?, project?, team?, labels?, limit? }
-  AddWorkItemCommentInput,     // { integrationId, externalIdOrKey, body }
-  UpdateWorkItemStatusInput,   // { integrationId, externalIdOrKey, status }
-  LinkPullRequestInput,        // { integrationId, externalIdOrKey, pullRequest: { provider, url, title, … } }
+  GetWorkItemInput, // { integrationId, externalIdOrKey }
+  ListWorkItemsInput, // { integrationId, query?, status?, assignee?, project?, team?, labels?, limit? }
+  AddWorkItemCommentInput, // { integrationId, externalIdOrKey, body }
+  UpdateWorkItemStatusInput, // { integrationId, externalIdOrKey, status }
+  LinkPullRequestInput, // { integrationId, externalIdOrKey, pullRequest: { provider, url, title, … } }
   NormalizedWorkItem,
 } from '@excalibur/work-items';
 
 export class LinearWorkItemProvider implements WorkItemProvider {
-  readonly type = 'linear';    // one of: linear | jira | github_issues | gitlab_issues | azure_devops | asana | youtrack
+  readonly type = 'linear'; // one of: linear | jira | github_issues | gitlab_issues | azure_devops | asana | youtrack
 
-  async getWorkItem(input: GetWorkItemInput): Promise<NormalizedWorkItem> { /* … */ }
-  async listWorkItems(input: ListWorkItemsInput): Promise<NormalizedWorkItem[]> { /* … */ }
-  async addComment(input: AddWorkItemCommentInput): Promise<void> { /* … */ }
-  async updateStatus(input: UpdateWorkItemStatusInput): Promise<void> { /* … */ }
-  async linkPullRequest(input: LinkPullRequestInput): Promise<void> { /* … */ }
-  async validateCredentials(): Promise<boolean> { /* cheap auth check */ }
+  async getWorkItem(input: GetWorkItemInput): Promise<NormalizedWorkItem> {
+    /* … */
+  }
+  async listWorkItems(input: ListWorkItemsInput): Promise<NormalizedWorkItem[]> {
+    /* … */
+  }
+  async addComment(input: AddWorkItemCommentInput): Promise<void> {
+    /* … */
+  }
+  async updateStatus(input: UpdateWorkItemStatusInput): Promise<void> {
+    /* … */
+  }
+  async linkPullRequest(input: LinkPullRequestInput): Promise<void> {
+    /* … */
+  }
+  async validateCredentials(): Promise<boolean> {
+    /* cheap auth check */
+  }
 }
 ```
 
@@ -74,7 +86,7 @@ capabilities:
   - work_items.update_status
   - work_items.link_pr
 configSchema:
-  apiKeyEnv: { type: string, required: true }   # env var NAME, never the value
+  apiKeyEnv: { type: string, required: true } # env var NAME, never the value
   workspace: { type: string, required: false }
 permissions:
   network:

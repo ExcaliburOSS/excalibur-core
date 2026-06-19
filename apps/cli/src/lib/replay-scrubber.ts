@@ -127,7 +127,9 @@ export function printLinearSummary(
   }
   deps.ui.write();
   const last = replay.steps[replay.steps.length - 1];
-  deps.ui.info(deps.t('replay-scrubber.totalCost', { cost: formatCost(last?.costCentsSoFar ?? null) }));
+  deps.ui.info(
+    deps.t('replay-scrubber.totalCost', { cost: formatCost(last?.costCentsSoFar ?? null) }),
+  );
 }
 
 /** Prints the reconstructed state at a single step (the `--at <n>` view). */
@@ -220,9 +222,7 @@ async function forkFromCursor(
       autonomyLevel,
     };
     const result = await runForkTurn(turn, { sourceRunId: runId, atStep: cursor, instruction });
-    deps.ui.info(
-      deps.t('replay-scrubber.forkCreated', { id: result.forkRunId }),
-    );
+    deps.ui.info(deps.t('replay-scrubber.forkCreated', { id: result.forkRunId }));
   } catch (error) {
     deps.ui.error(error instanceof Error ? error.message : String(error));
   }

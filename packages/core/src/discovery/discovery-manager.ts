@@ -120,7 +120,8 @@ export function workflowForRecommendation(
 }
 
 function answerLine(answer: DiscoveryAnswerEntry): string {
-  const text = answer.answer !== null && answer.answer.trim().length > 0 ? answer.answer : '_(no answer)_';
+  const text =
+    answer.answer !== null && answer.answer.trim().length > 0 ? answer.answer : '_(no answer)_';
   return `### ${answer.question}\n\n${text}`;
 }
 
@@ -237,7 +238,9 @@ export class DiscoveryManager {
       return output.content;
     };
 
-    const transcriptText = answers.map((entry) => `${entry.question} ${entry.answer ?? ''}`).join('\n');
+    const transcriptText = answers
+      .map((entry) => `${entry.question} ${entry.answer ?? ''}`)
+      .join('\n');
 
     // 3. Synthesis artifacts (mock-phrased) + deterministic sections.
     const summarySynthesis = await chat(

@@ -148,7 +148,11 @@ export interface TempRepoOptions {
 export function writeMockProviders(repoRoot: string): void {
   const dir = join(repoRoot, '.excalibur', 'models');
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'providers.yaml'), 'providers:\n  default: mock\n  mock:\n    type: mock\n', 'utf8');
+  writeFileSync(
+    join(dir, 'providers.yaml'),
+    'providers:\n  default: mock\n  mock:\n    type: mock\n',
+    'utf8',
+  );
 }
 
 /**
@@ -191,7 +195,11 @@ export function makeTempRepo(options: TempRepoOptions = {}): string {
     'utf8',
   );
   if (options.claudeMd !== false) {
-    writeFileSync(join(dir, 'CLAUDE.md'), '# Project rules\n\nUse pnpm. Keep diffs small.\n', 'utf8');
+    writeFileSync(
+      join(dir, 'CLAUDE.md'),
+      '# Project rules\n\nUse pnpm. Keep diffs small.\n',
+      'utf8',
+    );
   }
   if (options.skill === true) {
     const skillDir = join(dir, '.claude', 'skills', 'db-review');

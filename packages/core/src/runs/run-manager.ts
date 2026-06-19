@@ -103,10 +103,13 @@ export class RunManager {
     // `../../../.ssh/authorized_keys` can never escape it.
     const filePath = resolve(dir, fileName);
     if (!(filePath === dir || filePath.startsWith(dir + sep))) {
-      throw new ArtifactRecordError(`Artifact file name escapes the run directory: "${fileName}".`, {
-        runId,
-        fileName,
-      });
+      throw new ArtifactRecordError(
+        `Artifact file name escapes the run directory: "${fileName}".`,
+        {
+          runId,
+          fileName,
+        },
+      );
     }
     writeFileEnsured(filePath, content);
     return filePath;

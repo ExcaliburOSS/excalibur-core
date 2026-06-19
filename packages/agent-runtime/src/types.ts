@@ -1,9 +1,4 @@
-import type {
-  AgentRole,
-  ExcaliburConfig,
-  ExcaliburEvent,
-  PhaseType,
-} from '@excalibur/shared';
+import type { AgentRole, ExcaliburConfig, ExcaliburEvent, PhaseType } from '@excalibur/shared';
 import type { ChatMessage, ModelGateway } from '@excalibur/model-gateway';
 
 /**

@@ -10,13 +10,16 @@ import type { MemoryNode } from './memory-node';
  * Returns `null` when there is nothing relevant, so an unrelated turn is
  * untouched.
  */
-export function memoryContextSource(nodes: ReadonlyArray<MemoryNode>): AdditionalContextSource | null {
+export function memoryContextSource(
+  nodes: ReadonlyArray<MemoryNode>,
+): AdditionalContextSource | null {
   if (nodes.length === 0) {
     return null;
   }
   const lines = nodes.map((node) => {
     const where = node.subjectPaths.length > 0 ? `  (${node.subjectPaths.join(', ')})` : '';
-    const why = node.rationale !== undefined && node.rationale.length > 0 ? ` — ${node.rationale}` : '';
+    const why =
+      node.rationale !== undefined && node.rationale.length > 0 ? ` — ${node.rationale}` : '';
     return `- [${node.type}] ${node.statement}${why}${where}`;
   });
   const content =

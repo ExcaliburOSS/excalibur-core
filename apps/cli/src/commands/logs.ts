@@ -8,7 +8,10 @@ import type { CliDeps } from '../deps';
 
 function compactPayload(payload: Record<string, unknown>): string {
   const entries = Object.entries(payload)
-    .filter(([, value]) => typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')
+    .filter(
+      ([, value]) =>
+        typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean',
+    )
     .slice(0, 4)
     .map(([key, value]) => `${key}=${String(value)}`);
   return entries.join(' ');

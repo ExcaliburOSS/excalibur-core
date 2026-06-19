@@ -186,7 +186,8 @@ function gatherReferencedFiles(repoRoot: string, task: string): string {
     try {
       if (!existsSync(abs) || !statSync(abs).isFile()) continue;
       const raw = readFileSync(abs, 'utf8');
-      const capped = raw.length > PATCH_FILE_CAP ? `${raw.slice(0, PATCH_FILE_CAP)}\n… (truncated)` : raw;
+      const capped =
+        raw.length > PATCH_FILE_CAP ? `${raw.slice(0, PATCH_FILE_CAP)}\n… (truncated)` : raw;
       blocks.push(`Current contents of \`${rel}\`:\n\`\`\`\n${redactSecrets(capped)}\n\`\`\``);
     } catch {
       // Unreadable file → just skip it (the model can still propose a new file).
@@ -225,8 +226,7 @@ export async function generatePatch(deps: CliDeps, task: string): Promise<LocalP
     'fenced block (git-style, with ---/+++ headers and @@ hunks) that accomplishes the task — ' +
     'no prose, no questions, do not ask to see files (their current contents are provided ' +
     'below when relevant). For a new file, diff against /dev/null.';
-  const userContent =
-    fileContext.length > 0 ? `${fileContext}\n\nTask: ${task}` : `Task: ${task}`;
+  const userContent = fileContext.length > 0 ? `${fileContext}\n\nTask: ${task}` : `Task: ${task}`;
   const messages: ChatMessage[] = [
     {
       role: 'system',

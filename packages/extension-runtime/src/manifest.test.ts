@@ -4,11 +4,7 @@ import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ConfigValidationError } from '@excalibur/shared';
-import {
-  extensionManifestSchema,
-  loadManifest,
-  validateManifest,
-} from './manifest';
+import { extensionManifestSchema, loadManifest, validateManifest } from './manifest';
 
 /** Declarative pack example from extensions spec §3 (verbatim). */
 const DECLARATIVE_PACK_YAML = `
@@ -117,7 +113,12 @@ permissions:
     expect(result.success).toBe(true);
     expect(result.errors).toBeUndefined();
     expect(result.data?.contributes?.mcpServers).toEqual([
-      { name: 'github', command: 'gh-mcp-server', args: ['--stdio'], env: { GH_HOST: 'github.com' } },
+      {
+        name: 'github',
+        command: 'gh-mcp-server',
+        args: ['--stdio'],
+        env: { GH_HOST: 'github.com' },
+      },
     ]);
     // The spawned MCP process is governed by the manifest's own process/secrets perms.
     expect(result.data?.permissions?.process?.allowedCommands).toEqual(['gh-mcp-server']);

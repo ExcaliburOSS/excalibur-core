@@ -32,9 +32,7 @@ describe('generateRunId', () => {
 describe('generateId', () => {
   it('produces <prefix>_<uuid>', () => {
     const id = generateId('patch');
-    expect(id).toMatch(
-      /^patch_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-    );
+    expect(id).toMatch(/^patch_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   });
 
   it('produces unique values across calls', () => {

@@ -31,10 +31,7 @@ export function registerApplyCommand(program: Command, deps: CliDeps): void {
       deps.ui.success(
         deps.t('apply.applied', {
           id: patch.id,
-          files:
-            filesAffected.length > 0
-              ? filesAffected.join(', ')
-              : deps.t('apply.no-files'),
+          files: filesAffected.length > 0 ? filesAffected.join(', ') : deps.t('apply.no-files'),
         }),
       );
     });

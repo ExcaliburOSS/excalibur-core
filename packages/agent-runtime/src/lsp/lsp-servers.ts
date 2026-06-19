@@ -35,9 +35,24 @@ const EXTENSION_LANGUAGE: Readonly<Record<string, string>> = {
 
 /** Language → default server. TS and JS share the typescript-language-server. */
 const DEFAULT_SERVERS: Readonly<Record<string, LspServerCommand>> = {
-  typescript: { serverKey: 'typescript', command: 'typescript-language-server', args: ['--stdio'], languageId: 'typescript' },
-  javascript: { serverKey: 'typescript', command: 'typescript-language-server', args: ['--stdio'], languageId: 'javascript' },
-  python: { serverKey: 'python', command: 'pyright-langserver', args: ['--stdio'], languageId: 'python' },
+  typescript: {
+    serverKey: 'typescript',
+    command: 'typescript-language-server',
+    args: ['--stdio'],
+    languageId: 'typescript',
+  },
+  javascript: {
+    serverKey: 'typescript',
+    command: 'typescript-language-server',
+    args: ['--stdio'],
+    languageId: 'javascript',
+  },
+  python: {
+    serverKey: 'python',
+    command: 'pyright-langserver',
+    args: ['--stdio'],
+    languageId: 'python',
+  },
   go: { serverKey: 'go', command: 'gopls', args: [], languageId: 'go' },
   rust: { serverKey: 'rust', command: 'rust-analyzer', args: [], languageId: 'rust' },
 };

@@ -5,18 +5,18 @@ a manifest named `excalibur.extension.yaml` at the extension's root.
 
 ## Fields
 
-| Field | Type | Notes |
-|---|---|---|
-| `id` | string, required | Stable identifier. Must start with a letter, digit or `@` and contain only letters, digits and `@ / . _ -`. |
-| `name` | string, required | Human-readable name. |
-| `version` | string, required | Semver recommended. |
-| `kind` | `declarative` \| `programmatic` \| `mixed`, required | See kind rules below. |
-| `description` | string, optional | |
-| `entrypoint` | string, optional | Path to **compiled JS** relative to the extension dir (e.g. `dist/index.js`). |
-| `contributes` | object, optional | What the extension provides (see below). |
-| `capabilities` | string[], optional | Capability identifiers, e.g. `work_items.read`, `communication.post`, `reports.generate`. |
-| `configSchema` | record, optional | `{ <field>: { type: string; required?: boolean } }` — describes the configuration the host resolves into `ctx.config`. |
-| `permissions` | object, optional | Access declarations (see below and [security-model.md](./security-model.md)). |
+| Field          | Type                                                 | Notes                                                                                                                  |
+| -------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `id`           | string, required                                     | Stable identifier. Must start with a letter, digit or `@` and contain only letters, digits and `@ / . _ -`.            |
+| `name`         | string, required                                     | Human-readable name.                                                                                                   |
+| `version`      | string, required                                     | Semver recommended.                                                                                                    |
+| `kind`         | `declarative` \| `programmatic` \| `mixed`, required | See kind rules below.                                                                                                  |
+| `description`  | string, optional                                     |                                                                                                                        |
+| `entrypoint`   | string, optional                                     | Path to **compiled JS** relative to the extension dir (e.g. `dist/index.js`).                                          |
+| `contributes`  | object, optional                                     | What the extension provides (see below).                                                                               |
+| `capabilities` | string[], optional                                   | Capability identifiers, e.g. `work_items.read`, `communication.post`, `reports.generate`.                              |
+| `configSchema` | record, optional                                     | `{ <field>: { type: string; required?: boolean } }` — describes the configuration the host resolves into `ctx.config`. |
+| `permissions`  | object, optional                                     | Access declarations (see below and [security-model.md](./security-model.md)).                                          |
 
 ### Kind rules (validated)
 
@@ -27,38 +27,38 @@ a manifest named `excalibur.extension.yaml` at the extension's root.
 
 Two flavors of keys:
 
-**Declarative keys** hold *file paths* relative to the extension directory.
+**Declarative keys** hold _file paths_ relative to the extension directory.
 Each key implies the expected declarative type, so the files may omit
 `type:`:
 
-| Key | Declarative type |
-|---|---|
-| `methodologies` | `methodology` |
-| `workflows` | `workflow` |
-| `questionPacks` | `question_pack` |
-| `promptTemplates` | `prompt_template` |
+| Key                 | Declarative type    |
+| ------------------- | ------------------- |
+| `methodologies`     | `methodology`       |
+| `workflows`         | `workflow`          |
+| `questionPacks`     | `question_pack`     |
+| `promptTemplates`   | `prompt_template`   |
 | `artifactTemplates` | `artifact_template` |
-| `policyPresets` | `policy_preset` |
-| `modelRouting` | `model_routing` |
-| `reportTemplates` | `report_template` |
-| `roleDefinitions` | `role_definition` |
-| `commandMappings` | `command_mapping` |
+| `policyPresets`     | `policy_preset`     |
+| `modelRouting`      | `model_routing`     |
+| `reportTemplates`   | `report_template`   |
+| `roleDefinitions`   | `role_definition`   |
+| `commandMappings`   | `command_mapping`   |
 
-**Programmatic keys** hold *contribution names* that the compiled entrypoint
+**Programmatic keys** hold _contribution names_ that the compiled entrypoint
 registers at runtime via the SDK:
 
-| Key | Contribution kind |
-|---|---|
-| `workItemProviders` | `work_item_provider` |
-| `communicationProviders` | `communication_provider` |
-| `modelProviders` | `model_provider` |
-| `agentAdapters` | `agent_adapter` |
-| `tools` | `tool` |
-| `contextSources` | `context_source` |
-| `exporters` | `exporter` |
-| `policyEvaluators` | `policy_evaluator` |
-| `vcsProviders` | `vcs_provider` (accepted for forward compatibility; activates in a later milestone) |
-| `enterpriseSyncProviders` | `enterprise_sync_provider` (same) |
+| Key                       | Contribution kind                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------- |
+| `workItemProviders`       | `work_item_provider`                                                                |
+| `communicationProviders`  | `communication_provider`                                                            |
+| `modelProviders`          | `model_provider`                                                                    |
+| `agentAdapters`           | `agent_adapter`                                                                     |
+| `tools`                   | `tool`                                                                              |
+| `contextSources`          | `context_source`                                                                    |
+| `exporters`               | `exporter`                                                                          |
+| `policyEvaluators`        | `policy_evaluator`                                                                  |
+| `vcsProviders`            | `vcs_provider` (accepted for forward compatibility; activates in a later milestone) |
+| `enterpriseSyncProviders` | `enterprise_sync_provider` (same)                                                   |
 
 `communicationHandlers` is also accepted for forward compatibility but has no
 contribution kind in M1.

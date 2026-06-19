@@ -29,12 +29,7 @@ describe('parseDeclarativeMarkdown — directory hints', () => {
     expect(parsed.id).toBe('refined-ticket');
     expect(parsed.name).toBe('Refined Ticket');
     if (parsed.type === 'artifact_template') {
-      expect(parsed.variables).toEqual([
-        'title',
-        'problem',
-        'acceptance_criteria',
-        'out_of_scope',
-      ]);
+      expect(parsed.variables).toEqual(['title', 'problem', 'acceptance_criteria', 'out_of_scope']);
     }
   });
 

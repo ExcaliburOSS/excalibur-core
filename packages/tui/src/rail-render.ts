@@ -119,7 +119,8 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
   const palette = options.palette ?? getColors(options.mode ?? 'dark');
   // `c(text, hex)` paints only when colour is on; otherwise returns text as-is,
   // keeping the no-colour output byte-identical to the plain renderer.
-  const c = (text: string, hex: string): string => (tier === 'none' ? text : paint(text, hex, tier));
+  const c = (text: string, hex: string): string =>
+    tier === 'none' ? text : paint(text, hex, tier);
   const lines: string[] = [];
 
   model.phases.forEach((phase, index) => {
@@ -182,7 +183,8 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
   // Pinned status line: autonomy · safety · cost · [tokens] · elapsed · push ·
   // model. Tokens (in↑/out↓) appear only once the run has made a model call.
   const s = model.status;
-  const autonomy = model.autonomyLabel.length > 0 ? `${c(model.autonomyLabel, palette.accent)} · ` : '';
+  const autonomy =
+    model.autonomyLabel.length > 0 ? `${c(model.autonomyLabel, palette.accent)} · ` : '';
   const tokens =
     s.inputTokens + s.outputTokens > 0
       ? `${c(`${formatTokens(s.inputTokens)}↑ ${formatTokens(s.outputTokens)}↓`, palette.muted)} · `

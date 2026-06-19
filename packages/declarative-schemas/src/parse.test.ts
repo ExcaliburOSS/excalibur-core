@@ -118,10 +118,7 @@ describe('parseDeclarativeYaml — spec §4 examples', () => {
   it('parses a question_pack', () => {
     const parsed = parseDeclarativeYaml(QUESTION_PACK_YAML, 'question_pack');
     expect(parsed.id).toBe('agent-readiness');
-    expect(parsed.questions.map((question) => question.id)).toEqual([
-      'problem',
-      'acceptance',
-    ]);
+    expect(parsed.questions.map((question) => question.id)).toEqual(['problem', 'acceptance']);
   });
 
   it('parses a prompt_template', () => {

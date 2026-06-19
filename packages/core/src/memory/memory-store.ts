@@ -2,11 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { redactSecrets } from '@excalibur/model-gateway';
 import { EXCALIBUR_DIR } from '../config/load-config';
-import {
-  DEFAULT_CONFIDENCE,
-  type CaptureMemoryInput,
-  type MemoryNode,
-} from './memory-node';
+import { DEFAULT_CONFIDENCE, type CaptureMemoryInput, type MemoryNode } from './memory-node';
 
 /**
  * Local Knowledge-Compounding store (OSS slice): structured {@link MemoryNode}s
@@ -45,7 +41,8 @@ export class MemoryStore {
     this.now = options.now ?? ((): string => new Date().toISOString());
     this.idFor =
       options.idFor ??
-      ((node): string => `mem_${node.createdAt.replace(/[^0-9]/g, '').slice(0, 14)}_${shortHash(node.statement)}`);
+      ((node): string =>
+        `mem_${node.createdAt.replace(/[^0-9]/g, '').slice(0, 14)}_${shortHash(node.statement)}`);
   }
 
   /**
@@ -65,7 +62,9 @@ export class MemoryStore {
   capture(input: CaptureMemoryInput): MemoryNode {
     const createdAt = this.now();
     const statement = redactSecrets(input.statement.trim());
-    const subjectPaths = (input.subjectPaths ?? []).map((p) => p.trim()).filter((p) => p.length > 0);
+    const subjectPaths = (input.subjectPaths ?? [])
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
 
     // Corroboration: reinforce an existing equivalent node rather than duplicate.
     // Skipped when the caller explicitly supersedes (they want a distinct node).
@@ -92,7 +91,9 @@ export class MemoryStore {
     const base: Omit<MemoryNode, 'id'> = {
       type: input.type,
       statement,
-      ...(input.rationale !== undefined ? { rationale: redactSecrets(input.rationale.trim()) } : {}),
+      ...(input.rationale !== undefined
+        ? { rationale: redactSecrets(input.rationale.trim()) }
+        : {}),
       subjectPaths,
       ...(input.sourceRunId !== undefined ? { sourceRunId: input.sourceRunId } : {}),
       ...(input.author !== undefined ? { author: input.author } : {}),
@@ -113,7 +114,7 @@ export class MemoryStore {
       if (node.status !== 'active') return false;
       if (input.supersedes !== undefined && node.id === input.supersedes) return true;
       if (input.type !== 'rejection') return false;
-      if ((node.type !== 'decision' && node.type !== 'convention')) return false;
+      if (node.type !== 'decision' && node.type !== 'convention') return false;
       if (!subjectsOverlap(node.subjectPaths, subjectPaths)) return false;
       return statementSimilarity(node.statement, statement) >= CONTRADICT_THRESHOLD;
     });

@@ -59,7 +59,9 @@ describe('loadExcaliburConfig', () => {
   });
 
   it('normalizes the project.commands alias into the top-level commands', () => {
-    writeConfig(['project:', '  commands:', '    test: npm test', '    lint: npm run lint'].join('\n'));
+    writeConfig(
+      ['project:', '  commands:', '    test: npm test', '    lint: npm run lint'].join('\n'),
+    );
     const loaded = loadExcaliburConfig(repoRoot);
     expect(loaded.config.commands?.test).toBe('npm test');
     expect(loaded.config.commands?.lint).toBe('npm run lint');

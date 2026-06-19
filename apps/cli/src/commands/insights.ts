@@ -88,7 +88,12 @@ function render(deps: CliDeps, report: InsightsReport): void {
     ui.write();
     ui.write(pc.bold(t(titleKey)));
     ui.table(
-      [t('insights.col-name'), t('insights.col-runs'), t('insights.col-cost'), t('insights.col-tokens')],
+      [
+        t('insights.col-name'),
+        t('insights.col-runs'),
+        t('insights.col-cost'),
+        t('insights.col-tokens'),
+      ],
       rows.map((r) => [
         r.key,
         String(r.runs),

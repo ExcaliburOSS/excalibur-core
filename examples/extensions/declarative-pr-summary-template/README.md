@@ -3,8 +3,8 @@
 A one-file declarative extension that **overrides a built-in prompt
 template**:
 
-| File | Contribution | Id |
-|---|---|---|
+| File                    | Contribution      | Id           |
+| ----------------------- | ----------------- | ------------ |
 | `prompts/pr-summary.md` | `prompt_template` | `pr-summary` |
 
 The built-in `core-prompts` extension contributes a `pr-summary` prompt that

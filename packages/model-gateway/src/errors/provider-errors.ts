@@ -20,8 +20,7 @@ export const PROVIDER_ERROR_CODES = {
   networkError: 'network_error',
 } as const;
 
-export type ProviderErrorCode =
-  (typeof PROVIDER_ERROR_CODES)[keyof typeof PROVIDER_ERROR_CODES];
+export type ProviderErrorCode = (typeof PROVIDER_ERROR_CODES)[keyof typeof PROVIDER_ERROR_CODES];
 
 /** Error codes whose failures are safe to retry (transient / server-side). */
 const RETRYABLE_CODES: ReadonlySet<string> = new Set<string>([
@@ -36,9 +35,7 @@ const MAX_BODY_SNIPPET = 500;
 
 function bodySnippet(body: string): string {
   const redacted = redactSecrets(body);
-  return redacted.length > MAX_BODY_SNIPPET
-    ? `${redacted.slice(0, MAX_BODY_SNIPPET)}…`
-    : redacted;
+  return redacted.length > MAX_BODY_SNIPPET ? `${redacted.slice(0, MAX_BODY_SNIPPET)}…` : redacted;
 }
 
 interface ErrorMapping {
@@ -147,17 +144,14 @@ export function toolArgumentsError(
   reason: unknown,
 ): ProviderError {
   const why = reason instanceof Error ? reason.message : String(reason);
-  return new ProviderError(
-    `Model returned malformed JSON arguments for tool "${toolName}".`,
-    {
-      code: PROVIDER_ERROR_CODES.invalidRequest,
-      details: {
-        tool: toolName,
-        reason: redactSecrets(why),
-        arguments: bodySnippet(rawArguments),
-      },
+  return new ProviderError(`Model returned malformed JSON arguments for tool "${toolName}".`, {
+    code: PROVIDER_ERROR_CODES.invalidRequest,
+    details: {
+      tool: toolName,
+      reason: redactSecrets(why),
+      arguments: bodySnippet(rawArguments),
     },
-  );
+  });
 }
 
 /**
@@ -169,10 +163,7 @@ export function toolArgumentsError(
  * value (string, number, array, null) or invalid JSON throws a typed
  * {@link toolArgumentsError} so the malformed call never reaches the loop.
  */
-export function parseToolArguments(
-  toolName: string,
-  raw: unknown,
-): Record<string, unknown> {
+export function parseToolArguments(toolName: string, raw: unknown): Record<string, unknown> {
   if (raw === undefined || raw === null) {
     return {};
   }

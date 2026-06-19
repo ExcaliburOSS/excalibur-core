@@ -659,14 +659,22 @@ export class NativeAgentAdapter implements AgentAdapter {
     args: Record<string, unknown>,
     config: ExcaliburConfig,
   ): { allowed: boolean; requiresConfirmation: boolean; reason: string } {
-    const pass = (d: { allowed: boolean; requiresConfirmation: boolean; reason: string }): {
+    const pass = (d: {
+      allowed: boolean;
+      requiresConfirmation: boolean;
+      reason: string;
+    }): {
       allowed: boolean;
       requiresConfirmation: boolean;
       reason: string;
     } => ({ allowed: d.allowed, requiresConfirmation: d.requiresConfirmation, reason: d.reason });
     if (name === 'update_tasks') {
       // The checklist is pure declaration — never gated.
-      return { allowed: true, requiresConfirmation: false, reason: 'checklist update (no side effect)' };
+      return {
+        allowed: true,
+        requiresConfirmation: false,
+        reason: 'checklist update (no side effect)',
+      };
     }
     if (name === 'write_file') {
       return pass(permissions.checkPath(String(args['path'] ?? ''), 'write'));
@@ -757,14 +765,22 @@ const MAX_DIAGNOSTICS_SHOWN = 20;
  * the agent anchors its next turn on REAL compiler output, not invented errors.
  */
 function formatDiagnosticsForModel(diag: DiagnosticsPayload): string {
-  const surfaced = diag.diagnostics.filter((d) => d.severity === 'error' || d.severity === 'warning');
+  const surfaced = diag.diagnostics.filter(
+    (d) => d.severity === 'error' || d.severity === 'warning',
+  );
   if (surfaced.length === 0) {
     return '';
   }
   const lines = surfaced
     .slice(0, MAX_DIAGNOSTICS_SHOWN)
-    .map((d) => `  ${diag.file}:${d.line}:${d.column} ${d.severity}: ${d.message}${d.code !== undefined ? ` [${d.code}]` : ''}`);
-  const more = surfaced.length > MAX_DIAGNOSTICS_SHOWN ? `\n  …(+${surfaced.length - MAX_DIAGNOSTICS_SHOWN} more)` : '';
+    .map(
+      (d) =>
+        `  ${diag.file}:${d.line}:${d.column} ${d.severity}: ${d.message}${d.code !== undefined ? ` [${d.code}]` : ''}`,
+    );
+  const more =
+    surfaced.length > MAX_DIAGNOSTICS_SHOWN
+      ? `\n  …(+${surfaced.length - MAX_DIAGNOSTICS_SHOWN} more)`
+      : '';
   return `Compiler diagnostics (LSP) — fix these real errors, do not invent others:\n${lines.join('\n')}${more}\n`;
 }
 
@@ -831,8 +847,7 @@ function toolEventPayload(
       return {
         id: `task-${index + 1}`,
         text: typeof t.text === 'string' ? t.text : '',
-        status:
-          t.status === 'in_progress' || t.status === 'completed' ? t.status : 'pending',
+        status: t.status === 'in_progress' || t.status === 'completed' ? t.status : 'pending',
       };
     });
   }

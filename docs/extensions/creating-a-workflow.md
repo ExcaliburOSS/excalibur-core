@@ -8,17 +8,17 @@ YAML using the exact schema of the 14 built-ins.
 
 ```yaml
 id: safe-hotfix
-type: workflow               # optional in .excalibur/workflows/, recommended
+type: workflow # optional in .excalibur/workflows/, recommended
 name: Safe Hotfix
-mode: fast                   # fast|standard|structured|explore|review|discovery|custom
-supportedAutonomyLevels: [2, 3]   # defaults to [0,1,2,3,4]
+mode: fast # fast|standard|structured|explore|review|discovery|custom
+supportedAutonomyLevels: [2, 3] # defaults to [0,1,2,3,4]
 description: >
   Hotfix flow with mandatory verification before the patch can be applied.
-inputs: [task]               # optional declared inputs
-defaults:                    # optional
+inputs: [task] # optional declared inputs
+defaults: # optional
   model: mock
-  commands: ["pnpm test"]
-phases:                      # at least one
+  commands: ['pnpm test']
+phases: # at least one
   - id: analyze
     name: Analyze
     type: assistant_interaction
@@ -46,35 +46,35 @@ phases:                      # at least one
 
 ## Phase types (what the M1 engine does)
 
-| `type` | Behavior |
-|---|---|
-| `assistant_interaction` | Chat turn via the model gateway; writes the phase `output` artifact. |
-| `agent_output` | Model-generated artifact (plan, summary, review notes) → `output` file. |
-| `agent_review` | Review pass over the work so far → `output` (e.g. `review.md`). |
-| `agent_work` | Delegates to the agent adapter and streams its events; collects the generated diff. |
-| `patch_generation` | Produces a unified diff → `diff.patch` + `patch_generated` event. |
-| `command_group` | Runs the phase `commands` (or the configured project commands with `commandsFromConfig: true`). M1 simulates execution: events carry `simulated: true`. |
-| `human_approval` | Emits `approval_requested` and waits for confirmation; a denied **required** approval cancels the run. |
-| `apply_patch` | Confirms, then applies the patch (M1: `patch_applied { simulated: true }`). |
-| `pull_request` | Drafts `pr-summary.md`. |
-| `discovery_questions` | Runs the guided Discovery question pack (Discovery workflow only). |
+| `type`                  | Behavior                                                                                                                                                |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `assistant_interaction` | Chat turn via the model gateway; writes the phase `output` artifact.                                                                                    |
+| `agent_output`          | Model-generated artifact (plan, summary, review notes) → `output` file.                                                                                 |
+| `agent_review`          | Review pass over the work so far → `output` (e.g. `review.md`).                                                                                         |
+| `agent_work`            | Delegates to the agent adapter and streams its events; collects the generated diff.                                                                     |
+| `patch_generation`      | Produces a unified diff → `diff.patch` + `patch_generated` event.                                                                                       |
+| `command_group`         | Runs the phase `commands` (or the configured project commands with `commandsFromConfig: true`). M1 simulates execution: events carry `simulated: true`. |
+| `human_approval`        | Emits `approval_requested` and waits for confirmation; a denied **required** approval cancels the run.                                                  |
+| `apply_patch`           | Confirms, then applies the patch (M1: `patch_applied { simulated: true }`).                                                                             |
+| `pull_request`          | Drafts `pr-summary.md`.                                                                                                                                 |
+| `discovery_questions`   | Runs the guided Discovery question pack (Discovery workflow only).                                                                                      |
 
 ## Phase fields
 
-| Field | Type / default | Notes |
-|---|---|---|
-| `id`, `name`, `type` | required | |
-| `role` | agent role | `planner`, `architect`, `implementer`, `reviewer`, `tester`, `security`, `release`, the six Discovery roles, `custom`. |
-| `required` | bool, default `true` | `optional: true` is sugar for `required: false` (the parser normalizes it). |
-| `agents` | int ≥ 1 | Parallel agents for `agent_work` (later milestones). |
-| `worktree` | bool | Run the phase in an isolated branch/worktree. |
-| `modifiesFiles` | bool | Declares intent; useful for review tooling. |
-| `commands` | string[] | Explicit commands for `command_group`. |
-| `commandsFromConfig` | bool | Resolve test/lint/typecheck/build from `.excalibur/config.yaml`. |
-| `output` | string | Artifact file name (e.g. `summary.md`). |
-| `approval` | `required`\|`optional`\|`none` | For `human_approval` phases. |
-| `requiresHumanConfirmation` | bool | Ask before executing (e.g. `apply_patch`). |
-| `onFailure` | `abort`\|`continue`\|`retry`, default `abort` | With `maxRetries` for `retry`. |
+| Field                       | Type / default                                | Notes                                                                                                                  |
+| --------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `id`, `name`, `type`        | required                                      |                                                                                                                        |
+| `role`                      | agent role                                    | `planner`, `architect`, `implementer`, `reviewer`, `tester`, `security`, `release`, the six Discovery roles, `custom`. |
+| `required`                  | bool, default `true`                          | `optional: true` is sugar for `required: false` (the parser normalizes it).                                            |
+| `agents`                    | int ≥ 1                                       | Parallel agents for `agent_work` (later milestones).                                                                   |
+| `worktree`                  | bool                                          | Run the phase in an isolated branch/worktree.                                                                          |
+| `modifiesFiles`             | bool                                          | Declares intent; useful for review tooling.                                                                            |
+| `commands`                  | string[]                                      | Explicit commands for `command_group`.                                                                                 |
+| `commandsFromConfig`        | bool                                          | Resolve test/lint/typecheck/build from `.excalibur/config.yaml`.                                                       |
+| `output`                    | string                                        | Artifact file name (e.g. `summary.md`).                                                                                |
+| `approval`                  | `required`\|`optional`\|`none`                | For `human_approval` phases.                                                                                           |
+| `requiresHumanConfirmation` | bool                                          | Ask before executing (e.g. `apply_patch`).                                                                             |
+| `onFailure`                 | `abort`\|`continue`\|`retry`, default `abort` | With `maxRetries` for `retry`.                                                                                         |
 
 ## 2. Ship, validate, run
 

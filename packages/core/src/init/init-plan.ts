@@ -117,7 +117,8 @@ function instructionSourceRefs(sources: InstructionSource[]): Array<Record<strin
 
 function skillSourceRefs(skills: DetectedSkill[]): Array<Record<string, unknown>> {
   return skills.map((skill) => ({
-    path: skill.scope === 'user_global' || skill.path.startsWith('~/') ? skill.path : `./${skill.path}`,
+    path:
+      skill.scope === 'user_global' || skill.path.startsWith('~/') ? skill.path : `./${skill.path}`,
     scope: skill.scope,
     // review_required / untrusted skills are never auto-enabled (ISD §3).
     enabled: skill.enabled && skill.trustLevel === 'trusted',
@@ -138,7 +139,9 @@ function buildConfigYaml(analysis: RepoAnalysis): string {
     // Detected commands only — never invented (onboarding §1).
     commands,
     instructions: { sources: instructionSourceRefs(analysis.instructionSources) },
-    ...(analysis.skills.length > 0 ? { skills: { sources: skillSourceRefs(analysis.skills) } } : {}),
+    ...(analysis.skills.length > 0
+      ? { skills: { sources: skillSourceRefs(analysis.skills) } }
+      : {}),
     safety: { preset: 'standard-safe' },
     workflowDefaults: {
       ask: 'ask-repo',
@@ -301,9 +304,11 @@ function buildAgentsMd(analysis: RepoAnalysis, enrichment: AgentsMdEnrichment = 
     `- Backend: ${patterns.hasBackend ? 'yes' : 'no'} · Frontend: ${patterns.hasFrontend ? 'yes' : 'no'}`,
   ];
   if (patterns.apiDirs.length > 0) layout.push(`- API: ${patterns.apiDirs.join(', ')}`);
-  if (patterns.domainDirs.length > 0) layout.push(`- Domain modules: ${patterns.domainDirs.join(', ')}`);
+  if (patterns.domainDirs.length > 0)
+    layout.push(`- Domain modules: ${patterns.domainDirs.join(', ')}`);
   if (patterns.testDirs.length > 0) layout.push(`- Tests: ${patterns.testDirs.join(', ')}`);
-  if (patterns.migrationDirs.length > 0) layout.push(`- Migrations: ${patterns.migrationDirs.join(', ')}`);
+  if (patterns.migrationDirs.length > 0)
+    layout.push(`- Migrations: ${patterns.migrationDirs.join(', ')}`);
 
   const verifyLine =
     commands.test !== undefined
@@ -478,7 +483,9 @@ function sensitivePathGlobs(analysis: RepoAnalysis): string[] {
   const globs: string[] = [];
   for (const sensitivePath of analysis.patterns.sensitivePaths) {
     const normalized = sensitivePath.replace(/\\/g, '/');
-    globs.push(normalized.includes('.') && !normalized.endsWith('/') ? normalized : `${normalized}/**`);
+    globs.push(
+      normalized.includes('.') && !normalized.endsWith('/') ? normalized : `${normalized}/**`,
+    );
   }
   if (globs.length === 0) {
     globs.push('**/auth/**', '**/billing/**', '**/payments/**', '**/secrets/**', '.env', '.env.*');
@@ -524,8 +531,7 @@ const MEMORY_FILES: ReadonlyArray<{ name: string; content: string }> = [
   },
   {
     name: 'known-risks.md',
-    content:
-      '# Known risks\n\nList known sharp edges, fragile areas and operational risks here.\n',
+    content: '# Known risks\n\nList known sharp edges, fragile areas and operational risks here.\n',
   },
   {
     name: 'domain-glossary.md',
@@ -609,7 +615,10 @@ function fullCatalogFiles(): PlannedFile[] {
 
   // Workflows and methodologies keep their authored YAML sources.
   for (const workflow of DEFAULT_WORKFLOWS) {
-    files.push({ relPath: `${EXCALIBUR_DIR}/workflows/${workflow.id}.yaml`, content: workflow.yaml });
+    files.push({
+      relPath: `${EXCALIBUR_DIR}/workflows/${workflow.id}.yaml`,
+      content: workflow.yaml,
+    });
   }
   for (const methodology of DEFAULT_METHODOLOGIES) {
     files.push({
@@ -691,7 +700,9 @@ function detectionSummary(analysis: RepoAnalysis, mode: InitMode, files: InitPla
   const updates = files.filter((file) => file.exists);
   lines.push(`Files (${mode} mode):`);
   for (const file of files) {
-    lines.push(`  ${file.exists ? '~' : '+'} ${file.relPath}${file.exists ? ' (exists — update mode)' : ''}`);
+    lines.push(
+      `  ${file.exists ? '~' : '+'} ${file.relPath}${file.exists ? ' (exists — update mode)' : ''}`,
+    );
   }
   if (updates.length > 0) {
     lines.push(
@@ -709,10 +720,7 @@ function detectionSummary(analysis: RepoAnalysis, mode: InitMode, files: InitPla
  * beyond existence checks). Minimal mode generates exactly `config.yaml`,
  * `instructions/general.md` and `extensions.yaml`.
  */
-export function generateInitPlan(
-  analysis: RepoAnalysis,
-  opts: GenerateInitPlanOptions,
-): InitPlan {
+export function generateInitPlan(analysis: RepoAnalysis, opts: GenerateInitPlanOptions): InitPlan {
   const planned: PlannedFile[] = [...minimalFiles(analysis, opts)];
   if (opts.mode === 'team' || opts.mode === 'full') {
     planned.push(...teamFiles(analysis, opts));

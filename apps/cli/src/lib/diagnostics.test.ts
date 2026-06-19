@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { DiagnosticsPayload } from '@excalibur/shared';
-import { diagnosticsContextSource, lspDiagnosticsContextSource, runDiagnostics } from './diagnostics';
+import {
+  diagnosticsContextSource,
+  lspDiagnosticsContextSource,
+  runDiagnostics,
+} from './diagnostics';
 
 const node = process.execPath;
 
@@ -39,8 +43,12 @@ describe('runDiagnostics', () => {
 
 describe('diagnosticsContextSource', () => {
   it('is null when not run or clean', () => {
-    expect(diagnosticsContextSource({ ran: false, ok: null, output: '', diagnostics: [] })).toBeNull();
-    expect(diagnosticsContextSource({ ran: true, ok: true, output: '', diagnostics: [] })).toBeNull();
+    expect(
+      diagnosticsContextSource({ ran: false, ok: null, output: '', diagnostics: [] }),
+    ).toBeNull();
+    expect(
+      diagnosticsContextSource({ ran: true, ok: true, output: '', diagnostics: [] }),
+    ).toBeNull();
   });
 
   it('formats the real output when there are errors', () => {
@@ -81,7 +89,9 @@ describe('lspDiagnosticsContextSource', () => {
     const source = lspDiagnosticsContextSource([
       payload({
         file: 'src/a.ts',
-        diagnostics: [{ line: 3, column: 9, severity: 'error', message: 'Type mismatch', code: 'TS2322' }],
+        diagnostics: [
+          { line: 3, column: 9, severity: 'error', message: 'Type mismatch', code: 'TS2322' },
+        ],
         errorCount: 1,
       }),
       payload({ file: 'src/clean.ts' }), // clean → omitted

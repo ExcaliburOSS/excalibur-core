@@ -183,9 +183,7 @@ function skillDirName(source: InstructionSource): string {
  * Materializes `DetectedSkill` entries from already-scanned skill_md
  * instruction sources, reading and parsing each SKILL.md.
  */
-export async function skillsFromSources(
-  sources: InstructionSource[],
-): Promise<DetectedSkill[]> {
+export async function skillsFromSources(sources: InstructionSource[]): Promise<DetectedSkill[]> {
   const skills: DetectedSkill[] = [];
   for (const source of sources) {
     if (source.format !== 'skill_md') {
@@ -222,9 +220,7 @@ export async function skillsFromSources(
  * the user's home directory). Skills are detected and classified but never
  * auto-enabled; unreviewed skills default to `review_required`.
  */
-export async function detectSkills(
-  input: ScanInstructionSourcesInput,
-): Promise<DetectedSkill[]> {
+export async function detectSkills(input: ScanInstructionSourcesInput): Promise<DetectedSkill[]> {
   const sources = await scanInstructionSources(input);
   return skillsFromSources(sources);
 }

@@ -136,7 +136,10 @@ function estimateFromIntent(
       return { base: 1, phrase: 'a docs change is single-agent' };
     case 'ambiguous':
       // Don't fan out into an unclear task — Discovery should clarify it first.
-      return { base: 1, phrase: 'the task is ambiguous (clarify with Discovery before fanning out)' };
+      return {
+        base: 1,
+        phrase: 'the task is ambiguous (clarify with Discovery before fanning out)',
+      };
     case 'alternatives':
       return {
         base: EXPLORE_CANDIDATES,

@@ -105,7 +105,10 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
     parameters: z
       .object({
         paths: z.array(relativePathSchema).optional().describe('Limit the diff to these paths'),
-        staged: z.boolean().optional().describe('Diff the staged index instead of the working tree'),
+        staged: z
+          .boolean()
+          .optional()
+          .describe('Diff the staged index instead of the working tree'),
       })
       .strict(),
   },
@@ -178,7 +181,5 @@ export function getNativeTool(name: string): NativeToolDefinition | undefined {
 
 /** Type guard for the nine pinned native tool names. */
 export function isNativeToolName(value: unknown): value is NativeToolName {
-  return (
-    typeof value === 'string' && (NATIVE_TOOL_NAMES as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (NATIVE_TOOL_NAMES as readonly string[]).includes(value);
 }

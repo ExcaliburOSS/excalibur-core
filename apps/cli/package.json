@@ -29,7 +29,11 @@
     "excalibur": "./dist/main.js"
   },
   "main": "./dist/main.js",
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=22"
   },

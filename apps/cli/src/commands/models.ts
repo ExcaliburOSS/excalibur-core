@@ -25,9 +25,7 @@ async function runConnectionTest(deps: CliDeps): Promise<void> {
     deps.ui.info(deps.t('models.test-mock', { provider: context.providerName }));
     return;
   }
-  deps.ui.info(
-    deps.t('models.test-sending', { provider: context.providerName, modelLabel }),
-  );
+  deps.ui.info(deps.t('models.test-sending', { provider: context.providerName, modelLabel }));
   const startedAt = Date.now();
   try {
     const { output } = await chatWithGuidance(deps, context, {

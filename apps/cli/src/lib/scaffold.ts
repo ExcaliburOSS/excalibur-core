@@ -50,7 +50,10 @@ interface ScaffoldFile {
 
 // --- declarative bodies -------------------------------------------------------
 
-function declarativeBody(type: DeclarativeScaffoldType, name: string): { dir: string; file: string; content: string } {
+function declarativeBody(
+  type: DeclarativeScaffoldType,
+  name: string,
+): { dir: string; file: string; content: string } {
   const title = titleCase(name);
   switch (type) {
     case 'methodology':

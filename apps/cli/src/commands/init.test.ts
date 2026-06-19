@@ -124,7 +124,9 @@ describe('init (onboarding spec §1–§3, §12)', () => {
   it('rejects --team together with --full', async () => {
     const repo = tempRepo();
     const cli = createTestCli({ cwd: repo });
-    await expect(cli.run('init', '--team', '--full', '--yes')).rejects.toThrow(/either --team or --full/);
+    await expect(cli.run('init', '--team', '--full', '--yes')).rejects.toThrow(
+      /either --team or --full/,
+    );
   });
 });
 
@@ -180,7 +182,17 @@ describe('models (onboarding §4)', () => {
     mkdirSync(providersDir, { recursive: true });
     writeFileSync(
       join(providersDir, 'providers.yaml'),
-      ['providers:', '  default: qwen', '  qwen:', '    type: openai-compatible', '    baseUrl: https://example.com/v1', '    apiKeyEnv: QWEN_API_KEY', '  mock:', '    type: mock', ''].join('\n'),
+      [
+        'providers:',
+        '  default: qwen',
+        '  qwen:',
+        '    type: openai-compatible',
+        '    baseUrl: https://example.com/v1',
+        '    apiKeyEnv: QWEN_API_KEY',
+        '  mock:',
+        '    type: mock',
+        '',
+      ].join('\n'),
       'utf8',
     );
     const cli = createTestCli({ cwd: repo });

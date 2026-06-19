@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   verify:
-    name: build · typecheck · lint · test
+    name: build · typecheck · lint · format · test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +41,9 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
 
       - name: Test
         run: pnpm -r test

@@ -31,9 +31,7 @@ afterEach(() => {
 
 describe('createProvider with an injected key (keyResolver / factory apiKey)', () => {
   it('an injected key reaches the real anthropic adapter (no env var set)', async () => {
-    const transport = new QueueTransport([
-      fakeResponse({ body: fixture('anthropic.chat.json') }),
-    ]);
+    const transport = new QueueTransport([fakeResponse({ body: fixture('anthropic.chat.json') })]);
     const adapter = createProvider(
       'anthropic',
       { type: 'anthropic', model: 'claude-test', baseUrl: 'https://api.example.test' },
@@ -76,9 +74,7 @@ describe('createProvider with an injected key (keyResolver / factory apiKey)', (
 
   it('the injected key wins over an env var when both are present', async () => {
     process.env[KEY_ENV] = ENV_KEY;
-    const transport = new QueueTransport([
-      fakeResponse({ body: fixture('anthropic.chat.json') }),
-    ]);
+    const transport = new QueueTransport([fakeResponse({ body: fixture('anthropic.chat.json') })]);
     const adapter = createProvider(
       'anthropic',
       { type: 'anthropic', apiKeyEnv: KEY_ENV, model: 'claude-test', baseUrl: 'https://x' },
@@ -129,9 +125,7 @@ describe('createProvider with an injected key (keyResolver / factory apiKey)', (
 
   it('keyResolver returning null falls back to env-var resolution (unchanged)', async () => {
     process.env[KEY_ENV] = ENV_KEY;
-    const transport = new QueueTransport([
-      fakeResponse({ body: fixture('anthropic.chat.json') }),
-    ]);
+    const transport = new QueueTransport([fakeResponse({ body: fixture('anthropic.chat.json') })]);
     const adapter = createProvider(
       'anthropic',
       { type: 'anthropic', apiKeyEnv: KEY_ENV, model: 'claude-test', baseUrl: 'https://x' },
@@ -148,9 +142,7 @@ describe('createProvider with an injected key (keyResolver / factory apiKey)', (
 
   it('without a keyResolver, env-var resolution is byte-identical to before', async () => {
     process.env[KEY_ENV] = ENV_KEY;
-    const transport = new QueueTransport([
-      fakeResponse({ body: fixture('anthropic.chat.json') }),
-    ]);
+    const transport = new QueueTransport([fakeResponse({ body: fixture('anthropic.chat.json') })]);
     const adapter = createProvider(
       'anthropic',
       { type: 'anthropic', apiKeyEnv: KEY_ENV, model: 'claude-test', baseUrl: 'https://x' },

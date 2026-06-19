@@ -18,7 +18,11 @@ import { CORE_REPORTS_PACK } from './core-reports';
 import { CORE_COMMAND_MAPPINGS_PACK } from './core-command-mappings';
 import { CORE_PROVIDERS_PACK } from './core-providers';
 
-export { BUILT_IN_EXTENSION_VERSION, builtInContribution, type BuiltInExtensionPack } from './types';
+export {
+  BUILT_IN_EXTENSION_VERSION,
+  builtInContribution,
+  type BuiltInExtensionPack,
+} from './types';
 export { CORE_METHODOLOGIES_PACK } from './core-methodologies';
 export { CORE_WORKFLOWS_PACK } from './core-workflows';
 export {

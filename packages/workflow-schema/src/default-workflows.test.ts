@@ -41,9 +41,10 @@ describe('DEFAULT_WORKFLOWS', () => {
   it('every default validates and matches its parsed YAML', () => {
     for (const entry of DEFAULT_WORKFLOWS) {
       const result = validateWorkflowDefinition(parseYaml(entry.yaml));
-      expect(result.success, `workflow ${entry.id} must validate: ${result.errors?.join('; ')}`).toBe(
-        true,
-      );
+      expect(
+        result.success,
+        `workflow ${entry.id} must validate: ${result.errors?.join('; ')}`,
+      ).toBe(true);
       expect(entry.definition).toEqual(parseWorkflowYaml(entry.yaml));
       expect(entry.definition.id).toBe(entry.id);
       expect(entry.definition.phases.length).toBeGreaterThan(0);

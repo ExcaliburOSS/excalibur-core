@@ -28,7 +28,11 @@ describe('reduceRail', () => {
       ev('file_read', { path: 'src/a.ts' }, 'p-context'),
       ev('phase_completed', { detail: '1 file' }, 'p-context'),
       ev('phase_started', { name: 'Implement' }, 'p-impl'),
-      ev('model_call', { model: 'qwen', costCents: 3, inputTokens: 1200, outputTokens: 340 }, 'p-impl'),
+      ev(
+        'model_call',
+        { model: 'qwen', costCents: 3, inputTokens: 1200, outputTokens: 340 },
+        'p-impl',
+      ),
       ev('file_write', { path: 'src/a.ts' }, 'p-impl'),
       ev('command_started', { command: 'pnpm test' }, 'p-impl'),
       ev('command_completed', { exitCode: 0 }, 'p-impl'),
@@ -189,7 +193,11 @@ describe('reduceRail', () => {
   it('a clean verification verdict does NOT error the run (success node)', () => {
     const passed = reduceRail([
       ev('phase_started', { name: 'Review' }, 'p1'),
-      ev('verification', { blocked: false, lenses: ['correctness'], summary: 'clean.', issues: [] }, 'p1'),
+      ev(
+        'verification',
+        { blocked: false, lenses: ['correctness'], summary: 'clean.', issues: [] },
+        'p1',
+      ),
       ev('run_completed', { status: 'completed' }),
     ]);
     expect(passed.errored).toBe(false);

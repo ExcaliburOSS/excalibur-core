@@ -73,7 +73,13 @@ describe('createExtensionHost', () => {
   });
 });
 
-type McpSpec = { name: string; command: string; args?: string[]; cwd?: string; env?: Record<string, string> };
+type McpSpec = {
+  name: string;
+  command: string;
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+};
 type FakeExt = { status: 'loaded' | 'error'; id: string; mcpServers?: McpSpec[] };
 
 /** A structural fake registry — the EXT-6 helpers only call `extensions()`. */
@@ -81,7 +87,10 @@ function fakeRegistry(exts: FakeExt[]): ExtensionRegistry {
   return {
     extensions: () =>
       exts.map((e) => ({
-        manifest: { id: e.id, contributes: e.mcpServers !== undefined ? { mcpServers: e.mcpServers } : {} },
+        manifest: {
+          id: e.id,
+          contributes: e.mcpServers !== undefined ? { mcpServers: e.mcpServers } : {},
+        },
         dir: null,
         status: e.status,
       })),
@@ -89,14 +98,25 @@ function fakeRegistry(exts: FakeExt[]): ExtensionRegistry {
 }
 
 const cfgWith = (servers?: Record<string, { command: string }>): ExcaliburConfig =>
-  ({ ...DEFAULT_CONFIG, ...(servers !== undefined ? { mcp: { servers } } : {}) }) as ExcaliburConfig;
+  ({
+    ...DEFAULT_CONFIG,
+    ...(servers !== undefined ? { mcp: { servers } } : {}),
+  }) as ExcaliburConfig;
 
 describe('collectExtensionMcpServers (EXT-6)', () => {
   it('collects MCP servers from loaded extensions, keyed by name', () => {
     const servers = collectExtensionMcpServers(
       fakeRegistry([
-        { status: 'loaded', id: 'a', mcpServers: [{ name: 'gh', command: 'gh-mcp', args: ['--stdio'] }] },
-        { status: 'loaded', id: 'b', mcpServers: [{ name: 'fs', command: 'fs-mcp', env: { ROOT: '/tmp' } }] },
+        {
+          status: 'loaded',
+          id: 'a',
+          mcpServers: [{ name: 'gh', command: 'gh-mcp', args: ['--stdio'] }],
+        },
+        {
+          status: 'loaded',
+          id: 'b',
+          mcpServers: [{ name: 'fs', command: 'fs-mcp', env: { ROOT: '/tmp' } }],
+        },
       ]),
     );
     expect(Object.keys(servers).sort()).toEqual(['fs', 'gh']);
@@ -107,7 +127,9 @@ describe('collectExtensionMcpServers (EXT-6)', () => {
   it('ignores failed extensions', () => {
     expect(
       collectExtensionMcpServers(
-        fakeRegistry([{ status: 'error', id: 'broken', mcpServers: [{ name: 'x', command: 'x' }] }]),
+        fakeRegistry([
+          { status: 'error', id: 'broken', mcpServers: [{ name: 'x', command: 'x' }] },
+        ]),
       ),
     ).toEqual({});
   });
@@ -127,7 +149,9 @@ describe('withExtensionMcpServers (EXT-6)', () => {
   it('merges contributed servers into mcp.servers', () => {
     const merged = withExtensionMcpServers(
       cfgWith(),
-      fakeRegistry([{ status: 'loaded', id: 'a', mcpServers: [{ name: 'gh', command: 'gh-mcp' }] }]),
+      fakeRegistry([
+        { status: 'loaded', id: 'a', mcpServers: [{ name: 'gh', command: 'gh-mcp' }] },
+      ]),
     );
     expect(merged.mcp?.servers?.['gh']).toEqual({ command: 'gh-mcp' });
   });
@@ -135,7 +159,9 @@ describe('withExtensionMcpServers (EXT-6)', () => {
   it("the repo's OWN config.mcp.servers wins on a name clash", () => {
     const merged = withExtensionMcpServers(
       cfgWith({ gh: { command: 'repo-configured' } }),
-      fakeRegistry([{ status: 'loaded', id: 'a', mcpServers: [{ name: 'gh', command: 'from-extension' }] }]),
+      fakeRegistry([
+        { status: 'loaded', id: 'a', mcpServers: [{ name: 'gh', command: 'from-extension' }] },
+      ]),
     );
     expect(merged.mcp?.servers?.['gh']).toEqual({ command: 'repo-configured' });
   });

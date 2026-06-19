@@ -11,12 +11,12 @@ excalibur weekly-plan
 
 Local behavior:
 
-* Summarize local git activity (commits/branches since the period start).
-* Summarize local Excalibur runs (from `.excalibur/runs/`).
-* Summarize local patches.
-* Optionally read GitHub issues through CLI/token (later milestone).
-* Output markdown to the terminal.
-* Optionally write to `.excalibur/reports/`:
+- Summarize local git activity (commits/branches since the period start).
+- Summarize local Excalibur runs (from `.excalibur/runs/`).
+- Summarize local patches.
+- Optionally read GitHub issues through CLI/token (later milestone).
+- Output markdown to the terminal.
+- Optionally write to `.excalibur/reports/`:
 
 ```text
 .excalibur/reports/

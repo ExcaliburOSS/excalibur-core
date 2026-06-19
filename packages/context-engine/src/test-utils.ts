@@ -33,10 +33,7 @@ export async function makeFixtureDir(files: Record<string, string>): Promise<str
   return dir;
 }
 
-export async function writeFixtureFiles(
-  dir: string,
-  files: Record<string, string>,
-): Promise<void> {
+export async function writeFixtureFiles(dir: string, files: Record<string, string>): Promise<void> {
   for (const [relPath, content] of Object.entries(files)) {
     const filePath = path.join(dir, ...relPath.split('/'));
     await fs.mkdir(path.dirname(filePath), { recursive: true });

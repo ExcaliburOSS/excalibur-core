@@ -484,20 +484,72 @@ export const DEFAULT_WORKFLOWS: ReadonlyArray<{
   yaml: string;
   definition: WorkflowDefinition;
 }> = [
-  { id: 'ask-repo', yaml: ASK_REPO_WORKFLOW_YAML, definition: parseWorkflowYaml(ASK_REPO_WORKFLOW_YAML) },
-  { id: 'review-only', yaml: REVIEW_ONLY_WORKFLOW_YAML, definition: parseWorkflowYaml(REVIEW_ONLY_WORKFLOW_YAML) },
+  {
+    id: 'ask-repo',
+    yaml: ASK_REPO_WORKFLOW_YAML,
+    definition: parseWorkflowYaml(ASK_REPO_WORKFLOW_YAML),
+  },
+  {
+    id: 'review-only',
+    yaml: REVIEW_ONLY_WORKFLOW_YAML,
+    definition: parseWorkflowYaml(REVIEW_ONLY_WORKFLOW_YAML),
+  },
   { id: 'assist', yaml: ASSIST_WORKFLOW_YAML, definition: parseWorkflowYaml(ASSIST_WORKFLOW_YAML) },
-  { id: 'propose-patch', yaml: PROPOSE_PATCH_WORKFLOW_YAML, definition: parseWorkflowYaml(PROPOSE_PATCH_WORKFLOW_YAML) },
-  { id: 'fast-fix', yaml: FAST_FIX_WORKFLOW_YAML, definition: parseWorkflowYaml(FAST_FIX_WORKFLOW_YAML) },
-  { id: 'standard-feature', yaml: STANDARD_FEATURE_WORKFLOW_YAML, definition: parseWorkflowYaml(STANDARD_FEATURE_WORKFLOW_YAML) },
-  { id: 'structured-feature', yaml: STRUCTURED_FEATURE_WORKFLOW_YAML, definition: parseWorkflowYaml(STRUCTURED_FEATURE_WORKFLOW_YAML) },
-  { id: 'safe-refactor', yaml: SAFE_REFACTOR_WORKFLOW_YAML, definition: parseWorkflowYaml(SAFE_REFACTOR_WORKFLOW_YAML) },
-  { id: 'pr-review', yaml: PR_REVIEW_WORKFLOW_YAML, definition: parseWorkflowYaml(PR_REVIEW_WORKFLOW_YAML) },
-  { id: 'security-review', yaml: SECURITY_REVIEW_WORKFLOW_YAML, definition: parseWorkflowYaml(SECURITY_REVIEW_WORKFLOW_YAML) },
-  { id: 'migration', yaml: MIGRATION_WORKFLOW_YAML, definition: parseWorkflowYaml(MIGRATION_WORKFLOW_YAML) },
-  { id: 'explore-alternatives', yaml: EXPLORE_ALTERNATIVES_WORKFLOW_YAML, definition: parseWorkflowYaml(EXPLORE_ALTERNATIVES_WORKFLOW_YAML) },
-  { id: 'human-gated', yaml: HUMAN_GATED_WORKFLOW_YAML, definition: parseWorkflowYaml(HUMAN_GATED_WORKFLOW_YAML) },
-  { id: 'discovery', yaml: DISCOVERY_WORKFLOW_YAML, definition: parseWorkflowYaml(DISCOVERY_WORKFLOW_YAML) },
+  {
+    id: 'propose-patch',
+    yaml: PROPOSE_PATCH_WORKFLOW_YAML,
+    definition: parseWorkflowYaml(PROPOSE_PATCH_WORKFLOW_YAML),
+  },
+  {
+    id: 'fast-fix',
+    yaml: FAST_FIX_WORKFLOW_YAML,
+    definition: parseWorkflowYaml(FAST_FIX_WORKFLOW_YAML),
+  },
+  {
+    id: 'standard-feature',
+    yaml: STANDARD_FEATURE_WORKFLOW_YAML,
+    definition: parseWorkflowYaml(STANDARD_FEATURE_WORKFLOW_YAML),
+  },
+  {
+    id: 'structured-feature',
+    yaml: STRUCTURED_FEATURE_WORKFLOW_YAML,
+    definition: parseWorkflowYaml(STRUCTURED_FEATURE_WORKFLOW_YAML),
+  },
+  {
+    id: 'safe-refactor',
+    yaml: SAFE_REFACTOR_WORKFLOW_YAML,
+    definition: parseWorkflowYaml(SAFE_REFACTOR_WORKFLOW_YAML),
+  },
+  {
+    id: 'pr-review',
+    yaml: PR_REVIEW_WORKFLOW_YAML,
+    definition: parseWorkflowYaml(PR_REVIEW_WORKFLOW_YAML),
+  },
+  {
+    id: 'security-review',
+    yaml: SECURITY_REVIEW_WORKFLOW_YAML,
+    definition: parseWorkflowYaml(SECURITY_REVIEW_WORKFLOW_YAML),
+  },
+  {
+    id: 'migration',
+    yaml: MIGRATION_WORKFLOW_YAML,
+    definition: parseWorkflowYaml(MIGRATION_WORKFLOW_YAML),
+  },
+  {
+    id: 'explore-alternatives',
+    yaml: EXPLORE_ALTERNATIVES_WORKFLOW_YAML,
+    definition: parseWorkflowYaml(EXPLORE_ALTERNATIVES_WORKFLOW_YAML),
+  },
+  {
+    id: 'human-gated',
+    yaml: HUMAN_GATED_WORKFLOW_YAML,
+    definition: parseWorkflowYaml(HUMAN_GATED_WORKFLOW_YAML),
+  },
+  {
+    id: 'discovery',
+    yaml: DISCOVERY_WORKFLOW_YAML,
+    definition: parseWorkflowYaml(DISCOVERY_WORKFLOW_YAML),
+  },
 ];
 
 const workflowsById = new Map(DEFAULT_WORKFLOWS.map((entry) => [entry.id, entry.definition]));

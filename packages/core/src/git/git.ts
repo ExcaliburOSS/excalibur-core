@@ -118,13 +118,15 @@ function listUntrackedFiles(repoRoot: string): string[] {
   if (out === null || out.length === 0) {
     return [];
   }
-  return out
-    .split('\0')
-    .filter((name) => name.length > 0)
-    // Excalibur's own state dir is never part of a user code diff/review —
-    // including it would let a run's artifacts pollute (and recursively grow)
-    // its own captured diff. Exclude it even when the repo hasn't gitignored it.
-    .filter((name) => name !== '.excalibur' && !name.startsWith('.excalibur/'));
+  return (
+    out
+      .split('\0')
+      .filter((name) => name.length > 0)
+      // Excalibur's own state dir is never part of a user code diff/review —
+      // including it would let a run's artifacts pollute (and recursively grow)
+      // its own captured diff. Exclude it even when the repo hasn't gitignored it.
+      .filter((name) => name !== '.excalibur' && !name.startsWith('.excalibur/'))
+  );
 }
 
 /**
@@ -316,7 +318,11 @@ function diffStripLevel(diff: string): string {
 
 /** Runs `git apply <baseArgs> -p<n> -` over STDIN at the detected strip level.
  * Returns null on success, else the stderr reason (never a false success). */
-function gitApplyTry(repoRoot: string, diff: string, baseArgs: ReadonlyArray<string>): string | null {
+function gitApplyTry(
+  repoRoot: string,
+  diff: string,
+  baseArgs: ReadonlyArray<string>,
+): string | null {
   try {
     execFileSync('git', ['apply', ...baseArgs, diffStripLevel(diff), '-'], {
       cwd: repoRoot,

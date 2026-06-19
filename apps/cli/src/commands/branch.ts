@@ -1,4 +1,10 @@
-import { GitOperationError, PatchStore, applyPatch, createBranch, getGitInfo } from '@excalibur/core';
+import {
+  GitOperationError,
+  PatchStore,
+  applyPatch,
+  createBranch,
+  getGitInfo,
+} from '@excalibur/core';
 import type { Command } from 'commander';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
@@ -22,17 +28,13 @@ export function registerBranchCommand(program: Command, deps: CliDeps): void {
       const branchName = `excalibur/${patch.id}`;
 
       if (!getGitInfo(repoRoot).isRepo) {
-        throw new CliUsageError(
-          deps.t('branch.not-a-repo', { branchName, repoRoot }),
-        );
+        throw new CliUsageError(deps.t('branch.not-a-repo', { branchName, repoRoot }));
       }
 
       const store = new PatchStore(repoRoot);
       const diff = store.readArtifact(patch.id, 'diff.patch') ?? '';
       if (diff.trim().length === 0) {
-        throw new CliUsageError(
-          deps.t('branch.empty-diff', { patchId: patch.id }),
-        );
+        throw new CliUsageError(deps.t('branch.empty-diff', { patchId: patch.id }));
       }
 
       const confirmed =

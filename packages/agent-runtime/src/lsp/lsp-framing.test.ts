@@ -31,7 +31,11 @@ describe('MessageBuffer.drain', () => {
 
   it('decodes multiple messages in one chunk', () => {
     const buf = new MessageBuffer();
-    const chunk = Buffer.concat([encodeMessage({ id: 1 }), encodeMessage({ id: 2 }), encodeMessage({ id: 3 })]);
+    const chunk = Buffer.concat([
+      encodeMessage({ id: 1 }),
+      encodeMessage({ id: 2 }),
+      encodeMessage({ id: 3 }),
+    ]);
     expect(drainAll(buf, chunk)).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
   });
 

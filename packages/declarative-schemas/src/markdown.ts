@@ -20,14 +20,9 @@ import {
 export type MarkdownDeclarativeType = 'prompt_template' | 'artifact_template';
 
 /** Result of `parseDeclarativeMarkdown`. */
-export type MarkdownDeclarativeDefinition =
-  | PromptTemplateDefinition
-  | ArtifactTemplateDefinition;
+export type MarkdownDeclarativeDefinition = PromptTemplateDefinition | ArtifactTemplateDefinition;
 
-const MARKDOWN_TYPES: readonly MarkdownDeclarativeType[] = [
-  'prompt_template',
-  'artifact_template',
-];
+const MARKDOWN_TYPES: readonly MarkdownDeclarativeType[] = ['prompt_template', 'artifact_template'];
 
 /** Directory names that imply a Markdown declarative type (`.excalibur/` layout). */
 const DIRECTORY_HINTS: Readonly<Record<string, MarkdownDeclarativeType>> = {
@@ -58,10 +53,10 @@ function splitFrontMatter(filePath: string, content: string): SplitContent {
     value = parseYamlText(match[1] ?? '');
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    throw new WorkflowValidationError(
-      `Invalid front matter in ${filePath}: ${reason}`,
-      { filePath, reason },
-    );
+    throw new WorkflowValidationError(`Invalid front matter in ${filePath}: ${reason}`, {
+      filePath,
+      reason,
+    });
   }
   if (value === null || value === undefined) {
     return { frontMatter: {}, body };
@@ -123,9 +118,7 @@ function resolveTargetType(
 function humanizeIdentifier(stem: string): string {
   const words = stem.split(/[-_\s]+/).filter((word) => word.length > 0);
   if (words.length === 0) return stem;
-  return words
-    .map((word) => (word[0]?.toUpperCase() ?? '') + word.slice(1))
-    .join(' ');
+  return words.map((word) => (word[0]?.toUpperCase() ?? '') + word.slice(1)).join(' ');
 }
 
 /**
@@ -163,16 +156,15 @@ export function parseDeclarativeMarkdown(
     template: body.trim(),
   };
 
-  const schema =
-    targetType === 'prompt_template' ? promptTemplateSchema : artifactTemplateSchema;
+  const schema = targetType === 'prompt_template' ? promptTemplateSchema : artifactTemplateSchema;
   const result = schema.safeParse(candidate);
   if (!result.success) {
     const issues = formatValidationIssues(result.error);
     const lines = issues.map((issue) => `  - ${issue}`).join('\n');
-    throw new WorkflowValidationError(
-      `Invalid ${targetType} ${filePath}:\n${lines}`,
-      { filePath, issues },
-    );
+    throw new WorkflowValidationError(`Invalid ${targetType} ${filePath}:\n${lines}`, {
+      filePath,
+      issues,
+    });
   }
   return result.data;
 }

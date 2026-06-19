@@ -26,7 +26,7 @@ programmatic-custom-command-agent/
   `tools`, `contextSources`, `policies`, `reports`, `exporters`,
   `methodologies`, `workflows`).
 - `ctx.config` — values resolved by the host against the manifest's
-  `configSchema` (env var *names* and options only; never secret values).
+  `configSchema` (env var _names_ and options only; never secret values).
 - `ctx.hooks.on(...)` and `ctx.logger` — extensions never `console.log`.
 - Manifest `permissions` for a code-running extension: the process command it
   wraps, and filesystem access scoped to `.excalibur/`.

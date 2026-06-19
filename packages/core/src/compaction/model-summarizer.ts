@@ -134,7 +134,9 @@ function toStringArray(value: unknown): string[] {
 
 /** Coerces an unknown JSON field to a clean, redacted string. */
 function toStringField(value: unknown, max: number): string {
-  return typeof value === 'string' ? redactSecrets(value.replace(/\s+/g, ' ').trim()).slice(0, max) : '';
+  return typeof value === 'string'
+    ? redactSecrets(value.replace(/\s+/g, ' ').trim()).slice(0, max)
+    : '';
 }
 
 /**
@@ -187,7 +189,13 @@ export function createModelSummarizer(options: ModelSummarizerOptions): AsyncSum
       const salvaged = salvageSummaryField(content) ?? content;
       return {
         summary: redactSecrets(salvaged).slice(0, 2000),
-        structuredSummary: { objective: '', decisions: [], filesTouched: [], pending: [], condensed },
+        structuredSummary: {
+          objective: '',
+          decisions: [],
+          filesTouched: [],
+          pending: [],
+          condensed,
+        },
       };
     }
 

@@ -34,9 +34,7 @@ export function registerPatchCommand(program: Command, deps: CliDeps): void {
           deps.t('patch.applied', {
             id: patch.id,
             files:
-              filesAffected.length > 0
-                ? filesAffected.join(', ')
-                : deps.t('patch.noFilesDetected'),
+              filesAffected.length > 0 ? filesAffected.join(', ') : deps.t('patch.noFilesDetected'),
           }),
         );
       } else {

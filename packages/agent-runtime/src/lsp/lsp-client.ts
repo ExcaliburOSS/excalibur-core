@@ -238,10 +238,12 @@ export class LspClient {
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new ProviderError(`LSP request "${method}" timed out after ${limit}ms.`, {
-          code: 'lsp_timeout',
-          details: { method },
-        }));
+        reject(
+          new ProviderError(`LSP request "${method}" timed out after ${limit}ms.`, {
+            code: 'lsp_timeout',
+            details: { method },
+          }),
+        );
       }, limit);
       timer.unref?.();
       this.pending.set(id, { resolve, reject, timer, method });
@@ -250,7 +252,11 @@ export class LspClient {
       } catch (error) {
         this.pending.delete(id);
         clearTimeout(timer);
-        reject(error instanceof Error ? error : new ProviderError(describe(error), { code: 'lsp_write_failed' }));
+        reject(
+          error instanceof Error
+            ? error
+            : new ProviderError(describe(error), { code: 'lsp_write_failed' }),
+        );
       }
     });
   }
@@ -276,7 +282,11 @@ export class LspClient {
     const hasMethod = typeof message['method'] === 'string';
 
     if (hasMethod && hasId) {
-      this.handleServerRequest(message['id'] as JsonRpcId, message['method'] as string, message['params']);
+      this.handleServerRequest(
+        message['id'] as JsonRpcId,
+        message['method'] as string,
+        message['params'],
+      );
       return;
     }
     if (hasMethod) {
@@ -321,7 +331,9 @@ export class LspClient {
     const published: PublishDiagnosticsParams = {
       uri,
       ...(typeof params['version'] === 'number' ? { version: params['version'] } : {}),
-      diagnostics: Array.isArray(params['diagnostics']) ? (params['diagnostics'] as LspDiagnostic[]) : [],
+      diagnostics: Array.isArray(params['diagnostics'])
+        ? (params['diagnostics'] as LspDiagnostic[])
+        : [],
     };
     this.latest.set(uri, published);
     const waiters = this.publishWaiters.get(uri);
@@ -341,10 +353,13 @@ export class LspClient {
     if (isObject(message['error'])) {
       const err = message['error'] as { code?: number; message?: string };
       pending.reject(
-        new ProviderError(`LSP "${pending.method}" failed: ${err.message ?? 'error'} (code ${err.code ?? -1}).`, {
-          code: 'lsp_rpc_error',
-          details: { method: pending.method, rpcCode: err.code },
-        }),
+        new ProviderError(
+          `LSP "${pending.method}" failed: ${err.message ?? 'error'} (code ${err.code ?? -1}).`,
+          {
+            code: 'lsp_rpc_error',
+            details: { method: pending.method, rpcCode: err.code },
+          },
+        ),
       );
       return;
     }

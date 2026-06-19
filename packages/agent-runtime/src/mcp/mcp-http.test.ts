@@ -27,13 +27,22 @@ function fakeServer(): { fetch: typeof fetch; calls: Captured[] } {
     switch (body.method) {
       case 'initialize':
         return respond(
-          { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'fake', version: '1' } },
+          {
+            protocolVersion: '2025-06-18',
+            capabilities: { tools: {} },
+            serverInfo: { name: 'fake', version: '1' },
+          },
           { 'mcp-session-id': 'sess-xyz' },
         );
       case 'tools/list':
-        return respond({ tools: [{ name: 'echo', description: 'echoes input', inputSchema: { type: 'object' } }] });
+        return respond({
+          tools: [{ name: 'echo', description: 'echoes input', inputSchema: { type: 'object' } }],
+        });
       case 'tools/call':
-        return respond({ content: [{ type: 'text', text: `echo: ${body.params?.arguments?.message ?? ''}` }], isError: false });
+        return respond({
+          content: [{ type: 'text', text: `echo: ${body.params?.arguments?.message ?? ''}` }],
+          isError: false,
+        });
       default:
         // a notification (no id) → 202 Accepted, empty body
         return new Response('', { status: 202 });
@@ -80,7 +89,8 @@ describe('McpClient.connectHttp (Streamable HTTP remote transport)', () => {
   });
 
   it('surfaces an HTTP error as a failed request (does not hang)', async () => {
-    globalThis.fetch = (async () => new Response('nope', { status: 500, statusText: 'Server Error' })) as unknown as typeof fetch;
+    globalThis.fetch = (async () =>
+      new Response('nope', { status: 500, statusText: 'Server Error' })) as unknown as typeof fetch;
     await expect(
       McpClient.connectHttp({ url: 'https://mcp.example.com/rpc', timeoutMs: 2000 }),
     ).rejects.toThrow(/500|Server Error/);

@@ -101,7 +101,13 @@ describe('patch lifecycle (OSS spec §3.2)', () => {
     expect(cli.stdout()).toContain('Safety: standard-safe');
 
     const dir = latestDir(join(repo, '.excalibur', 'patches'));
-    for (const file of ['input.md', 'effective-instructions.md', 'diff.patch', 'summary.md', 'metadata.json']) {
+    for (const file of [
+      'input.md',
+      'effective-instructions.md',
+      'diff.patch',
+      'summary.md',
+      'metadata.json',
+    ]) {
       expect(existsSync(join(dir, file)), `${file} must exist`).toBe(true);
     }
     const metadata = patchMetadataSchema.parse(
@@ -359,11 +365,17 @@ describe('M2 repo-context retrieval (ask / explain / review)', () => {
   it('review --diagnostics falls back to the whole-repo typecheck when no LSP server is available', async () => {
     const root = repoWithCode();
     // LSP disabled → deterministic fallback to the configured typecheck command.
-    writeRepoFile(root, 'tc.sh', 'echo "src/escrow/escrow.service.ts(1,1): error TS9: BOOM_TYPE_ERROR"\nexit 1\n');
+    writeRepoFile(
+      root,
+      'tc.sh',
+      'echo "src/escrow/escrow.service.ts(1,1): error TS9: BOOM_TYPE_ERROR"\nexit 1\n',
+    );
     writeRepoFile(
       root,
       '.excalibur/config.yaml',
-      ['version: 1', 'lsp:', '  enabled: false', 'commands:', '  typecheck: sh tc.sh', ''].join('\n'),
+      ['version: 1', 'lsp:', '  enabled: false', 'commands:', '  typecheck: sh tc.sh', ''].join(
+        '\n',
+      ),
     );
     const cli = createTestCli({ cwd: root });
     await cli.run('review', 'src/escrow/escrow.service.ts', '--diagnostics');
@@ -416,7 +428,13 @@ describe('M2 repo-context retrieval (ask / explain / review)', () => {
       env: { PATH: process.env.PATH },
       includeUserGlobal: false,
     });
-    await program.parseAsync(['node', 'excalibur', 'ask', 'How does escrow release work?', '--no-context']);
+    await program.parseAsync([
+      'node',
+      'excalibur',
+      'ask',
+      'How does escrow release work?',
+      '--no-context',
+    ]);
 
     const stdout = chunks.join('');
     expect(stdout).toContain('Mock provider (M1)');
@@ -452,7 +470,8 @@ describe('M2 repo-context retrieval (ask / explain / review)', () => {
 
 describe('diff helpers', () => {
   it('extracts unified diffs from fenced blocks and lists affected files', () => {
-    const content = 'before\n```diff\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1,2 @@\n+x\n```\nafter';
+    const content =
+      'before\n```diff\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1,2 @@\n+x\n```\nafter';
     const diff = extractUnifiedDiff(content);
     expect(diff).toContain('+++ b/src/a.ts');
     expect(filesAffectedFromDiff(diff ?? '')).toEqual(['src/a.ts']);

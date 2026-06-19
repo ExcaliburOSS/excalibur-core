@@ -11,9 +11,7 @@
 import type { HttpTransport, TransportRequest, TransportResponse } from './transport';
 
 /** Decodes a `ReadableStream<Uint8Array>` into newline-delimited text lines. */
-async function* decodeLines(
-  stream: ReadableStream<Uint8Array>,
-): AsyncIterable<string> {
+async function* decodeLines(stream: ReadableStream<Uint8Array>): AsyncIterable<string> {
   const decoder = new TextDecoder();
   const reader = stream.getReader();
   let buffer = '';
@@ -57,9 +55,7 @@ function headersToObject(headers: Headers): Record<string, string> {
  * Injecting a custom `fetchImpl` lets tests stub the network at the fetch
  * boundary while still exercising the real line-decoding logic.
  */
-export function createFetchTransport(
-  fetchImpl: typeof fetch = fetch,
-): HttpTransport {
+export function createFetchTransport(fetchImpl: typeof fetch = fetch): HttpTransport {
   return {
     async send(request: TransportRequest): Promise<TransportResponse> {
       const init: RequestInit = {

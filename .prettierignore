@@ -1,0 +1,19 @@
+# Dependency lockfile — managed by pnpm, never hand-formatted.
+pnpm-lock.yaml
+
+# Build output and coverage — generated, not source.
+**/dist/
+**/coverage/
+
+# Vitest snapshots — their exact bytes are the assertion.
+**/__snapshots__/
+
+# Default workflow/methodology YAMLs are mirrored verbatim as embedded TS
+# string constants (a test asserts byte-equality); reformatting them would
+# break that mirror. The TS files that embed them are still formatted.
+packages/workflow-schema/default-workflows/
+packages/workflow-schema/default-methodologies/
+
+# Intentional fixture repo (a "real" project with a planted bug) parsed by
+# the context-engine + CLI demo tests; its formatting is part of the fixture.
+examples/demo-repo/

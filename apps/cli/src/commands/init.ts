@@ -84,7 +84,8 @@ export function registerInitCommand(program: Command, deps: CliDeps): void {
       if (options.team === true && options.full === true) {
         throw new CliUsageError(deps.t('init.teamFullConflict'));
       }
-      const mode: InitMode = options.full === true ? 'full' : options.team === true ? 'team' : 'minimal';
+      const mode: InitMode =
+        options.full === true ? 'full' : options.team === true ? 'team' : 'minimal';
       const yes = options.yes === true;
       const repoRoot = deps.cwd();
 
@@ -131,7 +132,11 @@ export function registerInitCommand(program: Command, deps: CliDeps): void {
           const gitignore = join(repoRoot, '.gitignore');
           const current = existsSync(gitignore) ? readFileSync(gitignore, 'utf8') : '';
           if (!current.split('\n').includes(`${EXCALIBUR_DIR}/`)) {
-            appendFileSync(gitignore, `${current.endsWith('\n') || current === '' ? '' : '\n'}${EXCALIBUR_DIR}/\n`, 'utf8');
+            appendFileSync(
+              gitignore,
+              `${current.endsWith('\n') || current === '' ? '' : '\n'}${EXCALIBUR_DIR}/\n`,
+              'utf8',
+            );
             deps.ui.info(deps.t('init.addedToGitignore', { dir: EXCALIBUR_DIR }));
           }
         }
@@ -153,9 +158,11 @@ export function registerInitCommand(program: Command, deps: CliDeps): void {
       deps.ui.write();
       deps.ui.heading(deps.t('init.detected'));
       deps.ui.write(
-        `  ${[...analysis.languages, ...analysis.frameworks, analysis.packageManager ?? '']
-          .filter((part) => part.length > 0)
-          .join(' · ') || deps.t('init.detected.none')}`,
+        `  ${
+          [...analysis.languages, ...analysis.frameworks, analysis.packageManager ?? '']
+            .filter((part) => part.length > 0)
+            .join(' · ') || deps.t('init.detected.none')
+        }`,
       );
       const commandsLine = Object.entries(analysis.commands)
         .filter((entry): entry is [string, string] => typeof entry[1] === 'string')

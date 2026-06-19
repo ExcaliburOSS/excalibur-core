@@ -3,11 +3,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { autonomyLevelSchema, type AutonomyLevel, type ExcaliburError } from '@excalibur/shared';
 import { EXCALIBUR_DIR } from '../config/load-config';
-import {
-  ArtifactRecordError,
-  InteractionNotFoundError,
-  PatchNotFoundError,
-} from '../errors';
+import { ArtifactRecordError, InteractionNotFoundError, PatchNotFoundError } from '../errors';
 import {
   listSubdirectories,
   readTextIfExists,
@@ -27,7 +23,13 @@ import {
  * instruction sources used, warnings, cost and timestamps.
  */
 
-export const patchStatusSchema = z.enum(['proposed', 'applied', 'branch_created', 'rejected', 'cancelled']);
+export const patchStatusSchema = z.enum([
+  'proposed',
+  'applied',
+  'branch_created',
+  'rejected',
+  'cancelled',
+]);
 export type PatchStatus = z.infer<typeof patchStatusSchema>;
 
 export const interactionStatusSchema = z.enum(['completed', 'cancelled']);

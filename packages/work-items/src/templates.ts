@@ -56,14 +56,9 @@ export const COMMENT_TEMPLATES: Record<CommentTemplateName, string> = {
     'Summary:',
     '{{summary}}',
   ].join('\n'),
-  run_failed: [
-    'Excalibur run failed.',
-    '',
-    'Reason:',
-    '{{reason}}',
-    '',
-    'Run: {{runUrl}}',
-  ].join('\n'),
+  run_failed: ['Excalibur run failed.', '', 'Reason:', '{{reason}}', '', 'Run: {{runUrl}}'].join(
+    '\n',
+  ),
   need_repository: [
     'Excalibur needs a target repository before it can continue.',
     '',

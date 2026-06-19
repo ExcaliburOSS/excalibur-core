@@ -95,16 +95,18 @@ describe('loadExtensions', () => {
     expect(extensions.map((e) => e.manifest.id)).toEqual(['core-workflows', 'core-methodologies']);
     expect(extensions.every((e) => e.source === 'built_in' && e.status === 'loaded')).toBe(true);
     expect(extensions.every((e) => e.dir === null)).toBe(true);
-    expect(registry.contributions.workflows().map((w) => w.name)).toEqual([
-      'Fast fix (built-in)',
-    ]);
+    expect(registry.contributions.workflows().map((w) => w.name)).toEqual(['Fast fix (built-in)']);
     expect(registry.contributions.methodologies()).toHaveLength(1);
     expect(registry.contributions.warnings()).toEqual([]);
     expect(registry.hooks.handlerCount('run.created')).toBe(0);
   });
 
   it('scans the 10 project declarative directories and registers project contributions', async () => {
-    write(repoRoot, '.excalibur/workflows/safe-hotfix.yaml', workflowYaml('safe-hotfix', 'Safe hotfix'));
+    write(
+      repoRoot,
+      '.excalibur/workflows/safe-hotfix.yaml',
+      workflowYaml('safe-hotfix', 'Safe hotfix'),
+    );
     write(
       repoRoot,
       '.excalibur/methodologies/spike.yaml',
@@ -148,7 +150,9 @@ describe('loadExtensions', () => {
     write(
       repoRoot,
       '.excalibur/roles/scope-guardian.yaml',
-      ['id: scope-guardian', 'name: Scope guardian', 'description: Keeps scope honest.', ''].join('\n'),
+      ['id: scope-guardian', 'name: Scope guardian', 'description: Keeps scope honest.', ''].join(
+        '\n',
+      ),
     );
     write(
       repoRoot,
@@ -185,7 +189,11 @@ describe('loadExtensions', () => {
   });
 
   it('lets a project workflow override the built-in one with the same id', async () => {
-    write(repoRoot, '.excalibur/workflows/fast-fix.yaml', workflowYaml('fast-fix', 'Fast fix (project)'));
+    write(
+      repoRoot,
+      '.excalibur/workflows/fast-fix.yaml',
+      workflowYaml('fast-fix', 'Fast fix (project)'),
+    );
 
     const registry = await loadExtensions({ repoRoot, builtIns: BUILT_INS });
     const workflows = registry.contributions.workflows();
@@ -196,7 +204,11 @@ describe('loadExtensions', () => {
   });
 
   it('loads files from the extensions.yaml declarative list without double-loading scanned files', async () => {
-    write(repoRoot, '.excalibur/workflows/safe-hotfix.yaml', workflowYaml('safe-hotfix', 'Safe hotfix'));
+    write(
+      repoRoot,
+      '.excalibur/workflows/safe-hotfix.yaml',
+      workflowYaml('safe-hotfix', 'Safe hotfix'),
+    );
     write(
       repoRoot,
       '.excalibur/custom/special.yaml',
@@ -335,14 +347,23 @@ describe('loadExtensions', () => {
     write(
       repoRoot,
       '.excalibur/extensions/team-pack/question-packs/team-questions.yaml',
-      ['id: team-questions', 'name: Team questions', 'questions:', '  - id: q1', '    text: Who owns this?', ''].join('\n'),
+      [
+        'id: team-questions',
+        'name: Team questions',
+        'questions:',
+        '  - id: q1',
+        '    text: Who owns this?',
+        '',
+      ].join('\n'),
     );
 
     const registry = await loadExtensions({ repoRoot, builtIns: BUILT_INS });
     expect(registry.getExtension('team-pack')?.status).toBe('loaded');
     expect(registry.getExtension('team-pack')?.source).toBe('project');
     expect(registry.contributions.get('workflow', 'team-flow')?.source).toBe('project');
-    expect(registry.contributions.get('question_pack', 'team-questions')?.extensionId).toBe('team-pack');
+    expect(registry.contributions.get('question_pack', 'team-questions')?.extensionId).toBe(
+      'team-pack',
+    );
   });
 
   it('records a missing entrypoint as a per-extension error without crashing the load', async () => {
@@ -506,8 +527,8 @@ describe('loadExtensions', () => {
 
     const registry = await loadExtensions({ repoRoot, builtIns: BUILT_INS });
     expect(registry.getExtension('renamed')?.status).toBe('loaded');
-    expect(
-      registry.contributions.warnings().some((w) => w.includes("'something-else'")),
-    ).toBe(true);
+    expect(registry.contributions.warnings().some((w) => w.includes("'something-else'"))).toBe(
+      true,
+    );
   });
 });

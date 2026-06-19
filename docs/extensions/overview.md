@@ -23,12 +23,12 @@ entrypoint in one extension.
 
 ## The packages
 
-| Package | Role |
-|---|---|
-| `@excalibur/declarative-schemas` | zod schemas for the 10 declarative types, a discriminated union on `type`, and the YAML/Markdown parsers (`parseDeclarativeYaml`, `parseDeclarativeMarkdown`). |
-| `@excalibur/extension-runtime` | The manifest schema/loader/validator, `ExtensionRegistry` + `ContributionRegistry`, the extension loader (`loadExtensions`), `HookRegistry`, and permission validation. |
-| `@excalibur/extension-sdk` | `defineExtension`, `ExtensionContext` with its 11 typed registries + hooks/logger/config, and the contribution interfaces (`CommunicationProvider`, `AgentTool`, `ContextSource`, `PolicyEvaluator`, `ReportGenerator`, `Exporter`). |
-| `@excalibur/built-in-extensions` | The default catalogs (14 workflows, 14 methodologies, Discovery packs, prompts, the `standard-safe` policy, report templates, command mappings) packaged as seven built-in extension packs. |
+| Package                          | Role                                                                                                                                                                                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@excalibur/declarative-schemas` | zod schemas for the 10 declarative types, a discriminated union on `type`, and the YAML/Markdown parsers (`parseDeclarativeYaml`, `parseDeclarativeMarkdown`).                                                                       |
+| `@excalibur/extension-runtime`   | The manifest schema/loader/validator, `ExtensionRegistry` + `ContributionRegistry`, the extension loader (`loadExtensions`), `HookRegistry`, and permission validation.                                                              |
+| `@excalibur/extension-sdk`       | `defineExtension`, `ExtensionContext` with its 11 typed registries + hooks/logger/config, and the contribution interfaces (`CommunicationProvider`, `AgentTool`, `ContextSource`, `PolicyEvaluator`, `ReportGenerator`, `Exporter`). |
+| `@excalibur/built-in-extensions` | The default catalogs (14 workflows, 14 methodologies, Discovery packs, prompts, the `standard-safe` policy, report templates, command mappings) packaged as seven built-in extension packs.                                          |
 
 Built-ins use the same extension mechanisms as everything else: they flow
 through the same `ContributionRegistry`, so a project file can override a
@@ -45,7 +45,7 @@ repository, in this order (later sources win conflicts):
    `workflows/`, `question-packs/`, `prompts/`, `artifacts/`, `policies/`,
    `models/`, `reports/`, `roles/`, `command-mappings/`) plus any file listed
    under `declarative:` in `.excalibur/extensions.yaml`.
-   (`.excalibur/models/providers.yaml` is the model *provider* config, not a
+   (`.excalibur/models/providers.yaml` is the model _provider_ config, not a
    declarative file, and is skipped.)
 3. **Local programmatic extensions** (`source: local`): directories listed
    under `local:` in `extensions.yaml` and every
@@ -70,17 +70,17 @@ disabled; the `enabled:` list is advisory).
 
 ## What works in M1 (today) vs later
 
-| Capability | Status |
-|---|---|
-| All 10 declarative types, loose files and packs | Works today |
-| Manifest validation (`excalibur extensions validate`) | Works today |
-| Local programmatic extensions with a **compiled** entrypoint | Works today (loaded and validated; see below) |
-| Contribution override rules, warnings, hooks registry | Works today |
-| Permission **validation** + warnings | Works today |
-| Permission **enforcement** | M5 (Enterprise policy engine) |
-| Real work-item/communication/model providers calling external APIs | M2–M4 |
-| External agent execution (custom command agents) | M3 |
-| Installing extensions from npm | M8 (npm ecosystem milestone) |
+| Capability                                                         | Status                                        |
+| ------------------------------------------------------------------ | --------------------------------------------- |
+| All 10 declarative types, loose files and packs                    | Works today                                   |
+| Manifest validation (`excalibur extensions validate`)              | Works today                                   |
+| Local programmatic extensions with a **compiled** entrypoint       | Works today (loaded and validated; see below) |
+| Contribution override rules, warnings, hooks registry              | Works today                                   |
+| Permission **validation** + warnings                               | Works today                                   |
+| Permission **enforcement**                                         | M5 (Enterprise policy engine)                 |
+| Real work-item/communication/model providers calling external APIs | M2–M4                                         |
+| External agent execution (custom command agents)                   | M3                                            |
+| Installing extensions from npm                                     | M8 (npm ecosystem milestone)                  |
 
 ## Where to go next
 

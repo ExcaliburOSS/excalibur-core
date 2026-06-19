@@ -13,27 +13,27 @@ project:
   packageManager: pnpm
   languages: [typescript]
   frameworks: [nestjs]
-commands:                 # top-level, canonical (project.commands is an accepted alias)
+commands: # top-level, canonical (project.commands is an accepted alias)
   test: pnpm test
   lint: pnpm lint
   typecheck: pnpm typecheck
   build: pnpm build
 instructions:
-  sources:                # detected instruction files (see ISD below)
+  sources: # detected instruction files (see ISD below)
     - path: ./CLAUDE.md
       format: claude_md
       scope: project
       enabled: true
 safety:
   preset: standard-safe
-workflowDefaults:         # command → workflow
+workflowDefaults: # command → workflow
   ask: ask-repo
   review: review-only
   patch: propose-patch
   run: standard-feature
   careful: structured-feature
   discovery: discovery
-autonomyDefaults:         # command → autonomy level
+autonomyDefaults: # command → autonomy level
   ask: 1
   review: 0
   patch: 2
@@ -48,10 +48,10 @@ autonomyDefaults:         # command → autonomy level
 autonomy:
   default: 2
   paths:
-    "src/billing/**": 1       # stricter level for sensitive paths
-    "src/auth/**": 1
+    'src/billing/**': 1 # stricter level for sensitive paths
+    'src/auth/**': 1
   allowFullAgentic:
-    - "src/docs/**"
+    - 'src/docs/**'
 
 workflows:
   default: standard-feature
@@ -61,12 +61,12 @@ workflows:
     migration: migration
     security: security-review
   byPath:
-    "prisma/migrations/**": migration
+    'prisma/migrations/**': migration
 
 models:
   default: qwen
   byRole: { planner: qwen, implementer: minimax }
-  byPath: { "src/auth/**": local-secure }
+  byPath: { 'src/auth/**': local-secure }
 
 permissions:
   tools:
@@ -74,20 +74,20 @@ permissions:
     write_file: ask
     run_command: ask
     network: false
-  blockedPaths: [".env", "**/*.pem", "**/secrets/**"]
-  allowedCommands: ["pnpm test", "pnpm lint"]
+  blockedPaths: ['.env', '**/*.pem', '**/secrets/**']
+  allowedCommands: ['pnpm test', 'pnpm lint']
 
 approvals:
   requiredFor:
-    paths: ["src/billing/**"]
-    commands: ["npm run migrate"]
-    phases: ["plan", "before_pr"]
+    paths: ['src/billing/**']
+    commands: ['npm run migrate']
+    phases: ['plan', 'before_pr']
 
 context:
-  include: ["instructions/general.md", "README.md", "docs/**/*.md"]
-  exclude: ["**/.env", "**/node_modules/**"]
+  include: ['instructions/general.md', 'README.md', 'docs/**/*.md']
+  exclude: ['**/.env', '**/node_modules/**']
 
-integrations:              # work-item trackers (used from M4)
+integrations: # work-item trackers (used from M4)
   linear:
     apiKeyEnv: LINEAR_API_KEY
     workspace: my-workspace
@@ -115,14 +115,14 @@ Before every model call, Excalibur builds the **effective instruction context**:
 
 ## Other files
 
-| File / directory | Purpose |
-|---|---|
-| `extensions.yaml` | enable/disable extensions, register local ones |
-| `models/providers.yaml` | model providers — env var **names** only, never keys |
-| `models/routing.yaml` | model routing (role/path/workflow) |
-| `instructions/*.md` | project instructions prepended to prompts |
+| File / directory                                                                                                                    | Purpose                                                        |
+| ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `extensions.yaml`                                                                                                                   | enable/disable extensions, register local ones                 |
+| `models/providers.yaml`                                                                                                             | model providers — env var **names** only, never keys           |
+| `models/routing.yaml`                                                                                                               | model routing (role/path/workflow)                             |
+| `instructions/*.md`                                                                                                                 | project instructions prepended to prompts                      |
 | `workflows/`, `methodologies/`, `question-packs/`, `prompts/`, `artifacts/`, `policies/`, `reports/`, `roles/`, `command-mappings/` | declarative extension files that override/extend the built-ins |
-| `runs/`, `patches/`, `interactions/`, `discovery/`, `reports/` | local artifacts |
+| `runs/`, `patches/`, `interactions/`, `discovery/`, `reports/`                                                                      | local artifacts                                                |
 
 ## Init modes
 

@@ -104,13 +104,17 @@ describe('runSwarm', () => {
   it('captures a failing lane without aborting the swarm', async () => {
     const repo = initRepo();
     try {
-      const result = await runSwarm(repo, [lane('ok'), lane('boom')], ({ lane: l, worktreePath }) => {
-        if (l.id === 'boom') {
-          throw new Error('lane exploded');
-        }
-        writeFileSync(join(worktreePath, 'ok.ts'), 'ok\n', 'utf8');
-        return Promise.resolve(null);
-      });
+      const result = await runSwarm(
+        repo,
+        [lane('ok'), lane('boom')],
+        ({ lane: l, worktreePath }) => {
+          if (l.id === 'boom') {
+            throw new Error('lane exploded');
+          }
+          writeFileSync(join(worktreePath, 'ok.ts'), 'ok\n', 'utf8');
+          return Promise.resolve(null);
+        },
+      );
       const boom = result.lanes.find((l) => l.id === 'boom');
       expect(boom?.failed).toBe(true);
       expect(boom?.error).toContain('exploded');
@@ -261,7 +265,9 @@ describe('runSwarm', () => {
     const empty = makeTempDir();
     try {
       git(empty, 'init');
-      await expect(runSwarm(empty, [lane('x')], () => Promise.resolve(null))).rejects.toThrow(/commit/);
+      await expect(runSwarm(empty, [lane('x')], () => Promise.resolve(null))).rejects.toThrow(
+        /commit/,
+      );
     } finally {
       removeDir(empty);
     }

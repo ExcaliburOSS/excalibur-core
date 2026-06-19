@@ -33,8 +33,7 @@ export async function readPackageJson(dir: string): Promise<PackageJsonInfo | nu
   }
   return {
     name: typeof raw['name'] === 'string' ? raw['name'] : null,
-    packageManagerField:
-      typeof raw['packageManager'] === 'string' ? raw['packageManager'] : null,
+    packageManagerField: typeof raw['packageManager'] === 'string' ? raw['packageManager'] : null,
     scripts: stringRecord(raw['scripts']),
     dependencies: {
       ...stringRecord(raw['dependencies']),

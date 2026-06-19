@@ -11,10 +11,7 @@ Parse your YAML/Markdown with the **real** schemas from
 ```ts
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import {
-  parseDeclarativeYaml,
-  parseDeclarativeMarkdown,
-} from '@excalibur/declarative-schemas';
+import { parseDeclarativeYaml, parseDeclarativeMarkdown } from '@excalibur/declarative-schemas';
 
 describe('safe-refactor-strict workflow', () => {
   it('validates and keeps the approval gates', () => {
@@ -39,7 +36,7 @@ Validate the manifest with `validateManifest` / `loadManifest` from
 import { loadManifest, validatePermissions } from '@excalibur/extension-runtime';
 
 const manifest = loadManifest('excalibur.extension.yaml'); // throws on invalid
-expect(validatePermissions(manifest)).toEqual([]);          // no warnings expected
+expect(validatePermissions(manifest)).toEqual([]); // no warnings expected
 ```
 
 ## Testing a programmatic extension's `register()`
@@ -88,8 +85,10 @@ a capturing logger is a three-line stub.
 
 ```ts
 const hooks = new HookRegistry();
-hooks.on('run.completed', () => { throw new Error('boom'); });
-await hooks.emit('run.completed', { runId: 'run_1' });   // does not throw
+hooks.on('run.completed', () => {
+  throw new Error('boom');
+});
+await hooks.emit('run.completed', { runId: 'run_1' }); // does not throw
 expect(hooks.errors()).toHaveLength(1);
 ```
 

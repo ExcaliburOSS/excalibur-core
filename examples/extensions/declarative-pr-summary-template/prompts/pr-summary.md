@@ -5,14 +5,17 @@ description: >
   file name) matches the built-in prompt from the core-prompts extension, so
   this file overrides it.
 ---
+
 Summarize the change below as a pull request description in our team format.
 
 Task: {{task}}
 
 ## Diff
+
 {{diff}}
 
 ## Test results
+
 {{testResults}}
 
 Write markdown with exactly these sections:

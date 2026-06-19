@@ -1,4 +1,10 @@
-import { detectLocale, makeTranslator, type Catalog, type Locale, type Translator } from '@excalibur/shared';
+import {
+  detectLocale,
+  makeTranslator,
+  type Catalog,
+  type Locale,
+  type Translator,
+} from '@excalibur/shared';
 import { EN } from './en';
 import { ES } from './es';
 

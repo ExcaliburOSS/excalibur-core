@@ -49,14 +49,20 @@ describe('redactSecrets', () => {
   });
 
   it('redacts GitHub fine-grained github_pat_ tokens', () => {
-    const pat = token('github_pat_', '11ABCDEFG0abcdefghijkl_mnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUV');
+    const pat = token(
+      'github_pat_',
+      '11ABCDEFG0abcdefghijkl_mnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUV',
+    );
     const redacted = redactSecrets(`token: ${pat}`);
     expect(redacted).not.toContain('github_pat_11');
   });
 
   it.each([
     ['bot', token('xoxb-', '1234567890-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx')],
-    ['user', token('xoxp-', '9876543210-9876543210987-1234567890123-aabbccddeeff00112233445566778899')],
+    [
+      'user',
+      token('xoxp-', '9876543210-9876543210987-1234567890123-aabbccddeeff00112233445566778899'),
+    ],
   ])('redacts Slack %s tokens', (_kind, slackToken) => {
     const redacted = redactSecrets(`SLACK_TOKEN=${slackToken}`);
     expect(redacted).not.toContain(slackToken);
@@ -77,15 +83,18 @@ describe('redactSecrets', () => {
   });
 
   it('redacts OPENSSH and unlabeled private key blocks', () => {
-    const openssh = '-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----';
-    const plain = '-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEG\n-----END PRIVATE KEY-----';
+    const openssh =
+      '-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----';
+    const plain =
+      '-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEG\n-----END PRIVATE KEY-----';
     const redacted = redactSecrets(`${openssh}\n\n${plain}`);
     expect(redacted).not.toContain('PRIVATE KEY');
     expect(redacted.match(/\[REDACTED\]/g)?.length).toBe(2);
   });
 
   it('redacts Authorization: Bearer headers while keeping the header name', () => {
-    const text = 'curl -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIn0.dQw4w9WgXcQ" https://api.example.com';
+    const text =
+      'curl -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIn0.dQw4w9WgXcQ" https://api.example.com';
     const redacted = redactSecrets(text);
     expect(redacted).toContain('Authorization: Bearer [REDACTED]');
     expect(redacted).not.toContain('eyJhbGciOiJIUzI1NiI');
@@ -108,7 +117,9 @@ describe('redactSecrets', () => {
   });
 
   it('redacts apiKey: … values in YAML', () => {
-    const redacted = redactSecrets('integrations:\n  linear:\n    apiKey: lin_api_0123456789abcdef\n');
+    const redacted = redactSecrets(
+      'integrations:\n  linear:\n    apiKey: lin_api_0123456789abcdef\n',
+    );
     expect(redacted).toContain('apiKey: [REDACTED]');
     expect(redacted).not.toContain('lin_api_0123456789abcdef');
   });

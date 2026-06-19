@@ -13,7 +13,9 @@ import { createExcaliburServer } from '../lib/serve';
 export function registerServeCommand(program: Command, deps: CliDeps): void {
   program
     .command('serve')
-    .description('serve runs/events/insights over local HTTP + SSE (read-only; powers the web dashboard)')
+    .description(
+      'serve runs/events/insights over local HTTP + SSE (read-only; powers the web dashboard)',
+    )
     .option('--port <n>', 'port to listen on', '4319')
     .option('--host <host>', 'host to bind (localhost by default for safety)', '127.0.0.1')
     .option('--token <token>', 'shared secret (default: a random per-process token)')

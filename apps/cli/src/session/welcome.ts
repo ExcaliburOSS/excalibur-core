@@ -104,7 +104,16 @@ export function renderWelcome(ctx: WelcomeContext): string {
   if (user.length > 0) identity.push(identityRow('user', user));
 
   const displayName = name.trim().length > 0 ? name : 'there';
-  const left = ['', `Welcome back, ${pc.bold(displayName)}`, '', `   ${sword[0]}`, `   ${sword[1]}`, '', ...identity, ''];
+  const left = [
+    '',
+    `Welcome back, ${pc.bold(displayName)}`,
+    '',
+    `   ${sword[0]}`,
+    `   ${sword[1]}`,
+    '',
+    ...identity,
+    '',
+  ];
 
   const tipLabel = unicode ? '▸ Tip' : '> Tip';
   const newLabel = unicode ? '▸ What’s new' : '> What’s new';
@@ -126,7 +135,9 @@ export function renderWelcome(ctx: WelcomeContext): string {
       body.push(`${B.v}${' '.repeat(leftMargin)}${pad(l, usable)}${' '.repeat(rightMargin)}${B.v}`);
     } else {
       const r = pad(right[i] ?? '', rightW);
-      body.push(`${B.v}${' '.repeat(leftMargin)}${l}${' '.repeat(gap)}${r}${' '.repeat(rightMargin)}${B.v}`);
+      body.push(
+        `${B.v}${' '.repeat(leftMargin)}${l}${' '.repeat(gap)}${r}${' '.repeat(rightMargin)}${B.v}`,
+      );
     }
   }
   return [top, ...body, `${B.bl}${B.h.repeat(inner)}${B.br}`].join('\n');

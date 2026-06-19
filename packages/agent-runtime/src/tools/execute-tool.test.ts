@@ -319,7 +319,11 @@ describe('executeNativeTool — run_command / run_tests', () => {
     const controller = new AbortController();
     controller.abort();
     const abortCtx: ToolExecutionContext = { ...ctx(), signal: controller.signal };
-    const result = await executeNativeTool('run_command', { command: 'echo should-not-run' }, abortCtx);
+    const result = await executeNativeTool(
+      'run_command',
+      { command: 'echo should-not-run' },
+      abortCtx,
+    );
     // The "before start" marker is only produced on the pre-spawn short-circuit,
     // proving the process was never launched (echo never produced its output).
     expect(result.result).toContain('command aborted before start');
@@ -363,14 +367,9 @@ describe('executeNativeTool — git tools', () => {
     writeFileSync(join(dir, 'base.txt'), 'a\n');
     execFileSync('git', ['add', '.'], { cwd: dir });
     execFileSync('git', ['commit', '-qm', 'init'], { cwd: dir });
-    const goodDiff = [
-      '--- a/base.txt',
-      '+++ b/base.txt',
-      '@@ -1 +1,2 @@',
-      ' a',
-      '+b',
-      '',
-    ].join('\n');
+    const goodDiff = ['--- a/base.txt', '+++ b/base.txt', '@@ -1 +1,2 @@', ' a', '+b', ''].join(
+      '\n',
+    );
     const applied = await executeNativeTool('apply_patch', { diff: goodDiff }, ctx());
     expect(applied.ok).toBe(true);
     expect(readFileSync(join(dir, 'base.txt'), 'utf8')).toBe('a\nb\n');

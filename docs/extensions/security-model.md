@@ -68,7 +68,7 @@ In M1, permissions are **declared and validated, not enforced**.
   high-risk and will require approval once enforcement lands);
 - wildcard `process.allowedCommands`;
 - `secrets.env` entries that do not look like environment variable names
-  (UPPER_SNAKE_CASE) — a guard against secret *values* leaking into
+  (UPPER*SNAKE_CASE) — a guard against secret \_values* leaking into
   manifests;
 - unknown permission categories;
 - `kind: declarative` extensions declaring permissions (no effect — they run

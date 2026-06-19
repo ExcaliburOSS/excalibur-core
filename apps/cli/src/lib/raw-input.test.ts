@@ -62,15 +62,24 @@ describe('reduceKey (pure state machine)', () => {
   it('Ctrl-C → sigint; Ctrl-D on empty → eof; Ctrl-D non-empty → none', () => {
     expect(reduceKey(prompt(), key({ ctrl: true, name: 'c' })).action).toEqual({ type: 'sigint' });
     expect(reduceKey(prompt(), key({ ctrl: true, name: 'd' })).action).toEqual({ type: 'eof' });
-    expect(reduceKey(prompt({ buffer: 'x', cursor: 1 }), key({ ctrl: true, name: 'd' })).action).toEqual({
+    expect(
+      reduceKey(prompt({ buffer: 'x', cursor: 1 }), key({ ctrl: true, name: 'd' })).action,
+    ).toEqual({
       type: 'none',
     });
   });
 
   it('Ctrl-A/E move to ends and Ctrl-U kills to line start', () => {
-    expect(reduceKey(prompt({ buffer: 'abc', cursor: 3 }), key({ ctrl: true, name: 'a' })).state.cursor).toBe(0);
-    expect(reduceKey(prompt({ buffer: 'abc', cursor: 0 }), key({ ctrl: true, name: 'e' })).state.cursor).toBe(3);
-    const killed = reduceKey(prompt({ buffer: 'abcdef', cursor: 3 }), key({ ctrl: true, name: 'u' })).state;
+    expect(
+      reduceKey(prompt({ buffer: 'abc', cursor: 3 }), key({ ctrl: true, name: 'a' })).state.cursor,
+    ).toBe(0);
+    expect(
+      reduceKey(prompt({ buffer: 'abc', cursor: 0 }), key({ ctrl: true, name: 'e' })).state.cursor,
+    ).toBe(3);
+    const killed = reduceKey(
+      prompt({ buffer: 'abcdef', cursor: 3 }),
+      key({ ctrl: true, name: 'u' }),
+    ).state;
     expect(killed.buffer).toBe('def');
     expect(killed.cursor).toBe(0);
   });
@@ -109,7 +118,10 @@ describe('reduceKey (pure state machine)', () => {
     const idle = { ...initialRawState(), awaiting: false };
     expect(reduceKey(idle, key({ name: 'escape' })).action).toEqual({ type: 'none' });
     // awaiting → clears the buffer, never aborts
-    const r = reduceKey(prompt({ buffer: 'half-typed', cursor: 9, mode: 'turn' }), key({ name: 'escape' }));
+    const r = reduceKey(
+      prompt({ buffer: 'half-typed', cursor: 9, mode: 'turn' }),
+      key({ name: 'escape' }),
+    );
     expect(r.action).toEqual({ type: 'none' });
     expect(r.state.buffer).toBe('');
   });
@@ -188,7 +200,10 @@ describe('ghost-text (instant + reducer + render)', () => {
   });
 
   it('→ at the end of the buffer accepts the ghost; mid-buffer it just moves', () => {
-    const atEnd = reduceKey(prompt({ buffer: 'rea', cursor: 3, ghost: 'd it' }), key({ name: 'right' }));
+    const atEnd = reduceKey(
+      prompt({ buffer: 'rea', cursor: 3, ghost: 'd it' }),
+      key({ name: 'right' }),
+    );
     expect(atEnd.state.buffer).toBe('read it');
     const mid = reduceKey(prompt({ buffer: 'abc', cursor: 1, ghost: 'X' }), key({ name: 'right' }));
     expect(mid.state.buffer).toBe('abc');
@@ -196,8 +211,14 @@ describe('ghost-text (instant + reducer + render)', () => {
   });
 
   it('an edit clears the ghost (the shell recomputes it)', () => {
-    expect(reduceKey(prompt({ buffer: 'a', cursor: 1, ghost: 'bc' }), key({ name: 'x', sequence: 'x' })).state.ghost).toBe('');
-    expect(reduceKey(prompt({ buffer: 'a', cursor: 1, ghost: 'bc' }), key({ name: 'backspace' })).state.ghost).toBe('');
+    expect(
+      reduceKey(prompt({ buffer: 'a', cursor: 1, ghost: 'bc' }), key({ name: 'x', sequence: 'x' }))
+        .state.ghost,
+    ).toBe('');
+    expect(
+      reduceKey(prompt({ buffer: 'a', cursor: 1, ghost: 'bc' }), key({ name: 'backspace' })).state
+        .ghost,
+    ).toBe('');
   });
 
   it('renderInput draws the ghost and counts it in the cursor-back', () => {
@@ -228,8 +249,16 @@ describe('renderInput', () => {
 
 // --- shell lifecycle (fake TTY) ---------------------------------------------
 
-function fakeTty(): PassThrough & { isTTY: boolean; rawCalls: boolean[]; setRawMode: (v: boolean) => unknown } {
-  const s = new PassThrough() as PassThrough & { isTTY: boolean; rawCalls: boolean[]; setRawMode: (v: boolean) => unknown };
+function fakeTty(): PassThrough & {
+  isTTY: boolean;
+  rawCalls: boolean[];
+  setRawMode: (v: boolean) => unknown;
+} {
+  const s = new PassThrough() as PassThrough & {
+    isTTY: boolean;
+    rawCalls: boolean[];
+    setRawMode: (v: boolean) => unknown;
+  };
   s.isTTY = true;
   s.rawCalls = [];
   s.setRawMode = (v: boolean): unknown => {
@@ -263,7 +292,11 @@ describe('raw editor shell (fake TTY)', () => {
   it('enables raw mode, assembles a line on Enter, and restores cooked on close', async () => {
     const stdin = fakeTty();
     const out = memOut();
-    const ui = new Ui({ stdin, stdout: out as unknown as NodeJS.WritableStream, interactive: true });
+    const ui = new Ui({
+      stdin,
+      stdout: out as unknown as NodeJS.WritableStream,
+      interactive: true,
+    });
     const editor = ui.openLineEditor();
     opened.push(editor);
 
@@ -282,7 +315,11 @@ describe('raw editor shell (fake TTY)', () => {
   it('a throwing handler triggers failSafe: cooked restored + the pending read resolves (no hang)', async () => {
     const stdin = fakeTty();
     const out = memOut();
-    const ui = new Ui({ stdin, stdout: out as unknown as NodeJS.WritableStream, interactive: true });
+    const ui = new Ui({
+      stdin,
+      stdout: out as unknown as NodeJS.WritableStream,
+      interactive: true,
+    });
     const editor = ui.openLineEditor();
     opened.push(editor);
 
@@ -299,7 +336,11 @@ describe('raw editor shell (fake TTY)', () => {
   it('renders an instant slash-command ghost and accepts it with Tab', async () => {
     const stdin = fakeTty();
     const out = memOut();
-    const ui = new Ui({ stdin, stdout: out as unknown as NodeJS.WritableStream, interactive: true });
+    const ui = new Ui({
+      stdin,
+      stdout: out as unknown as NodeJS.WritableStream,
+      interactive: true,
+    });
     const editor = ui.openLineEditor({ ghostCommands: ['replay', 'review'] });
     opened.push(editor);
 
@@ -320,7 +361,11 @@ describe('raw editor shell (fake TTY)', () => {
       const stdin = fakeTty();
       const out = memOut();
       const suggest = vi.fn(async () => 'the payment module');
-      const ui = new Ui({ stdin, stdout: out as unknown as NodeJS.WritableStream, interactive: true });
+      const ui = new Ui({
+        stdin,
+        stdout: out as unknown as NodeJS.WritableStream,
+        interactive: true,
+      });
       const editor = ui.openLineEditor({ suggest });
       opened.push(editor);
 
@@ -339,7 +384,11 @@ describe('raw editor shell (fake TTY)', () => {
   it('Esc-Esc at the prompt resolves the read with the rewind sentinel', async () => {
     const stdin = fakeTty();
     const out = memOut();
-    const ui = new Ui({ stdin, stdout: out as unknown as NodeJS.WritableStream, interactive: true });
+    const ui = new Ui({
+      stdin,
+      stdout: out as unknown as NodeJS.WritableStream,
+      interactive: true,
+    });
     const editor = ui.openLineEditor();
     opened.push(editor);
 
@@ -352,7 +401,11 @@ describe('raw editor shell (fake TTY)', () => {
   it('routes ESC during a turn to the onEscape handler', () => {
     const stdin = fakeTty();
     const out = memOut();
-    const ui = new Ui({ stdin, stdout: out as unknown as NodeJS.WritableStream, interactive: true });
+    const ui = new Ui({
+      stdin,
+      stdout: out as unknown as NodeJS.WritableStream,
+      interactive: true,
+    });
     const editor = ui.openLineEditor();
     opened.push(editor);
 

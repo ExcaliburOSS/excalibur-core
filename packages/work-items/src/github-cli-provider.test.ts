@@ -12,7 +12,9 @@ const ISSUE = {
   assignees: [{ login: 'bob' }],
   createdAt: '2026-06-10T10:00:00Z',
   updatedAt: '2026-06-12T12:00:00Z',
-  comments: [{ author: { login: 'carol' }, body: 'Scope it first?', createdAt: '2026-06-11T09:00:00Z' }],
+  comments: [
+    { author: { login: 'carol' }, body: 'Scope it first?', createdAt: '2026-06-11T09:00:00Z' },
+  ],
 };
 
 describe('mapGhIssue', () => {

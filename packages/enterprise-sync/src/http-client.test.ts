@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ConfigValidationError, ProviderError, createEvent, isExcaliburError } from '@excalibur/shared';
+import {
+  ConfigValidationError,
+  ProviderError,
+  createEvent,
+  isExcaliburError,
+} from '@excalibur/shared';
 import type { LocalRun } from '@excalibur/shared';
 import { HttpEnterpriseSyncClient, SYNC_FAILED_CODE } from './http-client';
 

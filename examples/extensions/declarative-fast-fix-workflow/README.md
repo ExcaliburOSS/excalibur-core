@@ -2,12 +2,12 @@
 
 The smallest useful declarative extension: **one manifest, one workflow**.
 
-| File | Contribution | Id |
-|---|---|---|
-| `workflows/fast-fix-verified.yaml` | `workflow` | `fast-fix-verified` |
+| File                               | Contribution | Id                  |
+| ---------------------------------- | ------------ | ------------------- |
+| `workflows/fast-fix-verified.yaml` | `workflow`   | `fast-fix-verified` |
 
 `fast-fix-verified` reorders the built-in `fast-fix` flow so that
-verification happens *before* the patch can be applied, makes the verify
+verification happens _before_ the patch can be applied, makes the verify
 phase required (`onFailure: abort` — the run stops when the configured
 commands fail) and keeps `requiresHumanConfirmation: true` on the
 `apply_patch` phase. The built-in `fast-fix` keeps its id and stays

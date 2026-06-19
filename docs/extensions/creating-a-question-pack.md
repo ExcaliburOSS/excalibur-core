@@ -7,11 +7,11 @@ flow (`excalibur discovery`). A pack is a declarative YAML file — no code.
 
 ```yaml
 id: product-discovery
-type: question_pack          # optional in .excalibur/question-packs/, recommended
+type: question_pack # optional in .excalibur/question-packs/, recommended
 name: Product Discovery
-description: >               # optional
+description: > # optional
   Opinionated product-discovery questions for a B2B SaaS team.
-questions:                   # at least one
+questions: # at least one
   - id: user
     text: Which customer segment has this problem?
   - id: problem

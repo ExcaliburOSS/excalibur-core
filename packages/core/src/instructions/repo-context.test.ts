@@ -95,7 +95,10 @@ describe('buildRepoContextSources', () => {
   });
 
   it('passes anchorPath through to retrieval (neighbor boost)', async () => {
-    write('src/auth/login.ts', "import { createSession } from './session';\nexport function login() {}\n");
+    write(
+      'src/auth/login.ts',
+      "import { createSession } from './session';\nexport function login() {}\n",
+    );
     write('src/auth/session.ts', 'export function createSession() { return {}; }\n');
     write('src/billing/invoice.ts', 'export function createInvoice() { return {}; }\n');
 

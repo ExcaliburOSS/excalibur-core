@@ -429,8 +429,7 @@ describe('commandToAction — full mapping table', () => {
 
   it('covers every command in EXCALIBUR_COMMANDS', () => {
     for (const command of EXCALIBUR_COMMANDS) {
-      const text =
-        command === 'planning' ? '@excalibur planning start' : `@excalibur ${command}`;
+      const text = command === 'planning' ? '@excalibur planning start' : `@excalibur ${command}`;
       expect(() => actionFor(text)).not.toThrow();
     }
   });

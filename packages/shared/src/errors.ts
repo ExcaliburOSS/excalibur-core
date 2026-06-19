@@ -50,10 +50,7 @@ export class PermissionDeniedError extends ExcaliburError {
  * `sync_failed`) through `options.code`.
  */
 export class ProviderError extends ExcaliburError {
-  constructor(
-    message: string,
-    options?: { code?: string; details?: Record<string, unknown> },
-  ) {
+  constructor(message: string, options?: { code?: string; details?: Record<string, unknown> }) {
     super(message, options?.code ?? 'provider_error', options?.details);
   }
 }

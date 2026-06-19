@@ -57,12 +57,12 @@ excalibur doctor           # also checks that the named env vars are set
 Optional per-provider cost rates produce `costCents` on every call (recorded in `model-calls.jsonl` and artifact metadata):
 
 ```yaml
-  qwen:
-    type: openai-compatible
-    baseUrl: https://example/v1
-    apiKeyEnv: QWEN_API_KEY
-    inputCostPerMillionTokensCents: 40
-    outputCostPerMillionTokensCents: 120
+qwen:
+  type: openai-compatible
+  baseUrl: https://example/v1
+  apiKeyEnv: QWEN_API_KEY
+  inputCostPerMillionTokensCents: 40
+  outputCostPerMillionTokensCents: 120
 ```
 
 ## Routing
@@ -77,7 +77,7 @@ models:
     implementer: minimax
     security: local-secure
   byPath:
-    "src/auth/**": local-secure
+    'src/auth/**': local-secure
 ```
 
 ## No provider configured?

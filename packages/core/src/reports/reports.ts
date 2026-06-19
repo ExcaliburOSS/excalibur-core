@@ -118,9 +118,7 @@ export function generateDailyReport(input: ReportInput): string {
   const completed = runs.filter(
     (run) => run.record.status === 'completed' && finishedAt(run) >= since,
   );
-  const failed = runs.filter(
-    (run) => run.record.status === 'failed' && finishedAt(run) >= since,
-  );
+  const failed = runs.filter((run) => run.record.status === 'failed' && finishedAt(run) >= since);
   const pending = runs.filter((run) => PENDING_STATUSES.has(run.record.status));
 
   const patches = new PatchStore(input.repoRoot)
@@ -133,15 +131,35 @@ export function generateDailyReport(input: ReportInput): string {
   return [
     t('report.daily-title', { date: isoDate(now) }),
     '',
-    section(t('report.completed-runs'), completed.map((r) => describeRun(t, r)), t('report.no-completed-today')),
+    section(
+      t('report.completed-runs'),
+      completed.map((r) => describeRun(t, r)),
+      t('report.no-completed-today'),
+    ),
     '',
-    section(t('report.failed-runs'), failed.map((r) => describeRun(t, r)), t('report.no-failed-today')),
+    section(
+      t('report.failed-runs'),
+      failed.map((r) => describeRun(t, r)),
+      t('report.no-failed-today'),
+    ),
     '',
-    section(t('report.patches'), patches.map((p) => describePatch(t, p)), t('report.no-patches-today')),
+    section(
+      t('report.patches'),
+      patches.map((p) => describePatch(t, p)),
+      t('report.no-patches-today'),
+    ),
     '',
-    section(t('report.commits'), commits.map((c) => describeCommit(t, c)), t('report.no-commits-today')),
+    section(
+      t('report.commits'),
+      commits.map((c) => describeCommit(t, c)),
+      t('report.no-commits-today'),
+    ),
     '',
-    section(t('report.pending'), pending.map((r) => describeRun(t, r)), t('report.nothing-pending')),
+    section(
+      t('report.pending'),
+      pending.map((r) => describeRun(t, r)),
+      t('report.nothing-pending'),
+    ),
     '',
   ].join('\n');
 }
@@ -162,9 +180,7 @@ export function generateWeeklyPlan(input: ReportInput): string {
   const completed = runs.filter(
     (run) => run.record.status === 'completed' && finishedAt(run) >= since,
   );
-  const failed = runs.filter(
-    (run) => run.record.status === 'failed' && finishedAt(run) >= since,
-  );
+  const failed = runs.filter((run) => run.record.status === 'failed' && finishedAt(run) >= since);
   const pending = runs.filter((run) => PENDING_STATUSES.has(run.record.status));
 
   const allPatches = new PatchStore(input.repoRoot).list();
@@ -175,7 +191,9 @@ export function generateWeeklyPlan(input: ReportInput): string {
   const t = makeReportTranslator(input.locale);
   const planLines: string[] = [];
   for (const run of pending) {
-    planLines.push(t('report.plan-resume', { id: run.id, title: run.record.title, status: run.record.status }));
+    planLines.push(
+      t('report.plan-resume', { id: run.id, title: run.record.title, status: run.record.status }),
+    );
   }
   for (const run of failed) {
     planLines.push(t('report.plan-revisit', { id: run.id, title: run.record.title }));
@@ -201,7 +219,11 @@ export function generateWeeklyPlan(input: ReportInput): string {
       t('report.no-activity'),
     ),
     '',
-    section(t('report.completed-runs'), completed.map((r) => describeRun(t, r)), t('report.no-completed-week')),
+    section(
+      t('report.completed-runs'),
+      completed.map((r) => describeRun(t, r)),
+      t('report.no-completed-week'),
+    ),
     '',
     section(t('report.plan-next-week'), planLines, t('report.nothing-carried')),
     '',

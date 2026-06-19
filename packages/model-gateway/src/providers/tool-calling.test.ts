@@ -83,7 +83,12 @@ afterEach(() => {
 });
 
 function anthropicCfg(extra: Partial<ProviderConfig> = {}): ProviderConfig {
-  return { type: 'anthropic', apiKeyEnv: ANTHROPIC_KEY_ENV, model: 'test-anthropic-model', ...extra };
+  return {
+    type: 'anthropic',
+    apiKeyEnv: ANTHROPIC_KEY_ENV,
+    model: 'test-anthropic-model',
+    ...extra,
+  };
 }
 function openaiCfg(extra: Partial<ProviderConfig> = {}): ProviderConfig {
   return {
@@ -138,7 +143,12 @@ describe('Anthropic tool calling', () => {
       {
         role: 'assistant',
         content: [
-          { type: 'tool_use', id: 'call_1', name: 'get_weather', input: { city: 'Madrid', unit: 'celsius' } },
+          {
+            type: 'tool_use',
+            id: 'call_1',
+            name: 'get_weather',
+            input: { city: 'Madrid', unit: 'celsius' },
+          },
         ],
       },
       {
@@ -303,8 +313,14 @@ describe('OpenAI-compatible tool calling', () => {
             role: 'assistant',
             content: null,
             tool_calls: [
-              { type: 'function', function: { name: 'get_weather', arguments: '{"city":"Madrid"}' } },
-              { type: 'function', function: { name: 'get_weather', arguments: '{"city":"Paris"}' } },
+              {
+                type: 'function',
+                function: { name: 'get_weather', arguments: '{"city":"Madrid"}' },
+              },
+              {
+                type: 'function',
+                function: { name: 'get_weather', arguments: '{"city":"Paris"}' },
+              },
             ],
           },
           finish_reason: 'tool_calls',

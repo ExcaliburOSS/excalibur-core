@@ -30,10 +30,16 @@ describe('exit codes (Build Contract §4.9: 0 success, 1 runtime, 2 usage)', () 
   });
 
   it('maps commander help/version to success and usage errors to 2', () => {
-    expect(exitCodeForError(new CommanderError(0, 'commander.helpDisplayed', 'help'))).toBe(EXIT_SUCCESS);
+    expect(exitCodeForError(new CommanderError(0, 'commander.helpDisplayed', 'help'))).toBe(
+      EXIT_SUCCESS,
+    );
     expect(exitCodeForError(new CommanderError(0, 'commander.version', 'v'))).toBe(EXIT_SUCCESS);
-    expect(exitCodeForError(new CommanderError(1, 'commander.unknownCommand', 'nope'))).toBe(EXIT_USAGE_ERROR);
-    expect(exitCodeForError(new CommanderError(1, 'commander.missingArgument', 'arg'))).toBe(EXIT_USAGE_ERROR);
+    expect(exitCodeForError(new CommanderError(1, 'commander.unknownCommand', 'nope'))).toBe(
+      EXIT_USAGE_ERROR,
+    );
+    expect(exitCodeForError(new CommanderError(1, 'commander.missingArgument', 'arg'))).toBe(
+      EXIT_USAGE_ERROR,
+    );
   });
 
   it('CliUsageError is an ExcaliburError with a stable code', () => {

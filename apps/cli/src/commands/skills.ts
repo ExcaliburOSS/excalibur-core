@@ -60,7 +60,9 @@ export function registerSkillsCommand(program: Command, deps: CliDeps): void {
     .action(async (id: string) => {
       const skill = findSkillById(await scanSkills(deps, deps.cwd()), id);
       deps.ui.heading(deps.t('skills.inspect-heading', { id: skill.id, name: skill.name }));
-      deps.ui.write(deps.t('skills.inspect-description', { description: skill.description ?? '(none)' }));
+      deps.ui.write(
+        deps.t('skills.inspect-description', { description: skill.description ?? '(none)' }),
+      );
       deps.ui.write(deps.t('skills.inspect-path', { path: skill.path, scope: skill.scope }));
       deps.ui.write(
         deps.t('skills.inspect-trust', {
@@ -68,12 +70,20 @@ export function registerSkillsCommand(program: Command, deps: CliDeps): void {
           enabled: skill.enabled ? 'yes' : 'no',
         }),
       );
-      deps.ui.write(deps.t('skills.inspect-triggers', { triggers: skill.triggers.join(', ') || '(none declared)' }));
       deps.ui.write(
-        deps.t('skills.inspect-dependencies', { dependencies: skill.dependencies.join(', ') || '(none declared)' }),
+        deps.t('skills.inspect-triggers', {
+          triggers: skill.triggers.join(', ') || '(none declared)',
+        }),
       );
       deps.ui.write(
-        deps.t('skills.inspect-tools', { tools: skill.toolsRequired.join(', ') || '(none declared)' }),
+        deps.t('skills.inspect-dependencies', {
+          dependencies: skill.dependencies.join(', ') || '(none declared)',
+        }),
+      );
+      deps.ui.write(
+        deps.t('skills.inspect-tools', {
+          tools: skill.toolsRequired.join(', ') || '(none declared)',
+        }),
       );
     });
 

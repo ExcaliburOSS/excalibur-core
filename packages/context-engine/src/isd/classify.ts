@@ -66,9 +66,7 @@ export function classifySourcePath(
   }
   if (scope === 'user_global') {
     // User-global scanning is limited to ~/.claude/** in M1.
-    return relPath === '.claude/CLAUDE.md' || relPath.startsWith('.claude/')
-      ? 'claude_md'
-      : null;
+    return relPath === '.claude/CLAUDE.md' || relPath.startsWith('.claude/') ? 'claude_md' : null;
   }
   if (relPath === 'CLAUDE.md' || relPath.startsWith('.claude/')) {
     return 'claude_md';
@@ -98,11 +96,7 @@ export function classifySourcePath(
   if (segments.slice(0, -1).some((segment) => ADR_SEGMENTS.has(segment.toLowerCase()))) {
     return 'adr';
   }
-  if (
-    relPath === 'README.md' ||
-    relPath === 'CONTRIBUTING.md' ||
-    relPath.startsWith('docs/')
-  ) {
+  if (relPath === 'README.md' || relPath === 'CONTRIBUTING.md' || relPath.startsWith('docs/')) {
     return 'docs';
   }
   return null;
@@ -138,7 +132,9 @@ function baseId(
     case 'copilot_instructions':
       return 'copilot-project';
     case 'cursor_rules':
-      return relPath === '.cursor/rules.md' ? 'cursor-rules' : `cursor-${slugify(fileStem(relPath))}`;
+      return relPath === '.cursor/rules.md'
+        ? 'cursor-rules'
+        : `cursor-${slugify(fileStem(relPath))}`;
     case 'codex':
       return `codex-${slugify(fileStem(relPath))}`;
     case 'aider':

@@ -24,7 +24,9 @@ import { runVerificationMesh } from '../lib/verification';
 export function registerVerifyCommand(program: Command, deps: CliDeps): void {
   program
     .command('verify')
-    .description("adversarial Verification Mesh over a run's changes (proportional, isolated jurors)")
+    .description(
+      "adversarial Verification Mesh over a run's changes (proportional, isolated jurors)",
+    )
     .argument('[id]', 'run id (defaults to the latest run)')
     .action(async (id: string | undefined) => {
       const repoRoot = deps.cwd();

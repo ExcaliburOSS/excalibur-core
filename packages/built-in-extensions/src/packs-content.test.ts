@@ -113,10 +113,7 @@ describe('discovery-pack synthesis prompt', () => {
 
 describe('core-prompts', () => {
   it('provides pr-summary and code-review prompt templates', () => {
-    expect(CORE_PROMPTS_PACK.contributions.map((c) => c.id)).toEqual([
-      'pr-summary',
-      'code-review',
-    ]);
+    expect(CORE_PROMPTS_PACK.contributions.map((c) => c.id)).toEqual(['pr-summary', 'code-review']);
     for (const contribution of CORE_PROMPTS_PACK.contributions) {
       const definition = promptTemplateSchema.parse(contribution.definition);
       expect(definition.template).toContain('{{diff}}');

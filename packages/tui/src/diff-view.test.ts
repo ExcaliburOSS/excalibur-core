@@ -109,14 +109,7 @@ describe('parseUnifiedDiff', () => {
   it('keeps surrogate pairs intact in the word span (no half-emoji)', () => {
     // 😀 (U+1F600) and 😁 (U+1F601) share a high surrogate and differ only in
     // the low surrogate — a UTF-16-unit prefix would split the pair mid-char.
-    const diff = [
-      '--- a/f.ts',
-      '+++ b/f.ts',
-      '@@ -1 +1 @@',
-      '-x😀y',
-      '+x😁y',
-      '',
-    ].join('\n');
+    const diff = ['--- a/f.ts', '+++ b/f.ts', '@@ -1 +1 @@', '-x😀y', '+x😁y', ''].join('\n');
     const [file] = parseUnifiedDiff(diff);
     const lines = file!.hunks[0]!.lines;
     const del = lines.find((l) => l.kind === 'del')!;
@@ -178,7 +171,11 @@ describe('renderDiff', () => {
     const narrow = renderDiff(MOD_DIFF, { tier: 'none', width: 60, layout: 'auto' }).join('\n');
     const wide = renderDiff(MOD_DIFF, { tier: 'none', width: 140, layout: 'auto' }).join('\n');
     // Narrow stacks del above add (no row has both); wide pairs them on one row.
-    expect(narrow.split('\n').some((l) => l.includes('return a - b;') && l.includes('return a + b;'))).toBe(false);
-    expect(wide.split('\n').some((l) => l.includes('return a - b;') && l.includes('return a + b;'))).toBe(true);
+    expect(
+      narrow.split('\n').some((l) => l.includes('return a - b;') && l.includes('return a + b;')),
+    ).toBe(false);
+    expect(
+      wide.split('\n').some((l) => l.includes('return a - b;') && l.includes('return a + b;')),
+    ).toBe(true);
   });
 });

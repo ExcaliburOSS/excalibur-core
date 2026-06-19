@@ -2,12 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createEvent, type ExcaliburEvent } from '@excalibur/shared';
 import { makeTempDir, removeDir } from '../test-utils';
 import { RunManager } from '../runs/run-manager';
-import {
-  planFork,
-  planUndo,
-  reconstructConversationPrefix,
-  restampEventsForFork,
-} from './fork';
+import { planFork, planUndo, reconstructConversationPrefix, restampEventsForFork } from './fork';
 import { loadReplay } from './replay';
 
 /**
@@ -48,16 +43,78 @@ describe('fork-from-cache reconstruction', () => {
     const events: ExcaliburEvent[] = [
       createEvent({ runId, type: 'run_started', payload: { title: 'Guard the charge path' } }),
       // Turn 1: assistant narrates + reads a file → one paired tool call.
-      createEvent({ runId, type: 'model_call', payload: { model: 'mock', content: "I'll read charge.ts.", inputTokens: 800, outputTokens: 200, costCents: 3 } }),
-      createEvent({ runId, type: 'tool_call', payload: { tool: 'read_file', arguments: { path: 'src/charge.ts' } } }),
-      createEvent({ runId, type: 'file_read', payload: { tool: 'read_file', ok: true, path: 'src/charge.ts', result: 'export function charge(cart) {\n  return cart.total;\n}' } }),
+      createEvent({
+        runId,
+        type: 'model_call',
+        payload: {
+          model: 'mock',
+          content: "I'll read charge.ts.",
+          inputTokens: 800,
+          outputTokens: 200,
+          costCents: 3,
+        },
+      }),
+      createEvent({
+        runId,
+        type: 'tool_call',
+        payload: { tool: 'read_file', arguments: { path: 'src/charge.ts' } },
+      }),
+      createEvent({
+        runId,
+        type: 'file_read',
+        payload: {
+          tool: 'read_file',
+          ok: true,
+          path: 'src/charge.ts',
+          result: 'export function charge(cart) {\n  return cart.total;\n}',
+        },
+      }),
       // Turn 2: assistant edits → patch.
-      createEvent({ runId, type: 'model_call', payload: { model: 'mock', content: 'Adding the guard.', inputTokens: 900, outputTokens: 260, costCents: 4 } }),
-      createEvent({ runId, type: 'tool_call', payload: { tool: 'apply_patch', arguments: { diff: DIFF } } }),
-      createEvent({ runId, type: 'patch_applied', payload: { tool: 'apply_patch', ok: true, simulated: false, result: 'applied', diff: DIFF, filesAffected: ['src/charge.ts'] } }),
+      createEvent({
+        runId,
+        type: 'model_call',
+        payload: {
+          model: 'mock',
+          content: 'Adding the guard.',
+          inputTokens: 900,
+          outputTokens: 260,
+          costCents: 4,
+        },
+      }),
+      createEvent({
+        runId,
+        type: 'tool_call',
+        payload: { tool: 'apply_patch', arguments: { diff: DIFF } },
+      }),
+      createEvent({
+        runId,
+        type: 'patch_applied',
+        payload: {
+          tool: 'apply_patch',
+          ok: true,
+          simulated: false,
+          result: 'applied',
+          diff: DIFF,
+          filesAffected: ['src/charge.ts'],
+        },
+      }),
       // Final answer.
-      createEvent({ runId, type: 'model_call', payload: { model: 'mock', content: 'Done.', inputTokens: 300, outputTokens: 80, costCents: 1 } }),
-      createEvent({ runId, type: 'assistant_message', payload: { content: 'Done — added the guard.' } }),
+      createEvent({
+        runId,
+        type: 'model_call',
+        payload: {
+          model: 'mock',
+          content: 'Done.',
+          inputTokens: 300,
+          outputTokens: 80,
+          costCents: 1,
+        },
+      }),
+      createEvent({
+        runId,
+        type: 'assistant_message',
+        payload: { content: 'Done — added the guard.' },
+      }),
     ];
     for (const event of events) {
       manager.appendEvent(runId, event);
@@ -107,8 +164,12 @@ describe('fork-from-cache reconstruction', () => {
     // read + patch produced two assistant tool turns, each answered.
     const toolMsgs = prefix.filter((m) => m.role === 'tool');
     expect(toolMsgs).toHaveLength(2);
-    expect(prefix.some((m) => m.role === 'assistant' && m.toolCalls?.[0]?.name === 'read_file')).toBe(true);
-    expect(prefix.some((m) => m.role === 'assistant' && m.toolCalls?.[0]?.name === 'apply_patch')).toBe(true);
+    expect(
+      prefix.some((m) => m.role === 'assistant' && m.toolCalls?.[0]?.name === 'read_file'),
+    ).toBe(true);
+    expect(
+      prefix.some((m) => m.role === 'assistant' && m.toolCalls?.[0]?.name === 'apply_patch'),
+    ).toBe(true);
   });
 
   it('TRUNCATES a dangling tool call when the fork cuts a turn before its result', () => {

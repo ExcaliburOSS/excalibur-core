@@ -126,9 +126,9 @@ describe('renderCommentTemplate', () => {
   });
 
   it.each(
-    COMMENT_TEMPLATE_NAMES.filter((name) => Object.keys(FULL_VARS[name]).length > 0).map(
-      (name) => [name],
-    ),
+    COMMENT_TEMPLATE_NAMES.filter((name) => Object.keys(FULL_VARS[name]).length > 0).map((name) => [
+      name,
+    ]),
   )('throws template_missing_variable when %s is rendered without variables', (name) => {
     let caught: unknown;
     try {

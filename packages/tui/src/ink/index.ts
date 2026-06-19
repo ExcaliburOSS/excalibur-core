@@ -20,11 +20,7 @@ export {
   type LaneProgress,
   type LanesStore,
 } from './Lanes.js';
-export {
-  mountRunView,
-  type MountRunViewOptions,
-  type RunViewHandle,
-} from './mount.js';
+export { mountRunView, type MountRunViewOptions, type RunViewHandle } from './mount.js';
 export {
   createRunViewStore,
   applyRunViewKey,

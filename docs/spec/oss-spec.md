@@ -8,13 +8,13 @@ Excalibur Enterprise builds on top of Excalibur Core and adds the enterprise con
 
 Product naming:
 
-* **Excalibur Core**: open-source local-first developer toolkit.
-* **Excalibur Enterprise**: commercial enterprise workspace and governance platform.
-* **Excalibur CLI**: command line interface, invoked as `excalibur`.
-* **Excalibur Runner**: local/hybrid execution runner.
-* **Excalibur Workbench**: enterprise web UI.
-* **Excalibur Gateway**: model and tool gateway.
-* **Excalibur Agent Runtime**: agent execution layer.
+- **Excalibur Core**: open-source local-first developer toolkit.
+- **Excalibur Enterprise**: commercial enterprise workspace and governance platform.
+- **Excalibur CLI**: command line interface, invoked as `excalibur`.
+- **Excalibur Runner**: local/hybrid execution runner.
+- **Excalibur Workbench**: enterprise web UI.
+- **Excalibur Gateway**: model and tool gateway.
+- **Excalibur Agent Runtime**: agent execution layer.
 
 ---
 
@@ -233,20 +233,20 @@ Methodologies are templates/presets — never imposed. A methodology defines: ph
 
 Catalog (12):
 
-| # | id | Name | Autonomy | Typical flow |
-|---|---|---|---|---|
-| 7.1 | lightweight | Lightweight Assistant | 0–1 | Question/selection → AI response → developer decides |
-| 7.2 | review-first | Review-First Development | 0–2 | Developer writes code → AI reviews → developer fixes → PR |
-| 7.3 | patch-proposal | Patch-Proposal Workflow | 2 | Task → AI generates patch → human reviews → human applies |
-| 7.4 | fast-fix | Fast Fix | 2–3 | Task → branch/worktree → AI patch → tests → summary |
-| 7.5 | plan-then-execute | Plan-Then-Execute | 3–4 | Task → short plan → implementation → tests → review |
-| 7.6 | spec-driven | Spec-Driven Development | 3–4 | Task → spec → plan → tasks → implementation → verification |
-| 7.7 | tdd-agentic | Test-Driven Agentic Development | 2–4 | Task → reproduce/failing test → implementation → tests pass → review |
-| 7.8 | safe-refactor | Safe Refactor | 2–4 | Scope → invariants → baseline tests → refactor → tests → diff review |
-| 7.9 | security-first | Security-First Workflow | 0–4 | Task → risk analysis → plan → implementation → security review → tests → human approval |
-| 7.10 | migration | Migration Workflow | 3–4 | Task → migration plan → backward compatibility check → implementation → rollback notes → tests |
-| 7.11 | explore-then-choose | Explore Alternatives | 3–4 | Task → alternative approaches → compare trade-offs → choose → implement |
-| 7.12 | human-gated | Human-Gated Agentic Workflow | 3–4 | Task → plan → human approval → implementation → tests → human approval → PR |
+| #    | id                  | Name                            | Autonomy | Typical flow                                                                                   |
+| ---- | ------------------- | ------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| 7.1  | lightweight         | Lightweight Assistant           | 0–1      | Question/selection → AI response → developer decides                                           |
+| 7.2  | review-first        | Review-First Development        | 0–2      | Developer writes code → AI reviews → developer fixes → PR                                      |
+| 7.3  | patch-proposal      | Patch-Proposal Workflow         | 2        | Task → AI generates patch → human reviews → human applies                                      |
+| 7.4  | fast-fix            | Fast Fix                        | 2–3      | Task → branch/worktree → AI patch → tests → summary                                            |
+| 7.5  | plan-then-execute   | Plan-Then-Execute               | 3–4      | Task → short plan → implementation → tests → review                                            |
+| 7.6  | spec-driven         | Spec-Driven Development         | 3–4      | Task → spec → plan → tasks → implementation → verification                                     |
+| 7.7  | tdd-agentic         | Test-Driven Agentic Development | 2–4      | Task → reproduce/failing test → implementation → tests pass → review                           |
+| 7.8  | safe-refactor       | Safe Refactor                   | 2–4      | Scope → invariants → baseline tests → refactor → tests → diff review                           |
+| 7.9  | security-first      | Security-First Workflow         | 0–4      | Task → risk analysis → plan → implementation → security review → tests → human approval        |
+| 7.10 | migration           | Migration Workflow              | 3–4      | Task → migration plan → backward compatibility check → implementation → rollback notes → tests |
+| 7.11 | explore-then-choose | Explore Alternatives            | 3–4      | Task → alternative approaches → compare trade-offs → choose → implement                        |
+| 7.12 | human-gated         | Human-Gated Agentic Workflow    | 3–4      | Task → plan → human approval → implementation → tests → human approval → PR                    |
 
 Use-when guidance: 7.6 for ambiguous/customer-facing/complex/multi-module; 7.7 for bugs/regression prevention/critical business logic; 7.8 when no behavior change is intended; 7.9 for auth/payments/contracts/PII/permissions/secrets; 7.11 for complex decisions — present as "approach exploration", never "model comparison" (user-facing output: `Approach A — Minimal Change / Approach B — Clean Architecture / Approach C — Performance-Oriented`).
 
@@ -437,12 +437,12 @@ Granular configuration is central to the product.
 autonomy:
   default: 2
   paths:
-    "src/billing/**": 1
-    "src/auth/**": 1
-    "src/contracts/signing/**": 2
+    'src/billing/**': 1
+    'src/auth/**': 1
+    'src/contracts/signing/**': 2
   allowFullAgentic:
-    - "src/docs/**"
-    - "src/tests/**"
+    - 'src/docs/**'
+    - 'src/tests/**'
 ```
 
 ## 10.2 Workflow selection — per default, task type, path pattern
@@ -457,8 +457,8 @@ workflows:
     migration: migration
     security: security-review
   byPath:
-    "src/billing/**": security-review
-    "prisma/migrations/**": migration
+    'src/billing/**': security-review
+    'prisma/migrations/**': migration
 ```
 
 ## 10.3 Model routing — per default, task type, workflow, autonomy level, path sensitivity, phase, role
@@ -472,8 +472,8 @@ models:
     reviewer: qwen
     security: local-secure
   byPath:
-    "src/auth/**": local-secure
-    "src/billing/**": local-secure
+    'src/auth/**': local-secure
+    'src/billing/**': local-secure
 ```
 
 ## 10.4 Tool permissions — per workflow, phase, role, path, command, autonomy level
@@ -486,13 +486,13 @@ permissions:
     run_command: ask
     network: false
   blockedPaths:
-    - ".env"
-    - "**/*.pem"
-    - "**/secrets/**"
+    - '.env'
+    - '**/*.pem'
+    - '**/secrets/**'
   allowedCommands:
-    - "npm test"
-    - "npm run typecheck"
-    - "npm run lint"
+    - 'npm test'
+    - 'npm run typecheck'
+    - 'npm run lint'
 ```
 
 ## 10.5 Approval gates — per path, workflow, phase, task type, command, model, output type
@@ -501,15 +501,15 @@ permissions:
 approvals:
   requiredFor:
     paths:
-      - "src/billing/**"
-      - "src/auth/**"
-      - "prisma/migrations/**"
+      - 'src/billing/**'
+      - 'src/auth/**'
+      - 'prisma/migrations/**'
     commands:
-      - "npm run migrate"
-      - "docker compose up"
+      - 'npm run migrate'
+      - 'docker compose up'
     phases:
-      - "plan"
-      - "before_pr"
+      - 'plan'
+      - 'before_pr'
 ```
 
 ## 10.6 Context inclusion
@@ -523,9 +523,9 @@ context:
     - README.md
     - docs/**/*.md
   exclude:
-    - "**/.env"
-    - "**/node_modules/**"
-    - "**/dist/**"
+    - '**/.env'
+    - '**/node_modules/**'
+    - '**/dist/**'
 ```
 
 ---
@@ -647,12 +647,12 @@ agents:
   default: native
   claude-code:
     type: custom-command
-    command: "claude"
-    args: ["--print", "{{prompt}}"]
+    command: 'claude'
+    args: ['--print', '{{prompt}}']
   aider:
     type: custom-command
-    command: "aider"
-    args: ["--message", "{{prompt}}"]
+    command: 'aider'
+    args: ['--message', '{{prompt}}']
 ```
 
 The native adapter uses the Excalibur Model Gateway and tools: `read_file, write_file, list_files, search_code, run_command, git_diff, apply_patch, create_branch, run_tests`.
@@ -692,18 +692,18 @@ Enterprise adds: web workbench, organizations, teams, SSO/RBAC, policies, approv
 
 # 19. Implementation phases for Excalibur Core
 
-* **OSS-0 — Repository skeleton**: CLI app + core, workflow-schema, model-gateway, agent-runtime, context-engine, shared packages + docs + examples. No real model calls.
-* **OSS-1 — Config and init**: `.excalibur/` config loader, `excalibur init`, stack/test-command/instruction-file detection, default workflow/methodology generation.
-* **OSS-2 — Workflow and methodology schema**: schemas, validators, defaults, `excalibur workflows list|explain <id>`.
-* **OSS-3 — Local artifacts and events**: run directory creation, run.json, events.jsonl, artifact writer, event writer, event types.
-* **OSS-4 — Model gateway**: OpenAI-compatible/Ollama/vLLM/custom providers, env var keys, streaming, cost metadata, redaction.
-* **OSS-5 — Lightweight assistant interactions**: ask/explain/review with model gateway + repo context.
-* **OSS-6 — Patch generation**: patch, unified diff, artifact, summary, apply, branch.
-* **OSS-7 — Native agent runtime**: NativeAgentAdapter, tool loop, the 9 tools, permission checks, confirmations.
-* **OSS-8 — Local agentic runs**: run, workflow execution, phases, autonomy levels, execution styles, branch/worktree, test execution, summary.
-* **OSS-9 — GitHub CLI support**: `pr-summary`, `pr-create` via `gh`.
-* **OSS-10 — CMUX integration**.
-* **OSS-11 — Enterprise sync hooks**: login/connect/sync (initially stubbed).
+- **OSS-0 — Repository skeleton**: CLI app + core, workflow-schema, model-gateway, agent-runtime, context-engine, shared packages + docs + examples. No real model calls.
+- **OSS-1 — Config and init**: `.excalibur/` config loader, `excalibur init`, stack/test-command/instruction-file detection, default workflow/methodology generation.
+- **OSS-2 — Workflow and methodology schema**: schemas, validators, defaults, `excalibur workflows list|explain <id>`.
+- **OSS-3 — Local artifacts and events**: run directory creation, run.json, events.jsonl, artifact writer, event writer, event types.
+- **OSS-4 — Model gateway**: OpenAI-compatible/Ollama/vLLM/custom providers, env var keys, streaming, cost metadata, redaction.
+- **OSS-5 — Lightweight assistant interactions**: ask/explain/review with model gateway + repo context.
+- **OSS-6 — Patch generation**: patch, unified diff, artifact, summary, apply, branch.
+- **OSS-7 — Native agent runtime**: NativeAgentAdapter, tool loop, the 9 tools, permission checks, confirmations.
+- **OSS-8 — Local agentic runs**: run, workflow execution, phases, autonomy levels, execution styles, branch/worktree, test execution, summary.
+- **OSS-9 — GitHub CLI support**: `pr-summary`, `pr-create` via `gh`.
+- **OSS-10 — CMUX integration**.
+- **OSS-11 — Enterprise sync hooks**: login/connect/sync (initially stubbed).
 
 ---
 

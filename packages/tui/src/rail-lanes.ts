@@ -105,9 +105,7 @@ export function renderLanes(model: LanesModel, options: RenderLanesOptions = {})
     if (cost.length > 0) stats.push(cost);
     const statsCol = stats.length > 0 ? c(stats.join('  '), palette.muted) : '';
     const detail =
-      lane.detail !== undefined && lane.detail.length > 0
-        ? `  ${c(lane.detail, lane0.hex)}`
-        : '';
+      lane.detail !== undefined && lane.detail.length > 0 ? `  ${c(lane.detail, lane0.hex)}` : '';
     // A guaranteed space after the (padded) title column so stats never abut a
     // title that exactly fills the width.
     lines.push(` ${connector} ${badge} ${title} ${statsCol}${detail}`.trimEnd());

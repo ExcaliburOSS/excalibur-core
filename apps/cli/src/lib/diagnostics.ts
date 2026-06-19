@@ -40,7 +40,11 @@ function parseDiagnostics(output: string): DiagnosticLine[] {
   for (const raw of output.split('\n')) {
     const match = raw.trim().match(TSC_LINE);
     if (match !== null) {
-      found.push({ file: match[1]!.trim(), line: Number.parseInt(match[2]!, 10), message: match[3]!.trim() });
+      found.push({
+        file: match[1]!.trim(),
+        line: Number.parseInt(match[2]!, 10),
+        message: match[3]!.trim(),
+      });
     }
   }
   return found.slice(0, 100);
@@ -75,7 +79,10 @@ export function runDiagnostics(
     output = `${(e.stdout ?? '').toString()}\n${(e.stderr ?? '').toString()}`.trim();
     ok = false;
   }
-  const trimmed = output.length > MAX_OUTPUT_CHARS ? `${output.slice(0, MAX_OUTPUT_CHARS)}\n…[truncated]` : output;
+  const trimmed =
+    output.length > MAX_OUTPUT_CHARS
+      ? `${output.slice(0, MAX_OUTPUT_CHARS)}\n…[truncated]`
+      : output;
   return { ran: true, ok, output: trimmed, diagnostics: parseDiagnostics(output) };
 }
 
@@ -83,7 +90,9 @@ export function runDiagnostics(
  * Formats diagnostics as a context source for the effective instructions —
  * returns `null` when nothing ran or the typecheck was clean (no noise added).
  */
-export function diagnosticsContextSource(result: DiagnosticsResult): AdditionalContextSource | null {
+export function diagnosticsContextSource(
+  result: DiagnosticsResult,
+): AdditionalContextSource | null {
   if (!result.ran || result.ok === true || result.output.trim().length === 0) {
     return null;
   }
@@ -103,7 +112,9 @@ const MAX_DIAGNOSTICS_PER_FILE = 20;
 
 /** A compact, model-facing rendering of one file's error/warning diagnostics. */
 function formatPayload(payload: DiagnosticsPayload): string {
-  const surfaced = payload.diagnostics.filter((d) => d.severity === 'error' || d.severity === 'warning');
+  const surfaced = payload.diagnostics.filter(
+    (d) => d.severity === 'error' || d.severity === 'warning',
+  );
   if (surfaced.length === 0) {
     return '';
   }
@@ -114,7 +125,9 @@ function formatPayload(payload: DiagnosticsPayload): string {
         `  ${payload.file}:${d.line}:${d.column} ${d.severity}: ${d.message}${d.code !== undefined ? ` [${d.code}]` : ''}`,
     );
   const more =
-    surfaced.length > MAX_DIAGNOSTICS_PER_FILE ? `\n  …(+${surfaced.length - MAX_DIAGNOSTICS_PER_FILE} more)` : '';
+    surfaced.length > MAX_DIAGNOSTICS_PER_FILE
+      ? `\n  …(+${surfaced.length - MAX_DIAGNOSTICS_PER_FILE} more)`
+      : '';
   return `${lines.join('\n')}${more}`;
 }
 

@@ -11,23 +11,29 @@ implementing the `CommunicationProvider` interface owned by
 ```ts
 import type {
   CommunicationProvider,
-  PostMessageInput,        // { channelId, markdown, blocks? }
-  PostThreadReplyInput,    // { channelId, threadId, markdown, blocks? }
-  GetThreadRepliesInput,   // { channelId, threadId }
-  PostMessageResult,       // { externalMessageId, threadId?, url? }
-  ThreadReply,             // { externalMessageId, body, authorName?, createdAt? }
+  PostMessageInput, // { channelId, markdown, blocks? }
+  PostThreadReplyInput, // { channelId, threadId, markdown, blocks? }
+  GetThreadRepliesInput, // { channelId, threadId }
+  PostMessageResult, // { externalMessageId, threadId?, url? }
+  ThreadReply, // { externalMessageId, body, authorName?, createdAt? }
 } from '@excalibur/extension-sdk';
 
 export class SlackProvider implements CommunicationProvider {
-  readonly type = 'slack';   // stable provider type id
+  readonly type = 'slack'; // stable provider type id
 
   async postMessage(input: PostMessageInput): Promise<PostMessageResult> {
     // Convert markdown to the platform's native format; return the created
     // message id and (when threading is supported) the thread id.
   }
-  async postThreadReply(input: PostThreadReplyInput): Promise<PostMessageResult> { /* … */ }
-  async getThreadReplies(input: GetThreadRepliesInput): Promise<ThreadReply[]> { /* … */ }
-  async validateCredentials(): Promise<boolean> { /* cheap auth check */ }
+  async postThreadReply(input: PostThreadReplyInput): Promise<PostMessageResult> {
+    /* … */
+  }
+  async getThreadReplies(input: GetThreadRepliesInput): Promise<ThreadReply[]> {
+    /* … */
+  }
+  async validateCredentials(): Promise<boolean> {
+    /* cheap auth check */
+  }
 }
 ```
 
@@ -79,7 +85,7 @@ contributes:
 capabilities:
   - communication.post
 configSchema:
-  botTokenEnv: { type: string, required: true }   # env var NAME only
+  botTokenEnv: { type: string, required: true } # env var NAME only
   defaultChannel: { type: string, required: false }
 permissions:
   network:

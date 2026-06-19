@@ -22,7 +22,9 @@ function makeUi(input?: string): { ui: Ui; out: Sink; err: Sink } {
 describe('Ui prompts are always skippable (Build Contract §4.9)', () => {
   it('ask returns the default with --yes', async () => {
     const { ui } = makeUi('typed answer\n');
-    await expect(ui.ask('Question?', { yes: true, defaultAnswer: 'fallback' })).resolves.toBe('fallback');
+    await expect(ui.ask('Question?', { yes: true, defaultAnswer: 'fallback' })).resolves.toBe(
+      'fallback',
+    );
   });
 
   it('ask returns the default when stdin is not interactive', async () => {
@@ -92,7 +94,13 @@ describe('Ui output', () => {
 
   it('renders aligned tables with headers', () => {
     const { ui, out } = makeUi();
-    ui.table(['ID', 'NAME'], [['a', 'Alpha'], ['longer-id', 'B']]);
+    ui.table(
+      ['ID', 'NAME'],
+      [
+        ['a', 'Alpha'],
+        ['longer-id', 'B'],
+      ],
+    );
     const lines = out.data.split('\n').filter((line) => line.length > 0);
     expect(lines).toHaveLength(3);
     expect(lines[1]).toContain('a');

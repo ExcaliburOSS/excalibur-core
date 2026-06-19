@@ -37,28 +37,24 @@ describe.skipIf(!HAS_TSSERVER)('LSP against the real typescript-language-server'
     rmSync(workdir, { recursive: true, force: true });
   });
 
-  it(
-    'reports no diagnostics for a clean file and a real error after an errored change',
-    async () => {
-      const session = createLspSession({ workdir, config: realConfig });
-      try {
-        // Clean file → zero errors.
-        writeFileSync(join(workdir, 'a.ts'), 'export const x: number = 1;\n');
-        const clean = await session.diagnosticsFor('a.ts');
-        expect(clean).not.toBeNull();
-        expect(clean?.errorCount).toBe(0);
+  it('reports no diagnostics for a clean file and a real error after an errored change', async () => {
+    const session = createLspSession({ workdir, config: realConfig });
+    try {
+      // Clean file → zero errors.
+      writeFileSync(join(workdir, 'a.ts'), 'export const x: number = 1;\n');
+      const clean = await session.diagnosticsFor('a.ts');
+      expect(clean).not.toBeNull();
+      expect(clean?.errorCount).toBe(0);
 
-        // Introduce a genuine type error → exactly one error, anchored to the line.
-        writeFileSync(join(workdir, 'a.ts'), 'export const x: number = "not a number";\n');
-        const errored = await session.diagnosticsFor('a.ts');
-        expect(errored?.errorCount).toBeGreaterThanOrEqual(1);
-        const error = errored?.diagnostics.find((d) => d.severity === 'error');
-        expect(error?.line).toBe(1);
-        expect(error?.message.toLowerCase()).toContain('type');
-      } finally {
-        session.close();
-      }
-    },
-    60000,
-  );
+      // Introduce a genuine type error → exactly one error, anchored to the line.
+      writeFileSync(join(workdir, 'a.ts'), 'export const x: number = "not a number";\n');
+      const errored = await session.diagnosticsFor('a.ts');
+      expect(errored?.errorCount).toBeGreaterThanOrEqual(1);
+      const error = errored?.diagnostics.find((d) => d.severity === 'error');
+      expect(error?.line).toBe(1);
+      expect(error?.message.toLowerCase()).toContain('type');
+    } finally {
+      session.close();
+    }
+  }, 60000);
 });

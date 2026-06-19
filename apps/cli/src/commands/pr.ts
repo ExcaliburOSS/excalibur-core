@@ -56,7 +56,7 @@ export function registerPrCommands(program: Command, deps: CliDeps): void {
   program
     .command('pr-create')
     .description('open a pull request from the current branch via the GitHub CLI (gh)')
-    .argument('[runId]', "run whose summary becomes the PR body (defaults to the latest run)")
+    .argument('[runId]', 'run whose summary becomes the PR body (defaults to the latest run)')
     .option('--base <branch>', 'base branch for the PR (default: the repo default branch)')
     .option('--title <title>', 'PR title (default: the run title)')
     .option('--draft', 'open the PR as a draft')
@@ -110,12 +110,17 @@ export function registerPrCommands(program: Command, deps: CliDeps): void {
             stdio: ['ignore', 'pipe', 'pipe'],
           });
           // gh prints the PR URL on success (last non-empty stdout line).
-          const url = out.trim().split('\n').filter((l) => l.trim().length > 0).pop() ?? '';
+          const url =
+            out
+              .trim()
+              .split('\n')
+              .filter((l) => l.trim().length > 0)
+              .pop() ?? '';
           deps.ui.success(deps.t('pr.created', { url }));
         } catch (error) {
           const stderr =
             typeof (error as { stderr?: unknown }).stderr === 'string'
-              ? ((error as { stderr: string }).stderr).trim()
+              ? (error as { stderr: string }).stderr.trim()
               : '';
           throw new CliUsageError(
             deps.t('pr.createFailed', { reason: stderr.length > 0 ? stderr : String(error) }),

@@ -29,7 +29,9 @@ const KEY =
   process.env.MOONSHOT_API_KEY ??
   (existsSync(KEY_FILE) ? readFileSync(KEY_FILE, 'utf8').trim() : '');
 if (KEY.length === 0) {
-  console.log('⚠ verify:real SKIPPED — no Kimi/Moonshot key (set MOONSHOT_API_KEY or ~/.config/excalibur/moonshot.key).');
+  console.log(
+    '⚠ verify:real SKIPPED — no Kimi/Moonshot key (set MOONSHOT_API_KEY or ~/.config/excalibur/moonshot.key).',
+  );
   process.exit(0);
 }
 if (!existsSync(CLI)) {
@@ -77,7 +79,13 @@ function freshRepo(seed = {}) {
 /** Runs the excalibur binary; returns {out, code}. Never throws on non-zero. */
 function exc(cwd, args, timeoutMs = 120000) {
   try {
-    const out = execFileSync('node', [CLI, ...args], { cwd, env, timeout: timeoutMs, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const out = execFileSync('node', [CLI, ...args], {
+      cwd,
+      env,
+      timeout: timeoutMs,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
     return { out, code: 0 };
   } catch (e) {
     return { out: `${e.stdout ?? ''}${e.stderr ?? ''}`, code: e.status ?? 1 };
@@ -91,9 +99,14 @@ function runEvents(dir, runId) {
   const id = runId ?? execFileSync('ls', ['-t', runsDir]).toString().trim().split('\n')[0];
   const f = join(runsDir, id, 'events.jsonl');
   if (!existsSync(f)) return [];
-  return readFileSync(f, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  return readFileSync(f, 'utf8')
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((l) => JSON.parse(l));
 }
-const toolsUsed = (events) => events.filter((e) => e.type === 'tool_call').map((e) => e.payload.tool ?? e.payload.name);
+const toolsUsed = (events) =>
+  events.filter((e) => e.type === 'tool_call').map((e) => e.payload.tool ?? e.payload.name);
 
 /** Whether `expect` is available (for driving the interactive REPL over a pty). */
 function hasExpect() {
@@ -123,7 +136,12 @@ function replAutoTurn(dir, prompt, waitS = 55) {
     ].join('\n'),
   );
   try {
-    execFileSync('expect', [exp], { cwd: dir, env, timeout: (waitS + 60) * 1000, stdio: ['ignore', 'pipe', 'pipe'] });
+    execFileSync('expect', [exp], {
+      cwd: dir,
+      env,
+      timeout: (waitS + 60) * 1000,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
   } catch {
     /* expect's eof handling can exit non-zero; the assertions check the real outcome */
   }
@@ -173,14 +191,20 @@ await scenario('patch + apply — generates a real diff and applies it', () => {
   const diff = readFileSync(join(dir, '.excalibur/patches', id, 'diff.patch'), 'utf8');
   assert(/multiply/.test(diff) && /^\+/m.test(diff), 'diff must add multiply');
   exc(dir, ['apply', id, '--yes']);
-  assert(/multiply/.test(readFileSync(join(dir, 'src/math.ts'), 'utf8')), 'applied file must contain multiply');
+  assert(
+    /multiply/.test(readFileSync(join(dir, 'src/math.ts'), 'utf8')),
+    'applied file must contain multiply',
+  );
 });
 
 await scenario('run — CREATES a new file', () => {
   const dir = freshRepo();
   exc(dir, ['run', 'Create a new file hello.txt containing exactly the text HELLO', '--yes']);
   assert(existsSync(join(dir, 'hello.txt')), 'hello.txt must exist');
-  assert(/HELLO/.test(readFileSync(join(dir, 'hello.txt'), 'utf8')), 'hello.txt must contain HELLO');
+  assert(
+    /HELLO/.test(readFileSync(join(dir, 'hello.txt'), 'utf8')),
+    'hello.txt must contain HELLO',
+  );
   assert(toolsUsed(runEvents(dir)).includes('write_file'), 'should have used write_file');
 });
 
@@ -193,7 +217,10 @@ await scenario('run — UPDATES an existing file', () => {
 
 await scenario('run — LSP feeds REAL per-edit diagnostics to the model (P1.10)', () => {
   // Gated on the real typescript-language-server (an agent-runtime devDependency).
-  const tsserver = join(ROOT, 'packages/agent-runtime/node_modules/.bin/typescript-language-server');
+  const tsserver = join(
+    ROOT,
+    'packages/agent-runtime/node_modules/.bin/typescript-language-server',
+  );
   if (!existsSync(tsserver)) {
     console.log('(skipped — typescript-language-server not installed) ');
     return;
@@ -269,34 +296,50 @@ function lspConfigYaml(tsserver) {
   ].join('\n');
 }
 
-await scenario('run --fast — patch workflow gets LSP grounding + FAILS the claim gate on a type error', () => {
-  const tsserver = tsserverPath();
-  if (tsserver === null) {
-    console.log('(skipped — typescript-language-server not installed) ');
-    return;
-  }
-  const dir = freshRepo({
-    'tsconfig.json': JSON.stringify({ compilerOptions: { strict: true, noEmit: true, skipLibCheck: true } }),
-    '.excalibur/config.yaml': lspConfigYaml(tsserver),
-  });
-  exc(
-    dir,
-    ['run', 'Create a file src/calc.ts with EXACTLY this content and nothing else, do NOT fix any type error: export const total: number = "hello";', '--fast', '--yes'],
-    180000,
-  );
-  const events = runEvents(dir);
-  // fast-fix uses patch_generation→apply_patch (NOT the agent_work loop), yet the
-  // engine's post-apply LSP grounding still emits diagnostics for the applied file.
-  const diags = events.filter((e) => e.type === 'diagnostics');
-  assert(diags.some((e) => (e.payload.errorCount ?? 0) >= 1), 'a fast-fix apply should emit an LSP diagnostics event with errors');
-  // No typecheck command configured → the LSP error refutes `no_type_errors` and fails the run.
-  const claim = events.find((e) => e.type === 'claim' && e.payload.kind === 'no_type_errors');
-  assert(claim?.payload.status === 'refuted', 'the LSP-fed claim gate should refute no_type_errors');
-  assert(
-    events.find((e) => e.type === 'run_completed')?.payload.status === 'failed',
-    'a patch introducing a type error should FAIL the run via the claim gate',
-  );
-});
+await scenario(
+  'run --fast — patch workflow gets LSP grounding + FAILS the claim gate on a type error',
+  () => {
+    const tsserver = tsserverPath();
+    if (tsserver === null) {
+      console.log('(skipped — typescript-language-server not installed) ');
+      return;
+    }
+    const dir = freshRepo({
+      'tsconfig.json': JSON.stringify({
+        compilerOptions: { strict: true, noEmit: true, skipLibCheck: true },
+      }),
+      '.excalibur/config.yaml': lspConfigYaml(tsserver),
+    });
+    exc(
+      dir,
+      [
+        'run',
+        'Create a file src/calc.ts with EXACTLY this content and nothing else, do NOT fix any type error: export const total: number = "hello";',
+        '--fast',
+        '--yes',
+      ],
+      180000,
+    );
+    const events = runEvents(dir);
+    // fast-fix uses patch_generation→apply_patch (NOT the agent_work loop), yet the
+    // engine's post-apply LSP grounding still emits diagnostics for the applied file.
+    const diags = events.filter((e) => e.type === 'diagnostics');
+    assert(
+      diags.some((e) => (e.payload.errorCount ?? 0) >= 1),
+      'a fast-fix apply should emit an LSP diagnostics event with errors',
+    );
+    // No typecheck command configured → the LSP error refutes `no_type_errors` and fails the run.
+    const claim = events.find((e) => e.type === 'claim' && e.payload.kind === 'no_type_errors');
+    assert(
+      claim?.payload.status === 'refuted',
+      'the LSP-fed claim gate should refute no_type_errors',
+    );
+    assert(
+      events.find((e) => e.type === 'run_completed')?.payload.status === 'failed',
+      'a patch introducing a type error should FAIL the run via the claim gate',
+    );
+  },
+);
 
 await scenario('review --diagnostics — diff-scoped LSP errors ground the review', () => {
   const tsserver = tsserverPath();
@@ -305,7 +348,9 @@ await scenario('review --diagnostics — diff-scoped LSP errors ground the revie
     return;
   }
   const dir = freshRepo({
-    'tsconfig.json': JSON.stringify({ compilerOptions: { strict: true, noEmit: true, skipLibCheck: true } }),
+    'tsconfig.json': JSON.stringify({
+      compilerOptions: { strict: true, noEmit: true, skipLibCheck: true },
+    }),
     '.excalibur/config.yaml': lspConfigYaml(tsserver),
   });
   // An untracked TS file with a real type error shows up in `getLocalDiff`.
@@ -316,7 +361,10 @@ await scenario('review --diagnostics — diff-scoped LSP errors ground the revie
   const interDir = join(dir, '.excalibur/interactions');
   const id = execFileSync('ls', ['-t', interDir]).toString().trim().split('\n')[0];
   const effective = readFileSync(join(interDir, id, 'effective-instructions.md'), 'utf8');
-  assert(/not assignable/i.test(effective) || /calc\.ts:\d+:\d+ error/.test(effective), 'the review should be grounded on the real LSP type error');
+  assert(
+    /not assignable/i.test(effective) || /calc\.ts:\d+:\d+ error/.test(effective),
+    'the review should be grounded on the real LSP type error',
+  );
 });
 
 await scenario('run — runs a BASH command / script and DELETES a file', () => {
@@ -328,21 +376,40 @@ await scenario('run — runs a BASH command / script and DELETES a file', () => 
 
 await scenario('run — multi-step task drives the Todo band (task_update)', () => {
   const dir = freshRepo();
-  exc(dir, ['run', 'In src/math.ts add input validation to add(), add a multiply() function, and add a JSDoc comment to each function', '--yes']);
+  exc(dir, [
+    'run',
+    'In src/math.ts add input validation to add(), add a multiply() function, and add a JSDoc comment to each function',
+    '--yes',
+  ]);
   const events = runEvents(dir);
-  assert(events.some((e) => e.type === 'task_update'), 'a multi-step run should emit task_update');
+  assert(
+    events.some((e) => e.type === 'task_update'),
+    'a multi-step run should emit task_update',
+  );
 });
 
 await scenario('review --diff — reviews local changes', () => {
   const dir = freshRepo();
-  writeFileSync(join(dir, 'src/math.ts'), 'export function add(a, b) {\n  return a - b; // BUG\n}\n');
+  writeFileSync(
+    join(dir, 'src/math.ts'),
+    'export function add(a, b) {\n  return a - b; // BUG\n}\n',
+  );
   const { out } = exc(dir, ['review', '--diff']);
   assert(out.replace(/\s+/g, ' ').length > 40, 'review should produce feedback');
 });
 
 await scenario('swarm — fans out independent subtasks', () => {
   const dir = freshRepo();
-  const { out } = exc(dir, ['swarm', 'Create three independent files: AUTHORS with a name, a .editorconfig with basic settings, and a CONTRIBUTING.md with one line', '--yes', '--apply'], 240000);
+  const { out } = exc(
+    dir,
+    [
+      'swarm',
+      'Create three independent files: AUTHORS with a name, a .editorconfig with basic settings, and a CONTRIBUTING.md with one line',
+      '--yes',
+      '--apply',
+    ],
+    240000,
+  );
   assert(/Swarm|lanes|merge/i.test(out), 'swarm should render the lanes panel');
 });
 
@@ -375,7 +442,10 @@ await scenario('swarm — LIVE lanes render on a TTY (pty, real parallel agents)
   // The lanes now render via the Ink <LanesView> (in-place, log-update) — Ink
   // hides the cursor for the live region (the ANSI LiveLanes' DEC-2026 sync was
   // removed in the Ink migration). Assert the live in-place render happened.
-  assert(out.includes('\x1b[?25l'), 'the Ink live lanes view should hide the cursor for in-place rendering');
+  assert(
+    out.includes('\x1b[?25l'),
+    'the Ink live lanes view should hide the cursor for in-place rendering',
+  );
 });
 
 await scenario('/swarm — in-shell fan-out renders live lanes (pty REPL, real agents)', () => {
@@ -420,7 +490,10 @@ await scenario('/swarm — in-shell fan-out renders live lanes (pty REPL, real a
 await scenario('discovery — clarifies an idea with deterministic scoring', () => {
   const dir = freshRepo();
   const { out } = exc(dir, ['discovery', 'Add AI contract-renewal reminders', '--yes']);
-  assert(/recommend|build|discovery|score/i.test(out), 'discovery should produce a recommendation/score');
+  assert(
+    /recommend|build|discovery|score/i.test(out),
+    'discovery should produce a recommendation/score',
+  );
 });
 
 await scenario('logs — renders a past run as the rail', () => {
@@ -446,9 +519,16 @@ await scenario('daily — generates a real report', () => {
 
 await scenario('run — creates AND executes a bash script', () => {
   const dir = freshRepo();
-  exc(dir, ['run', 'Create a shell script greet.sh that prints GREETINGS, make it executable, and run it', '--yes']);
+  exc(dir, [
+    'run',
+    'Create a shell script greet.sh that prints GREETINGS, make it executable, and run it',
+    '--yes',
+  ]);
   assert(existsSync(join(dir, 'greet.sh')), 'greet.sh must be created');
-  assert(toolsUsed(runEvents(dir)).includes('run_command'), 'should have executed the script via run_command');
+  assert(
+    toolsUsed(runEvents(dir)).includes('run_command'),
+    'should have executed the script via run_command',
+  );
 });
 
 await scenario('branch — applies a patch onto a new git branch', () => {
@@ -458,14 +538,20 @@ await scenario('branch — applies a patch onto a new git branch', () => {
   assert(id, 'a patch id should be printed');
   exc(dir, ['branch', id, '--yes']);
   const branches = execFileSync('git', ['branch'], { cwd: dir, encoding: 'utf8' });
-  assert(/excalibur\//.test(branches), `an excalibur/* branch must be created (got: ${branches.trim()})`);
+  assert(
+    /excalibur\//.test(branches),
+    `an excalibur/* branch must be created (got: ${branches.trim()})`,
+  );
 });
 
 await scenario('undo — reverts a run’s changes', () => {
   const dir = freshRepo();
   exc(dir, ['run', 'Create a file undome.txt containing UNDO', '--yes']);
   assert(existsSync(join(dir, 'undome.txt')), 'precondition: the run created undome.txt');
-  const runId = execFileSync('ls', ['-t', join(dir, '.excalibur/runs')]).toString().trim().split('\n')[0];
+  const runId = execFileSync('ls', ['-t', join(dir, '.excalibur/runs')])
+    .toString()
+    .trim()
+    .split('\n')[0];
   exc(dir, ['undo', runId, '--yes']);
   assert(!existsSync(join(dir, 'undome.txt')), 'undo must remove the file the run created');
 });
@@ -473,7 +559,10 @@ await scenario('undo — reverts a run’s changes', () => {
 await scenario('changes — lists a run’s changed files', () => {
   const dir = freshRepo();
   exc(dir, ['run', 'Add a divide(a, b) function to src/math.ts', '--yes']);
-  const runId = execFileSync('ls', ['-t', join(dir, '.excalibur/runs')]).toString().trim().split('\n')[0];
+  const runId = execFileSync('ls', ['-t', join(dir, '.excalibur/runs')])
+    .toString()
+    .trim()
+    .split('\n')[0];
   const { out } = exc(dir, ['changes', runId]);
   assert(/math\.ts/.test(out), 'changes should list the modified file');
 });
@@ -481,16 +570,30 @@ await scenario('changes — lists a run’s changed files', () => {
 await scenario('fork — forks a run from a step', () => {
   const dir = freshRepo();
   exc(dir, ['run', 'Create a file base.txt containing BASE', '--yes']);
-  const runId = execFileSync('ls', ['-t', join(dir, '.excalibur/runs')]).toString().trim().split('\n')[0];
-  const { out, code } = exc(dir, ['fork', runId, 'Also create forked.txt containing FORKED', '--yes']);
-  assert(code === 0 && /fork|run_\d{8}/i.test(out), 'fork should produce a new run from the cached prefix');
+  const runId = execFileSync('ls', ['-t', join(dir, '.excalibur/runs')])
+    .toString()
+    .trim()
+    .split('\n')[0];
+  const { out, code } = exc(dir, [
+    'fork',
+    runId,
+    'Also create forked.txt containing FORKED',
+    '--yes',
+  ]);
+  assert(
+    code === 0 && /fork|run_\d{8}/i.test(out),
+    'fork should produce a new run from the cached prefix',
+  );
 });
 
 await scenario('weekly-plan — generates a real report', () => {
   const dir = freshRepo();
   exc(dir, ['run', 'Create a file z.txt containing Z', '--yes']);
   const { out } = exc(dir, ['weekly-plan']);
-  assert(/Weekly Plan|Last week|Plan for next week/i.test(out), 'weekly-plan should produce a report');
+  assert(
+    /Weekly Plan|Last week|Plan for next week/i.test(out),
+    'weekly-plan should produce a report',
+  );
 });
 
 await scenario('shell (REPL) — auto-mode asked ONCE, then edits with zero prompts', () => {
@@ -504,8 +607,14 @@ await scenario('shell (REPL) — auto-mode asked ONCE, then edits with zero prom
   // we answer yes, then ask it (in natural language) to create a file.
   replAutoTurn(dir, 'create a file shellmade.txt containing SHELLMADE', 70);
   // The agent must have actually created the file under auto-mode (no per-edit prompts)…
-  assert(existsSync(join(dir, 'shellmade.txt')), 'the interactive shell should have created the file under auto-mode');
-  assert(/SHELLMADE/.test(readFileSync(join(dir, 'shellmade.txt'), 'utf8')), 'the file should contain the requested content');
+  assert(
+    existsSync(join(dir, 'shellmade.txt')),
+    'the interactive shell should have created the file under auto-mode',
+  );
+  assert(
+    /SHELLMADE/.test(readFileSync(join(dir, 'shellmade.txt'), 'utf8')),
+    'the file should contain the requested content',
+  );
   // …and the auto-accept answer must be PERSISTED so future sessions never re-ask.
   const cfg = readFileSync(join(dir, '.excalibur/config.yaml'), 'utf8');
   assert(/auto:\s*true/.test(cfg), 'auto-accept must be persisted to .excalibur/config.yaml');
@@ -524,10 +633,22 @@ await scenario('doctor — diagnoses the local setup', () => {
 
 await scenario('catalogs — methodologies / workflows / models list render', () => {
   const dir = freshRepo();
-  assert(exc(dir, ['methodologies', 'list']).out.replace(/\s+/g, ' ').length > 40, 'methodologies list non-empty');
-  assert(exc(dir, ['workflows', 'list']).out.replace(/\s+/g, ' ').length > 40, 'workflows list non-empty');
-  assert(/kimi/i.test(exc(dir, ['models', 'list']).out), 'models list should show the configured kimi provider');
-  assert(/core-(methodologies|workflows)/i.test(exc(dir, ['extensions', 'list']).out), 'extensions list should show the built-in packs');
+  assert(
+    exc(dir, ['methodologies', 'list']).out.replace(/\s+/g, ' ').length > 40,
+    'methodologies list non-empty',
+  );
+  assert(
+    exc(dir, ['workflows', 'list']).out.replace(/\s+/g, ' ').length > 40,
+    'workflows list non-empty',
+  );
+  assert(
+    /kimi/i.test(exc(dir, ['models', 'list']).out),
+    'models list should show the configured kimi provider',
+  );
+  assert(
+    /core-(methodologies|workflows)/i.test(exc(dir, ['extensions', 'list']).out),
+    'extensions list should show the built-in packs',
+  );
 });
 
 await scenario('instructions (ISD) — discovers an AGENTS.md source', () => {
@@ -557,8 +678,15 @@ await scenario('skills / plans / insights — run cleanly with an empty history'
 await scenario('verify — adversarial Verification Mesh over a run’s changes (MOAT)', () => {
   const dir = freshRepo();
   // A run that reliably produces a change for the mesh to verify.
-  exc(dir, ['run', 'create a file src/sub.ts exporting a subtract function', '--fast', '--yes'], 180000);
-  const runId = execFileSync('ls', ['-t', join(dir, '.excalibur/runs')]).toString().trim().split('\n')[0];
+  exc(
+    dir,
+    ['run', 'create a file src/sub.ts exporting a subtract function', '--fast', '--yes'],
+    180000,
+  );
+  const runId = execFileSync('ls', ['-t', join(dir, '.excalibur/runs')])
+    .toString()
+    .trim()
+    .split('\n')[0];
   const { out, code } = exc(dir, ['verify', runId], 180000);
   // The mesh ran REAL adversarial verifier lenses and produced a verdict.
   assert(code === 0 || code === 1, 'verify exits cleanly (0 = passed, 1 = blocked)');
@@ -572,7 +700,11 @@ await scenario('verify — adversarial Verification Mesh over a run’s changes 
 
 // ── Summary ───────────────────────────────────────────────────────────────────
 for (const dir of tmpRepos) {
-  try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
+  try {
+    rmSync(dir, { recursive: true, force: true });
+  } catch {
+    /* best effort */
+  }
 }
 const passed = results.filter((r) => r.ok).length;
 console.log(`\n── verify:real — ${passed}/${results.length} passed (Kimi) ──`);

@@ -62,7 +62,10 @@ export function estimateRun(repoRoot: string, input: EstimateInput): RunEstimate
         r.record.status === 'completed' &&
         r.record.completedAt !== null,
     )
-    .sort((a, b) => Date.parse(b.record.completedAt as string) - Date.parse(a.record.completedAt as string));
+    .sort(
+      (a, b) =>
+        Date.parse(b.record.completedAt as string) - Date.parse(a.record.completedAt as string),
+    );
   const recent = completed.slice(0, input.sampleSize ?? 10);
 
   if (recent.length > 0) {
@@ -80,7 +83,8 @@ export function estimateRun(repoRoot: string, input: EstimateInput): RunEstimate
     const prior = HEURISTIC[input.taskType] ?? DEFAULT_PRIOR;
     return {
       estCostCents: cost / recent.length,
-      estDurationMs: durationSamples > 0 ? duration / durationSamples : prior.msPerUnit * blastRadius,
+      estDurationMs:
+        durationSamples > 0 ? duration / durationSamples : prior.msPerUnit * blastRadius,
       blastRadius,
       basedOnRuns: recent.length,
     };

@@ -59,7 +59,8 @@ function annotationFor(phase: Phase): string {
   const parts: string[] = [];
   if (phase.detail !== undefined && phase.detail.length > 0) parts.push(phase.detail);
   if (phase.durationMs !== undefined) parts.push(formatElapsed(phase.durationMs));
-  if (phase.costCents !== undefined && phase.costCents >= 0.5) parts.push(formatCents(phase.costCents));
+  if (phase.costCents !== undefined && phase.costCents >= 0.5)
+    parts.push(formatCents(phase.costCents));
   return parts.length > 0 ? `  ${parts.join(' · ')}` : '';
 }
 

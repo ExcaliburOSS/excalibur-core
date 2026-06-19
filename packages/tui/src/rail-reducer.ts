@@ -36,7 +36,11 @@ function railEventFor(event: ExcaliburEvent): PhaseEvent | null {
   const p = event.payload;
   switch (event.type) {
     case 'tool_call':
-      return { text: `tool ${str(p, 'tool') || str(p, 'name')}`.trim(), tone: 'accent', kind: 'tool' };
+      return {
+        text: `tool ${str(p, 'tool') || str(p, 'name')}`.trim(),
+        tone: 'accent',
+        kind: 'tool',
+      };
     case 'file_read':
       return { text: `read ${str(p, 'path')}`, tone: 'muted', kind: 'read' };
     case 'file_write':
@@ -194,8 +198,7 @@ export function reduceRail(
           const t = (item ?? {}) as { text?: unknown; status?: unknown };
           return {
             text: typeof t.text === 'string' ? t.text : '',
-            status:
-              t.status === 'in_progress' || t.status === 'completed' ? t.status : 'pending',
+            status: t.status === 'in_progress' || t.status === 'completed' ? t.status : 'pending',
           } satisfies TodoItem;
         });
         break;
@@ -246,9 +249,7 @@ export function reduceRail(
   // ticks with wall-clock `nowMs` so the clock breathes between events (the live
   // view passes a fresh nowMs each frame). Preferring lastTs always would freeze
   // the live clock at the last event's timestamp.
-  const endMs = done
-    ? (lastTs ?? options.nowMs ?? firstTs)
-    : (options.nowMs ?? lastTs ?? firstTs);
+  const endMs = done ? (lastTs ?? options.nowMs ?? firstTs) : (options.nowMs ?? lastTs ?? firstTs);
   const elapsedMs = firstTs !== undefined ? Math.max(0, (endMs ?? firstTs) - firstTs) : 0;
   const status: RunStatus = {
     elapsedMs,

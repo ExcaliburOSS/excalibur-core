@@ -43,7 +43,12 @@ describe('buildSessionLog', () => {
     ];
     const entries = buildSessionLog('/repo', transcript, fakeRead);
     expect(entries.map((e) => e.runId)).toEqual(['run_1', 'run_2']);
-    expect(entries[0]).toMatchObject({ position: 1, title: 'Add multiply', costCents: 4, files: 2 });
+    expect(entries[0]).toMatchObject({
+      position: 1,
+      title: 'Add multiply',
+      costCents: 4,
+      files: 2,
+    });
     expect(entries[1]?.position).toBe(2);
   });
 });

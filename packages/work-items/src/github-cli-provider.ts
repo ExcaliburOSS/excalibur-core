@@ -6,7 +6,11 @@ import type {
   UpdateWorkItemStatusInput,
   WorkItemProvider,
 } from './provider';
-import type { NormalizedWorkItem, NormalizedWorkItemComment, NormalizedWorkItemUser } from './types';
+import type {
+  NormalizedWorkItem,
+  NormalizedWorkItemComment,
+  NormalizedWorkItemUser,
+} from './types';
 
 /**
  * GitHub Issues work-item provider via the `gh` CLI passthrough (plan P2.9 / the

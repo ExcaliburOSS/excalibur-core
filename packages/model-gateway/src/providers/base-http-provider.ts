@@ -22,11 +22,7 @@ import {
 import { normalizeUsage } from '../cost/token-accounting';
 import { withRetry } from '../transport/retry';
 import { isTimeoutAbort, withTimeout } from '../transport/timeout';
-import type {
-  HttpTransport,
-  TransportRequest,
-  TransportResponse,
-} from '../transport/transport';
+import type { HttpTransport, TransportRequest, TransportResponse } from '../transport/transport';
 import type {
   ChatDelta,
   ChatFinishReason,
@@ -141,9 +137,7 @@ export abstract class BaseHttpProvider implements ModelProviderAdapter {
 
   /** Effective timeout for a request: per-call override → provider config default. */
   private effectiveTimeoutMs(input: ChatInput): number {
-    return input.timeoutMs !== undefined && input.timeoutMs > 0
-      ? input.timeoutMs
-      : this.timeoutMs;
+    return input.timeoutMs !== undefined && input.timeoutMs > 0 ? input.timeoutMs : this.timeoutMs;
   }
 
   /** Resolves the model name to send (explicit input → config default). */
@@ -282,8 +276,7 @@ export abstract class BaseHttpProvider implements ModelProviderAdapter {
     if (error instanceof ProviderError) {
       return error;
     }
-    const aborted =
-      isAbortError(error) || composedSignal.aborted || callerSignal?.aborted === true;
+    const aborted = isAbortError(error) || composedSignal.aborted || callerSignal?.aborted === true;
     if (aborted) {
       if (isTimeoutAbort(composedSignal)) {
         return timeoutError(timeoutMs);
@@ -305,10 +298,7 @@ export interface StreamEvent {
 }
 
 function isAbortError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    (error.name === 'AbortError' || error.name === 'TimeoutError')
-  );
+  return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError');
 }
 
 /** Pulls a `retry-after` (seconds) header off a mapped error's details, in ms. */

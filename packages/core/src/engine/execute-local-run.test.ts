@@ -536,9 +536,7 @@ describe('executeLocalRun', () => {
 
     expect(record.status).toBe('failed');
     const events = runManager.readEvents(run.id);
-    const deny = events.find(
-      (e) => e.type === 'policy_decision' && e.payload['kind'] === 'budget',
-    );
+    const deny = events.find((e) => e.type === 'policy_decision' && e.payload['kind'] === 'budget');
     expect(deny).toBeDefined();
     expect(deny?.payload['decision']).toBe('deny');
     const err = events.find((e) => e.type === 'error' && e.payload['code'] === 'budget_exceeded');
@@ -565,7 +563,11 @@ describe('executeLocalRun', () => {
             costCents: 1,
             finishReason: 'tool_calls',
             toolCalls: [
-              { id: 'w', name: 'write_file', arguments: { path: 'src/a.ts', content: 'export const a = 1;\n' } },
+              {
+                id: 'w',
+                name: 'write_file',
+                arguments: { path: 'src/a.ts', content: 'export const a = 1;\n' },
+              },
             ],
           });
         }
@@ -601,11 +603,11 @@ describe('executeLocalRun', () => {
 
     expect(record.status).toBe('failed');
     const events = runManager.readEvents(run.id);
-    const deny = events.find(
-      (e) => e.type === 'policy_decision' && e.payload['kind'] === 'budget',
-    );
+    const deny = events.find((e) => e.type === 'policy_decision' && e.payload['kind'] === 'budget');
     expect(deny).toBeDefined();
-    expect(events.find((e) => e.type === 'error' && e.payload['code'] === 'budget_exceeded')).toBeDefined();
+    expect(
+      events.find((e) => e.type === 'error' && e.payload['code'] === 'budget_exceeded'),
+    ).toBeDefined();
   });
 
   it('a budget cap is non-recoverable even with onFailure:continue phases', async () => {
@@ -646,7 +648,9 @@ describe('executeLocalRun', () => {
     });
     expect(record.status).toBe('failed');
     expect(
-      runManager.readEvents(run.id).some((e) => e.type === 'error' && e.payload['code'] === 'budget_exceeded'),
+      runManager
+        .readEvents(run.id)
+        .some((e) => e.type === 'error' && e.payload['code'] === 'budget_exceeded'),
     ).toBe(true);
   });
 
@@ -739,9 +743,7 @@ describe('executeLocalRun', () => {
       config, // no budget set
     });
     expect(record.status).toBe('completed');
-    expect(
-      runManager.readEvents(run.id).some((e) => e.payload['kind'] === 'budget'),
-    ).toBe(false);
+    expect(runManager.readEvents(run.id).some((e) => e.payload['kind'] === 'budget')).toBe(false);
   });
 
   it('BLOCKS completion (failed) when the diff leaks a secret — claim ledger no_secrets', async () => {
@@ -815,9 +817,7 @@ describe('executeLocalRun', () => {
 
     expect(record.status).toBe('failed');
     const events = runManager.readEvents(run.id);
-    const noSecrets = events.find(
-      (e) => e.type === 'claim' && e.payload['kind'] === 'no_secrets',
-    );
+    const noSecrets = events.find((e) => e.type === 'claim' && e.payload['kind'] === 'no_secrets');
     expect(noSecrets?.payload['status']).toBe('refuted');
     // The model ASSERTED "no secrets" — the ledger caught the lie.
     expect(noSecrets?.payload['asserted']).toBe(true);

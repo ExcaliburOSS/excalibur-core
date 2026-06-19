@@ -27,7 +27,13 @@ interface DemoState {
 
 type Action =
   | { kind: 'tick'; deltaMs: number }
-  | { kind: 'patch'; phases?: Phase[]; approval?: ApprovalPrompt | null; done?: boolean; costBump?: number };
+  | {
+      kind: 'patch';
+      phases?: Phase[];
+      approval?: ApprovalPrompt | null;
+      done?: boolean;
+      costBump?: number;
+    };
 
 const initialPhases: Phase[] = [
   { id: 'context', name: 'Context', state: 'pending' },
@@ -91,7 +97,9 @@ function App(): ReactElement {
     const timers: Array<ReturnType<typeof setTimeout>> = [];
 
     timers.push(
-      at(300, () => patch(setPhase(phases, 'context', { state: 'running', detail: 'scanning repository…' }))),
+      at(300, () =>
+        patch(setPhase(phases, 'context', { state: 'running', detail: 'scanning repository…' })),
+      ),
       at(1400, () =>
         patch(
           setPhase(phases, 'context', {
@@ -103,7 +111,11 @@ function App(): ReactElement {
         ),
       ),
       at(2700, () => {
-        let next = setPhase(phases, 'context', { state: 'completed', detail: 'read 6 files', events: undefined });
+        let next = setPhase(phases, 'context', {
+          state: 'completed',
+          detail: 'read 6 files',
+          events: undefined,
+        });
         next = setPhase(next, 'plan', { state: 'running', detail: 'drafting steps…' });
         patch(next, { costBump: 3 });
       }),
@@ -111,7 +123,11 @@ function App(): ReactElement {
         patch(
           setPhase(phases, 'plan', {
             events: [
-              { text: 'guard release() behind a processed-events table', note: '~med', tone: 'warn' },
+              {
+                text: 'guard release() behind a processed-events table',
+                note: '~med',
+                tone: 'warn',
+              },
               { text: 'add idempotency key check on webhook receipt', note: '~low', tone: 'muted' },
               { text: 'tests: retry replays the same webhook', tone: 'muted' },
             ],
@@ -119,18 +135,29 @@ function App(): ReactElement {
         ),
       ),
       at(5400, () => {
-        let next = setPhase(phases, 'plan', { state: 'completed', detail: '5 steps', events: undefined });
+        let next = setPhase(phases, 'plan', {
+          state: 'completed',
+          detail: '5 steps',
+          events: undefined,
+        });
         next = setPhase(next, 'implement', { state: 'running', detail: 'escrow.service.ts' });
         patch(next, { costBump: 4 });
       }),
       at(6200, () =>
-        patch(setPhase(phases, 'implement', { events: [{ text: 'read', note: 'src/escrow/escrow.service.ts', tone: 'muted' }] })),
+        patch(
+          setPhase(phases, 'implement', {
+            events: [{ text: 'read', note: 'src/escrow/escrow.service.ts', tone: 'muted' }],
+          }),
+        ),
       ),
       // Inline approval moment.
       at(7000, () => {
         const next = setPhase(phases, 'implement', { state: 'waiting' });
         patch(next, {
-          approval: { question: 'Approve write to src/escrow/escrow.service.ts?', options: '[y/N/always]' },
+          approval: {
+            question: 'Approve write to src/escrow/escrow.service.ts?',
+            options: '[y/N/always]',
+          },
         });
       }),
       at(8600, () => {
@@ -173,7 +200,11 @@ function App(): ReactElement {
         ),
       ),
       at(13200, () => {
-        let next = setPhase(phases, 'verify', { state: 'completed', detail: 'all green', events: undefined });
+        let next = setPhase(phases, 'verify', {
+          state: 'completed',
+          detail: 'all green',
+          events: undefined,
+        });
         next = setPhase(next, 'review', { state: 'running', detail: 'reviewing diff' });
         patch(next, { costBump: 3 });
       }),
@@ -183,7 +214,10 @@ function App(): ReactElement {
         patch(next, { costBump: 2 });
       }),
       at(15400, () =>
-        patch(setPhase(phases, 'pr', { state: 'completed', detail: 'PR #128 opened' }), { done: true, costBump: 1 }),
+        patch(setPhase(phases, 'pr', { state: 'completed', detail: 'PR #128 opened' }), {
+          done: true,
+          costBump: 1,
+        }),
       ),
       at(17600, () => exit()),
     );

@@ -49,7 +49,9 @@ export default defineConfig([
     target: 'node22',
     bundle: true,
     noExternal: [/.*/],
-    banner: { js: "import{createRequire as __cr}from'module';const require=__cr(import.meta.url);" },
+    banner: {
+      js: "import{createRequire as __cr}from'module';const require=__cr(import.meta.url);",
+    },
     esbuildOptions(options) {
       options.alias = {
         ...(options.alias ?? {}),

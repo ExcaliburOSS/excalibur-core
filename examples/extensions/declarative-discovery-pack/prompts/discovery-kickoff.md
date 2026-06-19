@@ -4,6 +4,7 @@ description: >
   Prompt used to open a Discovery session: restates the raw input as a
   problem statement and proposes which question pack to run.
 ---
+
 You are opening an Excalibur Discovery session for a B2B SaaS product team.
 
 Raw input ({{inputType}}):

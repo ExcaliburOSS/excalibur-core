@@ -66,22 +66,22 @@ declarative:
 
 ```ts
 type ExtensionManifest = {
-  id: string
-  name: string
-  version: string
-  kind: 'declarative' | 'programmatic' | 'mixed'
-  description?: string
-  entrypoint?: string                  // programmatic/mixed
-  contributes?: ExtensionContributions // keys: methodologies, workflows, questionPacks,
-                                       // promptTemplates, artifactTemplates, policyPresets,
-                                       // modelRouting, reportTemplates, roleDefinitions,
-                                       // commandMappings, workItemProviders, communicationProviders,
-                                       // modelProviders, agentAdapters, tools, contextSources,
-                                       // exporters, policyEvaluators, communicationHandlers
-  capabilities?: string[]              // e.g. work_items.read, communication.post, reports.generate
-  configSchema?: Record<string, { type: string; required?: boolean }>
-  permissions?: ExtensionPermissions
-}
+  id: string;
+  name: string;
+  version: string;
+  kind: 'declarative' | 'programmatic' | 'mixed';
+  description?: string;
+  entrypoint?: string; // programmatic/mixed
+  contributes?: ExtensionContributions; // keys: methodologies, workflows, questionPacks,
+  // promptTemplates, artifactTemplates, policyPresets,
+  // modelRouting, reportTemplates, roleDefinitions,
+  // commandMappings, workItemProviders, communicationProviders,
+  // modelProviders, agentAdapters, tools, contextSources,
+  // exporters, policyEvaluators, communicationHandlers
+  capabilities?: string[]; // e.g. work_items.read, communication.post, reports.generate
+  configSchema?: Record<string, { type: string; required?: boolean }>;
+  permissions?: ExtensionPermissions;
+};
 ```
 
 Declarative pack example:
@@ -177,63 +177,63 @@ export default defineExtension({
 
 ```ts
 type ExtensionContext = {
-  methodologies: MethodologyRegistry
-  workflows: WorkflowRegistry
-  workItems: WorkItemProviderRegistry
-  communication: CommunicationProviderRegistry
-  models: ModelProviderRegistry
-  agents: AgentAdapterRegistry
-  tools: ToolRegistry
-  contextSources: ContextSourceRegistry
-  policies: PolicyRegistry
-  reports: ReportRegistry
-  exporters: ExporterRegistry
-  hooks: HookRegistry
-  logger: Logger
-  config: ExtensionConfig
-}
+  methodologies: MethodologyRegistry;
+  workflows: WorkflowRegistry;
+  workItems: WorkItemProviderRegistry;
+  communication: CommunicationProviderRegistry;
+  models: ModelProviderRegistry;
+  agents: AgentAdapterRegistry;
+  tools: ToolRegistry;
+  contextSources: ContextSourceRegistry;
+  policies: PolicyRegistry;
+  reports: ReportRegistry;
+  exporters: ExporterRegistry;
+  hooks: HookRegistry;
+  logger: Logger;
+  config: ExtensionConfig;
+};
 ```
 
 Contribution interfaces (reuse existing types where they exist — WorkItemProvider from `@excalibur/work-items`, ModelProviderAdapter from `@excalibur/model-gateway`, AgentAdapter from `@excalibur/agent-runtime`):
 
 ```ts
 export interface CommunicationProvider {
-  type: string
-  postMessage(input: PostMessageInput): Promise<PostMessageResult>
-  postThreadReply(input: PostThreadReplyInput): Promise<PostMessageResult>
-  getThreadReplies(input: GetThreadRepliesInput): Promise<ThreadReply[]>
-  validateCredentials(): Promise<boolean>
+  type: string;
+  postMessage(input: PostMessageInput): Promise<PostMessageResult>;
+  postThreadReply(input: PostThreadReplyInput): Promise<PostMessageResult>;
+  getThreadReplies(input: GetThreadRepliesInput): Promise<ThreadReply[]>;
+  validateCredentials(): Promise<boolean>;
 }
 // PostMessageInput { channelId, markdown, blocks? } · PostThreadReplyInput { channelId, threadId, markdown, blocks? }
 // PostMessageResult { externalMessageId, threadId?, url? } · ThreadReply { externalMessageId, body, authorName?, createdAt? }
 
 export interface AgentTool {
-  name: string
-  description: string
-  inputSchema: unknown // JSON-schema-like
-  execute(input: unknown, context: ToolContext): Promise<ToolResult>
+  name: string;
+  description: string;
+  inputSchema: unknown; // JSON-schema-like
+  execute(input: unknown, context: ToolContext): Promise<ToolResult>;
 }
 
 export interface ContextSource {
-  id: string
-  name: string
-  search(input: ContextSearchInput): Promise<ContextDocument[]>
-  load(input: ContextLoadInput): Promise<ContextDocument>
+  id: string;
+  name: string;
+  search(input: ContextSearchInput): Promise<ContextDocument[]>;
+  load(input: ContextLoadInput): Promise<ContextDocument>;
 }
 
 export interface PolicyEvaluator {
-  id: string
-  evaluate(context: PolicyContext): Promise<PolicyDecision>
+  id: string;
+  evaluate(context: PolicyContext): Promise<PolicyDecision>;
 }
 
 export interface ReportGenerator {
-  id: string
-  generate(input: ReportInput): Promise<ReportOutput>
+  id: string;
+  generate(input: ReportInput): Promise<ReportOutput>;
 }
 
 export interface Exporter {
-  id: string
-  export(input: ExportInput): Promise<ExportResult>
+  id: string;
+  export(input: ExportInput): Promise<ExportResult>;
 }
 ```
 
@@ -243,15 +243,24 @@ export interface Exporter {
 
 ```ts
 type ExcaliburHook =
-  | 'workItem.received' | 'workItem.commandDetected'
-  | 'discovery.started' | 'discovery.completed'
-  | 'interaction.created' | 'patch.created'
-  | 'run.created' | 'run.phaseStarted' | 'run.phaseCompleted' | 'run.completed' | 'run.failed'
-  | 'pr.opened' | 'dailySummary.generating' | 'weeklyPlanning.started'
+  | 'workItem.received'
+  | 'workItem.commandDetected'
+  | 'discovery.started'
+  | 'discovery.completed'
+  | 'interaction.created'
+  | 'patch.created'
+  | 'run.created'
+  | 'run.phaseStarted'
+  | 'run.phaseCompleted'
+  | 'run.completed'
+  | 'run.failed'
+  | 'pr.opened'
+  | 'dailySummary.generating'
+  | 'weeklyPlanning.started';
 
 interface HookRegistry {
-  on<TEvent>(hookName: string, handler: (event: TEvent) => Promise<void> | void): void
-  emit<TEvent>(hookName: string, event: TEvent): Promise<void>
+  on<TEvent>(hookName: string, handler: (event: TEvent) => Promise<void> | void): void;
+  emit<TEvent>(hookName: string, event: TEvent): Promise<void>;
 }
 ```
 

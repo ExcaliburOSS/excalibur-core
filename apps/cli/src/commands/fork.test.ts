@@ -40,9 +40,33 @@ function seedRun(repo: string, diff: string): string {
   });
   const events: ExcaliburEvent[] = [
     createEvent({ runId: run.id, type: 'run_started', payload: { title: 'add a guard' } }),
-    createEvent({ runId: run.id, type: 'model_call', payload: { model: 'mock', content: 'Adding a guard.', inputTokens: 500, outputTokens: 120, costCents: 2 } }),
-    createEvent({ runId: run.id, type: 'tool_call', payload: { tool: 'apply_patch', arguments: { diff } } }),
-    createEvent({ runId: run.id, type: 'patch_applied', payload: { tool: 'apply_patch', ok: true, simulated: false, diff, filesAffected: ['src/guard.ts'] } }),
+    createEvent({
+      runId: run.id,
+      type: 'model_call',
+      payload: {
+        model: 'mock',
+        content: 'Adding a guard.',
+        inputTokens: 500,
+        outputTokens: 120,
+        costCents: 2,
+      },
+    }),
+    createEvent({
+      runId: run.id,
+      type: 'tool_call',
+      payload: { tool: 'apply_patch', arguments: { diff } },
+    }),
+    createEvent({
+      runId: run.id,
+      type: 'patch_applied',
+      payload: {
+        tool: 'apply_patch',
+        ok: true,
+        simulated: false,
+        diff,
+        filesAffected: ['src/guard.ts'],
+      },
+    }),
     createEvent({ runId: run.id, type: 'assistant_message', payload: { content: 'Done.' } }),
   ];
   for (const event of events) {
@@ -121,7 +145,9 @@ describe('excalibur undo', () => {
     // The tree does NOT contain guard.ts → the reverse pre-flight must fail.
     const srcRunId = seedRun(repo, GUARD_DIFF);
     const cli = createTestCli({ cwd: repo });
-    await expect(cli.run('undo', srcRunId, '--at', '1', '--yes')).rejects.toThrow(/do not reverse-apply|reverse/i);
+    await expect(cli.run('undo', srcRunId, '--at', '1', '--yes')).rejects.toThrow(
+      /do not reverse-apply|reverse/i,
+    );
     // No partial damage: the committed file is untouched.
     expect(readFileSync(join(repo, 'src', 'service.ts'), 'utf8')).toContain('release');
   });
@@ -135,7 +161,11 @@ describe('replay scrubber f/u keys', () => {
   afterEach(() => removeDir(repo));
 
   /** Drives runScrubber with scripted single-line controls over the session reader. */
-  async function scrub(repoRoot: string, runId: string, keys: string[]): Promise<ReturnType<typeof createInteractiveCli>> {
+  async function scrub(
+    repoRoot: string,
+    runId: string,
+    keys: string[],
+  ): Promise<ReturnType<typeof createInteractiveCli>> {
     const cli = createInteractiveCli({ cwd: repoRoot });
     for (const key of keys) {
       cli.send(key);

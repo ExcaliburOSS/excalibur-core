@@ -131,7 +131,11 @@ describe('NativeAgentAdapter identity', () => {
 describe('NativeAgentAdapter — real tool loop', () => {
   it('runs write_file → run_command → final, really mutating the repo', async () => {
     const gateway = new FakeGateway([
-      { toolCalls: [toolCall('c1', 'write_file', { path: 'src/added.ts', content: 'export const x = 1;\n' })] },
+      {
+        toolCalls: [
+          toolCall('c1', 'write_file', { path: 'src/added.ts', content: 'export const x = 1;\n' }),
+        ],
+      },
       { toolCalls: [toolCall('c2', 'run_command', { command: 'echo built' })] },
       { content: 'Done: added src/added.ts and ran the build.' },
     ]);
@@ -158,7 +162,9 @@ describe('NativeAgentAdapter — real tool loop', () => {
     // Every event validates against the canonical schema.
     for (const event of events) {
       const parsed = excaliburEventSchema.safeParse(event);
-      expect(parsed.success, JSON.stringify(parsed.success ? null : parsed.error.issues)).toBe(true);
+      expect(parsed.success, JSON.stringify(parsed.success ? null : parsed.error.issues)).toBe(
+        true,
+      );
     }
 
     // The command really ran (exit 0).
@@ -466,48 +472,80 @@ describe('NativeAgentAdapter — LSP per-edit diagnostics', () => {
   }
   const LSP_TEST_TIMEOUT_MS = 30000;
 
-  it('emits a diagnostics event AND appends the errors to the edit tool result', async () => {
-    const gateway = new FakeGateway([
-      { toolCalls: [toolCall('c1', 'write_file', { path: 'bad.ts', content: '__ERR__ const x: number = "s";\n' })] },
-      { content: 'I will fix the type error.' },
-    ]);
-    const events = await collect(new NativeAgentAdapter().run(makeInput(gateway, { config: lspConfig() })));
+  it(
+    'emits a diagnostics event AND appends the errors to the edit tool result',
+    async () => {
+      const gateway = new FakeGateway([
+        {
+          toolCalls: [
+            toolCall('c1', 'write_file', {
+              path: 'bad.ts',
+              content: '__ERR__ const x: number = "s";\n',
+            }),
+          ],
+        },
+        { content: 'I will fix the type error.' },
+      ]);
+      const events = await collect(
+        new NativeAgentAdapter().run(makeInput(gateway, { config: lspConfig() })),
+      );
 
-    // A typed diagnostics event was emitted for the edited file.
-    const diag = events.find((e) => e.type === 'diagnostics');
-    expect(diag).toBeDefined();
-    expect(diag?.payload['file']).toBe('bad.ts');
-    expect(diag?.payload['errorCount']).toBe(1);
+      // A typed diagnostics event was emitted for the edited file.
+      const diag = events.find((e) => e.type === 'diagnostics');
+      expect(diag).toBeDefined();
+      expect(diag?.payload['file']).toBe('bad.ts');
+      expect(diag?.payload['errorCount']).toBe(1);
 
-    // The SAME errors were appended to the write_file tool result fed to the
-    // model on the next turn (the self-correction substrate).
-    const toolMsg = gateway.received[1]?.messages.find((m) => m.role === 'tool' && m.toolCallId === 'c1');
-    expect(String(toolMsg?.content)).toContain('Compiler diagnostics (LSP)');
-    expect(String(toolMsg?.content)).toContain('bad.ts:1:7');
-    expect(String(toolMsg?.content)).toContain('Type error');
-  }, LSP_TEST_TIMEOUT_MS);
+      // The SAME errors were appended to the write_file tool result fed to the
+      // model on the next turn (the self-correction substrate).
+      const toolMsg = gateway.received[1]?.messages.find(
+        (m) => m.role === 'tool' && m.toolCallId === 'c1',
+      );
+      expect(String(toolMsg?.content)).toContain('Compiler diagnostics (LSP)');
+      expect(String(toolMsg?.content)).toContain('bad.ts:1:7');
+      expect(String(toolMsg?.content)).toContain('Type error');
+    },
+    LSP_TEST_TIMEOUT_MS,
+  );
 
-  it('emits a clean diagnostics event and appends NOTHING when the edit has no errors', async () => {
-    const gateway = new FakeGateway([
-      { toolCalls: [toolCall('c1', 'write_file', { path: 'ok.ts', content: 'export const ok = 1;\n' })] },
-      { content: 'done' },
-    ]);
-    const events = await collect(new NativeAgentAdapter().run(makeInput(gateway, { config: lspConfig() })));
+  it(
+    'emits a clean diagnostics event and appends NOTHING when the edit has no errors',
+    async () => {
+      const gateway = new FakeGateway([
+        {
+          toolCalls: [
+            toolCall('c1', 'write_file', { path: 'ok.ts', content: 'export const ok = 1;\n' }),
+          ],
+        },
+        { content: 'done' },
+      ]);
+      const events = await collect(
+        new NativeAgentAdapter().run(makeInput(gateway, { config: lspConfig() })),
+      );
 
-    const diag = events.find((e) => e.type === 'diagnostics');
-    expect(diag?.payload['errorCount']).toBe(0);
-    const toolMsg = gateway.received[1]?.messages.find((m) => m.role === 'tool' && m.toolCallId === 'c1');
-    expect(String(toolMsg?.content)).toContain('wrote'); // the normal result
-    expect(String(toolMsg?.content)).not.toContain('Compiler diagnostics');
-  }, LSP_TEST_TIMEOUT_MS);
+      const diag = events.find((e) => e.type === 'diagnostics');
+      expect(diag?.payload['errorCount']).toBe(0);
+      const toolMsg = gateway.received[1]?.messages.find(
+        (m) => m.role === 'tool' && m.toolCallId === 'c1',
+      );
+      expect(String(toolMsg?.content)).toContain('wrote'); // the normal result
+      expect(String(toolMsg?.content)).not.toContain('Compiler diagnostics');
+    },
+    LSP_TEST_TIMEOUT_MS,
+  );
 
   it('stays inert (no diagnostics event) when LSP is disabled', async () => {
     const gateway = new FakeGateway([
       { toolCalls: [toolCall('c1', 'write_file', { path: 'bad.ts', content: '__ERR__ x\n' })] },
       { content: 'done' },
     ]);
-    const disabled: ExcaliburConfig = { ...lspConfig(), lsp: { ...lspConfig().lsp!, enabled: false } };
-    const events = await collect(new NativeAgentAdapter().run(makeInput(gateway, { config: disabled })));
+    const disabled: ExcaliburConfig = {
+      ...lspConfig(),
+      lsp: { ...lspConfig().lsp!, enabled: false },
+    };
+    const events = await collect(
+      new NativeAgentAdapter().run(makeInput(gateway, { config: disabled })),
+    );
     expect(events.some((e) => e.type === 'diagnostics')).toBe(false);
   });
 });

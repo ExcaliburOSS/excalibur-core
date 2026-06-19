@@ -39,7 +39,11 @@ describe('MemoryStore.retrieve', () => {
     try {
       // A directory-level node should match a file under it.
       s.capture({ type: 'risk', statement: 'escrow is sensitive', subjectPaths: ['src/escrow'] });
-      s.capture({ type: 'decision', statement: 'use zod for validation', subjectPaths: ['src/api/validate.ts'] });
+      s.capture({
+        type: 'decision',
+        statement: 'use zod for validation',
+        subjectPaths: ['src/api/validate.ts'],
+      });
       s.capture({ type: 'convention', statement: 'unrelated', subjectPaths: ['docs'] });
 
       const hits = new MemoryStore(repoRoot, { now: () => '2026-06-17T00:00:00.000Z' }).retrieve([
@@ -65,7 +69,9 @@ describe('MemoryStore.retrieve', () => {
         statement: 'recent strong rejection',
         subjectPaths: ['src/pay'],
       });
-      const hits = new MemoryStore(repoRoot, { now: () => '2026-06-17T00:00:00.000Z' }).retrieve(['src/pay/x.ts']);
+      const hits = new MemoryStore(repoRoot, { now: () => '2026-06-17T00:00:00.000Z' }).retrieve([
+        'src/pay/x.ts',
+      ]);
       expect(hits[0]?.statement).toBe('recent strong rejection');
       expect(hits).toHaveLength(2);
     } finally {
@@ -79,7 +85,9 @@ describe('MemoryStore.retrieve', () => {
       s.capture({ type: 'decision', statement: 'd1', subjectPaths: ['src'] });
       s.capture({ type: 'rejection', statement: 'r1', subjectPaths: ['src'] });
       const reloaded = new MemoryStore(repoRoot, { now: () => '2026-06-17T00:00:00.000Z' });
-      expect(reloaded.retrieve(['src/x.ts'], { type: 'rejection' }).map((n) => n.statement)).toEqual(['r1']);
+      expect(
+        reloaded.retrieve(['src/x.ts'], { type: 'rejection' }).map((n) => n.statement),
+      ).toEqual(['r1']);
       expect(reloaded.retrieve(['src/x.ts'], { limit: 1 })).toHaveLength(1);
     } finally {
       removeDir(repoRoot);
@@ -143,8 +151,14 @@ describe('MemoryStore knowledge-compounding loop (P2.12)', () => {
     const { repoRoot, store: s } = store();
     try {
       // Similar (Jaccard ≥ 0.6) but different statements, both with NO subjectPaths.
-      const a = s.capture({ type: 'decision', statement: 'use feature flags for rollouts everywhere' });
-      const b = s.capture({ type: 'decision', statement: 'use feature flags for gradual rollouts' });
+      const a = s.capture({
+        type: 'decision',
+        statement: 'use feature flags for rollouts everywhere',
+      });
+      const b = s.capture({
+        type: 'decision',
+        statement: 'use feature flags for gradual rollouts',
+      });
       // They are distinct facts, not a reinforcement — kept separate.
       expect(b.id).not.toBe(a.id);
       expect(b.evidenceCount).toBe(1);
@@ -178,7 +192,11 @@ describe('MemoryStore knowledge-compounding loop (P2.12)', () => {
   it('honors an explicit supersedes target', () => {
     const { repoRoot, store: s } = store();
     try {
-      const old = s.capture({ type: 'convention', statement: 'tabs for indentation', subjectPaths: ['src'] });
+      const old = s.capture({
+        type: 'convention',
+        statement: 'tabs for indentation',
+        subjectPaths: ['src'],
+      });
       const fresh = s.capture({
         type: 'convention',
         statement: 'spaces for indentation everywhere',
@@ -199,7 +217,12 @@ describe('memoryContextSource / buildMemoryContext', () => {
     expect(memoryContextSource([])).toBeNull();
     const { repoRoot, store: s } = store();
     try {
-      s.capture({ type: 'rejection', statement: 'no ORM here', subjectPaths: ['src/escrow'], rationale: 'hot path' });
+      s.capture({
+        type: 'rejection',
+        statement: 'no ORM here',
+        subjectPaths: ['src/escrow'],
+        rationale: 'hot path',
+      });
       const source = buildMemoryContext(repoRoot, ['src/escrow/charge.ts']);
       expect(source).not.toBeNull();
       expect(source?.title).toContain('Project memory');

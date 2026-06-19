@@ -225,14 +225,20 @@ function reduceKeyInner(
       });
     case 'left':
       // Cursor move keeps the (end-anchored) ghost.
-      return { state: { ...state, cursor: clamp(state.cursor - 1, 0, state.buffer.length) }, action: NONE };
+      return {
+        state: { ...state, cursor: clamp(state.cursor - 1, 0, state.buffer.length) },
+        action: NONE,
+      };
     case 'right':
       // → at the end of the buffer accepts the ghost; otherwise just moves right.
       if (state.cursor >= state.buffer.length && state.ghost.length > 0) {
         const buffer = state.buffer + state.ghost;
         return keep({ buffer, cursor: buffer.length, ghost: '' });
       }
-      return { state: { ...state, cursor: clamp(state.cursor + 1, 0, state.buffer.length) }, action: NONE };
+      return {
+        state: { ...state, cursor: clamp(state.cursor + 1, 0, state.buffer.length) },
+        action: NONE,
+      };
     case 'home':
       return keep({ cursor: 0 });
     case 'end':
@@ -248,7 +254,15 @@ function reduceKeyInner(
       // a mid-turn confirm (mode === 'turn'). ESC must NEVER resolve null / exit.
       if (state.mode === 'prompt' && state.escapePrimed) {
         return {
-          state: { ...state, buffer: '', cursor: 0, historyIndex: -1, draft: '', ghost: '', escapePrimed: false },
+          state: {
+            ...state,
+            buffer: '',
+            cursor: 0,
+            historyIndex: -1,
+            draft: '',
+            ghost: '',
+            escapePrimed: false,
+          },
           action: { type: 'rewind' },
         };
       }
@@ -287,7 +301,10 @@ function historyPrev(state: RawInputState): { state: RawInputState; action: RawA
   const draft = state.historyIndex === -1 ? state.buffer : state.draft;
   const historyIndex = state.historyIndex + 1;
   const buffer = state.history[historyIndex] ?? '';
-  return { state: { ...state, draft, historyIndex, buffer, cursor: buffer.length, ghost: '' }, action: NONE };
+  return {
+    state: { ...state, draft, historyIndex, buffer, cursor: buffer.length, ghost: '' },
+    action: NONE,
+  };
 }
 
 /** ↓ — move toward the live draft; past the newest entry restores the draft. */
@@ -302,8 +319,11 @@ function historyNext(state: RawInputState): { state: RawInputState; action: RawA
     return { state, action: NONE };
   }
   const historyIndex = state.historyIndex - 1;
-  const buffer = historyIndex === -1 ? state.draft : state.history[historyIndex] ?? '';
-  return { state: { ...state, historyIndex, buffer, cursor: buffer.length, ghost: '' }, action: NONE };
+  const buffer = historyIndex === -1 ? state.draft : (state.history[historyIndex] ?? '');
+  return {
+    state: { ...state, historyIndex, buffer, cursor: buffer.length, ghost: '' },
+    action: NONE,
+  };
 }
 
 /**

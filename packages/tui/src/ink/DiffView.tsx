@@ -34,7 +34,15 @@ const DEFAULT_WIDTH = 80;
 const DEFAULT_MAX_LINES = 24;
 
 /** One indented row: a rail connector + a passthrough (or muted) cell. */
-function Row({ children, colors, muted }: { children: string; colors: Palette; muted?: boolean }): ReactElement {
+function Row({
+  children,
+  colors,
+  muted,
+}: {
+  children: string;
+  colors: Palette;
+  muted?: boolean;
+}): ReactElement {
   return (
     <Box>
       <Text color={colors.rail}>{RAIL_PREFIX}</Text>
@@ -76,7 +84,9 @@ export function DiffView(props: DiffViewProps): ReactElement | null {
         </Row>
       ))}
       <Row colors={colors} muted>
-        {hidden > 0 ? `… +${hidden} more lines (space to collapse)` : `${glyph.diffCollapse} space to collapse`}
+        {hidden > 0
+          ? `… +${hidden} more lines (space to collapse)`
+          : `${glyph.diffCollapse} space to collapse`}
       </Row>
     </Box>
   );

@@ -128,9 +128,7 @@ describe('ModelGateway with injected real providers (offline)', () => {
       },
     );
     await gateway.chat({ messages });
-    expect(transport.requests[0]?.request.headers?.['authorization']).toBe(
-      `Bearer ${injectedKey}`,
-    );
+    expect(transport.requests[0]?.request.headers?.['authorization']).toBe(`Bearer ${injectedKey}`);
   });
 
   it('without injected deps, a real provider still throws provider_not_implemented', async () => {

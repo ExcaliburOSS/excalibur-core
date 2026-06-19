@@ -43,7 +43,10 @@ export interface RenderPlanCardOptions {
 const NAME_WIDTH = 16;
 
 /** Renders the plan card to text lines (a bordered, gated node). */
-export function renderPlanCard(model: PlanCardModel, options: RenderPlanCardOptions = {}): string[] {
+export function renderPlanCard(
+  model: PlanCardModel,
+  options: RenderPlanCardOptions = {},
+): string[] {
   const tier: ColorTier = options.tier ?? 'none';
   const palette: Palette = getColors(options.mode ?? 'dark');
   const width = options.width ?? 52;

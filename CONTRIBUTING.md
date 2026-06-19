@@ -58,8 +58,8 @@ agent loop, run pipeline, or a command's behavior.
 - `apps/cli` — the `excalibur` CLI (`@excalibur/cli`), built as a single
   self-contained binary.
 - `packages/*` — `@excalibur/{shared, workflow-schema, model-gateway,
-  agent-runtime, context-engine, core, tui, enterprise-sync, work-items,
-  extension-runtime, extension-sdk, built-in-extensions, declarative-schemas}`.
+agent-runtime, context-engine, core, tui, enterprise-sync, work-items,
+extension-runtime, extension-sdk, built-in-extensions, declarative-schemas}`.
 - `docs/` — user docs + `docs/CONTRACT.md` (the engineering build contract) +
   `docs/ROADMAP.md` (the M1–M8 master roadmap).
 

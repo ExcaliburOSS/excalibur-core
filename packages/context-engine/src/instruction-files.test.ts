@@ -26,8 +26,7 @@ describe('detectInstructionFiles', () => {
     fixtures.push(dir);
 
     const files = await detectInstructionFiles(dir);
-    const kindOf = (path: string): string | undefined =>
-      files.find((f) => f.path === path)?.kind;
+    const kindOf = (path: string): string | undefined => files.find((f) => f.path === path)?.kind;
 
     expect(kindOf('AGENTS.md')).toBe('agents_md');
     expect(kindOf('CLAUDE.md')).toBe('claude_md');

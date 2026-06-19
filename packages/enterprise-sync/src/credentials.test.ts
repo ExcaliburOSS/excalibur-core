@@ -88,9 +88,9 @@ describe('credentials', () => {
 
   describe('saveCliCredentials validation', () => {
     it('rejects an empty apiKey with ConfigValidationError', () => {
-      expect(() => saveCliCredentials({ baseUrl: 'https://x.example', apiKey: '  ' }, { baseDir })).toThrow(
-        ConfigValidationError,
-      );
+      expect(() =>
+        saveCliCredentials({ baseUrl: 'https://x.example', apiKey: '  ' }, { baseDir }),
+      ).toThrow(ConfigValidationError);
     });
 
     it('rejects a non-URL baseUrl with ConfigValidationError', () => {

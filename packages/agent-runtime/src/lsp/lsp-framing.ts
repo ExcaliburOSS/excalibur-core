@@ -53,7 +53,9 @@ export class MessageBuffer {
       const header = this.buffer.subarray(0, sepIndex).toString('ascii');
       const match = CONTENT_LENGTH_RE.exec(header);
       if (match === null) {
-        throw new LspFramingError(`LSP frame header has no Content-Length: ${JSON.stringify(header)}`);
+        throw new LspFramingError(
+          `LSP frame header has no Content-Length: ${JSON.stringify(header)}`,
+        );
       }
       const length = Number.parseInt(match[1] ?? '', 10);
       if (!Number.isFinite(length) || length < 0 || length > MAX_CONTENT_LENGTH) {

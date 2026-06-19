@@ -21,7 +21,12 @@ describe('excaliburConfigSchema', () => {
         languages: ['typescript'],
         frameworks: ['nestjs'],
       },
-      commands: { test: 'pnpm test', lint: 'pnpm lint', typecheck: 'pnpm typecheck', build: 'pnpm build' },
+      commands: {
+        test: 'pnpm test',
+        lint: 'pnpm lint',
+        typecheck: 'pnpm typecheck',
+        build: 'pnpm build',
+      },
       safety: { preset: 'standard-safe' },
       workflowDefaults: { ask: 'ask-repo', run: 'standard-feature' },
       autonomyDefaults: { ask: 1, review: 0, run: 3 },
@@ -123,44 +128,56 @@ describe('excaliburConfigSchema', () => {
     const mcp = (server: Record<string, unknown>): unknown =>
       excaliburConfigSchema.safeParse({ mcp: { servers: { s: server } } });
     expect((mcp({ command: 'npx', args: ['x'] }) as { success: boolean }).success).toBe(true);
-    expect((mcp({ url: 'https://mcp.example.com/rpc' }) as { success: boolean }).success).toBe(true);
+    expect((mcp({ url: 'https://mcp.example.com/rpc' }) as { success: boolean }).success).toBe(
+      true,
+    );
     // neither command nor url → invalid
     expect((mcp({ env: { A: '1' } }) as { success: boolean }).success).toBe(false);
     // BOTH command and url → ambiguous → invalid (review fix)
-    expect((mcp({ command: 'npx', url: 'https://x/rpc' }) as { success: boolean }).success).toBe(false);
+    expect((mcp({ command: 'npx', url: 'https://x/rpc' }) as { success: boolean }).success).toBe(
+      false,
+    );
   });
 
   it('accepts an lsp section with defaults, overrides, and rejects a malformed server', () => {
     const parse = (lsp: unknown): unknown => excaliburConfigSchema.safeParse({ lsp });
     // Defaults fill in when fields are omitted.
     const ok = excaliburConfigSchema.parse({ lsp: {} });
-    expect(ok.lsp).toMatchObject({ enabled: true, diagnosticsTimeoutMs: 1500, serverStartTimeoutMs: 8000 });
+    expect(ok.lsp).toMatchObject({
+      enabled: true,
+      diagnosticsTimeoutMs: 1500,
+      serverStartTimeoutMs: 8000,
+    });
     // A per-language command override is accepted.
-    expect((parse({ servers: { typescript: { command: '/opt/tsserver', args: ['--lsp'] } } }) as { success: boolean }).success).toBe(true);
+    expect(
+      (
+        parse({ servers: { typescript: { command: '/opt/tsserver', args: ['--lsp'] } } }) as {
+          success: boolean;
+        }
+      ).success,
+    ).toBe(true);
     // A server entry missing `command` is invalid.
-    expect((parse({ servers: { typescript: { args: ['x'] } } }) as { success: boolean }).success).toBe(false);
+    expect(
+      (parse({ servers: { typescript: { args: ['x'] } } }) as { success: boolean }).success,
+    ).toBe(false);
     // disabled is allowed.
     expect(excaliburConfigSchema.parse({ lsp: { enabled: false } }).lsp?.enabled).toBe(false);
   });
 
   it('rejects autonomy levels outside 0..4', () => {
     expect(excaliburConfigSchema.safeParse({ autonomy: { default: 5 } }).success).toBe(false);
-    expect(
-      excaliburConfigSchema.safeParse({ autonomyDefaults: { run: 7 } }).success,
-    ).toBe(false);
-    expect(
-      excaliburConfigSchema.safeParse({ autonomy: { paths: { 'src/**': 9 } } }).success,
-    ).toBe(false);
+    expect(excaliburConfigSchema.safeParse({ autonomyDefaults: { run: 7 } }).success).toBe(false);
+    expect(excaliburConfigSchema.safeParse({ autonomy: { paths: { 'src/**': 9 } } }).success).toBe(
+      false,
+    );
   });
 
   it('rejects invalid permission tool values', () => {
     expect(
-      excaliburConfigSchema.safeParse({ permissions: { tools: { write_file: 'maybe' } } })
-        .success,
+      excaliburConfigSchema.safeParse({ permissions: { tools: { write_file: 'maybe' } } }).success,
     ).toBe(false);
     expect(
-      excaliburConfigSchema.safeParse({ permissions: { tools: { write_file: 'ask' } } })
-        .success,
+      excaliburConfigSchema.safeParse({ permissions: { tools: { write_file: 'ask' } } }).success,
     ).toBe(true);
   });
 
@@ -197,9 +214,7 @@ describe('excaliburConfigSchema', () => {
     expect(
       excaliburConfigSchema.safeParse({ integrations: { linear: { retries: 3 } } }).success,
     ).toBe(false);
-    expect(excaliburConfigSchema.safeParse({ workflows: 'standard-feature' }).success).toBe(
-      false,
-    );
+    expect(excaliburConfigSchema.safeParse({ workflows: 'standard-feature' }).success).toBe(false);
   });
 
   it('rejects a non-integer version', () => {

@@ -79,7 +79,9 @@ describe('EffectiveInstructionBuilder', () => {
   it('excludes review_required skills and includes explicitly trusted+enabled ones', async () => {
     write(
       '.claude/skills/testing/SKILL.md',
-      ['---', 'name: testing', 'description: Test helper skill', '---', '# Testing skill'].join('\n'),
+      ['---', 'name: testing', 'description: Test helper skill', '---', '# Testing skill'].join(
+        '\n',
+      ),
     );
 
     const excluded = await builder().build({ repositoryPath: repoRoot });
@@ -115,7 +117,9 @@ describe('EffectiveInstructionBuilder', () => {
     write('AGENTS.md', '# Agent guidance');
     write(
       '.excalibur/config.yaml',
-      ['instructions:', '  sources:', "    - path: './AGENTS.md'", '      enabled: false'].join('\n'),
+      ['instructions:', '  sources:', "    - path: './AGENTS.md'", '      enabled: false'].join(
+        '\n',
+      ),
     );
 
     const result = await builder().build({ repositoryPath: repoRoot });
@@ -129,7 +133,9 @@ describe('EffectiveInstructionBuilder', () => {
     write('.excalibur/config.yaml', ['commands:', '  test: pnpm test'].join('\n'));
 
     const result = await builder().build({ repositoryPath: repoRoot });
-    const conflict = result.warnings.find((warning) => warning.includes('Package-manager conflict'));
+    const conflict = result.warnings.find((warning) =>
+      warning.includes('Package-manager conflict'),
+    );
     expect(conflict).toBeDefined();
     expect(conflict).toContain('CLAUDE.md');
     expect(conflict).toContain('npm');
@@ -140,9 +146,7 @@ describe('EffectiveInstructionBuilder', () => {
     write('CLAUDE.md', `# Big\n${'lorem ipsum dolor sit amet '.repeat(400)}`);
     const result = await builder().build({ repositoryPath: repoRoot });
     expect(result.instructionsMarkdown).toContain(SUMMARIZED_MARKER);
-    expect(result.instructionsMarkdown.length).toBeLessThan(
-      INSTRUCTION_SOURCE_CHAR_CAP + 500,
-    );
+    expect(result.instructionsMarkdown.length).toBeLessThan(INSTRUCTION_SOURCE_CHAR_CAP + 500);
     expect(result.warnings.some((warning) => warning.includes('per-source cap'))).toBe(true);
   });
 
@@ -168,7 +172,9 @@ describe('EffectiveInstructionBuilder', () => {
     write('CLAUDE.md', '# Claude guidance\nKeep services small.');
     write(
       '.claude/skills/testing/SKILL.md',
-      ['---', 'name: testing', 'description: Test helper skill', '---', '# Testing skill'].join('\n'),
+      ['---', 'name: testing', 'description: Test helper skill', '---', '# Testing skill'].join(
+        '\n',
+      ),
     );
     write(
       '.excalibur/config.yaml',
@@ -235,9 +241,7 @@ describe('EffectiveInstructionBuilder', () => {
   it('caps oversized additionalSources content with the per-source cap', async () => {
     const result = await builder().build({
       repositoryPath: repoRoot,
-      additionalSources: [
-        { path: 'repo-context: big.ts', content: `// big\n${'x'.repeat(8000)}` },
-      ],
+      additionalSources: [{ path: 'repo-context: big.ts', content: `// big\n${'x'.repeat(8000)}` }],
     });
     expect(result.instructionsMarkdown).toContain(SUMMARIZED_MARKER);
     expect(result.warnings.some((warning) => warning.includes('per-source cap'))).toBe(true);

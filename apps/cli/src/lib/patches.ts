@@ -7,11 +7,7 @@ import {
   getGitInfo,
   type LocalPatch,
 } from '@excalibur/core';
-import {
-  createEvent,
-  serializeEventLine,
-  type ExcaliburEventType,
-} from '@excalibur/shared';
+import { createEvent, serializeEventLine, type ExcaliburEventType } from '@excalibur/shared';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
 import { filesAffectedFromDiff } from './interactions';
@@ -30,9 +26,7 @@ export function resolvePatch(deps: CliDeps, id: string | undefined): LocalPatch 
   const patches = store.list();
   const latest = patches[patches.length - 1];
   if (latest === undefined) {
-    throw new CliUsageError(
-      deps.t('patches.noLocalPatches'),
-    );
+    throw new CliUsageError(deps.t('patches.noLocalPatches'));
   }
   return latest;
 }
@@ -57,21 +51,15 @@ export function appendPatchEvent(
 export function applyStoredPatch(deps: CliDeps, patch: LocalPatch): { filesAffected: string[] } {
   const repoRoot = deps.cwd();
   if (!getGitInfo(repoRoot).isRepo) {
-    throw new CliUsageError(
-      deps.t('patches.notAGitRepo', { id: patch.id, repoRoot }),
-    );
+    throw new CliUsageError(deps.t('patches.notAGitRepo', { id: patch.id, repoRoot }));
   }
   const store = new PatchStore(repoRoot);
   const diff = store.readArtifact(patch.id, 'diff.patch') ?? '';
   if (diff.trim().length === 0) {
-    throw new CliUsageError(
-      deps.t('patches.emptyDiff', { id: patch.id }),
-    );
+    throw new CliUsageError(deps.t('patches.emptyDiff', { id: patch.id }));
   }
   if (patch.metadata.diffApplies === false) {
-    deps.ui.warn(
-      deps.t('patches.diffDidNotValidate', { id: patch.id }),
-    );
+    deps.ui.warn(deps.t('patches.diffDidNotValidate', { id: patch.id }));
   }
   try {
     applyPatch(repoRoot, diff);

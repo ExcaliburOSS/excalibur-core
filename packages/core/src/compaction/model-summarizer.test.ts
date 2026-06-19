@@ -34,15 +34,17 @@ const ENTRIES = projectTranscript([
 
 describe('createModelSummarizer', () => {
   it('parses a clean JSON response into a structured summary', async () => {
-    const summarize = createModelSummarizer({ chat: fakeChat(
-      JSON.stringify({
-        summary: 'Built a login form and wired auth.',
-        objective: 'Add authentication',
-        decisions: ['chose JWT over sessions'],
-        filesTouched: ['src/auth/login.ts'],
-        pending: ['wire the database'],
-      }),
-    ) });
+    const summarize = createModelSummarizer({
+      chat: fakeChat(
+        JSON.stringify({
+          summary: 'Built a login form and wired auth.',
+          objective: 'Add authentication',
+          decisions: ['chose JWT over sessions'],
+          filesTouched: ['src/auth/login.ts'],
+          pending: ['wire the database'],
+        }),
+      ),
+    });
     const { summary, structuredSummary } = await summarize(ENTRIES);
     expect(summary).toBe('Built a login form and wired auth.');
     expect(structuredSummary.objective).toBe('Add authentication');
@@ -54,9 +56,11 @@ describe('createModelSummarizer', () => {
   });
 
   it('tolerates JSON wrapped in code fences / prose', async () => {
-    const summarize = createModelSummarizer({ chat: fakeChat(
-      'Here is the summary:\n```json\n{"summary":"S","objective":"O","decisions":[],"filesTouched":[],"pending":[]}\n```\n',
-    ) });
+    const summarize = createModelSummarizer({
+      chat: fakeChat(
+        'Here is the summary:\n```json\n{"summary":"S","objective":"O","decisions":[],"filesTouched":[],"pending":[]}\n```\n',
+      ),
+    });
     const { summary, structuredSummary } = await summarize(ENTRIES);
     expect(summary).toBe('S');
     expect(structuredSummary.objective).toBe('O');
@@ -77,7 +81,9 @@ describe('createModelSummarizer', () => {
   });
 
   it('degrades to a prose-only summary when there is no JSON', async () => {
-    const summarize = createModelSummarizer({ chat: fakeChat('The user built a login form; DB still pending.') });
+    const summarize = createModelSummarizer({
+      chat: fakeChat('The user built a login form; DB still pending.'),
+    });
     const { summary, structuredSummary } = await summarize(ENTRIES);
     expect(summary).toBe('The user built a login form; DB still pending.');
     expect(structuredSummary.objective).toBe('');
@@ -103,15 +109,17 @@ describe('createModelSummarizer', () => {
 
   it('redacts secrets from the summary AND structured fields', async () => {
     const secret = 'sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ012345';
-    const summarize = createModelSummarizer({ chat: fakeChat(
-      JSON.stringify({
-        summary: `Configured the key ${secret} in the client.`,
-        objective: `Use ${secret}`,
-        decisions: [`store ${secret}`],
-        filesTouched: [],
-        pending: [],
-      }),
-    ) });
+    const summarize = createModelSummarizer({
+      chat: fakeChat(
+        JSON.stringify({
+          summary: `Configured the key ${secret} in the client.`,
+          objective: `Use ${secret}`,
+          decisions: [`store ${secret}`],
+          filesTouched: [],
+          pending: [],
+        }),
+      ),
+    });
     const { summary, structuredSummary } = await summarize(ENTRIES);
     expect(summary).not.toContain(secret);
     expect(summary).toContain('[REDACTED]');
@@ -124,7 +132,10 @@ describe('createModelSummarizer', () => {
     const secret = 'sk-ZYXWVUTSRQPONMLKJIHGFEDCBA987654';
     const entries = projectTranscript([turn(0, 'user', `my key is ${secret}`)]).entries;
     const summarize = createModelSummarizer({
-      chat: fakeChat('{"summary":"ok","objective":"","decisions":[],"filesTouched":[],"pending":[]}', captured),
+      chat: fakeChat(
+        '{"summary":"ok","objective":"","decisions":[],"filesTouched":[],"pending":[]}',
+        captured,
+      ),
       provider: 'groq-cheap',
       locale: 'es',
     });
@@ -171,7 +182,17 @@ describe('compactAsync', () => {
     const result = await compactAsync(transcript, {
       config: { ...DEFAULT_COMPACTION_CONFIG, reserveTokens: 0, keepRecentTokens: 20 },
       contextWindow: 1_000_000, // huge → under budget
-      summarize: () => Promise.resolve({ summary: 'unused', structuredSummary: { objective: '', decisions: [], filesTouched: [], pending: [], condensed: { entries: 0, userTurns: 0, assistantTurns: 0 } } }),
+      summarize: () =>
+        Promise.resolve({
+          summary: 'unused',
+          structuredSummary: {
+            objective: '',
+            decisions: [],
+            filesTouched: [],
+            pending: [],
+            condensed: { entries: 0, userTurns: 0, assistantTurns: 0 },
+          },
+        }),
     });
     expect(result).toBeNull();
   });
@@ -187,7 +208,13 @@ describe('compactAsync', () => {
       summarize: (entries) =>
         Promise.resolve({
           summary: 'Compacted summary with a key sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ012345.',
-          structuredSummary: { objective: 'O', decisions: ['d'], filesTouched: ['f.ts'], pending: ['p'], condensed: { entries: entries.length, userTurns: 0, assistantTurns: 0 } },
+          structuredSummary: {
+            objective: 'O',
+            decisions: ['d'],
+            filesTouched: ['f.ts'],
+            pending: ['p'],
+            condensed: { entries: entries.length, userTurns: 0, assistantTurns: 0 },
+          },
         }),
     });
     expect(record).not.toBeNull();

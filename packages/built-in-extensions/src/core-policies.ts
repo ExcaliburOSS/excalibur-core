@@ -1,7 +1,11 @@
 import { DEFAULT_BLOCKED_PATHS } from '@excalibur/shared';
 import type { PolicyPresetDefinition } from '@excalibur/declarative-schemas';
 import type { ExtensionManifest } from '@excalibur/extension-runtime';
-import { BUILT_IN_EXTENSION_VERSION, builtInContribution, type BuiltInExtensionPack } from './types';
+import {
+  BUILT_IN_EXTENSION_VERSION,
+  builtInContribution,
+  type BuiltInExtensionPack,
+} from './types';
 
 const EXTENSION_ID = 'core-policies';
 

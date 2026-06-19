@@ -33,7 +33,9 @@ describe('buildDockerArgs', () => {
   });
 
   it('uses the given image (default Alpine otherwise)', () => {
-    expect(buildDockerArgs('/repo', 'x', 'c', { image: 'node:24-alpine' })).toContain('node:24-alpine');
+    expect(buildDockerArgs('/repo', 'x', 'c', { image: 'node:24-alpine' })).toContain(
+      'node:24-alpine',
+    );
     expect(buildDockerArgs('/repo', 'x', 'c')).toContain('alpine:3');
   });
 });

@@ -1,5 +1,12 @@
 import { redactSecrets, type ModelGateway } from '@excalibur/model-gateway';
-import { MESH_LENSES, aggregateMesh, type MeshIssue, type MeshLens, type MeshResult, type MeshVerdict } from './verification-mesh';
+import {
+  MESH_LENSES,
+  aggregateMesh,
+  type MeshIssue,
+  type MeshLens,
+  type MeshResult,
+  type MeshVerdict,
+} from './verification-mesh';
 
 /**
  * The VERIFICATION MESH orchestrator (in core so BOTH the CLI `verify` command

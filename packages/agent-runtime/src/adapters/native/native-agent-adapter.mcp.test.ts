@@ -125,9 +125,7 @@ describe('NativeAgentAdapter — MCP tool wiring', () => {
       captured,
     );
     const events = await collect(
-      new NativeAgentAdapter().run(
-        makeInput({ gateway, confirm: () => Promise.resolve(true) }),
-      ),
+      new NativeAgentAdapter().run(makeInput({ gateway, confirm: () => Promise.resolve(true) })),
     );
 
     // The MCP tool is offered to the model, namespaced.
@@ -140,9 +138,9 @@ describe('NativeAgentAdapter — MCP tool wiring', () => {
     const toolMsg = captured[1]?.messages.find((m) => m.role === 'tool');
     expect(toolMsg?.content).toContain('echo:hi');
     // The run completes.
-    expect(events.some((e) => e.type === 'assistant_message' && e.payload['content'] === 'done')).toBe(
-      true,
-    );
+    expect(
+      events.some((e) => e.type === 'assistant_message' && e.payload['content'] === 'done'),
+    ).toBe(true);
   });
 
   it('DECLINES the MCP call when there is no confirmer (external tools need approval)', async () => {
@@ -161,9 +159,9 @@ describe('NativeAgentAdapter — MCP tool wiring', () => {
     const toolMsg = captured[1]?.messages.find((m) => m.role === 'tool');
     expect(toolMsg?.content).toContain('declined');
     expect(toolMsg?.content).not.toContain('echo:hi');
-    expect(events.some((e) => e.type === 'policy_decision' && e.payload['decision'] === 'deny')).toBe(
-      true,
-    );
+    expect(
+      events.some((e) => e.type === 'policy_decision' && e.payload['decision'] === 'deny'),
+    ).toBe(true);
   });
 
   it('does NOT expose MCP tools to a read-only role (planner)', async () => {
@@ -180,7 +178,9 @@ describe('NativeAgentAdapter — MCP tool wiring', () => {
       new NativeAgentAdapter().run(
         makeInput({
           gateway,
-          config: withMcp({ servers: { broken: { command: 'excalibur-not-a-real-mcp-bin-7f3a' } } }),
+          config: withMcp({
+            servers: { broken: { command: 'excalibur-not-a-real-mcp-bin-7f3a' } },
+          }),
         }),
       ),
     );

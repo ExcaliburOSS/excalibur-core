@@ -61,11 +61,10 @@ export function writeRawConfig(repoRoot: string, config: Record<string, unknown>
  */
 export function setAutoApprove(repoRoot: string, value: boolean): void {
   const config = readRawConfig(repoRoot);
-  const approvals = (
+  const approvals =
     typeof config['approvals'] === 'object' && config['approvals'] !== null
       ? (config['approvals'] as Record<string, unknown>)
-      : {}
-  );
+      : {};
   approvals['auto'] = value;
   config['approvals'] = approvals;
   writeRawConfig(repoRoot, config);
@@ -136,7 +135,9 @@ export function configuredEnabled(
 }
 
 function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string')
+    : [];
 }
 
 /** Enables or disables an extension id in `.excalibur/extensions.yaml`. */

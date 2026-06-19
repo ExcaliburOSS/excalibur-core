@@ -187,7 +187,9 @@ describe('interactive session (M-Shell, model-first)', () => {
 
     const dirs = sessionDirs();
     const turns = readTranscript(dirs[dirs.length - 1] as string);
-    expect(turns.some((t) => t.kind === 'status' && String(t.text).startsWith('shell:'))).toBe(true);
+    expect(turns.some((t) => t.kind === 'status' && String(t.text).startsWith('shell:'))).toBe(
+      true,
+    );
   });
 
   it('/swarm with no task shows usage and never crashes the session', async () => {

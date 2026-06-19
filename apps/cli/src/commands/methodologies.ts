@@ -65,7 +65,9 @@ export function registerMethodologiesCommand(program: Command, deps: CliDeps): v
           .join(', ');
         throw new CliUsageError(deps.t('methodologies.unknown', { id, known }));
       }
-      deps.ui.heading(deps.t('methodologies.heading', { name: definition.name, id: definition.id }));
+      deps.ui.heading(
+        deps.t('methodologies.heading', { name: definition.name, id: definition.id }),
+      );
       deps.ui.write(definition.description.trim());
       if (definition.useWhen !== undefined && definition.useWhen.length > 0) {
         deps.ui.write();
@@ -79,11 +81,15 @@ export function registerMethodologiesCommand(program: Command, deps: CliDeps): v
       }
       if (definition.defaultWorkflow !== undefined) {
         deps.ui.write();
-        deps.ui.write(deps.t('methodologies.default-workflow', { workflow: definition.defaultWorkflow }));
+        deps.ui.write(
+          deps.t('methodologies.default-workflow', { workflow: definition.defaultWorkflow }),
+        );
       }
       if (definition.phases !== undefined && definition.phases.length > 0) {
         deps.ui.write(deps.t('methodologies.phases', { phases: definition.phases.join(' → ') }));
       }
-      deps.ui.write(deps.t('methodologies.risk-profile', { risk: definition.riskProfile ?? 'medium' }));
+      deps.ui.write(
+        deps.t('methodologies.risk-profile', { risk: definition.riskProfile ?? 'medium' }),
+      );
     });
 }

@@ -1,15 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import {
-  aggregateMesh,
-  planVerificationMesh,
-  type MeshVerdict,
-} from './verification-mesh';
+import { aggregateMesh, planVerificationMesh, type MeshVerdict } from './verification-mesh';
 
 describe('planVerificationMesh (proportional)', () => {
   it('runs NO mesh for a docs change (and disables on mode:off)', () => {
-    expect(planVerificationMesh({ taskType: 'docs', sensitive: false, autonomyLevel: 3 }).lenses).toEqual([]);
     expect(
-      planVerificationMesh({ taskType: 'feature', sensitive: true, autonomyLevel: 4, mode: 'off' }).lenses,
+      planVerificationMesh({ taskType: 'docs', sensitive: false, autonomyLevel: 3 }).lenses,
+    ).toEqual([]);
+    expect(
+      planVerificationMesh({ taskType: 'feature', sensitive: true, autonomyLevel: 4, mode: 'off' })
+        .lenses,
     ).toEqual([]);
   });
 
@@ -38,8 +37,12 @@ describe('planVerificationMesh (proportional)', () => {
   });
 
   it('adds the security lens for a security task and regression for a refactor', () => {
-    expect(planVerificationMesh({ taskType: 'security', sensitive: false, autonomyLevel: 3 }).lenses).toContain('security');
-    expect(planVerificationMesh({ taskType: 'refactor', sensitive: false, autonomyLevel: 3 }).lenses).toContain('regression');
+    expect(
+      planVerificationMesh({ taskType: 'security', sensitive: false, autonomyLevel: 3 }).lenses,
+    ).toContain('security');
+    expect(
+      planVerificationMesh({ taskType: 'refactor', sensitive: false, autonomyLevel: 3 }).lenses,
+    ).toContain('regression');
   });
 
   it('mode:always forces at least one lens even on a trivial change', () => {
@@ -70,8 +73,16 @@ describe('aggregateMesh', () => {
 
   it('BLOCKS when ANY lens reports a high-severity issue, and sorts high→low', () => {
     const res = aggregateMesh([
-      verdict({ lens: 'correctness', clean: false, issues: [{ lens: 'correctness', severity: 'low', problem: 'nit' }] }),
-      verdict({ lens: 'security', clean: false, issues: [{ lens: 'security', severity: 'high', problem: 'secret leak', fix: 'redact' }] }),
+      verdict({
+        lens: 'correctness',
+        clean: false,
+        issues: [{ lens: 'correctness', severity: 'low', problem: 'nit' }],
+      }),
+      verdict({
+        lens: 'security',
+        clean: false,
+        issues: [{ lens: 'security', severity: 'high', problem: 'secret leak', fix: 'redact' }],
+      }),
     ]);
     expect(res.blocked).toBe(true);
     expect(res.issues[0]?.severity).toBe('high');
@@ -80,7 +91,11 @@ describe('aggregateMesh', () => {
 
   it('does NOT block on medium/low-only issues', () => {
     const res = aggregateMesh([
-      verdict({ lens: 'correctness', clean: false, issues: [{ lens: 'correctness', severity: 'medium', problem: 'meh' }] }),
+      verdict({
+        lens: 'correctness',
+        clean: false,
+        issues: [{ lens: 'correctness', severity: 'medium', problem: 'meh' }],
+      }),
     ]);
     expect(res.blocked).toBe(false);
     expect(res.issues).toHaveLength(1);

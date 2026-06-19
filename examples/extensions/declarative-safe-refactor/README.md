@@ -3,10 +3,10 @@
 A declarative extension that ships a **methodology and the workflow it
 prescribes** as one pack:
 
-| File | Contribution | Id |
-|---|---|---|
+| File                                      | Contribution  | Id                     |
+| ----------------------------------------- | ------------- | ---------------------- |
 | `methodologies/safe-refactor-strict.yaml` | `methodology` | `safe-refactor-strict` |
-| `workflows/safe-refactor-strict.yaml` | `workflow` | `safe-refactor-strict` |
+| `workflows/safe-refactor-strict.yaml`     | `workflow`    | `safe-refactor-strict` |
 
 `safe-refactor-strict` is a stricter variant of the built-in `safe-refactor`
 flow: a required `human_approval` phase gates the refactor after the plan

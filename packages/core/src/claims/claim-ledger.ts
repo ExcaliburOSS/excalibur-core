@@ -67,13 +67,28 @@ const CLAIM_PATTERNS: ReadonlyArray<{ kind: ClaimKind; re: RegExp }> = [
   { kind: 'tests_pass', re: /\b(?:all\s+)?tests?\s+(?:are\s+)?(?:now\s+)?pass(?:ing|ed|es)?\b/i },
   { kind: 'tests_pass', re: /\b(?:the\s+)?(?:test\s+suite|tests?)\s+(?:is\s+)?green\b/i },
   { kind: 'no_type_errors', re: /\bno\s+type[\s-]?(?:errors?|issues?)\b/i },
-  { kind: 'no_type_errors', re: /\btype[\s-]?check(?:ing|s)?\s+(?:is\s+)?(?:clean|pass(?:es|ed|ing)?)\b/i },
+  {
+    kind: 'no_type_errors',
+    re: /\btype[\s-]?check(?:ing|s)?\s+(?:is\s+)?(?:clean|pass(?:es|ed|ing)?)\b/i,
+  },
   { kind: 'no_secrets', re: /\bno\s+(?:hard[\s-]?coded\s+)?secrets?\b/i },
-  { kind: 'no_secrets', re: /\bno\s+(?:api\s+)?keys?\s+(?:were\s+)?(?:committed|added|introduced|leaked)\b/i },
-  { kind: 'builds', re: /\b(?:the\s+)?(?:project|build|app)\s+(?:builds|compiles)(?:\s+(?:cleanly|successfully))?\b/i },
+  {
+    kind: 'no_secrets',
+    re: /\bno\s+(?:api\s+)?keys?\s+(?:were\s+)?(?:committed|added|introduced|leaked)\b/i,
+  },
+  {
+    kind: 'builds',
+    re: /\b(?:the\s+)?(?:project|build|app)\s+(?:builds|compiles)(?:\s+(?:cleanly|successfully))?\b/i,
+  },
   { kind: 'builds', re: /\bbuild\s+(?:is\s+)?(?:successful|passing|green|clean)\b/i },
-  { kind: 'requirement_met', re: /\brequirements?\s+(?:is|are|were|has been|have been)\s+(?:met|satisfied|fulfilled|implemented)\b/i },
-  { kind: 'requirement_met', re: /\b(?:implemented|completed|done)\s+(?:exactly\s+)?as\s+(?:requested|specified|described)\b/i },
+  {
+    kind: 'requirement_met',
+    re: /\brequirements?\s+(?:is|are|were|has been|have been)\s+(?:met|satisfied|fulfilled|implemented)\b/i,
+  },
+  {
+    kind: 'requirement_met',
+    re: /\b(?:implemented|completed|done)\s+(?:exactly\s+)?as\s+(?:requested|specified|described)\b/i,
+  },
 ];
 
 /** Parses the model's final message for the claims it explicitly made. */
@@ -117,11 +132,7 @@ export function buildClaimLedger(finalText: string, evidence: ClaimEvidence): Cl
   const asserted = extractAssertedClaims(finalText);
   const verdicts: ClaimVerdict[] = [];
 
-  const fromBool = (
-    kind: ClaimKind,
-    passed: boolean | null,
-    label: string,
-  ): void => {
+  const fromBool = (kind: ClaimKind, passed: boolean | null, label: string): void => {
     const isAsserted = asserted.has(kind);
     // Record when checkable (ran) or asserted (we want to flag an unbacked claim).
     if (passed === null && !isAsserted) {
@@ -132,7 +143,13 @@ export function buildClaimLedger(finalText: string, evidence: ClaimEvidence): Cl
       passed === null
         ? `${label} did not run — no evidence to verify the claim`
         : `${label} ${passed ? 'passed' : 'failed'}`;
-    verdicts.push({ kind, statement: STATEMENT[kind], status, asserted: isAsserted, evidence: evidenceText });
+    verdicts.push({
+      kind,
+      statement: STATEMENT[kind],
+      status,
+      asserted: isAsserted,
+      evidence: evidenceText,
+    });
   };
 
   fromBool('tests_pass', evidence.testsPassed, 'test command');

@@ -146,9 +146,9 @@ describe('ExtensionContext registries', () => {
     expect(() =>
       ctx.workflows.register({ id: 'broken', name: 'Broken', mode: 'fast', phases: [] }),
     ).toThrow(WorkflowValidationError);
-    expect(() =>
-      ctx.methodologies.register({ id: 'no-description', name: 'X' } as never),
-    ).toThrow(WorkflowValidationError);
+    expect(() => ctx.methodologies.register({ id: 'no-description', name: 'X' } as never)).toThrow(
+      WorkflowValidationError,
+    );
   });
 
   it('registers a model provider adapter under its name', () => {
@@ -242,9 +242,9 @@ describe('ExtensionContext registries', () => {
     expect(() =>
       ctx.tools.registerTool({ name: 'no-exec', description: 'x', inputSchema: {} } as never),
     ).toThrow(ExtensionDefinitionError);
-    expect(() =>
-      ctx.workItems.registerProvider({ type: 'linear' } as never),
-    ).toThrow(ExtensionDefinitionError);
+    expect(() => ctx.workItems.registerProvider({ type: 'linear' } as never)).toThrow(
+      ExtensionDefinitionError,
+    );
     expect(() => ctx.models.registerProvider(null as never)).toThrow(ExtensionDefinitionError);
   });
 });

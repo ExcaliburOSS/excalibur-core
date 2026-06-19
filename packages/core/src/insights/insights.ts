@@ -81,11 +81,7 @@ export function aggregateInsights(runs: ReadonlyArray<RunInsight>): InsightsRepo
   let totalApprovals = 0;
   let totalVerificationsBlocked = 0;
 
-  const bump = (
-    map: Map<string, CountCost>,
-    key: string,
-    run: RunInsight,
-  ): void => {
+  const bump = (map: Map<string, CountCost>, key: string, run: RunInsight): void => {
     const entry = map.get(key) ?? {
       key,
       runs: 0,

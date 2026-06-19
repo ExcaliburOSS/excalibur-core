@@ -5,11 +5,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type {
-  HttpTransport,
-  TransportRequest,
-  TransportResponse,
-} from '../transport/transport';
+import type { HttpTransport, TransportRequest, TransportResponse } from '../transport/transport';
 
 const FIXTURES_DIR = __dirname;
 
@@ -92,10 +88,7 @@ export class FnTransport implements HttpTransport {
   readonly requests: RecordedRequest[] = [];
 
   constructor(
-    private readonly fn: (
-      request: TransportRequest,
-      index: number,
-    ) => Promise<TransportResponse>,
+    private readonly fn: (request: TransportRequest, index: number) => Promise<TransportResponse>,
   ) {}
 
   get sendCount(): number {

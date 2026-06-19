@@ -727,8 +727,9 @@ function buildCompactionSummarizer(
       config.summarizerModel === 'cheap'
         ? (gateway.cheapProviderName ?? gateway.providerName)
         : gateway.providerName;
-    const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[provider]
-      ?.type;
+    const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[
+      provider
+    ]?.type;
     if (providerType === 'mock') {
       return undefined; // the mock is a test double — use the offline summarizer
     }
@@ -804,10 +805,20 @@ async function runCompaction(
       } catch {
         // The real-model summary failed (network/timeout) — fall back to the
         // deterministic offline summarizer so compaction still happens.
-        record = compactSession(turns, { config, contextWindow, model: runtime.model, force: opts.manual });
+        record = compactSession(turns, {
+          config,
+          contextWindow,
+          model: runtime.model,
+          force: opts.manual,
+        });
       }
     } else {
-      record = compactSession(turns, { config, contextWindow, model: runtime.model, force: opts.manual });
+      record = compactSession(turns, {
+        config,
+        contextWindow,
+        model: runtime.model,
+        force: opts.manual,
+      });
     }
     if (record === null) {
       if (opts.manual) {

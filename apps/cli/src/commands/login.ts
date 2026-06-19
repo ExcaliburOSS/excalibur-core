@@ -78,10 +78,7 @@ export function registerLoginCommands(program: Command, deps: CliDeps): void {
       if (apiKey.trim().length === 0) {
         throw new CliUsageError(deps.t('login.api-key-required'));
       }
-      const filePath = saveCliCredentials(
-        { baseUrl, apiKey },
-        { baseDir: deps.homeDir() },
-      );
+      const filePath = saveCliCredentials({ baseUrl, apiKey }, { baseDir: deps.homeDir() });
       deps.ui.success(deps.t('login.credentials-saved', { filePath }));
       deps.ui.info(
         deps.t('login.env-precedence', {
@@ -107,7 +104,9 @@ export function registerLoginCommands(program: Command, deps: CliDeps): void {
         return;
       }
       deps.ui.success(deps.t('login.connected', { baseUrl: credentials.baseUrl }));
-      deps.ui.info(deps.t('login.credentials-file', { path: getCredentialsFilePath(deps.homeDir()) }));
+      deps.ui.info(
+        deps.t('login.credentials-file', { path: getCredentialsFilePath(deps.homeDir()) }),
+      );
     });
 
   program

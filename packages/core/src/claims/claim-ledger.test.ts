@@ -26,7 +26,9 @@ describe('extractAssertedClaims', () => {
   });
 
   it('does not hallucinate claims from neutral prose', () => {
-    expect([...extractAssertedClaims('I added a multiply function to the math module.')]).toEqual([]);
+    expect([...extractAssertedClaims('I added a multiply function to the math module.')]).toEqual(
+      [],
+    );
   });
 });
 

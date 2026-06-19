@@ -38,13 +38,7 @@ export const CONTRIBUTION_KINDS = [
 export type ContributionKind = DeclarativeType | ProgrammaticContributionKind;
 
 /** Where a contribution came from, in load order (extensions spec §7). */
-export const CONTRIBUTION_SOURCES = [
-  'built_in',
-  'project',
-  'local',
-  'npm',
-  'enterprise',
-] as const;
+export const CONTRIBUTION_SOURCES = ['built_in', 'project', 'local', 'npm', 'enterprise'] as const;
 export type ContributionSource = (typeof CONTRIBUTION_SOURCES)[number];
 
 /**
