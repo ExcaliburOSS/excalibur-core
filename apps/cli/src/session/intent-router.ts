@@ -25,6 +25,8 @@ export interface IntentContext {
   mock: boolean;
   /** Session autonomy level — routing needs an act-capable level (≥ 2). */
   level: number;
+  /** Auto-accept is on (zero-prompts) — go DIRECT: plan/offers would gate. */
+  auto: boolean;
 }
 
 // A question is answered directly even when it mentions build/parallel words.
@@ -39,7 +41,10 @@ const PLAN =
 
 /** Classifies a natural-language turn. Pure + deterministic (no model call). */
 export function classifyTurnIntent(text: string, ctx: IntentContext): TurnIntent {
-  if (ctx.mock || !ctx.interactive || ctx.level < 2) {
+  // Never route without a real model, off a TTY, at a read-only level, or under
+  // auto-accept — the last because auto-mode promises ZERO prompts, and plan
+  // (gate) / swarm + bg (offers) would all interrupt to ask. Go direct.
+  if (ctx.mock || !ctx.interactive || ctx.level < 2 || ctx.auto) {
     return 'chat';
   }
   const t = text.trim();

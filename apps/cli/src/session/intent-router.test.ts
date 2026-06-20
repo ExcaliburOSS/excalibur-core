@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { classifyTurnIntent, type IntentContext } from './intent-router';
 
-const live: IntentContext = { interactive: true, mock: false, level: 4 };
+const live: IntentContext = { interactive: true, mock: false, level: 4, auto: false };
 
 describe('classifyTurnIntent', () => {
   it('routes a multi-step build request to plan', () => {
@@ -27,10 +27,12 @@ describe('classifyTurnIntent', () => {
     expect(classifyTurnIntent('show me the diff', live)).toBe('chat');
   });
 
-  it('never routes without a real model, off a TTY, or at a read-only level', () => {
+  it('never routes without a real model, off a TTY, at a read-only level, or under auto-mode', () => {
     const build = 'implement a rate limiter';
     expect(classifyTurnIntent(build, { ...live, mock: true })).toBe('chat');
     expect(classifyTurnIntent(build, { ...live, interactive: false })).toBe('chat');
     expect(classifyTurnIntent(build, { ...live, level: 1 })).toBe('chat');
+    // auto-mode promises zero prompts → go direct, never plan/swarm/bg.
+    expect(classifyTurnIntent(build, { ...live, auto: true })).toBe('chat');
   });
 });

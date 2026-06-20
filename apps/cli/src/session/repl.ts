@@ -561,6 +561,7 @@ export async function runInteractiveSession(
               interactive: deps.ui.isInteractive(),
               mock: runtime.model === 'mock',
               level: runtime.autonomyLevel,
+              auto: runtime.approvals.auto,
             });
 
       // Offer the heavier routes BEFORE claiming the turn (so the confirm read
