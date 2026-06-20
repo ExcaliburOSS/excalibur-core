@@ -162,6 +162,9 @@ export const ES: Catalog = {
     'Indica el texto del comentario: excalibur work-items comment <número> <texto>',
   'work-items.commented': 'Comentado en la issue #{number}.',
   'work-items.running': 'Ejecutando la issue {key} como tarea: {title}',
+  'work-items.create-empty': 'Un work item necesita un título.',
+  'work-items.created': 'Work item local {key} creado.',
+  'work-items.status-updated': 'Estado de {key} → {status}.',
   'diagnostics.noTypecheck':
     'No hay comando de typecheck configurado — se omiten los diagnósticos post-ejecución.',
   'diagnostics.cleanAfter': 'Diagnósticos: el typecheck está limpio tras la ejecución.',

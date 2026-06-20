@@ -55,8 +55,9 @@ const VALID_ITEM: NormalizedWorkItem = {
 };
 
 describe('workItemProviderTypeSchema', () => {
-  it('accepts exactly the seven provider types', () => {
+  it('accepts exactly the supported provider types (incl. local)', () => {
     expect(workItemProviderTypeSchema.options).toEqual([
+      'local',
       'linear',
       'jira',
       'github_issues',

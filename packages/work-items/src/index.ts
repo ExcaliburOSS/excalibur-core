@@ -64,3 +64,6 @@ export { GitHubCliProvider, mapGhIssue } from './github-cli-provider';
 export type { GhRunner } from './github-cli-provider';
 
 export { MockWorkItemProvider } from './mock-provider';
+
+export { LocalWorkItemProvider } from './local-provider';
+export type { CreateWorkItemInput } from './local-provider';

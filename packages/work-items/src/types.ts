@@ -10,6 +10,7 @@ import { z } from 'zod';
  */
 
 export const workItemProviderTypeSchema = z.enum([
+  'local',
   'linear',
   'jira',
   'github_issues',

@@ -159,6 +159,9 @@ export const EN: Catalog = {
     'Provide a comment body: excalibur work-items comment <number> <text>',
   'work-items.commented': 'Commented on issue #{number}.',
   'work-items.running': 'Running issue {key} as a task: {title}',
+  'work-items.create-empty': 'A work item needs a title.',
+  'work-items.created': 'Created local work item {key}.',
+  'work-items.status-updated': 'Set {key} → {status}.',
   'diagnostics.noTypecheck': 'No typecheck command configured — skipping post-run diagnostics.',
   'diagnostics.cleanAfter': 'Diagnostics: typecheck is clean after the run.',
   'diagnostics.repairing':
