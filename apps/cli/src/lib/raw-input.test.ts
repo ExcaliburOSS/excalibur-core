@@ -24,6 +24,41 @@ const prompt = (over: Partial<RawInputState> = {}): RawInputState => ({
   ...over,
 });
 
+const turn = (over: Partial<RawInputState> = {}): RawInputState => ({
+  ...initialRawState(),
+  mode: 'turn',
+  awaiting: false,
+  ...over,
+});
+
+describe('reduceKey — Slice 3 queued input (typing during a turn)', () => {
+  it('queues printable keys typed while a turn runs (live line untouched)', () => {
+    let s = turn();
+    for (const ch of 'next') {
+      s = reduceKey(s, key({ name: ch, sequence: ch })).state;
+    }
+    expect(s.queue).toBe('next');
+    expect(s.buffer).toBe('');
+  });
+
+  it('backspace trims the queue; ESC aborts the turn and keeps the queue', () => {
+    let s = turn({ queue: 'hello' });
+    s = reduceKey(s, key({ name: 'backspace' })).state;
+    expect(s.queue).toBe('hell');
+    const esc = reduceKey(s, key({ name: 'escape' }));
+    expect(esc.action).toEqual({ type: 'abort' });
+    expect(esc.state.queue).toBe('hell');
+  });
+
+  it('does not queue when idle and not in a turn', () => {
+    const s = reduceKey(
+      { ...initialRawState(), mode: 'prompt', awaiting: false },
+      key({ name: 'x', sequence: 'x' }),
+    ).state;
+    expect(s.queue).toBe('');
+  });
+});
+
 describe('reduceKey (pure state machine)', () => {
   it('inserts printable chars at the cursor and advances it', () => {
     let s = prompt();

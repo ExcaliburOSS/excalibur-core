@@ -70,6 +70,13 @@ export interface RawInputState {
    * one-keystroke lifetime.
    */
   escapePrimed: boolean;
+  /**
+   * Slice 3 — queued input: text typed WHILE a turn is in flight (no line is
+   * being read). It accumulates here (printable + backspace) and is flushed into
+   * the next prompt's `buffer` when the read opens, so you can start writing your
+   * next message while the agent works. Empty whenever not mid-turn-typing.
+   */
+  queue: string;
 }
 
 /** What a keystroke asks the shell to do. */
@@ -94,6 +101,7 @@ export function initialRawState(history: string[] = []): RawInputState {
     mode: 'prompt',
     awaiting: false,
     escapePrimed: false,
+    queue: '',
   };
 }
 
@@ -161,10 +169,19 @@ function reduceKeyInner(
   }
 
   // --- not reading a line: a turn is running with just the spinner. ESC cancels
-  // it; everything else is ignored (Slice 3 will QUEUE typed input here). ---
+  // it; printable keys + backspace QUEUE editable input (Slice 3), flushed into
+  // the next prompt; everything else is ignored. ---
   if (!state.awaiting) {
-    if (state.mode === 'turn' && key.name === 'escape' && key.ctrl !== true && key.meta !== true) {
-      return { state, action: { type: 'abort' } };
+    if (state.mode === 'turn') {
+      if (key.name === 'escape' && key.ctrl !== true && key.meta !== true) {
+        return { state, action: { type: 'abort' } };
+      }
+      if (key.name === 'backspace') {
+        return { state: { ...state, queue: state.queue.slice(0, -1) }, action: NONE };
+      }
+      if (isPrintableSeq(key.sequence)) {
+        return { state: { ...state, queue: state.queue + key.sequence }, action: NONE };
+      }
     }
     return { state, action: NONE };
   }

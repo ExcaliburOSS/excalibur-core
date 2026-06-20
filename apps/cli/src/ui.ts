@@ -672,14 +672,18 @@ export class Ui {
         return Promise.resolve(null);
       }
       currentPrompt = prompt;
+      // Slice 3: flush input typed DURING the turn into the next MAIN prompt line
+      // (never a sub-prompt confirm/ask — that would eat the queued message).
+      const queued = this.inSubPrompt ? '' : state.queue;
       state = {
         ...state,
         awaiting: true,
-        buffer: '',
-        cursor: 0,
+        buffer: queued,
+        cursor: queued.length,
         historyIndex: -1,
         draft: '',
         ghost: '',
+        queue: this.inSubPrompt ? state.queue : '',
       };
       out.write(renderInput(state, prompt));
       return new Promise((resolve) => {
