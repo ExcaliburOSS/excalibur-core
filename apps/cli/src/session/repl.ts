@@ -350,6 +350,16 @@ export async function runInteractiveSession(
         }
         printStatusLine(deps, runtime);
       }
+      // While a background run is live, show an accent rule above the prompt with
+      // its title cutting the line (CC-style "what's running" indicator).
+      const live = runtime.fleet.threads.filter(
+        (thread) => thread.status === 'running' || thread.status === 'blocked',
+      );
+      if (live.length > 0) {
+        const label =
+          live.length === 1 ? (live[0]?.title ?? '') : deps.t('repl.bg-active', { n: live.length });
+        deps.ui.write(renderRunRule(label, process.stdout.columns ?? 80));
+      }
       const line = await editor.question(pc.cyan('› '));
       if (line === null) {
         break; // EOF / Ctrl-D
@@ -1700,6 +1710,19 @@ function buildWelcomeContext(deps: CliDeps, repoRoot: string, model: string): We
     width: process.stdout.columns || 80,
     unicode: deps.env['EXCALIBUR_ASCII'] === undefined,
   };
+}
+
+/**
+ * A Claude-Code-style accent rule shown ABOVE the prompt while a background run
+ * is active, with its title "cutting" the line at the right (the same title-cuts-
+ * the-frame motif as the welcome). Pure + width-correct (visible length === W).
+ */
+export function renderRunRule(label: string, width: number): string {
+  const W = Math.max(24, Math.min(width > 0 ? width : 80, 100));
+  const max = Math.max(8, W - 10);
+  const text = label.length > max ? `${label.slice(0, max - 1)}…` : label;
+  const dashes = Math.max(2, W - text.length - 5); // dashes + ' ▶ ' + text + ' ─'
+  return `${pc.cyan('─'.repeat(dashes))} ${pc.cyan('▶')} ${pc.bold(text)} ${pc.cyan('─')}`;
 }
 
 function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {

@@ -256,7 +256,9 @@ export function renderWelcome(ctx: WelcomeContext): string {
       body.push(`${V}${' '.repeat(leftMargin)}${pad(l, usable)}${' '.repeat(rightMargin)}${V}`);
     } else {
       const r = pad(right[i] ?? '', rightW);
-      body.push(`${V}${' '.repeat(leftMargin)}${l}${' '.repeat(gap)}${r}${' '.repeat(rightMargin)}${V}`);
+      body.push(
+        `${V}${' '.repeat(leftMargin)}${l}${' '.repeat(gap)}${r}${' '.repeat(rightMargin)}${V}`,
+      );
     }
   }
   const bottom = accentText(`${B.bl}${B.h.repeat(inner)}${B.br}`, tier);

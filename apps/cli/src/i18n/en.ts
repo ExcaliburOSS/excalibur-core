@@ -648,7 +648,8 @@ export const EN: Catalog = {
     'Usage: /loop [--every <sec>] [--times <n>] <prompt> — re-runs it periodically until ESC.',
   'repl.swarm-usage':
     'Usage: /swarm <task> — fans the task out to real parallel agents (independent subtasks, live lanes).',
-  'repl.route-bg-offer': 'This looks long-running — run it in the background (/bg) so you can keep working?',
+  'repl.route-bg-offer':
+    'This looks long-running — run it in the background (/bg) so you can keep working?',
   'repl.route-swarm-offer':
     'This looks parallelizable — fan it out to a swarm of real agents (/swarm)?',
   'repl.bg-usage':
