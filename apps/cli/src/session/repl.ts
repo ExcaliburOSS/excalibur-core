@@ -55,6 +55,7 @@ import {
 } from './agent-turn';
 import { runGoalLoop } from './goal-loop';
 import { runIntervalLoop } from './interval-loop';
+import { maybeAutoOnboard } from './onboarding';
 
 const execFileAsync = promisify(execFile);
 
@@ -133,6 +134,18 @@ export async function runInteractiveSession(
   options: InteractiveSessionOptions = {},
 ): Promise<number> {
   const repoRoot = deps.cwd();
+  // Repo analysis warms the context engine (ISD scanning) once per session, and
+  // feeds the zero-config onboarding below.
+  const analysis = await analyzeRepository(repoRoot, {
+    homeDir: deps.homeDir(),
+    includeUserGlobal: deps.includeUserGlobal,
+  });
+  // PROACTIVE zero-config onboarding (core-onboarding-ux): on the first
+  // `excalibur` run in a repo (no .excalibur/ or no model configured) auto-run
+  // the model wizard + write a minimal .excalibur/ BEFORE the welcome — so the
+  // welcome shows the real configured model. The user never has to discover
+  // `init`/`models setup`. No-op on a non-TTY or an already-set-up repo.
+  await maybeAutoOnboard(deps, repoRoot, analysis);
   let config = loadConfigContext(repoRoot).config;
   // Extensions can bring MCP servers (EXT-6); merge them into the session config
   // so the native agent loop connects them too (the repo's own mcp.servers wins).
@@ -142,11 +155,6 @@ export async function runInteractiveSession(
   } catch {
     /* extensions are additive; never block the shell on a load failure */
   }
-  // Repo analysis warms the context engine (ISD scanning) once per session.
-  await analyzeRepository(repoRoot, {
-    homeDir: deps.homeDir(),
-    includeUserGlobal: deps.includeUserGlobal,
-  });
   const gateway = loadGatewayContext(repoRoot);
   const store = new SessionStore(repoRoot);
 

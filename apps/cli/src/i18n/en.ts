@@ -10,6 +10,17 @@ export const EN: Catalog = {
   // Welcome (arthurian flavor — plan §"Sabor artúrico"; on by default).
   'welcome.epigraph': 'The sword is drawn. What shall we build?',
 
+  // Zero-config onboarding — the first `excalibur` run in an unconfigured repo.
+  'onboarding.title': 'Setting up Excalibur for this project…',
+  'onboarding.intro':
+    "First time here — let's connect a model and create a minimal .excalibur/. Takes a few seconds.",
+  'onboarding.confirm': 'Set up Excalibur for this project now?',
+  'onboarding.skipped':
+    'No problem — running on the offline mock for now. Run `excalibur models setup` anytime.',
+  'onboarding.created': 'Created:',
+  'onboarding.noProvider':
+    'No model configured — running on the built-in offline mock. Run `excalibur models setup` to connect a real model.',
+
   // `excalibur init` — the confidence-building final output (onboarding §12).
   'init.detected': 'Detected:',
   'init.detected.none': 'nothing specific — defaults apply',

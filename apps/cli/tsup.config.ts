@@ -1,8 +1,12 @@
 import { defineConfig } from 'tsup';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { readFileSync } from 'node:fs';
 
 const here = dirname(fileURLToPath(import.meta.url));
+// The published version, read from package.json and injected via `define` below
+// so `excalibur --version` can never drift from the manifest again.
+const pkgVersion: string = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8')).version;
 
 // Two outputs make up the published `excalibur` binary:
 //
@@ -34,7 +38,7 @@ export default defineConfig([
     // external → loaded at runtime from the ESM sibling below.
     noExternal: [/^(?!@excalibur\/tui\/ink$).*/],
     external: ['@excalibur/tui/ink'],
-    define: { __EXCALIBUR_INK_BUNDLED__: 'true' },
+    define: { __EXCALIBUR_INK_BUNDLED__: 'true', __CLI_VERSION__: JSON.stringify(pkgVersion) },
     clean: true,
     sourcemap: false,
     dts: false,

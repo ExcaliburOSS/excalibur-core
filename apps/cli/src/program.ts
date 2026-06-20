@@ -1,4 +1,6 @@
 import { Command } from 'commander';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { defaultDeps, type CliDeps } from './deps';
 import { registerApplyCommand } from './commands/apply';
 import { registerAskCommand } from './commands/ask';
@@ -37,7 +39,23 @@ import { registerUpdateCommand } from './commands/update';
 import { registerWeeklyPlanCommand } from './commands/weekly-plan';
 import { registerWorkflowsCommand } from './commands/workflows';
 
-export const CLI_VERSION = '0.1.0';
+// Injected by tsup's `define` from package.json at build time, so the published
+// binary's `--version` can never drift from the manifest again (it shipped as
+// 0.1.0 while the package was 1.0.0). Undefined only in non-bundled dev/test
+// runs (tsx/vitest), where the dev sentinel is shown.
+declare const __CLI_VERSION__: string | undefined;
+/** Dev/test fallback (not bundled): read the manifest next to this module so
+ * CLI_VERSION is the real version even under tsx/vitest. */
+function devVersion(): string {
+  try {
+    return JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'))
+      .version as string;
+  } catch {
+    return '0.0.0';
+  }
+}
+export const CLI_VERSION: string =
+  typeof __CLI_VERSION__ === 'string' ? __CLI_VERSION__ : devVersion();
 
 /**
  * Builds the `excalibur` commander program (Build Contract §4.9). Commander

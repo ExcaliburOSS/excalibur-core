@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Command } from 'commander';
 import { buildProgram, CLI_VERSION } from './program';
 
@@ -140,7 +142,10 @@ describe('program registration (Build Contract §4.9)', () => {
     expect(importCommand.options.map((option) => option.long)).toContain('--include-global');
   });
 
-  it('exposes the version', () => {
-    expect(CLI_VERSION).toBe('0.1.0');
+  it('exposes the version, matching package.json (drift guard)', () => {
+    const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')) as {
+      version: string;
+    };
+    expect(CLI_VERSION).toBe(pkg.version);
   });
 });

@@ -7,6 +7,17 @@ import type { Catalog } from '@excalibur/shared';
 export const ES: Catalog = {
   'welcome.epigraph': 'La espada está desenvainada. ¿Qué construimos?',
 
+  // Onboarding zero-config — primer `excalibur` en un repo sin configurar.
+  'onboarding.title': 'Configurando Excalibur para este proyecto…',
+  'onboarding.intro':
+    'Primera vez por aquí — vamos a conectar un modelo y crear un .excalibur/ mínimo. Tarda unos segundos.',
+  'onboarding.confirm': '¿Configurar Excalibur para este proyecto ahora?',
+  'onboarding.skipped':
+    'Sin problema — funcionando con el mock offline por ahora. Ejecuta `excalibur models setup` cuando quieras.',
+  'onboarding.created': 'Creado:',
+  'onboarding.noProvider':
+    'Sin modelo configurado — funcionando con el mock offline integrado. Ejecuta `excalibur models setup` para conectar un modelo real.',
+
   'init.detected': 'Detectado:',
   'init.detected.none': 'nada específico — se aplican los valores por defecto',
   'init.usingInstructions': 'Usando instrucciones existentes:',
