@@ -84,6 +84,15 @@ export interface JsonRpcResponse {
   error?: JsonRpcError;
 }
 
+/** Behavior hints an MCP server may attach to a tool (MCP spec `annotations`). */
+export interface McpToolAnnotations {
+  /** The tool does not modify its environment (safe to expose to read-only roles). */
+  readOnlyHint?: boolean;
+  /** The tool may perform destructive updates. */
+  destructiveHint?: boolean;
+  [key: string]: JsonValue | undefined;
+}
+
 /** A tool descriptor as returned by an MCP server's `tools/list` (MCP spec). */
 export interface McpTool {
   /** Unique tool name, used as the `name` argument to {@link McpClient.callTool}. */
@@ -92,6 +101,8 @@ export interface McpTool {
   description?: string;
   /** JSON Schema (draft 2020-12) describing the tool's `arguments` object. */
   inputSchema: JsonObject;
+  /** Optional behavior hints (read-only / destructive) used for role gating (F6). */
+  annotations?: McpToolAnnotations;
 }
 
 /** A single content block of a `tools/call` result (text / image / resource). */
@@ -532,6 +543,7 @@ function parseTool(raw: JsonValue): McpTool {
     name: raw.name,
     inputSchema,
     ...(typeof raw.description === 'string' ? { description: raw.description } : {}),
+    ...(isObject(raw.annotations) ? { annotations: raw.annotations as McpToolAnnotations } : {}),
   };
 }
 

@@ -25,5 +25,8 @@ export * from './adapters/custom-command/custom-command-adapter';
 export * from './adapters/resolve-agent-adapter';
 export * from './mcp/mcp-client';
 export * from './mcp/mcp-tools';
+export * from './mcp/mcp-policy';
+export * from './mcp/mcp-egress';
+export * from './mcp/injection-scan';
 export * from './sandbox/docker-sandbox';
 export * from './lsp';

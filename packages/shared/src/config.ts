@@ -149,6 +149,30 @@ export const DEFAULT_COMPACTION_CONFIG: CompactionConfig = {
  * server), NOT in this file; `env` is for non-secret overrides only. For a
  * remote server, prefer an env-var reference in `headers` over a literal secret.
  */
+/** Per-MCP-server network sandbox (F6): an egress allowlist ON TOP of the SSRF floor. */
+const mcpServerEgressSchema = z.object({
+  /** Host globs this server's REMOTE endpoint may match (beyond the SSRF floor). */
+  allowedDomains: z.array(z.string()).optional(),
+  /** Hosts this server may reach even if private/loopback (e.g. a local gateway). */
+  allowPrivateHosts: z.array(z.string()).optional(),
+});
+
+/** Auth for a REMOTE MCP server (F6). `oauth` is reserved for the DCR/PKCE flow. */
+const mcpServerAuthSchema = z
+  .object({
+    /** none · bearerEnv (static token from an env var NAME) · oauth (reserved: DCR/PKCE). */
+    type: z.enum(['none', 'bearerEnv', 'oauth']).default('none'),
+    /** Env var NAME holding a static bearer token (BYOK; never the token itself). */
+    bearerEnv: z.string().min(1).optional(),
+    /** OAuth overrides (normally discovered via RFC 8414/9728); reserved. */
+    authorizationUrl: z.string().url().optional(),
+    tokenUrl: z.string().url().optional(),
+    scopes: z.array(z.string()).optional(),
+  })
+  .refine((a) => a.type !== 'bearerEnv' || a.bearerEnv !== undefined, {
+    message: 'auth.type "bearerEnv" requires auth.bearerEnv (the env var NAME holding the token)',
+  });
+
 const mcpServerConfigSchema = z
   .object({
     command: z.string().min(1).optional(),
@@ -159,6 +183,23 @@ const mcpServerConfigSchema = z
     url: z.string().url().optional(),
     /** Headers sent on every remote request, e.g. `{ Authorization: "Bearer …" }`. */
     headers: z.record(z.string()).optional(),
+    /**
+     * Trust posture (F6): `trusted` = no per-call confirm (output still
+     * injection-scanned); `untrusted`/`prompt` = confirm each call. Defaults to
+     * `prompt` (applied by the consumer) — external tools are confirmed unless
+     * you vouch for the server.
+     */
+    trust: z.enum(['trusted', 'untrusted', 'prompt']).optional(),
+    /** Explicit read-only tool names (else the server's `readOnlyHint` decides). */
+    readOnlyTools: z.array(z.string()).optional(),
+    /** Explicit mutating tool names (else the server's `destructiveHint` decides). */
+    mutatingTools: z.array(z.string()).optional(),
+    /** Expose this server's READ-ONLY tools to read-only/research roles (default true). */
+    allowReadOnlyRoles: z.boolean().optional(),
+    /** Per-server network sandbox (reuses checkUrl / the SSRF floor). */
+    egress: mcpServerEgressSchema.optional(),
+    /** Auth for a remote server. */
+    auth: mcpServerAuthSchema.optional(),
   })
   .refine((s) => (s.command !== undefined) !== (s.url !== undefined), {
     message: 'an MCP server needs EXACTLY ONE of `command` (local stdio) or `url` (remote http)',
@@ -167,6 +208,13 @@ export type McpServerConfig = z.infer<typeof mcpServerConfigSchema>;
 
 export const mcpSectionSchema = z.object({
   servers: z.record(mcpServerConfigSchema).optional(),
+  /**
+   * Scan every MCP tool result for prompt-injection BEFORE it enters the model
+   * context (F6): `off` · `warn` (annotate + event, the consumer default) ·
+   * `strict` (replace a flagged result with a safe summary). Structural,
+   * language-agnostic.
+   */
+  injectionScan: z.enum(['off', 'warn', 'strict']).optional(),
 });
 
 /**

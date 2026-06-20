@@ -126,6 +126,7 @@ export const EN: Catalog = {
   'mcp.col-name': 'NAME',
   'mcp.col-transport': 'TRANSPORT',
   'mcp.col-target': 'TARGET',
+  'mcp.col-trust': 'TRUST',
   'mcp.probe-hint': "Run `excalibur mcp list --probe` to connect and list each server's tools.",
   // web search (F3)
   'search.usage':

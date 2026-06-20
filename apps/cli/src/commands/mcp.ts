@@ -27,10 +27,14 @@ export function registerMcpCommand(program: Command, deps: CliDeps): void {
 
       if (!options.probe) {
         const rows = names.map((name) => {
-          const cfg = servers[name] as McpServerSpec;
+          const cfg = servers[name] as McpServerSpec & {
+            trust?: string;
+            auth?: { type?: string };
+          };
           const transport = cfg.url !== undefined ? 'remote (http)' : 'local (stdio)';
           const target = cfg.url ?? `${cfg.command ?? ''} ${(cfg.args ?? []).join(' ')}`.trim();
-          return { name, transport, target };
+          const trust = `${cfg.trust ?? 'prompt'}${cfg.auth?.type && cfg.auth.type !== 'none' ? ` · ${cfg.auth.type}` : ''}`;
+          return { name, transport, target, trust };
         });
         if (options.json === true) {
           deps.ui.json(rows);
@@ -41,8 +45,13 @@ export function registerMcpCommand(program: Command, deps: CliDeps): void {
           return;
         }
         deps.ui.table(
-          [deps.t('mcp.col-name'), deps.t('mcp.col-transport'), deps.t('mcp.col-target')],
-          rows.map((r) => [r.name, r.transport, r.target]),
+          [
+            deps.t('mcp.col-name'),
+            deps.t('mcp.col-transport'),
+            deps.t('mcp.col-target'),
+            deps.t('mcp.col-trust'),
+          ],
+          rows.map((r) => [r.name, r.transport, r.target, r.trust]),
         );
         deps.ui.info(deps.t('mcp.probe-hint'));
         return;

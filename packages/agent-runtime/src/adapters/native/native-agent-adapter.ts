@@ -38,8 +38,10 @@ import {
   connectMcpServers,
   mcpResultToText,
   type ConnectedMcp,
+  type McpServerSpec,
   type McpToolEntry,
 } from '../../mcp/mcp-tools';
+import { scanMcpOutput } from '../../mcp/injection-scan';
 import type { AgentAdapter, AgentRunInput } from '../../types';
 
 /**
@@ -324,17 +326,18 @@ export class NativeAgentAdapter implements AgentAdapter {
     let finalContent = '';
 
     try {
-      // Connect MCP servers for acting roles only (read-only planner roles get
-      // native read tools only — an external MCP tool might mutate), then merge
-      // their namespaced specs into the model's tool list. A server that fails to
-      // start is skipped with a warning; MCP never breaks the run.
+      // Connect MCP servers for EVERY role (F6): read-only/research roles now get
+      // MCP too, but only a server's NON-MUTATING tools (the policy hides mutating
+      // ones), and the per-server egress sandbox + SSRF floor gate remote
+      // endpoints. A server that fails/declines is skipped with a warning; MCP
+      // never breaks the run.
       const mcpServers = input.config.mcp?.servers;
-      if (
-        !READ_ONLY_ROLES.has(input.role) &&
-        mcpServers !== undefined &&
-        Object.keys(mcpServers).length > 0
-      ) {
-        mcp = await connectMcpServers(mcpServers);
+      if (mcpServers !== undefined && Object.keys(mcpServers).length > 0) {
+        mcp = await connectMcpServers(mcpServers as Record<string, McpServerSpec>, {
+          isReadOnlyRole: READ_ONLY_ROLES.has(input.role),
+          engine: permissions,
+          env: process.env,
+        });
       }
       for (const warning of mcp.warnings) {
         yield emit('policy_decision', { kind: 'log', decision: 'allow', message: warning });
@@ -655,11 +658,31 @@ export class NativeAgentAdapter implements AgentAdapter {
       }),
     });
 
+    // Defense in depth (F6): a mutating MCP tool is HARD-DENIED for a read-only
+    // role even if it somehow reached here (the policy already hides them).
+    if (entry.access === 'mutate' && READ_ONLY_ROLES.has(input.role)) {
+      const result = `denied: mutating MCP tool "${entry.toolName}" is not available to a read-only role`;
+      events.push({
+        event: emit('policy_decision', {
+          kind: 'confirmation',
+          tool: call.name,
+          decision: 'deny',
+          message: result,
+        }),
+        toolMessage: { role: 'tool', toolCallId: call.id, content: result },
+      });
+      return events;
+    }
+
     const reason = `external MCP tool "${entry.toolName}" (server: ${entry.serverName})`;
+    // A `trusted` server skips the per-call confirmation (its output is STILL
+    // injection-scanned below). Otherwise external tools always require approval.
     const approved =
-      input.confirm !== undefined
-        ? await input.confirm({ tool: call.name, reason, detail: entry.toolName })
-        : false;
+      entry.trust === 'trusted'
+        ? true
+        : input.confirm !== undefined
+          ? await input.confirm({ tool: call.name, reason, detail: entry.toolName })
+          : false;
     if (!approved) {
       const result = `user declined: ${reason}`;
       events.push({
@@ -674,9 +697,24 @@ export class NativeAgentAdapter implements AgentAdapter {
       return events;
     }
 
+    const injectionMode = input.config.mcp?.injectionScan ?? 'warn';
     try {
       const output = await entry.client.callTool(entry.toolName, asJsonObject(call.arguments));
-      const text = redactSecrets(mcpResultToText(output));
+      // Scan the UNTRUSTED result for prompt-injection BEFORE it enters context,
+      // then redact secrets. A flagged result is fenced (warn) or withheld (strict).
+      const scan = scanMcpOutput(mcpResultToText(output), entry.serverName, injectionMode);
+      const text = redactSecrets(scan.text);
+      if (scan.flagged) {
+        events.push({
+          event: emit('policy_decision', {
+            kind: 'injection',
+            tool: call.name,
+            server: entry.serverName,
+            decision: injectionMode === 'strict' && scan.verdict === 'malicious' ? 'deny' : 'allow',
+            message: `MCP output flagged (${scan.signals.map((s) => s.category).join(', ')})`,
+          }),
+        });
+      }
       events.push({
         event: emit('tool_call', {
           tool: call.name,

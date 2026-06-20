@@ -295,6 +295,38 @@ await scenario('web — Jina keyless hosted reader, graceful fallback (F5; best-
   );
 });
 
+// A tiny inline MCP echo server (line-delimited JSON-RPC), declared read-only.
+const MCP_ECHO_SERVER = `let buf="";process.stdin.setEncoding("utf8");process.stdin.on("data",c=>{buf+=c;let i;while((i=buf.indexOf("\\n"))!==-1){const line=buf.slice(0,i).trim();buf=buf.slice(i+1);if(!line)continue;let m;try{m=JSON.parse(line)}catch{continue}if(m.method==="notifications/initialized")continue;let r;if(m.method==="initialize"){r={protocolVersion:m.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:"echo",version:"1.0.0"}}}else if(m.method==="tools/list"){r={tools:[{name:"echo",description:"Echoes its message back.",annotations:{readOnlyHint:true},inputSchema:{type:"object",properties:{message:{type:"string"}},required:["message"]}}]}}else if(m.method==="tools/call"){r={content:[{type:"text",text:"echo:"+m.params.arguments.message}],isError:false}}else{process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:m.id,error:{code:-32601,message:"nope"}})+"\\n");continue}process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:m.id,result:r})+"\\n")}});`;
+
+await scenario('mcp — a trusted read-only MCP tool is driven end-to-end by Kimi (F6)', () => {
+  const dir = freshRepo({
+    'mcp-echo.js': MCP_ECHO_SERVER,
+    '.excalibur/config.yaml':
+      'version: 1\ncommands: {}\nmcp:\n  servers:\n    demo:\n      command: node\n      args: ["mcp-echo.js"]\n      trust: trusted\n      readOnlyTools: ["echo"]\n',
+  });
+  exc(
+    dir,
+    [
+      'run',
+      'Call the demo echo MCP tool (mcp__demo__echo) with the message EXCALIBUR_MCP_OK and report exactly what it returned.',
+      '--yes',
+    ],
+    150000,
+  );
+  const events = runEvents(dir);
+  const used = events.some(
+    (e) => e.type === 'tool_call' && String(e.payload.tool ?? '').startsWith('mcp__demo__'),
+  );
+  assert(used, 'Kimi should have called the MCP echo tool (mcp__demo__echo)');
+  const ran = events.some(
+    (e) =>
+      e.type === 'tool_call' &&
+      String(e.payload.tool ?? '').startsWith('mcp__demo__') &&
+      e.payload.ok === true,
+  );
+  assert(ran, 'the MCP echo tool call should have executed (ok)');
+});
+
 await scenario('patch + apply — generates a real diff and applies it', () => {
   const dir = freshRepo();
   const { out } = exc(dir, ['patch', 'Add a multiply(a, b) function to src/math.ts', '--yes']);
