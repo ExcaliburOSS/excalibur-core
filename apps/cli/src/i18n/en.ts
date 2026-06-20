@@ -21,6 +21,9 @@ export const EN: Catalog = {
   'onboarding.noProvider':
     'No model configured — running on the built-in offline mock. Run `excalibur models setup` to connect a real model.',
 
+  // Companion web dashboard auto-started with the interactive shell.
+  'dashboard.up': '▸ Web dashboard at {url}',
+
   // `excalibur init` — the confidence-building final output (onboarding §12).
   'init.detected': 'Detected:',
   'init.detected.none': 'nothing specific — defaults apply',

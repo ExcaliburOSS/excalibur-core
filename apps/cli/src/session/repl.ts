@@ -56,6 +56,7 @@ import {
 import { runGoalLoop } from './goal-loop';
 import { runIntervalLoop } from './interval-loop';
 import { maybeAutoOnboard } from './onboarding';
+import { startSessionDashboard } from './dashboard';
 
 const execFileAsync = promisify(execFile);
 
@@ -260,6 +261,12 @@ export async function runInteractiveSession(
   }
 
   printStatusLine(deps, runtime);
+
+  // Auto-start the read-only web dashboard alongside the shell (onboarding UX):
+  // the local server comes up in the background so runs/events are watchable in
+  // a browser without discovering `excalibur serve`. Torn down in the finally
+  // below. No-op on a non-TTY, when disabled, or if every candidate port is busy.
+  const dashboard = await startSessionDashboard(deps, repoRoot, config);
 
   const history = store.loadPromptHistory().slice().reverse(); // readline wants newest-first
   const editor = deps.ui.openLineEditor({
@@ -521,6 +528,7 @@ export async function runInteractiveSession(
     offSigint();
     offEscape();
     editor.close();
+    dashboard?.stop();
   }
 
   closeSession(deps, runtime);

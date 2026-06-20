@@ -18,6 +18,9 @@ export const ES: Catalog = {
   'onboarding.noProvider':
     'Sin modelo configurado — funcionando con el mock offline integrado. Ejecuta `excalibur models setup` para conectar un modelo real.',
 
+  // Panel web acompañante, auto-arrancado con la shell interactiva.
+  'dashboard.up': '▸ Panel web en {url}',
+
   'init.detected': 'Detectado:',
   'init.detected.none': 'nada específico — se aplican los valores por defecto',
   'init.usingInstructions': 'Usando instrucciones existentes:',

@@ -220,6 +220,8 @@ const uiSectionSchema = z
     theme: z.enum(['auto', 'dark', 'light', 'daltonized', 'high-contrast']).optional(),
     /** Caption flavour for phase spinners: `plain` (default) | `arthurian`. */
     flavor: z.enum(['plain', 'arthurian']).optional(),
+    /** Auto-start the read-only web dashboard with the interactive shell (default true). */
+    dashboard: z.boolean().optional(),
   })
   .optional();
 
