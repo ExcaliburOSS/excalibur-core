@@ -173,7 +173,8 @@ describe('PermissionEngine.checkTool', () => {
     expectAsk(engine.checkTool('run_command'));
     expectAsk(engine.checkTool('create_branch'));
     expectAsk(engine.checkTool('run_tests'));
-    expectDenied(engine.checkTool('network'));
+    expectAsk(engine.checkTool('web_fetch'));
+    expectAsk(engine.checkTool('web_search'));
   });
 
   it('defaults unknown tools to "ask"', () => {
@@ -181,8 +182,8 @@ describe('PermissionEngine.checkTool', () => {
   });
 
   it('honors explicit overrides for any tool', () => {
-    const engine = new PermissionEngine({ tools: { network: true, git_diff: false } });
-    expectAllowed(engine.checkTool('network'));
+    const engine = new PermissionEngine({ tools: { web_fetch: true, git_diff: false } });
+    expectAllowed(engine.checkTool('web_fetch'));
     expectDenied(engine.checkTool('git_diff'));
   });
 });
@@ -194,5 +195,84 @@ describe('PermissionEngine defaults wiring', () => {
     expect(DEFAULT_BLOCKED_PATHS.length).toBeGreaterThan(0);
     expectDenied(engine.checkPath('.env', 'read'));
     expectDenied(engine.checkPath('nested/dir/secrets/value.json', 'read'));
+  });
+});
+
+describe('PermissionEngine.checkUrl (network policy)', () => {
+  it('hard-denies SSRF targets regardless of mode/approval', () => {
+    const engine = new PermissionEngine({ network: { mode: 'on', approval: 'auto' } });
+    for (const url of [
+      'http://169.254.169.254/latest/meta-data/',
+      'http://127.0.0.1:8080',
+      'http://localhost/admin',
+      'http://10.0.0.5',
+      'http://[::1]/',
+      'http://2130706433/', // decimal 127.0.0.1
+    ]) {
+      expectDenied(engine.checkUrl(url));
+    }
+  });
+
+  it('allows public hosts (ask by default, auto when approval=auto)', () => {
+    expectAsk(
+      new PermissionEngine({ network: { mode: 'on', approval: 'ask' } }).checkUrl(
+        'https://example.com',
+      ),
+    );
+    expectAllowed(
+      new PermissionEngine({ network: { mode: 'on', approval: 'auto' } }).checkUrl(
+        'https://example.com',
+      ),
+    );
+  });
+
+  it('denies everything when mode=off, and restricts to allowedDomains when allowlist', () => {
+    expectDenied(
+      new PermissionEngine({ network: { mode: 'off', approval: 'ask' } }).checkUrl(
+        'https://example.com',
+      ),
+    );
+    const allow = new PermissionEngine({
+      network: { mode: 'allowlist', approval: 'auto', allowedDomains: ['*.github.com'] },
+    });
+    expectAllowed(allow.checkUrl('https://api.github.com/repos'));
+    expectDenied(allow.checkUrl('https://evil.com'));
+  });
+
+  it('permits a private host only when explicitly in allowPrivateHosts (e.g. local SearXNG)', () => {
+    const engine = new PermissionEngine({
+      network: { mode: 'on', approval: 'auto', allowPrivateHosts: ['127.0.0.1'] },
+    });
+    expectAllowed(engine.checkUrl('http://127.0.0.1:8888/search'));
+    expectDenied(engine.checkUrl('http://10.0.0.1')); // still blocked
+  });
+
+  it('rejects non-http(s) schemes', () => {
+    expectDenied(
+      new PermissionEngine({ network: { mode: 'on', approval: 'auto' } }).checkUrl(
+        'file:///etc/passwd',
+      ),
+    );
+  });
+});
+
+describe('PermissionEngine.checkCommand (network lockdown)', () => {
+  it('denies network commands when network.mode=off', () => {
+    const engine = new PermissionEngine({ network: { mode: 'off', approval: 'ask' } });
+    for (const cmd of [
+      'curl https://x.com',
+      'wget http://x',
+      'git clone https://x',
+      'pnpm install',
+      'pip install requests',
+    ]) {
+      expectDenied(engine.checkCommand(cmd));
+    }
+  });
+
+  it('does NOT network-block when mode=on (falls through to allowlist/confirm)', () => {
+    const engine = new PermissionEngine({ network: { mode: 'on', approval: 'ask' } });
+    // not allowlisted → ask (not a network deny)
+    expectAsk(engine.checkCommand('curl https://example.com'));
   });
 });

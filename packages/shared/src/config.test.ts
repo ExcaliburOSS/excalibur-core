@@ -277,13 +277,18 @@ describe('DEFAULT_CONFIG', () => {
     });
   });
 
-  it('uses safe-by-default permissions (mutating tools ask, network off)', () => {
+  it('uses safe-by-default permissions (mutating tools ask, web tools ask, network on + ask)', () => {
     const tools = DEFAULT_CONFIG.permissions?.tools ?? {};
     expect(tools['read_file']).toBe(true);
     expect(tools['write_file']).toBe('ask');
     expect(tools['apply_patch']).toBe('ask');
     expect(tools['run_command']).toBe('ask');
-    expect(tools['network']).toBe(false);
+    expect(tools['web_fetch']).toBe('ask');
+    expect(tools['web_search']).toBe('ask');
+    // Network is a real policy now (not a fake tool): public web ON by default,
+    // gated by a confirmation + the always-on SSRF floor.
+    expect(tools['network']).toBeUndefined();
+    expect(DEFAULT_CONFIG.permissions?.network).toEqual({ mode: 'on', approval: 'ask' });
     expect(DEFAULT_CONFIG.permissions?.blockedPaths).toEqual([...DEFAULT_BLOCKED_PATHS]);
     expect(DEFAULT_CONFIG.permissions?.allowedCommands).toEqual([...DEFAULT_ALLOWED_COMMANDS]);
   });

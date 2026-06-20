@@ -1,11 +1,15 @@
+import { isIP } from 'node:net';
 import { posix as posixPath } from 'node:path';
 import { minimatch } from 'minimatch';
 import {
   DEFAULT_ALLOWED_COMMANDS,
   DEFAULT_BLOCKED_PATHS,
   DEFAULT_CONFIG,
+  DEFAULT_NETWORK_POLICY,
   type ExcaliburConfig,
+  type NetworkPolicy,
 } from '@excalibur/shared';
+import { inspectUrl, isBlockedHostname, isBlockedIp } from './ssrf-guard';
 
 /**
  * Permission engine (Build Contract §4.4, OSS spec §10.4 and §17,
@@ -83,10 +87,23 @@ export function hasShellMetacharacters(command: string): boolean {
   return SHELL_METACHAR_RE.test(command);
 }
 
+/**
+ * Best-effort denylist of network-capable shell binaries — used to deny egress
+ * via `run_command` when `network.mode === 'off'` (the shell layer can't enforce
+ * per-domain policy, so the governed path is `web_fetch`). Only blocks under
+ * lockdown; with network on these fall through to the normal allowlist/confirm.
+ */
+const NETWORK_COMMAND_RE =
+  /\b(curl|wget|nc|ncat|netcat|telnet|ssh|scp|sftp|ftp|rsync|http|https)\b|\bgit\s+(clone|fetch|pull|push)\b|\b(npm|pnpm|yarn|npx|pip|pip3|poetry|cargo|go|gem|bundle|brew|apt|apt-get)\s+(install|add|i|get|download|fetch|update|upgrade)\b/i;
+export function isNetworkCommand(command: string): boolean {
+  return NETWORK_COMMAND_RE.test(command);
+}
+
 export class PermissionEngine {
   private readonly toolFlags: Readonly<Record<string, ToolFlag>>;
   private readonly blockedPaths: ReadonlyArray<string>;
   private readonly allowedCommands: ReadonlyArray<string>;
+  private readonly network: NetworkPolicy;
 
   constructor(permissions?: PermissionsConfig) {
     // Per-tool overrides merge over the safe defaults; explicit blockedPaths /
@@ -95,6 +112,7 @@ export class PermissionEngine {
     this.toolFlags = { ...FALLBACK_TOOL_FLAGS, ...permissions?.tools };
     this.blockedPaths = permissions?.blockedPaths ?? DEFAULT_BLOCKED_PATHS;
     this.allowedCommands = permissions?.allowedCommands ?? DEFAULT_ALLOWED_COMMANDS;
+    this.network = permissions?.network ?? DEFAULT_NETWORK_POLICY;
   }
 
   private flagFor(tool: string): ToolFlag {
@@ -179,6 +197,14 @@ export class PermissionEngine {
       return deny('Running commands is disabled (run_command: false).');
     }
 
+    // Network lockdown: a command that needs egress is denied when network is off
+    // (use the governed `web_fetch`/`web_search` tools, which honour the policy).
+    if (this.network.mode === 'off' && isNetworkCommand(normalized)) {
+      return deny(
+        `Command "${normalized}" needs network egress, which is disabled (network.mode = off). Use web_fetch/web_search, or enable the network policy.`,
+      );
+    }
+
     const allowlisted = this.commandIsAllowlisted(normalized);
     if (!allowlisted) {
       return ask(
@@ -191,5 +217,44 @@ export class PermissionEngine {
       );
     }
     return allow(`Command "${normalized}" is in the allowedCommands allowlist.`);
+  }
+
+  /**
+   * Gates an outbound URL against the network policy. The SSRF floor (private /
+   * loopback / metadata / obfuscated hosts) is a HARD deny that no mode or
+   * confirmation overrides — only an explicit `allowPrivateHosts` entry does
+   * (e.g. a local SearXNG). This is the SYNC layer; the fetch executor must also
+   * run the async DNS re-check (`assertResolvesToPublic`) before connecting.
+   */
+  checkUrl(rawUrl: string): PermissionDecision {
+    const inspected = inspectUrl(rawUrl);
+    if ('error' in inspected) {
+      return deny(inspected.error);
+    }
+    // Node's url.hostname returns IPv6 WITH brackets ("[::1]") — strip them so
+    // the SSRF check sees a real IP literal.
+    const host = inspected.url.hostname
+      .toLowerCase()
+      .replace(/^\[|\]$/g, '')
+      .replace(/\.$/, '');
+    const isPrivate = isBlockedHostname(host) || (isIP(host) !== 0 && isBlockedIp(host));
+    const explicitlyAllowed = (this.network.allowPrivateHosts ?? []).some(
+      (h) => h.toLowerCase() === host || minimatch(host, h, { dot: true }),
+    );
+    if (isPrivate && !explicitlyAllowed) {
+      return deny(`Blocked network target "${host}" (private/loopback/metadata; SSRF protection).`);
+    }
+    if (this.network.mode === 'off') {
+      return deny('Network is disabled (permissions.network.mode = off).');
+    }
+    if (this.network.mode === 'allowlist') {
+      const ok = (this.network.allowedDomains ?? []).some((p) => minimatch(host, p, { dot: true }));
+      if (!ok) {
+        return deny(`Host "${host}" is not in permissions.network.allowedDomains.`);
+      }
+    }
+    return this.network.approval === 'auto'
+      ? allow(`Network access to "${host}" allowed (network.approval = auto).`)
+      : ask(`Network access to "${host}" requires confirmation.`);
   }
 }

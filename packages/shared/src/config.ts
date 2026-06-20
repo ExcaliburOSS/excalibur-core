@@ -53,10 +53,35 @@ const modelsSectionSchema = z.object({
   byPath: z.record(z.string()).optional(),
 });
 
+/**
+ * Network egress policy (real, enforced — closes the old decorative
+ * `tools.network` flag). Governs BOTH the web tools (`web_fetch`/`web_search`/…)
+ * and network-capable shell commands (curl/wget/…). SSRF protection (loopback /
+ * RFC1918 / link-local / cloud-metadata) is ALWAYS enforced regardless of mode —
+ * it never blocks the public web, only dangerous internal targets.
+ *
+ * - `on` (default): any PUBLIC host (still SSRF-guarded) — the agent can research
+ *   the web out of the box; `approval: ask` adds a soft gate (skipped under the
+ *   session auto-accept), and the SSRF floor is the hard safety boundary.
+ * - `allowlist`: only hosts matching `allowedDomains` (minimatch globs).
+ * - `off`: no agent-initiated egress at all (lockdown).
+ */
+export const networkPolicySchema = z.object({
+  mode: z.enum(['off', 'allowlist', 'on']).default('on'),
+  /** Host globs permitted when `mode='allowlist'`, e.g. "*.github.com". */
+  allowedDomains: z.array(z.string()).optional(),
+  /** Hosts explicitly allowed to be private/loopback (e.g. a local SearXNG). */
+  allowPrivateHosts: z.array(z.string()).optional(),
+  /** Approval posture when a URL is permitted by mode: ask each time, or auto. */
+  approval: z.enum(['ask', 'auto']).default('ask'),
+});
+export type NetworkPolicy = z.infer<typeof networkPolicySchema>;
+
 const permissionsSectionSchema = z.object({
   tools: z.record(z.union([z.boolean(), z.literal('ask')])).optional(),
   blockedPaths: z.array(z.string()).optional(),
   allowedCommands: z.array(z.string()).optional(),
+  network: networkPolicySchema.optional(),
 });
 
 const approvalsSectionSchema = z.object({
@@ -304,6 +329,14 @@ export const DEFAULT_BLOCKED_PATHS: ReadonlyArray<string> = [
   'build/**',
 ];
 
+/**
+ * Default network policy: the agent CAN reach the public web out of the box
+ * (`mode: 'on'`), gated by a soft confirmation (`approval: 'ask'`, skipped under
+ * session auto-accept) and the always-on SSRF floor (private/loopback/metadata
+ * hard-denied). Set `mode: 'off'` for a network lockdown.
+ */
+export const DEFAULT_NETWORK_POLICY: NetworkPolicy = { mode: 'on', approval: 'ask' };
+
 /** OSS spec §17 default allowed commands (common package-script invocations). */
 export const DEFAULT_ALLOWED_COMMANDS: ReadonlyArray<string> = [
   'npm test',
@@ -367,10 +400,12 @@ export const DEFAULT_CONFIG: ExcaliburConfig = {
       run_command: 'ask',
       create_branch: 'ask',
       run_tests: 'ask',
-      network: false,
+      web_fetch: 'ask',
+      web_search: 'ask',
     },
     blockedPaths: [...DEFAULT_BLOCKED_PATHS],
     allowedCommands: [...DEFAULT_ALLOWED_COMMANDS],
+    network: DEFAULT_NETWORK_POLICY,
   },
   instructions: { sources: [] },
   skills: { sources: [] },
