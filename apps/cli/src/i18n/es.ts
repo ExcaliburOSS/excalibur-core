@@ -730,6 +730,15 @@ export const ES: Catalog = {
     'Esto parece largo — ¿lo ejecuto en segundo plano (/bg) para que sigas trabajando?',
   'repl.route-swarm-offer':
     'Esto parece paralelizable — ¿lo reparto en un swarm de agentes reales (/swarm)?',
+  'repl.route-research-offer':
+    'Esto parece una pregunta de investigación — ¿hago investigación web profunda con fuentes citadas?',
+  // investigación profunda (F7)
+  'research.network-off':
+    'La red está desactivada (permissions.network.mode = off). Actívala para investigar en la web.',
+  'research.starting': 'Investigando: {question}',
+  'research.stage': '• {stage} {detail}',
+  'research.summary':
+    'Investigadas {sources} fuente(s) · {verified}/{claims} afirmaciones verificadas.',
   'repl.bg-usage':
     'Uso: /bg <tarea> — ejecuta la tarea en segundo plano (su propia ejecución registrada) mientras sigues trabajando.',
   'repl.bg-started': '▸ segundo plano: {title} — en curso (usa /threads para verlo)',

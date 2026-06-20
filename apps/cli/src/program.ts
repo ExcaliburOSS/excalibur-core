@@ -16,6 +16,7 @@ import { registerInstructionsCommand } from './commands/instructions';
 import { registerInsightsCommand } from './commands/insights';
 import { registerBrowserCommand } from './commands/browser';
 import { registerMcpCommand } from './commands/mcp';
+import { registerResearchCommand } from './commands/research';
 import { registerSearchCommand } from './commands/search';
 import { registerWebCommand } from './commands/web';
 import { registerServeCommand } from './commands/serve';
@@ -95,6 +96,7 @@ export function buildProgram(overrides: Partial<CliDeps> = {}): Command {
   registerSearchCommand(program, deps);
   registerBrowserCommand(program, deps);
   registerWebCommand(program, deps);
+  registerResearchCommand(program, deps);
   registerReplayCommand(program, deps);
   registerChangesCommand(program, deps);
   registerThemeCommand(program, deps);

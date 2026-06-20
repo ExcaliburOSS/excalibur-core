@@ -185,6 +185,11 @@ export * from './compaction';
 // Knowledge Compounding (plan §"Knowledge Compounding") — project memory (OSS slice)
 export * from './memory';
 
+// Native deep-research pipeline (F7) — search → fetch → verify → cited synthesis.
+export * from './research/citations';
+export * from './research/claim-verifier';
+export * from './research/research-pipeline';
+
 // Local artifact stores (ONB-8)
 export {
   InteractionStore,

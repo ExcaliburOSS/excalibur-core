@@ -22,6 +22,7 @@ const PINNED_NAMES: NativeToolName[] = [
   'web_search',
   'web_extract',
   'web_crawl',
+  'research',
 ];
 
 describe('NATIVE_TOOLS', () => {

@@ -39,6 +39,7 @@ import {
 } from '../lib/context';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { runSwarmFlow } from '../lib/swarm';
+import { runResearchFlow } from '../lib/research';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
 import { buildSessionLog, formatSessionLog } from '../lib/session-log';
 import { buildStartupContext } from '../lib/startup-context';
@@ -570,6 +571,11 @@ export async function runInteractiveSession(
         !asGoal &&
         intent === 'swarm' &&
         (await deps.ui.confirm(deps.t('repl.route-swarm-offer'), { defaultYes: true }));
+      const asResearch =
+        !asGoal &&
+        !asSwarm &&
+        intent === 'research' &&
+        (await deps.ui.confirm(deps.t('repl.route-research-offer'), { defaultYes: true }));
 
       const ctrl = beginTurn();
       try {
@@ -577,11 +583,15 @@ export async function runInteractiveSession(
           await executeGoalLoop(deps, runtime, text, seed, ctrl.signal);
         } else if (asSwarm) {
           await handleSwarmCommand(deps, runtime, text, ctrl.signal);
+        } else if (asResearch) {
+          // F7: the native multi-agent research pipeline (search → fetch →
+          // verify → cited synthesis).
+          await runResearchFlow(deps, text, {});
         } else if (intent === 'plan' && !runtime.approvals.auto) {
           await dispatchPlan(deps, runtime, text, ctrl.signal, seed);
         } else {
-          // chat · research (until the native research pipeline lands, F7) ·
-          // plan-under-auto → a direct model-first turn (the model has the tools).
+          // chat · research-declined · plan-under-auto → a direct model-first
+          // turn (the model still has web_search/web_fetch/research tools).
           await dispatchAgentTurn(deps, runtime, text, ctrl.signal, seed);
         }
       } catch (error) {

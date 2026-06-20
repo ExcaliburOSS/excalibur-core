@@ -5,7 +5,7 @@ import type { AgentAdapter, AgentRunInput } from './index';
 describe('@excalibur/agent-runtime public API (Build Contract §4.4)', () => {
   it('exports the pinned values', () => {
     expect(Array.isArray(agentRuntime.NATIVE_TOOLS)).toBe(true);
-    expect(agentRuntime.NATIVE_TOOLS).toHaveLength(14);
+    expect(agentRuntime.NATIVE_TOOLS).toHaveLength(15);
     expect(typeof agentRuntime.PermissionEngine).toBe('function');
     expect(typeof agentRuntime.NativeAgentAdapter).toBe('function');
     expect(typeof agentRuntime.CustomCommandAdapter).toBe('function');

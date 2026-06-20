@@ -13,8 +13,9 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { minimatch } from 'minimatch';
+import { createHash } from 'node:crypto';
 import { redactSecrets } from '@excalibur/model-gateway';
-import { DEFAULT_SEARCH_PROVIDER, type ExcaliburConfig } from '@excalibur/shared';
+import { DEFAULT_RESEARCH, DEFAULT_SEARCH_PROVIDER, type ExcaliburConfig } from '@excalibur/shared';
 import { getNativeTool, type NativeToolName } from './native-tools';
 import { hasShellMetacharacters, type PermissionEngine } from '../permissions/permission-engine';
 import { runInDockerSandbox, type SandboxLimits } from '../sandbox/docker-sandbox';
@@ -1100,6 +1101,118 @@ async function execWebSearch(
   }
 }
 
+interface EvidenceSource {
+  n: number;
+  url: string;
+  title: string;
+  hash: string;
+  fetchedAt: string;
+  excerpt: string;
+}
+
+/** Formats a research evidence bundle: numbered, hashed, timestamped sources + guidance. */
+function formatEvidenceBundle(
+  question: string,
+  hitCount: number,
+  sources: EvidenceSource[],
+): string {
+  if (sources.length === 0) {
+    return `Researched "${question}" but no sources could be fetched (searched ${hitCount} hits).`;
+  }
+  const blocks = sources.map(
+    (s) =>
+      `[${s.n}] ${s.title}\n    ${s.url}\n    fetched ${s.fetchedAt} · sha256 ${s.hash.slice(0, 12)}\n    ${s.excerpt}`,
+  );
+  return [
+    `Evidence bundle for "${question}" (${sources.length} sources fetched of ${hitCount} found).`,
+    'Synthesize a concise answer citing sources inline as [n]. Do NOT state anything the sources do not support; flag uncertainty.',
+    '',
+    blocks.join('\n\n'),
+  ].join('\n');
+}
+
+/**
+ * `research` (F7) — the model-first research tool: fan-out search → fetch the top
+ * sources (hashed + timestamped) → return a SOURCED EVIDENCE BUNDLE the model
+ * synthesizes into a cited answer. Gateway-free (the in-loop model does the
+ * synthesis); network-gated; every source URL is SSRF/allowlist-checked.
+ */
+async function execResearch(
+  args: Record<string, unknown>,
+  ctx: ToolExecutionContext,
+): Promise<ToolResult> {
+  const question = String(args['question'] ?? '');
+  const net = ctx.permissions.checkNetwork();
+  if (!net.allowed) {
+    return fail(`permission denied: ${net.reason}`);
+  }
+  const researchCfg = ctx.config.research ?? DEFAULT_RESEARCH;
+  const maxSources =
+    typeof args['maxSources'] === 'number' ? args['maxSources'] : researchCfg.maxSources;
+
+  // Resolve the free search backend exactly like web_search.
+  const searchCfg = ctx.config.search ?? DEFAULT_SEARCH_PROVIDER;
+  const type = searchCfg.type ?? 'auto';
+  const env = ctx.searchEnv ?? process.env;
+  const apiKey =
+    searchCfg.apiKeyEnv !== undefined ? (env[searchCfg.apiKeyEnv] ?? undefined) : undefined;
+  let searxngUrl: string | null = null;
+  if (type === 'auto' || type === 'searxng') {
+    if (ctx.resolveSearxng !== undefined) {
+      try {
+        searxngUrl = await ctx.resolveSearxng();
+      } catch {
+        searxngUrl = null;
+      }
+    }
+    if (searxngUrl === null && searchCfg.baseUrl !== undefined) {
+      searxngUrl = searchCfg.baseUrl;
+    }
+  }
+
+  let hits;
+  try {
+    const res = await webSearch(question, {
+      config: searchCfg,
+      maxResults: Math.min(20, Math.max(maxSources * 2, maxSources)),
+      ...(ctx.httpFetch !== undefined ? { fetchImpl: ctx.httpFetch } : {}),
+      ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
+      ...(apiKey !== undefined ? { apiKey } : {}),
+      searxngUrl,
+      allowHost: (url) => ctx.permissions.isUrlAllowed(url),
+    });
+    hits = res.results;
+  } catch (error) {
+    return fail(
+      `research failed (search): ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  const sources: EvidenceSource[] = [];
+  for (const hit of hits) {
+    if (sources.length >= maxSources) break;
+    if (!ctx.permissions.checkUrl(hit.url).allowed) continue;
+    try {
+      const page = await webFetch(hit.url, {
+        ...(ctx.httpFetch !== undefined ? { fetchImpl: ctx.httpFetch } : {}),
+        ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
+        maxChars: 4000,
+      });
+      sources.push({
+        n: sources.length + 1,
+        url: hit.url,
+        title: page.title,
+        hash: createHash('sha256').update(page.markdown).digest('hex'),
+        fetchedAt: new Date().toISOString(),
+        excerpt: page.markdown.slice(0, 1500),
+      });
+    } catch {
+      // Skip an unreachable source; keep gathering.
+    }
+  }
+  return ok(formatEvidenceBundle(question, hits.length, sources));
+}
+
 export async function executeNativeTool(
   name: NativeToolName,
   rawArgs: unknown,
@@ -1141,6 +1254,8 @@ export async function executeNativeTool(
         return await execWebExtract(args, ctx);
       case 'web_crawl':
         return await execWebCrawl(args, ctx);
+      case 'research':
+        return await execResearch(args, ctx);
       default: {
         // Exhaustiveness guard: every NativeToolName is handled above.
         const exhaustive: never = name;

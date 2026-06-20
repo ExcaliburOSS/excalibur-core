@@ -327,6 +327,34 @@ await scenario('mcp — a trusted read-only MCP tool is driven end-to-end by Kim
   assert(ran, 'the MCP echo tool call should have executed (ok)');
 });
 
+await scenario('research command — cited, verified multi-source answer (F7)', () => {
+  const dir = freshRepo({ '.excalibur/config.yaml': NET_AUTO });
+  const { out } = exc(
+    dir,
+    ['research', 'What is the Model Context Protocol and who introduced it?', '--max-sources', '4'],
+    240000,
+  );
+  assert(/## Sources/i.test(out), 'the report must include a Sources section');
+  assert(/\[1\]/.test(out), 'the answer must carry inline [n] citations');
+  assert(/sha256/i.test(out), 'sources must be hashed (provenance)');
+  assert(/protocol/i.test(out), 'the answer should actually address MCP');
+});
+
+await scenario('research tool — model-first research used by Kimi (F7)', () => {
+  const dir = freshRepo({ '.excalibur/config.yaml': NET_AUTO });
+  exc(
+    dir,
+    [
+      'run',
+      'Use the research tool to research "what is the Model Context Protocol" and give a one-paragraph cited summary.',
+      '--yes',
+    ],
+    200000,
+  );
+  const events = runEvents(dir);
+  assert(toolsUsed(events).includes('research'), 'Kimi should have used the research tool');
+});
+
 await scenario('patch + apply — generates a real diff and applies it', () => {
   const dir = freshRepo();
   const { out } = exc(dir, ['patch', 'Add a multiply(a, b) function to src/math.ts', '--yes']);

@@ -23,6 +23,7 @@ export const NATIVE_TOOL_NAMES = [
   'web_search',
   'web_extract',
   'web_crawl',
+  'research',
 ] as const;
 export type NativeToolName = (typeof NATIVE_TOOL_NAMES)[number];
 
@@ -257,6 +258,23 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
           .boolean()
           .optional()
           .describe('Seed the frontier from /sitemap.xml (default false)'),
+      })
+      .strict(),
+  },
+  {
+    name: 'research',
+    description:
+      'Research a question across the web: searches, fetches the top sources, and returns a SOURCED EVIDENCE BUNDLE (each source numbered, hashed and timestamped) for you to synthesize a cited answer. Use it for questions needing current or external information. Free by default; SSRF-protected and governed by the network policy. Cite sources as [n] and flag anything the sources do not support.',
+    parameters: z
+      .object({
+        question: z.string().min(1, 'question must not be empty').describe('The research question'),
+        maxSources: z
+          .number()
+          .int()
+          .positive()
+          .max(12)
+          .optional()
+          .describe('Maximum sources to fetch (default 5)'),
       })
       .strict(),
   },

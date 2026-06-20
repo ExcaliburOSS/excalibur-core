@@ -707,6 +707,14 @@ export const EN: Catalog = {
     'This looks long-running — run it in the background (/bg) so you can keep working?',
   'repl.route-swarm-offer':
     'This looks parallelizable — fan it out to a swarm of real agents (/swarm)?',
+  'repl.route-research-offer':
+    'This looks like a research question — run deep web research with cited sources?',
+  // deep research (F7)
+  'research.network-off':
+    'Network is disabled (permissions.network.mode = off). Enable it to research the web.',
+  'research.starting': 'Researching: {question}',
+  'research.stage': '• {stage} {detail}',
+  'research.summary': 'Researched {sources} source(s) · {verified}/{claims} claims verified.',
   'repl.bg-usage':
     'Usage: /bg <task> — runs the task in the background (its own recorded run) while you keep working.',
   'repl.bg-started': '▸ background: {title} — running (use /threads to check on it)',

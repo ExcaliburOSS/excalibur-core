@@ -386,6 +386,31 @@ export const scrapeProviderSchema = z.object({
 });
 export type ScrapeProviderConfig = z.infer<typeof scrapeProviderSchema>;
 
+/**
+ * `research:` — the native deep-research pipeline (F7). FREE + UNLIMITED (uses the
+ * same `search` backend: SearXNG → DuckDuckGo). All bounds are cheap, governable
+ * caps; the pipeline is always SSRF/network-policy governed.
+ */
+export const researchSectionSchema = z.object({
+  /** Max distinct sources fetched per research pass. */
+  maxSources: z.number().int().positive().max(12).default(5),
+  /** Sub-queries the planner may fan out. */
+  maxSubQueries: z.number().int().positive().max(6).default(3),
+  /** Blind adversarial verifier sub-agents voting per claim (odd → no ties). */
+  votes: z.number().int().min(1).max(5).default(3),
+  /** When true, an unverified/uncited research claim can feed the Claim Ledger. */
+  ledger: z.boolean().default(true),
+});
+export type ResearchConfig = z.infer<typeof researchSectionSchema>;
+
+/** Default research config: free, bounded, 3-vote verification. */
+export const DEFAULT_RESEARCH: ResearchConfig = {
+  maxSources: 5,
+  maxSubQueries: 3,
+  votes: 3,
+  ledger: true,
+};
+
 const instructionSourceRefSchema = z.object({
   path: z.string().min(1),
   format: instructionSourceFormatSchema.optional(),
@@ -467,6 +492,7 @@ const baseExcaliburConfigSchema = z.object({
   browser: browserConfigSchema.optional(),
   crawl: crawlConfigSchema.optional(),
   scrape: scrapeProviderSchema.optional(),
+  research: researchSectionSchema.optional(),
   instructions: z.object({ sources: z.array(instructionSourceRefSchema).optional() }).optional(),
   skills: z.object({ sources: z.array(skillSourceRefSchema).optional() }).optional(),
 });
@@ -558,6 +584,7 @@ export const DEFAULT_CONFIG: ExcaliburConfig = {
   compaction: DEFAULT_COMPACTION_CONFIG,
   lsp: DEFAULT_LSP_CONFIG,
   search: DEFAULT_SEARCH_PROVIDER,
+  research: DEFAULT_RESEARCH,
   permissions: {
     tools: {
       read_file: true,

@@ -84,6 +84,8 @@ const READ_ONLY_TOOLS: ReadonlyArray<NativeToolName> = [
   // Structured extraction + bounded crawl are read-only research (no mutation).
   'web_extract',
   'web_crawl',
+  // Deep research (search + fetch + cite) is pure read-only discovery.
+  'research',
 ];
 
 /** Roles that get the read-only tool subset (they observe, they do not change the tree). */
@@ -135,6 +137,7 @@ function eventTypeForTool(name: NativeToolName): ExcaliburEventType {
     case 'web_search':
     case 'web_extract':
     case 'web_crawl':
+    case 'research':
       return 'tool_call';
   }
 }
@@ -787,9 +790,9 @@ export class NativeAgentAdapter implements AgentAdapter {
       // Single concrete URL → SSRF/allowlist gate like web_fetch.
       return pass(permissions.checkUrl(String(args['url'] ?? '')));
     }
-    if (name === 'web_crawl') {
-      // Many URLs resolved while crawling; gate on the policy here, each page is
-      // SSRF/allowlist-checked inside the executor before it is fetched.
+    if (name === 'web_crawl' || name === 'research') {
+      // Many URLs resolved while crawling/researching; gate on the policy here,
+      // each page is SSRF/allowlist-checked inside the executor before it is fetched.
       return pass(permissions.checkNetwork());
     }
     if (name === 'run_tests') {
@@ -960,6 +963,12 @@ function toolEventPayload(
       base['denied'] = true;
     }
   }
+  if (name === 'research') {
+    base['query'] = String(args['question'] ?? '');
+    if (!ok && /^permission denied/i.test(result.trim())) {
+      base['denied'] = true;
+    }
+  }
   if (name === 'apply_patch') {
     base['simulated'] = false;
   }
@@ -1014,6 +1023,9 @@ function describeCall(name: NativeToolName, args: Record<string, unknown>): stri
   }
   if (name === 'web_extract' || name === 'web_crawl') {
     return typeof args['url'] === 'string' ? `url: ${args['url']}` : undefined;
+  }
+  if (name === 'research') {
+    return typeof args['question'] === 'string' ? `question: ${args['question']}` : undefined;
   }
   return undefined;
 }
