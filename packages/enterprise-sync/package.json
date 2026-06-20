@@ -1,6 +1,6 @@
 {
   "name": "@excalibur/enterprise-sync",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Optional sync client connecting local Excalibur Core usage to Excalibur Enterprise",
   "license": "Apache-2.0",

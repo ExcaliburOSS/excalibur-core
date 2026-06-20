@@ -1,7 +1,7 @@
 {
   "name": "excalibur-core",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Excalibur Core — open-source, local-first developer toolkit for AI-assisted and agentic software development",
   "license": "Apache-2.0",
   "packageManager": "pnpm@9.12.0",

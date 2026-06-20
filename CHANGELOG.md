@@ -4,6 +4,40 @@ All notable changes to Excalibur Core are documented here. The format is based o
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-20
+
+### Added
+
+- **Background fleet** — `/bg <task>` runs a turn in its own recorded run while
+  the prompt stays free (quiet, auto-approved; blocked paths still denied), with
+  a one-shot banner on completion; `/threads` lists the fleet and the status line
+  shows the active count.
+- **Conversational intent router** — a natural-language line is routed to
+  plan / swarm (offered) / background (offered) / a direct turn, with no arcane
+  commands. Engages only with a real model on an interactive TTY at an
+  act-capable level; goes direct under auto-accept and on piped/CI/mock paths.
+  Opt out with `EXCALIBUR_ROUTER=off`.
+- **Knowledge-compounding read side** — captured project memory (decisions,
+  rejections, risks, conventions) is now re-injected into conversational turns,
+  relevant to the working set and the paths named in the task.
+- **CC-style run rule** above the prompt naming the running background run.
+- Generated `.excalibur/instructions/*.md` are localised to the active locale
+  (en/es); `AGENTS.md` stays English as a cross-tool standard.
+
+### Changed
+
+- **Redesigned welcome** — full-width accent frame, mixed-case `Excalibur` title
+  with a blue→cyan gradient + dim version cutting the top border, the brand
+  epigraph, and a crisp quadrant-pixel sword.
+- **Autonomy now defaults to L4** (full agentic) — onboarding writes
+  `autonomy.default: 4` and the runtime falls back to it.
+
+### Fixed
+
+- Under auto-accept the router goes direct, preserving the zero-prompts contract.
+- A Prettier pre-commit hook auto-formats staged files so `format:check` can't
+  fail on a missed `pnpm format` (developer experience).
+
 ## [1.0.0] - 2026-06-19
 
 The first public release. Highlights of what Excalibur Core does today:
