@@ -3,8 +3,8 @@
  * served at `/` by `excalibur serve`. Vanilla HTML/CSS/JS (no build step): it
  * reads the token from its own URL and renders the SAME data the TUI rail uses
  * (the server returns `reduceRail(events)`), so the web view is byte-faithful to
- * the terminal. The richer `@excalibur/web-ui` (Monaco diffs, agent DAG) layers
- * on later; this is the always-available local seed.
+ * the terminal. A richer web UI (Monaco diffs, agent DAG) could layer on later;
+ * this self-contained page is the always-available local dashboard today.
  */
 
 const STYLE = `

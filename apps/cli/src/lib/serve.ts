@@ -9,8 +9,8 @@ import { dashboardHtml } from './dashboard';
 /**
  * `excalibur serve` (plan P1.12 / the headless-server enabler) — a local,
  * single-user HTTP + SSE surface over the `ExcaliburEvent` stream. It is the
- * server the OSS web dashboard (`@excalibur/web-ui`) and any remote viewer fold
- * the SAME `reduceRail` over, so the web view is byte-identical to the TUI rail.
+ * server the built-in OSS web dashboard (see `./dashboard`) and any remote viewer
+ * fold the SAME `reduceRail` over, so the web view is byte-identical to the TUI rail.
  *
  * SECURITY: binds to localhost by default and requires a per-process token
  * (printed once). Read-only: it exposes runs/events/insights; it never executes.
