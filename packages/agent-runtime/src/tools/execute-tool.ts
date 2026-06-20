@@ -14,11 +14,12 @@ import {
 import path from 'node:path';
 import { minimatch } from 'minimatch';
 import { redactSecrets } from '@excalibur/model-gateway';
-import type { ExcaliburConfig } from '@excalibur/shared';
+import { DEFAULT_SEARCH_PROVIDER, type ExcaliburConfig } from '@excalibur/shared';
 import { getNativeTool, type NativeToolName } from './native-tools';
 import { hasShellMetacharacters, type PermissionEngine } from '../permissions/permission-engine';
 import { runInDockerSandbox, type SandboxLimits } from '../sandbox/docker-sandbox';
 import { webFetch, type FetchImpl } from './web/fetch';
+import { webSearch, type WebSearchResponse } from './web/search-providers';
 
 /**
  * Real native-tool executors (OSS-7, M2) — the security-critical core of the
@@ -59,8 +60,15 @@ export interface ToolExecutionContext {
    * work the agent already started.
    */
   signal?: AbortSignal;
-  /** Injectable fetch for `web_fetch` (tests pass a fake; defaults to global fetch). */
+  /** Injectable fetch for `web_fetch`/`web_search` (tests pass a fake; defaults to global fetch). */
   httpFetch?: FetchImpl;
+  /**
+   * Resolves a reachable local SearXNG base URL for `web_search` (production
+   * wires the Docker manager; tests omit it so the offline DuckDuckGo path runs).
+   */
+  resolveSearxng?: () => Promise<string | null>;
+  /** Environment used to resolve a BYOK search API key (defaults to process.env). */
+  searchEnv?: NodeJS.ProcessEnv;
 }
 
 export interface ToolResult {
@@ -793,6 +801,73 @@ async function execWebFetch(
   }
 }
 
+/** Formats a search response as compact, model-readable lines. */
+function formatSearchResults(res: WebSearchResponse): string {
+  if (res.results.length === 0) {
+    return `No web results for "${res.query}" (via ${res.provider}).`;
+  }
+  const lines = res.results.map((r, index) => {
+    const snippet = r.snippet.length > 300 ? `${r.snippet.slice(0, 300)}…` : r.snippet;
+    const body = snippet.length > 0 ? `\n   ${snippet}` : '';
+    return `${index + 1}. ${r.title}\n   ${r.url}${body}`;
+  });
+  return `Web search results for "${res.query}" (via ${res.provider}):\n\n${lines.join('\n\n')}`;
+}
+
+/**
+ * `web_search` — free + unlimited by default (local SearXNG → DuckDuckGo),
+ * governed by the network policy. The hard lockdown (`network.mode = off`) is
+ * denied here; `ask`/`auto` are resolved by the adapter's confirmation gate. The
+ * per-provider host is SSRF/allowlist-checked via `isUrlAllowed`; the local
+ * SearXNG (deliberate loopback infra) is reached directly through its resolver.
+ */
+async function execWebSearch(
+  args: Record<string, unknown>,
+  ctx: ToolExecutionContext,
+): Promise<ToolResult> {
+  const query = String(args['query'] ?? '');
+  const maxResults = typeof args['maxResults'] === 'number' ? args['maxResults'] : undefined;
+  const net = ctx.permissions.checkNetwork();
+  if (!net.allowed) {
+    return fail(`permission denied: ${net.reason}`);
+  }
+  const searchCfg = ctx.config.search ?? DEFAULT_SEARCH_PROVIDER;
+  const type = searchCfg.type ?? 'auto';
+  const env = ctx.searchEnv ?? process.env;
+  const apiKey =
+    searchCfg.apiKeyEnv !== undefined ? (env[searchCfg.apiKeyEnv] ?? undefined) : undefined;
+
+  // Resolve a local SearXNG only for the free auto/searxng paths.
+  let searxngUrl: string | null = null;
+  if (type === 'auto' || type === 'searxng') {
+    if (ctx.resolveSearxng !== undefined) {
+      try {
+        searxngUrl = await ctx.resolveSearxng();
+      } catch {
+        searxngUrl = null;
+      }
+    }
+    if (searxngUrl === null && searchCfg.baseUrl !== undefined) {
+      searxngUrl = searchCfg.baseUrl;
+    }
+  }
+
+  try {
+    const res = await webSearch(query, {
+      config: searchCfg,
+      ...(ctx.httpFetch !== undefined ? { fetchImpl: ctx.httpFetch } : {}),
+      ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
+      ...(maxResults !== undefined ? { maxResults } : {}),
+      ...(apiKey !== undefined ? { apiKey } : {}),
+      searxngUrl,
+      allowHost: (url) => ctx.permissions.isUrlAllowed(url),
+    });
+    return ok(formatSearchResults(res));
+  } catch (error) {
+    return fail(`web_search failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 export async function executeNativeTool(
   name: NativeToolName,
   rawArgs: unknown,
@@ -828,6 +903,8 @@ export async function executeNativeTool(
         return execUpdateTasks(args);
       case 'web_fetch':
         return await execWebFetch(args, ctx);
+      case 'web_search':
+        return await execWebSearch(args, ctx);
       default: {
         // Exhaustiveness guard: every NativeToolName is handled above.
         const exhaustive: never = name;

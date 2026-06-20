@@ -183,6 +183,55 @@ await scenario('explain — explains a source file', () => {
   assert(out.replace(/\s+/g, ' ').length > 40, 'explanation should be non-trivial');
 });
 
+// Network config (mode on + auto-approve) so an unattended run can reach the web
+// without a prompt. Quoted so YAML 1.1-style coercion never turns `on` into true.
+const NET_AUTO =
+  'version: 1\ncommands: {}\npermissions:\n  network:\n    mode: "on"\n    approval: "auto"\n';
+
+await scenario('web_fetch — reads a real page into clean text (free, in-bundle)', () => {
+  const dir = freshRepo({ '.excalibur/config.yaml': NET_AUTO });
+  exc(
+    dir,
+    [
+      'run',
+      'Fetch the page at https://example.com/ and tell me its title. Use the web_fetch tool.',
+      '--yes',
+    ],
+    150000,
+  );
+  const events = runEvents(dir);
+  assert(toolsUsed(events).includes('web_fetch'), 'should have used web_fetch');
+  // The tool RESULT must carry the real extracted title (the workflow's final
+  // PR-summary stdout may paraphrase it, so assert on the authoritative event).
+  const fetched = events.some(
+    (e) =>
+      e.type === 'tool_call' &&
+      (e.payload.tool ?? e.payload.name) === 'web_fetch' &&
+      /example domain/i.test(String(e.payload.result ?? '')),
+  );
+  assert(fetched, 'web_fetch result must contain the real page title (Example Domain)');
+});
+
+await scenario('web_search — finds real sources via DuckDuckGo (free, no key)', () => {
+  const dir = freshRepo({ '.excalibur/config.yaml': NET_AUTO });
+  exc(
+    dir,
+    [
+      'run',
+      'Use the web_search tool to search the web for "Model Context Protocol specification" and list the top result URLs.',
+      '--yes',
+    ],
+    150000,
+  );
+  const events = runEvents(dir);
+  assert(toolsUsed(events).includes('web_search'), 'should have used web_search');
+  // The free DuckDuckGo path returns real result links the model can cite.
+  const searchEvents = events.filter(
+    (e) => e.type === 'tool_call' && (e.payload.tool ?? e.payload.name) === 'web_search',
+  );
+  assert(searchEvents.length > 0, 'a web_search tool_call event should be recorded');
+});
+
 await scenario('patch + apply — generates a real diff and applies it', () => {
   const dir = freshRepo();
   const { out } = exc(dir, ['patch', 'Add a multiply(a, b) function to src/math.ts', '--yes']);

@@ -3,9 +3,9 @@ import { z } from 'zod';
 /**
  * Native agent tool catalog (Build Contract §4.4, OSS spec §15).
  *
- * The native adapter exposes exactly these nine tools. Each tool declares a
+ * The native adapter exposes exactly this set of tools. Each tool declares a
  * zod schema for its parameters so tool calls can be validated before the
- * permission engine and (from M2 on) the real tool implementations run.
+ * permission engine and the real tool implementations run.
  */
 
 export const NATIVE_TOOL_NAMES = [
@@ -20,6 +20,7 @@ export const NATIVE_TOOL_NAMES = [
   'run_tests',
   'update_tasks',
   'web_fetch',
+  'web_search',
 ] as const;
 export type NativeToolName = (typeof NATIVE_TOOL_NAMES)[number];
 
@@ -190,6 +191,23 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
       })
       .strict(),
   },
+  {
+    name: 'web_search',
+    description:
+      'Search the web and return a ranked list of results (title, URL, snippet). Use it to DISCOVER sources for a question, then web_fetch a result URL to read it in full. Free and unlimited by default (a local SearXNG instance when available, otherwise DuckDuckGo) — no API key required. Subject to the network policy.',
+    parameters: z
+      .object({
+        query: z.string().min(1, 'query must not be empty').describe('Search query'),
+        maxResults: z
+          .number()
+          .int()
+          .positive()
+          .max(20)
+          .optional()
+          .describe('Maximum number of results to return (default 8)'),
+      })
+      .strict(),
+  },
 ];
 
 /** Looks up a native tool definition by name. */
@@ -197,7 +215,7 @@ export function getNativeTool(name: string): NativeToolDefinition | undefined {
   return NATIVE_TOOLS.find((tool) => tool.name === name);
 }
 
-/** Type guard for the nine pinned native tool names. */
+/** Type guard for the pinned native tool names. */
 export function isNativeToolName(value: unknown): value is NativeToolName {
   return typeof value === 'string' && (NATIVE_TOOL_NAMES as readonly string[]).includes(value);
 }

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_CONFIG,
+  DEFAULT_LSP_CONFIG,
   excaliburEventSchema,
   type ExcaliburConfig,
   type ExcaliburEvent,
@@ -235,6 +236,10 @@ describe('NativeAgentAdapter — confirmation gate', () => {
   function askConfig(): ExcaliburConfig {
     return {
       ...DEFAULT_CONFIG,
+      // These tests assert the confirmation gate, not LSP. Disable LSP so a
+      // `.ts` write never spawns a real language server (a slow, env-dependent
+      // side effect that flakes under parallel load).
+      lsp: { ...DEFAULT_LSP_CONFIG, enabled: false },
       permissions: {
         ...DEFAULT_CONFIG.permissions,
         tools: { ...DEFAULT_CONFIG.permissions?.tools, write_file: 'ask' },
@@ -562,6 +567,7 @@ describe('NativeAgentAdapter — role-based tool exposure', () => {
       'search_code',
       'update_tasks',
       'web_fetch',
+      'web_search',
     ]);
     expect(offered).not.toContain('write_file');
     expect(offered).not.toContain('run_command');

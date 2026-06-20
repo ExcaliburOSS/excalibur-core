@@ -257,4 +257,26 @@ export class PermissionEngine {
       ? allow(`Network access to "${host}" allowed (network.approval = auto).`)
       : ask(`Network access to "${host}" requires confirmation.`);
   }
+
+  /**
+   * Gates a network TOOL whose concrete destination host is only resolved at
+   * execution time (e.g. `web_search`, where the backend — local SearXNG vs
+   * DuckDuckGo vs a paid API — is chosen later). Mirrors {@link checkUrl}'s
+   * mode/approval logic WITHOUT a host: lockdown (`mode = off`) is a hard deny;
+   * otherwise the approval posture decides allow-vs-ask. The executor still runs
+   * the per-host SSRF/allowlist check on each concrete provider URL it contacts.
+   */
+  checkNetwork(): PermissionDecision {
+    if (this.network.mode === 'off') {
+      return deny('Network is disabled (permissions.network.mode = off).');
+    }
+    return this.network.approval === 'auto'
+      ? allow('Network access allowed (network.approval = auto).')
+      : ask('Network access requires confirmation.');
+  }
+
+  /** Whether a public host is permitted by the policy (allowlist + SSRF floor). */
+  isUrlAllowed(rawUrl: string): boolean {
+    return this.checkUrl(rawUrl).allowed;
+  }
 }

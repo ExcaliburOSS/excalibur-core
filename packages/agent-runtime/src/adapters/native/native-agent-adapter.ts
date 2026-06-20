@@ -26,6 +26,7 @@ import {
 } from '../../tools/native-tools';
 import { zodToJsonSchema } from '../../tools/zod-to-json-schema';
 import { executeNativeTool, type ToolExecutionContext } from '../../tools/execute-tool';
+import { resolveLocalSearxng } from '../../tools/web/searxng-manager';
 import { PermissionEngine } from '../../permissions/permission-engine';
 import { createLspSession, languageForFile, type LspSession } from '../../lsp';
 import {
@@ -73,6 +74,8 @@ const READ_ONLY_TOOLS: ReadonlyArray<NativeToolName> = [
   'update_tasks',
   // Reading the web is non-mutating research — planners/reviewers get it too.
   'web_fetch',
+  // Web search is pure discovery (returns links/snippets, mutates nothing).
+  'web_search',
 ];
 
 /** Roles that get the read-only tool subset (they observe, they do not change the tree). */
@@ -121,6 +124,7 @@ function eventTypeForTool(name: NativeToolName): ExcaliburEventType {
     case 'update_tasks':
       return 'task_update';
     case 'web_fetch':
+    case 'web_search':
       return 'tool_call';
   }
 }
@@ -227,6 +231,7 @@ export class NativeAgentAdapter implements AgentAdapter {
       });
 
     const permissions = new PermissionEngine(input.config.permissions);
+    const searchCfg = input.config.search;
     const toolCtx: ToolExecutionContext = {
       workdir: input.workdir,
       config: input.config,
@@ -234,6 +239,14 @@ export class NativeAgentAdapter implements AgentAdapter {
       // Thread the run's abort signal so ESC/abort SIGKILLs an in-flight
       // command/test/git process instead of waiting for it to finish.
       ...(input.signal !== undefined ? { signal: input.signal } : {}),
+      // web_search: resolve a reachable local SearXNG (probe, and start an
+      // existing stopped container when managed) — else null → DuckDuckGo.
+      searchEnv: process.env,
+      resolveSearxng: () =>
+        resolveLocalSearxng({
+          autoStart: searchCfg?.manageSearxng ?? true,
+          ...(searchCfg?.baseUrl !== undefined ? { baseUrl: searchCfg.baseUrl } : {}),
+        }),
     };
     // MCP (Model Context Protocol) clients are connected INSIDE the try below so
     // the `finally` that calls closeMcp() always reclaims their subprocesses —
@@ -693,6 +706,12 @@ export class NativeAgentAdapter implements AgentAdapter {
       // SSRF + network policy: a private/metadata target is a HARD deny here.
       return pass(permissions.checkUrl(String(args['url'] ?? '')));
     }
+    if (name === 'web_search') {
+      // The concrete provider host is resolved at exec time; gate on the policy
+      // (lockdown denies; ask/auto decides confirmation). Per-host SSRF/allowlist
+      // is enforced inside the executor on the chosen provider URL.
+      return pass(permissions.checkNetwork());
+    }
     if (name === 'run_tests') {
       // Gate the EXACT command the executor will run (base + pattern), not just
       // the base — otherwise the user approves `npm test` while the shell runs
@@ -849,6 +868,12 @@ function toolEventPayload(
       base['denied'] = true;
     }
   }
+  if (name === 'web_search') {
+    base['query'] = String(args['query'] ?? '');
+    if (!ok && /^permission denied/i.test(result.trim())) {
+      base['denied'] = true;
+    }
+  }
   if (name === 'apply_patch') {
     base['simulated'] = false;
   }
@@ -897,6 +922,9 @@ function describeCall(name: NativeToolName, args: Record<string, unknown>): stri
   }
   if (name === 'web_fetch') {
     return typeof args['url'] === 'string' ? `url: ${args['url']}` : undefined;
+  }
+  if (name === 'web_search') {
+    return typeof args['query'] === 'string' ? `query: ${args['query']}` : undefined;
   }
   return undefined;
 }

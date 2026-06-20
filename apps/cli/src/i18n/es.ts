@@ -130,6 +130,34 @@ export const ES: Catalog = {
   'mcp.col-target': 'DESTINO',
   'mcp.probe-hint':
     'Ejecuta `excalibur mcp list --probe` para conectar y listar las herramientas de cada servidor.',
+  // búsqueda web (F3)
+  'search.usage':
+    'Uso: excalibur search <consulta>. Gestiona el motor local con `search serve`, o elige backend con `search provider`.',
+  'search.results-heading': 'Resultados de "{query}" (vía {provider})',
+  'search.no-results': 'Sin resultados para "{query}" (vía {provider}).',
+  'search.error': 'La búsqueda falló: {message}',
+  'search.network-off':
+    'La red está desactivada (permissions.network.mode = off). Actívala para buscar en la web.',
+  'search.serve-consent':
+    '¿Arrancar un contenedor SearXNG local con Docker para búsqueda ilimitada y privada?',
+  'search.serve-starting':
+    'Arrancando SearXNG local con Docker (la primera vez descarga la imagen)…',
+  'search.serve-up': '✓ SearXNG disponible en {url} — Excalibur lo usará automáticamente.',
+  'search.serve-cancelled':
+    'Cancelado — no se arrancó ningún contenedor. La búsqueda sigue funcionando vía DuckDuckGo.',
+  'search.serve-stopped': '✓ SearXNG local detenido y eliminado.',
+  'search.serve-not-running': 'No hay contenedor SearXNG local que detener.',
+  'search.serve-no-docker':
+    'Docker no está disponible — la búsqueda recurre a DuckDuckGo sin clave (igualmente gratis, sin configuración).',
+  'search.serve-status': 'SearXNG local: {state} (accesible: {reachable})',
+  'search.reachable-yes': 'sí',
+  'search.reachable-no': 'no',
+  'search.provider-current':
+    'Backend de búsqueda: {name}. Cambia con `excalibur search provider <nombre>`.',
+  'search.provider-set': 'Backend de búsqueda fijado a {name}.',
+  'search.provider-unknown': 'Backend desconocido "{name}". Elige uno de: {names}.',
+  'search.provider-byok-hint':
+    'Este backend es de pago (BYOK): define `search.apiKeyEnv` con el NOMBRE de la variable de entorno que contiene tu clave.',
   'insights.no-runs':
     'Aún no hay ejecuciones locales — nada que resumir. Inicia una con: excalibur run "<tarea>"',
   'insights.title': 'Insights — {runs} ejecuciones',

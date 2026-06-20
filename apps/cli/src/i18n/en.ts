@@ -127,6 +127,33 @@ export const EN: Catalog = {
   'mcp.col-transport': 'TRANSPORT',
   'mcp.col-target': 'TARGET',
   'mcp.probe-hint': "Run `excalibur mcp list --probe` to connect and list each server's tools.",
+  // web search (F3)
+  'search.usage':
+    'Usage: excalibur search <query>. Manage the local engine with `search serve`, or pick a backend with `search provider`.',
+  'search.results-heading': 'Results for "{query}" (via {provider})',
+  'search.no-results': 'No results for "{query}" (via {provider}).',
+  'search.error': 'Search failed: {message}',
+  'search.network-off':
+    'Network is disabled (permissions.network.mode = off). Enable it to search the web.',
+  'search.serve-consent':
+    'Start a local SearXNG container via Docker for unlimited, private search?',
+  'search.serve-starting': 'Starting a local SearXNG via Docker (the first run pulls the image)…',
+  'search.serve-up': '✓ SearXNG is up at {url} — Excalibur will use it automatically.',
+  'search.serve-cancelled':
+    'Cancelled — no container was started. Search still works via DuckDuckGo.',
+  'search.serve-stopped': '✓ Local SearXNG stopped and removed.',
+  'search.serve-not-running': 'No local SearXNG container to stop.',
+  'search.serve-no-docker':
+    'Docker is not available — search falls back to keyless DuckDuckGo (still free, no setup).',
+  'search.serve-status': 'Local SearXNG: {state} (reachable: {reachable})',
+  'search.reachable-yes': 'yes',
+  'search.reachable-no': 'no',
+  'search.provider-current':
+    'Search backend: {name}. Set another with `excalibur search provider <name>`.',
+  'search.provider-set': 'Search backend set to {name}.',
+  'search.provider-unknown': 'Unknown backend "{name}". Choose one of: {names}.',
+  'search.provider-byok-hint':
+    'This backend is paid (BYOK): set `search.apiKeyEnv` to the NAME of the env var holding your API key.',
   'insights.no-runs':
     'No local runs yet — nothing to summarise. Start one with: excalibur run "<task>"',
   'insights.title': 'Insights — {runs} runs',

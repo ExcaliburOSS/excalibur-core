@@ -222,6 +222,40 @@ export const DEFAULT_LSP_CONFIG: LspConfig = {
   serverStartTimeoutMs: 8000,
 };
 
+/**
+ * `search:` — the web-search backend for the `web_search` tool (F3). FREE and
+ * UNLIMITED by default. `type: 'auto'` (the default) resolves the best free
+ * backend at search time: a local SearXNG instance when one is reachable
+ * (unlimited + private), otherwise keyless DuckDuckGo (works on any machine,
+ * best-effort). Paid backends (`exa`/`tavily`/`brave`) are 100% opt-in BYOK —
+ * used ONLY when `type` is set to them explicitly, NEVER by `auto`.
+ *
+ * - `apiKeyEnv`: the NAME of the environment variable holding the key (BYOK;
+ *   never the key itself, never committed) — required for the paid backends.
+ * - `baseUrl`: endpoint override (e.g. a remote/self-hosted SearXNG).
+ * - `manageSearxng`: let Excalibur auto-provision/start a local SearXNG
+ *   container via Docker (the unlimited+private upgrade); off → probe-only.
+ */
+export const searchProviderSchema = z.object({
+  type: z.enum(['auto', 'searxng', 'duckduckgo', 'exa', 'tavily', 'brave']).default('auto'),
+  /** Env var NAME holding the API key for a paid backend (BYOK, not the key). */
+  apiKeyEnv: z.string().min(1).optional(),
+  /** Endpoint override (e.g. a remote SearXNG instance). */
+  baseUrl: z.string().url().optional(),
+  /** Maximum results returned per search. */
+  maxResults: z.number().int().positive().max(25).default(8),
+  /** Auto-provision/start a local SearXNG container via Docker when available. */
+  manageSearxng: z.boolean().default(true),
+});
+export type SearchProviderConfig = z.infer<typeof searchProviderSchema>;
+
+/** Default search config: free + unlimited, zero-config (auto → SearXNG | DuckDuckGo). */
+export const DEFAULT_SEARCH_PROVIDER: SearchProviderConfig = {
+  type: 'auto',
+  maxResults: 8,
+  manageSearxng: true,
+};
+
 const instructionSourceRefSchema = z.object({
   path: z.string().min(1),
   format: instructionSourceFormatSchema.optional(),
@@ -299,6 +333,7 @@ const baseExcaliburConfigSchema = z.object({
   mcp: mcpSectionSchema.optional(),
   sandbox: sandboxConfigSchema.optional(),
   lsp: lspConfigSchema.optional(),
+  search: searchProviderSchema.optional(),
   instructions: z.object({ sources: z.array(instructionSourceRefSchema).optional() }).optional(),
   skills: z.object({ sources: z.array(skillSourceRefSchema).optional() }).optional(),
 });
@@ -389,6 +424,7 @@ export const DEFAULT_CONFIG: ExcaliburConfig = {
   agents: { default: 'native' },
   compaction: DEFAULT_COMPACTION_CONFIG,
   lsp: DEFAULT_LSP_CONFIG,
+  search: DEFAULT_SEARCH_PROVIDER,
   permissions: {
     tools: {
       read_file: true,
