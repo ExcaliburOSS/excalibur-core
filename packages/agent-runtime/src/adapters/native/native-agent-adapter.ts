@@ -66,6 +66,15 @@ import type { AgentAdapter, AgentRunInput } from '../../types';
 /** Hard upper bound on chat↔tool iterations (anti-runaway). */
 export const MAX_ITERATIONS = 25;
 
+/** Native tools that make an outbound network call (F8: audited via network_egress). */
+const NETWORK_TOOL_NAMES: ReadonlySet<NativeToolName> = new Set<NativeToolName>([
+  'web_fetch',
+  'web_search',
+  'web_extract',
+  'web_crawl',
+  'research',
+]);
+
 const execFileAsync = promisify(execFile);
 
 /** Tools a read-only / planning role is allowed to use (no mutation, no exec). */
@@ -592,6 +601,23 @@ export class NativeAgentAdapter implements AgentAdapter {
     }
 
     const { ok, result, provenance } = await executeNativeTool(toolName, call.arguments, ctx);
+
+    // F8: audit the egress itself (host/query + policy decision) for every web
+    // tool — complements `provenance` (which audits the content), and covers
+    // searches + denied attempts that fetch no content.
+    if (NETWORK_TOOL_NAMES.has(toolName)) {
+      const target = String(
+        call.arguments['url'] ?? call.arguments['query'] ?? call.arguments['question'] ?? '',
+      );
+      const denied = !ok && /^permission denied/i.test(result.trim());
+      events.push({
+        event: emit('network_egress', {
+          tool: toolName,
+          target,
+          decision: denied ? 'deny' : 'allow',
+        }),
+      });
+    }
 
     // F8: audit untrusted inbound web content — emit a `provenance` event with the
     // source, content hash and injection verdict (clean/suspicious/malicious).

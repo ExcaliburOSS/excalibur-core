@@ -4,7 +4,14 @@ import {
   webFetch,
   webSearch,
 } from '@excalibur/agent-runtime';
-import { runDeepResearch, type ResearchFetcher, type ResearchSearcher } from '@excalibur/core';
+import {
+  buildClaimLedger,
+  ledgerBlocks,
+  runDeepResearch,
+  summarizeLedger,
+  type ResearchFetcher,
+  type ResearchSearcher,
+} from '@excalibur/core';
 import { DEFAULT_RESEARCH, DEFAULT_SEARCH_PROVIDER } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
 import { loadConfigContext, loadGatewayContext, requireConfiguredModel } from './context';
@@ -84,8 +91,20 @@ export async function runResearchFlow(
       deps.ui.info(deps.t('research.stage', { stage, detail: detail ?? '' })),
   });
 
+  // F7: turn the pipeline's per-claim verdicts into a Claim Ledger. With
+  // research.ledger on, an unsupported claim is `refuted` (BLOCKING) so the
+  // caller can see the research did not stand up to its own sources.
+  const ledger = buildClaimLedger('', {
+    testsPassed: null,
+    typecheckPassed: null,
+    buildPassed: null,
+    diff: null,
+    research: result.claims.map((c) => ({ claim: c.claim, verified: c.verified })),
+    researchLedger: researchCfg.ledger,
+  });
+
   if (options.json === true) {
-    deps.ui.json(result);
+    deps.ui.json({ ...result, ledger, blocked: ledgerBlocks(ledger) });
     return;
   }
   deps.ui.write(result.report);
@@ -97,4 +116,10 @@ export async function runResearchFlow(
       claims: String(result.claims.length),
     }),
   );
+  if (ledger.length > 0) {
+    deps.ui.info(summarizeLedger(ledger));
+    if (ledgerBlocks(ledger)) {
+      deps.ui.warn(deps.t('research.ledger-blocked'));
+    }
+  }
 }

@@ -376,6 +376,13 @@ await scenario('provenance — a fetched page emits an audited provenance event 
     typeof prov.payload.contentHash === 'string' && typeof prov.payload.verdict === 'string',
     'provenance must carry a content hash + injection verdict',
   );
+  // F8d: the run ledger folds provenance into a source_trust claim, and
+  // `web provenance` reads the audit back.
+  const sourceTrust = events.find((e) => e.type === 'claim' && e.payload.kind === 'source_trust');
+  assert(sourceTrust !== undefined, 'the run ledger should include a source_trust claim');
+  assert(sourceTrust.payload.status === 'verified', 'a clean source → source_trust verified');
+  const { out } = exc(dir, ['web', 'provenance'], 30000);
+  assert(/example\.com|clean/i.test(out), 'web provenance should list the fetched source');
 });
 
 await scenario('patch + apply — generates a real diff and applies it', () => {

@@ -41,6 +41,7 @@ export const excaliburEventTypeSchema = z.enum([
   'claim',
   'diagnostics',
   'provenance',
+  'network_egress',
 ]);
 export type ExcaliburEventType = z.infer<typeof excaliburEventTypeSchema>;
 
@@ -161,6 +162,20 @@ export const provenancePayloadSchema = z.object({
   blocked: z.boolean(),
 });
 export type ProvenancePayload = z.infer<typeof provenancePayloadSchema>;
+
+/**
+ * Payload of a `network_egress` event (event #30, F8): the audit trail of an
+ * agent-initiated outbound network call — which tool, the target, and the policy
+ * decision. Complements `provenance` (which audits the CONTENT) by auditing the
+ * EGRESS itself (including searches and denied attempts that fetch no content).
+ */
+export const networkEgressPayloadSchema = z.object({
+  tool: z.string(),
+  /** The target URL or, for search/research, the query. */
+  target: z.string(),
+  decision: z.enum(['allow', 'deny']),
+});
+export type NetworkEgressPayload = z.infer<typeof networkEgressPayloadSchema>;
 
 export interface CreateEventInput {
   runId: string | null;

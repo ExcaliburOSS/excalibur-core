@@ -191,6 +191,15 @@ export const ES: Catalog = {
   'web.scan-denied': 'Esa URL está bloqueada por la política de red / la protección SSRF.',
   'web.scan-result': 'Escaneo de inyección: {verdict} (puntuación {score}, sha256 {hash}).',
   'web.scan-signals': 'Señales: {signals}',
+  'web.prov-noruns':
+    'Aún no hay ejecuciones — nada que auditar. Inicia una con: excalibur run "<tarea>"',
+  'web.prov-none': 'Esta ejecución no hizo ninguna salida de red auditada.',
+  'web.col-tool': 'HERRAMIENTA',
+  'web.col-target': 'OBJETIVO',
+  'web.col-decision': 'DECISIÓN',
+  'web.col-source': 'FUENTE',
+  'web.col-verdict': 'VEREDICTO',
+  'web.col-hash': 'SHA256',
   'insights.no-runs':
     'Aún no hay ejecuciones locales — nada que resumir. Inicia una con: excalibur run "<tarea>"',
   'insights.title': 'Insights — {runs} ejecuciones',
@@ -743,6 +752,8 @@ export const ES: Catalog = {
   'research.stage': '• {stage} {detail}',
   'research.summary':
     'Investigadas {sources} fuente(s) · {verified}/{claims} afirmaciones verificadas.',
+  'research.ledger-blocked':
+    '⚠ Algunas afirmaciones NO estaban respaldadas por las fuentes citadas (research.ledger activo).',
   'repl.bg-usage':
     'Uso: /bg <tarea> — ejecuta la tarea en segundo plano (su propia ejecución registrada) mientras sigues trabajando.',
   'repl.bg-started': '▸ segundo plano: {title} — en curso (usa /threads para verlo)',

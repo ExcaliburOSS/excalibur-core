@@ -6,6 +6,7 @@ import {
   webFetch,
   type ToolExecutionContext,
 } from '@excalibur/agent-runtime';
+import { RunManager } from '@excalibur/core';
 import type { Command } from 'commander';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
@@ -52,6 +53,65 @@ export function registerWebCommand(program: Command, deps: CliDeps): void {
     .action(async (url: string, options: { json?: boolean }) => {
       await scanUrl(deps, url, options);
     });
+
+  web
+    .command('provenance')
+    .description("show a run's audited web provenance + egress (defaults to the latest run)")
+    .argument('[runId]', 'run id')
+    .option('--json', 'machine-readable JSON output')
+    .action((runId: string | undefined, options: { json?: boolean }) => {
+      showProvenance(deps, runId, options);
+    });
+}
+
+function showProvenance(
+  deps: CliDeps,
+  runId: string | undefined,
+  options: { json?: boolean },
+): void {
+  const runManager = new RunManager(deps.cwd());
+  const run = runId !== undefined ? runManager.getRun(runId) : runManager.latestRun();
+  if (run === null) {
+    deps.ui.info(deps.t('web.prov-noruns'));
+    return;
+  }
+  const events = runManager.readEvents(run.id);
+  const provenance = events.filter((e) => e.type === 'provenance').map((e) => e.payload);
+  const egress = events.filter((e) => e.type === 'network_egress').map((e) => e.payload);
+  if (options.json === true) {
+    deps.ui.json({ runId: run.id, provenance, egress });
+    return;
+  }
+  if (provenance.length === 0 && egress.length === 0) {
+    deps.ui.info(deps.t('web.prov-none'));
+    return;
+  }
+  if (egress.length > 0) {
+    deps.ui.table(
+      [deps.t('web.col-tool'), deps.t('web.col-target'), deps.t('web.col-decision')],
+      egress.map((p) => [
+        String(p['tool'] ?? ''),
+        String(p['target'] ?? '').slice(0, 60),
+        String(p['decision'] ?? ''),
+      ]),
+    );
+  }
+  if (provenance.length > 0) {
+    deps.ui.table(
+      [
+        deps.t('web.col-source'),
+        deps.t('web.col-verdict'),
+        deps.t('web.col-hash'),
+        deps.t('web.col-target'),
+      ],
+      provenance.map((p) => [
+        String(p['source'] ?? ''),
+        String(p['verdict'] ?? ''),
+        String(p['contentHash'] ?? '').slice(0, 12),
+        String(p['url'] ?? '').slice(0, 50),
+      ]),
+    );
+  }
 }
 
 async function scanUrl(deps: CliDeps, url: string, options: { json?: boolean }): Promise<void> {

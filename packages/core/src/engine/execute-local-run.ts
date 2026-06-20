@@ -36,6 +36,7 @@ import type { MeshResult } from '../verification/verification-mesh';
 import {
   buildClaimLedger,
   ledgerBlocks,
+  type SourceProvenanceEvidence,
   summarizeLedger,
   type ClaimEvidence,
 } from '../claims/claim-ledger';
@@ -219,6 +220,8 @@ class LocalRunExecution {
   // --- Claim-ledger evidence, accumulated from the event stream ---------------
   /** Combined assistant text (the model's claims are parsed from this). */
   private claimText = '';
+  /** Provenance of untrusted web/MCP sources (F8) → the `source_trust` claim. */
+  private readonly provenanceRecords: SourceProvenanceEvidence[] = [];
   /** Last exit code per command that ACTUALLY ran (verifies test/typecheck/build claims). */
   private readonly commandExits = new Map<string, number>();
   /** Run-scoped LSP session for post-apply diagnostics (lazy; closed in execute's finally). */
@@ -262,6 +265,17 @@ class LocalRunExecution {
       const exitCode = p['exitCode'];
       if (typeof command === 'string' && typeof exitCode === 'number') {
         this.commandExits.set(command, exitCode);
+      }
+    } else if (event.type === 'provenance') {
+      // F8: record each untrusted web/MCP source for the `source_trust` claim.
+      const verdict = p['verdict'];
+      if (verdict === 'clean' || verdict === 'suspicious' || verdict === 'malicious') {
+        this.provenanceRecords.push({
+          source: typeof p['source'] === 'string' ? p['source'] : 'web',
+          ...(typeof p['url'] === 'string' ? { url: p['url'] } : {}),
+          verdict,
+          blocked: p['blocked'] === true,
+        });
       }
     }
   }
@@ -816,6 +830,12 @@ class LocalRunExecution {
         typecheckPassed,
         buildPassed: commandFor(this.input.config.commands?.build),
         diff: this.collectedDiff,
+        // F8: fold the run's untrusted-source provenance into a `source_trust`
+        // claim (blocks only when web.injection.blockOnMalicious is set).
+        ...(this.provenanceRecords.length > 0 ? { provenance: this.provenanceRecords } : {}),
+        ...(this.input.config.web?.injection?.blockOnMalicious === true
+          ? { blockOnMalicious: true }
+          : {}),
       };
       const verdicts = buildClaimLedger(this.claimText, evidence);
       if (verdicts.length === 0) {

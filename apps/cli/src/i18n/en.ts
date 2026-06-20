@@ -186,6 +186,14 @@ export const EN: Catalog = {
   'web.scan-denied': 'That URL is blocked by the network policy / SSRF protection.',
   'web.scan-result': 'Injection scan: {verdict} (score {score}, sha256 {hash}).',
   'web.scan-signals': 'Signals: {signals}',
+  'web.prov-noruns': 'No runs yet — nothing to audit. Start one with: excalibur run "<task>"',
+  'web.prov-none': 'This run made no audited web egress.',
+  'web.col-tool': 'TOOL',
+  'web.col-target': 'TARGET',
+  'web.col-decision': 'DECISION',
+  'web.col-source': 'SOURCE',
+  'web.col-verdict': 'VERDICT',
+  'web.col-hash': 'SHA256',
   'insights.no-runs':
     'No local runs yet — nothing to summarise. Start one with: excalibur run "<task>"',
   'insights.title': 'Insights — {runs} runs',
@@ -719,6 +727,8 @@ export const EN: Catalog = {
   'research.starting': 'Researching: {question}',
   'research.stage': '• {stage} {detail}',
   'research.summary': 'Researched {sources} source(s) · {verified}/{claims} claims verified.',
+  'research.ledger-blocked':
+    '⚠ Some claims were NOT supported by the cited sources (research.ledger is on).',
   'repl.bg-usage':
     'Usage: /bg <task> — runs the task in the background (its own recorded run) while you keep working.',
   'repl.bg-started': '▸ background: {title} — running (use /threads to check on it)',

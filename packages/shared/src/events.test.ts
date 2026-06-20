@@ -3,6 +3,7 @@ import {
   createEvent,
   diagnosticsPayloadSchema,
   provenancePayloadSchema,
+  networkEgressPayloadSchema,
   excaliburEventSchema,
   excaliburEventTypeSchema,
   parseEventsJsonl,
@@ -42,14 +43,15 @@ describe('createEvent', () => {
     expect(attributed.sessionId).toBe('sess_1');
   });
 
-  it('supports all 29 pinned event types', () => {
-    expect(excaliburEventTypeSchema.options).toHaveLength(29);
+  it('supports all 30 pinned event types', () => {
+    expect(excaliburEventTypeSchema.options).toHaveLength(30);
     expect(excaliburEventTypeSchema.options).toContain('compaction'); // the 24th (context compaction)
     expect(excaliburEventTypeSchema.options).toContain('task_update'); // the 25th (in-session checklist)
     expect(excaliburEventTypeSchema.options).toContain('verification'); // the 26th (mesh verdict)
     expect(excaliburEventTypeSchema.options).toContain('claim'); // the 27th (claim ledger)
     expect(excaliburEventTypeSchema.options).toContain('diagnostics'); // the 28th (LSP per-edit diagnostics)
     expect(excaliburEventTypeSchema.options).toContain('provenance'); // the 29th (F8 untrusted-content provenance)
+    expect(excaliburEventTypeSchema.options).toContain('network_egress'); // the 30th (F8 egress audit)
     for (const type of excaliburEventTypeSchema.options) {
       const event = createEvent({ runId: 'run_1', type, payload: {} });
       expect(excaliburEventSchema.safeParse(event).success).toBe(true);
@@ -137,6 +139,19 @@ describe('provenancePayloadSchema (F8)', () => {
     const [parsed] = parseEventsJsonl(serializeEventLine(event));
     expect(parsed?.type).toBe('provenance');
     expect(parsed?.payload['verdict']).toBe('malicious');
+  });
+
+  it('validates a network_egress payload and round-trips', () => {
+    const payload = {
+      tool: 'web_fetch',
+      target: 'https://example.com/',
+      decision: 'allow' as const,
+    };
+    expect(networkEgressPayloadSchema.safeParse(payload).success).toBe(true);
+    const event = createEvent({ runId: 'run_1', type: 'network_egress', payload });
+    const [parsed] = parseEventsJsonl(serializeEventLine(event));
+    expect(parsed?.type).toBe('network_egress');
+    expect(parsed?.payload['decision']).toBe('allow');
   });
 });
 

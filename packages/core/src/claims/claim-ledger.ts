@@ -21,7 +21,11 @@ export type ClaimKind =
   | 'no_type_errors'
   | 'no_secrets'
   | 'builds'
-  | 'requirement_met';
+  | 'requirement_met'
+  // F7: a research claim that must be SUPPORTED by the cited sources.
+  | 'cited'
+  // F8: fetched/MCP sources must be free of prompt-injection.
+  | 'source_trust';
 
 export type ClaimStatus = 'verified' | 'refuted' | 'unverified';
 
@@ -34,6 +38,20 @@ export interface ClaimVerdict {
   evidence?: string;
 }
 
+/** A single research claim's verification verdict (F7, from the pipeline). */
+export interface ResearchClaimEvidence {
+  claim: string;
+  verified: boolean;
+}
+
+/** A fetched source's provenance + injection verdict (F8, from `provenance` events). */
+export interface SourceProvenanceEvidence {
+  source: string;
+  url?: string;
+  verdict: 'clean' | 'suspicious' | 'malicious';
+  blocked: boolean;
+}
+
 /** Real evidence the run gathered, extracted from its event stream. */
 export interface ClaimEvidence {
   /** Test command outcome (from command_group / test_result), or null if none ran. */
@@ -44,6 +62,14 @@ export interface ClaimEvidence {
   buildPassed: boolean | null;
   /** The collected unified diff, for the secret scan (null/empty → no diff). */
   diff: string | null;
+  /** Research claim verdicts (F7); each becomes a `cited` claim. */
+  research?: ReadonlyArray<ResearchClaimEvidence>;
+  /** When true (config research.ledger), an unsupported research claim BLOCKS. */
+  researchLedger?: boolean;
+  /** Provenance of fetched/MCP sources (F8); folds into a `source_trust` claim. */
+  provenance?: ReadonlyArray<SourceProvenanceEvidence>;
+  /** When true (config web.injection.blockOnMalicious), a malicious source BLOCKS. */
+  blockOnMalicious?: boolean;
 }
 
 /** Human-readable statement per claim kind. */
@@ -53,14 +79,23 @@ const STATEMENT: Record<ClaimKind, string> = {
   no_secrets: 'no secrets were introduced',
   builds: 'the project builds',
   requirement_met: 'the stated requirement is met',
+  cited: 'the cited claim is supported by sources',
+  source_trust: 'fetched sources are free of prompt-injection',
 };
 
-/** Claim kinds whose refutation BLOCKS the run from completing. */
+/**
+ * Claim kinds whose refutation BLOCKS the run from completing. `cited` and
+ * `source_trust` are blocking, but they are only EMITTED as `refuted` when the
+ * relevant config opt-in is on (research.ledger / web.injection.blockOnMalicious),
+ * so they never block unless the user asked them to.
+ */
 const BLOCKING_KINDS: ReadonlySet<ClaimKind> = new Set<ClaimKind>([
   'tests_pass',
   'no_type_errors',
   'no_secrets',
   'builds',
+  'cited',
+  'source_trust',
 ]);
 
 const CLAIM_PATTERNS: ReadonlyArray<{ kind: ClaimKind; re: RegExp }> = [
@@ -185,6 +220,48 @@ export function buildClaimLedger(finalText: string, evidence: ClaimEvidence): Cl
       status: 'unverified',
       asserted: true,
       evidence: 'no automated check — needs human/spec verification',
+    });
+  }
+
+  // cited (F7): one verdict per research claim. A verified claim → verified; an
+  // unsupported claim → refuted ONLY when the research ledger is enabled (else
+  // surfaced as unverified so it never blocks an exploratory research turn).
+  for (const r of evidence.research ?? []) {
+    const status: ClaimStatus = r.verified
+      ? 'verified'
+      : evidence.researchLedger === true
+        ? 'refuted'
+        : 'unverified';
+    verdicts.push({
+      kind: 'cited',
+      statement: `cited: ${r.claim.slice(0, 100)}`,
+      status,
+      asserted: true,
+      evidence: r.verified ? 'supported by the cited sources' : 'not supported by enough sources',
+    });
+  }
+
+  // source_trust (F8): a single verdict over the fetched/MCP sources. Malicious
+  // content → refuted ONLY when blockOnMalicious is set (else unverified — the
+  // content was already quarantined/fenced; the run is not failed by default).
+  const provenance = evidence.provenance ?? [];
+  if (provenance.length > 0) {
+    const malicious = provenance.filter((p) => p.verdict === 'malicious');
+    const status: ClaimStatus =
+      malicious.length === 0
+        ? 'verified'
+        : evidence.blockOnMalicious === true
+          ? 'refuted'
+          : 'unverified';
+    verdicts.push({
+      kind: 'source_trust',
+      statement: STATEMENT.source_trust,
+      status,
+      asserted: false,
+      evidence:
+        malicious.length === 0
+          ? `${provenance.length} source(s) scanned clean`
+          : `${malicious.length} of ${provenance.length} source(s) flagged as prompt-injection`,
     });
   }
 

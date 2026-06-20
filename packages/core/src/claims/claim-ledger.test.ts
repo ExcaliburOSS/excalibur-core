@@ -96,3 +96,60 @@ describe('buildClaimLedger', () => {
     expect(buildClaimLedger('I made some edits.', NO_EVIDENCE)).toEqual([]);
   });
 });
+
+describe('cited claims (F7)', () => {
+  const research = [
+    { claim: 'MCP is an open protocol', verified: true },
+    { claim: 'MCP was invented in 1850', verified: false },
+  ];
+
+  it('marks verified claims verified and (ledger on) unsupported ones refuted+blocking', () => {
+    const verdicts = buildClaimLedger('', { ...NO_EVIDENCE, research, researchLedger: true });
+    const cited = verdicts.filter((v) => v.kind === 'cited');
+    expect(cited).toHaveLength(2);
+    expect(cited.find((v) => v.statement.includes('open protocol'))?.status).toBe('verified');
+    expect(cited.find((v) => v.statement.includes('1850'))?.status).toBe('refuted');
+    expect(ledgerBlocks(verdicts)).toBe(true);
+  });
+
+  it('does NOT block an unsupported claim when the research ledger is off', () => {
+    const verdicts = buildClaimLedger('', { ...NO_EVIDENCE, research, researchLedger: false });
+    expect(verdicts.find((v) => v.statement.includes('1850'))?.status).toBe('unverified');
+    expect(ledgerBlocks(verdicts)).toBe(false);
+  });
+});
+
+describe('source_trust claims (F8)', () => {
+  const clean = [
+    { source: 'web_fetch', url: 'https://a.test/', verdict: 'clean' as const, blocked: false },
+  ];
+  const malicious = [
+    ...clean,
+    {
+      source: 'web_fetch',
+      url: 'https://evil.test/',
+      verdict: 'malicious' as const,
+      blocked: true,
+    },
+  ];
+
+  it('verifies when all sources are clean', () => {
+    const verdicts = buildClaimLedger('', { ...NO_EVIDENCE, provenance: clean });
+    expect(verdicts.find((v) => v.kind === 'source_trust')?.status).toBe('verified');
+    expect(ledgerBlocks(verdicts)).toBe(false);
+  });
+
+  it('refutes + blocks a malicious source ONLY when blockOnMalicious is set', () => {
+    const blocking = buildClaimLedger('', {
+      ...NO_EVIDENCE,
+      provenance: malicious,
+      blockOnMalicious: true,
+    });
+    expect(blocking.find((v) => v.kind === 'source_trust')?.status).toBe('refuted');
+    expect(ledgerBlocks(blocking)).toBe(true);
+
+    const nonBlocking = buildClaimLedger('', { ...NO_EVIDENCE, provenance: malicious });
+    expect(nonBlocking.find((v) => v.kind === 'source_trust')?.status).toBe('unverified');
+    expect(ledgerBlocks(nonBlocking)).toBe(false);
+  });
+});
