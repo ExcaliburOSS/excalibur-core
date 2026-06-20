@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+# Auto-format staged files with Prettier so CI's `format:check` never fails on a
+# missed `pnpm format`. Dependency-free (no husky/lint-staged): activated by the
+# root `prepare` script which sets `core.hooksPath` to this directory on install.
+staged=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx|js|mjs|cjs|json|md|ya?ml)$' || true)
+[ -z "$staged" ] && exit 0
+printf '%s\n' "$staged" | xargs pnpm exec prettier --write
+printf '%s\n' "$staged" | xargs git add
