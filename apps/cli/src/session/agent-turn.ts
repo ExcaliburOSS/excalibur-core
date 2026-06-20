@@ -6,6 +6,7 @@ import {
 import {
   addWorktree,
   applyPatch,
+  buildMemoryContext,
   buildTurnSummary,
   checkPatchApplies,
   commitAll,
@@ -36,6 +37,7 @@ import {
 import { detectColorTier, detectThemeSync, paletteFor } from '@excalibur/tui';
 import type { RunViewHandle } from '@excalibur/tui/ink';
 import type { ChatMessage, ModelGateway } from '@excalibur/model-gateway';
+import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import pc from 'picocolors';
@@ -508,6 +510,49 @@ function createTurnRun(
   });
 }
 
+/** Path-like tokens named in a task (`src/x.ts`, `dir/file`, `foo.json`). */
+export function pathsFromText(text: string): string[] {
+  const matches = text.match(/[\w@.-]+\/[\w./-]+|[\w-]+\.[a-zA-Z][a-zA-Z0-9]+/g) ?? [];
+  return [...new Set(matches)].slice(0, 20);
+}
+
+/** Working-set files (`git diff --name-only HEAD`); [] on any failure. */
+function changedFiles(repoRoot: string): string[] {
+  try {
+    return execFileSync('git', ['diff', '--name-only', 'HEAD'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      timeout: 2000,
+    })
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Knowledge-compounding READ side: retrieve project memory relevant to the
+ * working set + paths named in the task and return it as a LEADING system
+ * message, so prior decisions / rejections / risks / conventions actually
+ * influence the turn (the capture side already records them via /remember +
+ * plan-save). Gated — `null` when nothing is relevant, so an unrelated turn is
+ * untouched. Best-effort: never throws.
+ */
+export function memorySeed(repoRoot: string, task: string): ChatMessage | null {
+  try {
+    const queryPaths = [...new Set([...changedFiles(repoRoot), ...pathsFromText(task)])];
+    if (queryPaths.length === 0) {
+      return null;
+    }
+    const source = buildMemoryContext(repoRoot, queryPaths);
+    return source === null ? null : { role: 'system', content: source.content };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Runs a single model-driven conversational turn (no plan gate). The role is
  * derived from the autonomy level; the model decides whether to answer or act.
@@ -542,14 +587,19 @@ export async function runAgentTurn(
     turn.deps.ui.info(turn.deps.t('agent-turn.run_dir', { id: run.id, dir: run.dir }));
   }
 
+  // Knowledge-compounding: prepend relevant project memory as a leading system
+  // message so prior decisions actually influence the turn (gated; null → nothing).
+  const memory = memorySeed(turn.repoRoot, task);
+  const seed = memory !== null ? [memory, ...(seedMessages ?? [])] : (seedMessages ?? []);
+
   const result = await driveLoop(turn, adapter, runManager, run, generateId('sess'), {
     role,
     prompt: task,
     approvalDefaultYes: approvalDefaultYes(turn.autonomyLevel),
     allowConfirm: role !== 'planner',
-    // Prior conversation (compacted) so the turn has cross-turn memory. Omitted
-    // (no key) → an independent turn, exactly as before.
-    ...(seedMessages !== undefined && seedMessages.length > 0 ? { seedMessages } : {}),
+    // Prior conversation (compacted) + injected memory so the turn has cross-turn
+    // context. Empty → an independent turn, exactly as before.
+    ...(seed.length > 0 ? { seedMessages: seed } : {}),
   });
 
   finishRun(turn.deps, runManager, run, result.aborted, turn.quiet === true);
