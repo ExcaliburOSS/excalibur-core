@@ -187,6 +187,10 @@ export const ES: Catalog = {
     'Este lector es de pago (BYOK): define `scrape.apiKeyEnv` con el NOMBRE de la variable de entorno que contiene tu clave.',
   'web.reader-jina-hint':
     'Jina funciona sin clave (best-effort); define `scrape.apiKeyEnv` para límites más altos.',
+  'web.error': 'la descarga web falló: {message}',
+  'web.scan-denied': 'Esa URL está bloqueada por la política de red / la protección SSRF.',
+  'web.scan-result': 'Escaneo de inyección: {verdict} (puntuación {score}, sha256 {hash}).',
+  'web.scan-signals': 'Señales: {signals}',
   'insights.no-runs':
     'Aún no hay ejecuciones locales — nada que resumir. Inicia una con: excalibur run "<tarea>"',
   'insights.title': 'Insights — {runs} ejecuciones',

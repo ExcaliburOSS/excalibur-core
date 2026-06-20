@@ -25,6 +25,8 @@ import { extractStructured, type GatewayChat } from './web/extract';
 import { politeFetch, RateLimiter } from './web/polite-fetch';
 import { crawl, type CrawlResult } from './web/crawl';
 import { hostedReaderTier } from './web/hosted-readers';
+import { guardUntrustedContent, type UntrustedSource } from './web/content-guard';
+import { buildProvenanceRecord, type ProvenanceRecord } from './web/provenance';
 import type { WebCache } from './web/cache';
 
 /**
@@ -100,6 +102,37 @@ export interface ToolExecutionContext {
 export interface ToolResult {
   ok: boolean;
   result: string;
+  /** Provenance + injection verdict for untrusted web/MCP content (F8). */
+  provenance?: ProvenanceRecord;
+}
+
+/**
+ * Guards untrusted inbound web content (F8): scans for prompt-injection, fences /
+ * quarantines, and attaches a provenance record. The model only ever sees the
+ * guarded text. `ok()`'s redaction still applies on top.
+ */
+function guardWeb(
+  text: string,
+  source: UntrustedSource,
+  url: string | undefined,
+  ctx: ToolExecutionContext,
+): ToolResult {
+  const inj = ctx.config.web?.injection;
+  const guard = guardUntrustedContent(text, source, url, {
+    ...(inj?.enabled !== undefined ? { enabled: inj.enabled } : {}),
+    ...(inj?.blockOnMalicious !== undefined ? { blockOnMalicious: inj.blockOnMalicious } : {}),
+    ...(inj?.maliciousThreshold !== undefined
+      ? { maliciousThreshold: inj.maliciousThreshold }
+      : {}),
+    ...(inj?.suspiciousThreshold !== undefined
+      ? { suspiciousThreshold: inj.suspiciousThreshold }
+      : {}),
+    ...(inj?.stripHiddenText !== undefined ? { stripHiddenText: inj.stripHiddenText } : {}),
+  });
+  return {
+    ...ok(guard.modelText),
+    provenance: buildProvenanceRecord(source, url, guard, new Date().toISOString()),
+  };
 }
 
 /** Max bytes returned from read_file before truncation. */
@@ -891,14 +924,14 @@ async function execWebFetch(
     if (res.meta.tier === 'native' && res.markdown.trim().length < thin) {
       const better = await tryFallbacks();
       if (better !== null && better.markdown.length > res.markdown.length) {
-        return ok(formatFetch(better));
+        return guardWeb(formatFetch(better), 'web_fetch', url, ctx);
       }
     }
-    return ok(formatFetch(res));
+    return guardWeb(formatFetch(res), 'web_fetch', url, ctx);
   } catch (error) {
     const fallback = await tryFallbacks();
     if (fallback !== null) {
-      return ok(formatFetch(fallback));
+      return guardWeb(formatFetch(fallback), 'web_fetch', url, ctx);
     }
     return fail(`web_fetch failed: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -1028,7 +1061,7 @@ async function execWebCrawl(
       ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
       isAllowed: (target) => ctx.permissions.checkUrl(target).allowed,
     });
-    return ok(formatCrawl(result));
+    return guardWeb(formatCrawl(result), 'web_crawl', url, ctx);
   } catch (error) {
     return fail(`web_crawl failed: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -1210,7 +1243,7 @@ async function execResearch(
       // Skip an unreachable source; keep gathering.
     }
   }
-  return ok(formatEvidenceBundle(question, hits.length, sources));
+  return guardWeb(formatEvidenceBundle(question, hits.length, sources), 'research', undefined, ctx);
 }
 
 export async function executeNativeTool(

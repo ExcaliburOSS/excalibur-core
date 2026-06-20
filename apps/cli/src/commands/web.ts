@@ -1,7 +1,9 @@
 import {
   browserReaderFrom,
   executeNativeTool,
+  guardUntrustedContent,
   PermissionEngine,
+  webFetch,
   type ToolExecutionContext,
 } from '@excalibur/agent-runtime';
 import type { Command } from 'commander';
@@ -41,6 +43,56 @@ export function registerWebCommand(program: Command, deps: CliDeps): void {
     .action((name: string | undefined) => {
       setReader(deps, name);
     });
+
+  web
+    .command('scan')
+    .description('fetch a URL and dry-run the prompt-injection scanner (no model)')
+    .argument('<url>', 'absolute http(s) URL to scan')
+    .option('--json', 'machine-readable JSON output')
+    .action(async (url: string, options: { json?: boolean }) => {
+      await scanUrl(deps, url, options);
+    });
+}
+
+async function scanUrl(deps: CliDeps, url: string, options: { json?: boolean }): Promise<void> {
+  const { config } = loadConfigContext(deps.cwd());
+  const engine = new PermissionEngine(config.permissions);
+  if (!engine.checkUrl(url).allowed) {
+    deps.ui.error(deps.t('web.scan-denied'));
+    return;
+  }
+  let markdown: string;
+  try {
+    markdown = (await webFetch(url, { maxChars: 50_000 })).markdown;
+  } catch (error) {
+    deps.ui.error(
+      deps.t('web.error', { message: error instanceof Error ? error.message : String(error) }),
+    );
+    return;
+  }
+  const guard = guardUntrustedContent(markdown, 'web_fetch', url, { enabled: true });
+  if (options.json === true) {
+    deps.ui.json({
+      url,
+      verdict: guard.verdict,
+      score: guard.score,
+      contentHash: guard.contentHash,
+      signals: guard.signals.map((s) => s.category),
+    });
+    return;
+  }
+  deps.ui.info(
+    deps.t('web.scan-result', {
+      verdict: guard.verdict,
+      score: String(guard.score),
+      hash: guard.contentHash.slice(0, 12),
+    }),
+  );
+  if (guard.signals.length > 0) {
+    deps.ui.info(
+      deps.t('web.scan-signals', { signals: guard.signals.map((s) => s.category).join(', ') }),
+    );
+  }
 }
 
 async function runWeb(

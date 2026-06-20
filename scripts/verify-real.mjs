@@ -355,6 +355,29 @@ await scenario('research tool — model-first research used by Kimi (F7)', () =>
   assert(toolsUsed(events).includes('research'), 'Kimi should have used the research tool');
 });
 
+await scenario('web scan — dry-run injection scan of a real page (F8; free, no model)', () => {
+  const dir = freshRepo({ '.excalibur/config.yaml': NET_AUTO });
+  const { out } = exc(dir, ['web', 'scan', 'https://example.com/'], 60000);
+  assert(/Injection scan: clean/i.test(out), 'example.com should scan clean');
+  assert(/sha256/i.test(out), 'the scan should report a content hash');
+});
+
+await scenario('provenance — a fetched page emits an audited provenance event (F8)', () => {
+  const dir = freshRepo({ '.excalibur/config.yaml': NET_AUTO });
+  exc(
+    dir,
+    ['run', 'Fetch https://example.com/ with the web_fetch tool and report its title.', '--yes'],
+    150000,
+  );
+  const events = runEvents(dir);
+  const prov = events.find((e) => e.type === 'provenance');
+  assert(prov !== undefined, 'a provenance event should be recorded for the fetched page');
+  assert(
+    typeof prov.payload.contentHash === 'string' && typeof prov.payload.verdict === 'string',
+    'provenance must carry a content hash + injection verdict',
+  );
+});
+
 await scenario('patch + apply — generates a real diff and applies it', () => {
   const dir = freshRepo();
   const { out } = exc(dir, ['patch', 'Add a multiply(a, b) function to src/math.ts', '--yes']);

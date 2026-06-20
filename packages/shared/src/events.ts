@@ -40,6 +40,7 @@ export const excaliburEventTypeSchema = z.enum([
   'verification',
   'claim',
   'diagnostics',
+  'provenance',
 ]);
 export type ExcaliburEventType = z.infer<typeof excaliburEventTypeSchema>;
 
@@ -141,6 +142,25 @@ export const diagnosticsPayloadSchema = z.object({
   warningCount: z.number().int().nonnegative(),
 });
 export type DiagnosticsPayload = z.infer<typeof diagnosticsPayloadSchema>;
+
+/**
+ * Payload of a `provenance` event (event #29, F8): the audited record of one
+ * piece of UNTRUSTED inbound content (a fetched page / MCP output) the model saw
+ * — its source, URL, content hash, and prompt-injection verdict. Gives a run a
+ * verifiable trail of every external source and whether it was flagged/quarantined.
+ */
+export const provenancePayloadSchema = z.object({
+  source: z.enum(['web_fetch', 'web_search', 'web_extract', 'web_crawl', 'research', 'mcp']),
+  url: z.string().optional(),
+  /** sha256 of the original fetched content. */
+  contentHash: z.string(),
+  fetchedAt: z.string(),
+  verdict: z.enum(['clean', 'suspicious', 'malicious']),
+  signals: z.array(z.string()),
+  /** True when the content was quarantined out of the model context. */
+  blocked: z.boolean(),
+});
+export type ProvenancePayload = z.infer<typeof provenancePayloadSchema>;
 
 export interface CreateEventInput {
   runId: string | null;

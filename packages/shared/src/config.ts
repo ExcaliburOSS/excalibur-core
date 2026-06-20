@@ -411,6 +411,42 @@ export const DEFAULT_RESEARCH: ResearchConfig = {
   ledger: true,
 };
 
+/**
+ * `web.injection:` — governance for UNTRUSTED inbound web/MCP content (F8). The
+ * scanner + data-fence are ON by default and free (pure heuristics, no deps, no
+ * network). `blockOnMalicious` is OFF by default (annotate + quarantine the model
+ * context, but don't fail the run) — opt-in for hardened setups.
+ */
+export const webInjectionConfigSchema = z.object({
+  /** Master switch for the scanner + data-fence (default true). */
+  enabled: z.boolean().default(true),
+  /** Quarantine malicious content out of context AND (future) gate the run. Default false. */
+  blockOnMalicious: z.boolean().default(false),
+  /** Score (0–100) at/above which a source is `malicious` (quarantined). */
+  maliciousThreshold: z.number().int().min(0).max(100).default(70),
+  /** Score (0–100) at/above which a source is `suspicious` (fenced, content kept). */
+  suspiciousThreshold: z.number().int().min(0).max(100).default(30),
+  /** Strip zero-width / bidi / hidden text before it reaches the model (default true). */
+  stripHiddenText: z.boolean().default(true),
+});
+export type WebInjectionConfig = z.infer<typeof webInjectionConfigSchema>;
+
+export const webConfigSchema = z.object({
+  injection: webInjectionConfigSchema.optional(),
+});
+export type WebConfig = z.infer<typeof webConfigSchema>;
+
+/** Default web-governance config: scanner on, non-blocking. */
+export const DEFAULT_WEB_CONFIG: WebConfig = {
+  injection: {
+    enabled: true,
+    blockOnMalicious: false,
+    maliciousThreshold: 70,
+    suspiciousThreshold: 30,
+    stripHiddenText: true,
+  },
+};
+
 const instructionSourceRefSchema = z.object({
   path: z.string().min(1),
   format: instructionSourceFormatSchema.optional(),
@@ -493,6 +529,7 @@ const baseExcaliburConfigSchema = z.object({
   crawl: crawlConfigSchema.optional(),
   scrape: scrapeProviderSchema.optional(),
   research: researchSectionSchema.optional(),
+  web: webConfigSchema.optional(),
   instructions: z.object({ sources: z.array(instructionSourceRefSchema).optional() }).optional(),
   skills: z.object({ sources: z.array(skillSourceRefSchema).optional() }).optional(),
 });
@@ -585,6 +622,7 @@ export const DEFAULT_CONFIG: ExcaliburConfig = {
   lsp: DEFAULT_LSP_CONFIG,
   search: DEFAULT_SEARCH_PROVIDER,
   research: DEFAULT_RESEARCH,
+  web: DEFAULT_WEB_CONFIG,
   permissions: {
     tools: {
       read_file: true,

@@ -591,7 +591,25 @@ export class NativeAgentAdapter implements AgentAdapter {
       }
     }
 
-    const { ok, result } = await executeNativeTool(toolName, call.arguments, ctx);
+    const { ok, result, provenance } = await executeNativeTool(toolName, call.arguments, ctx);
+
+    // F8: audit untrusted inbound web content — emit a `provenance` event with the
+    // source, content hash and injection verdict (clean/suspicious/malicious).
+    if (provenance !== undefined) {
+      events.push({
+        event: emit('provenance', provenance as unknown as Record<string, unknown>),
+      });
+      if (provenance.verdict === 'malicious') {
+        events.push({
+          event: emit('policy_decision', {
+            kind: 'injection',
+            tool: toolName,
+            decision: provenance.blocked ? 'deny' : 'allow',
+            message: `Untrusted ${provenance.source} content flagged malicious (${provenance.signals.join(', ')})`,
+          }),
+        });
+      }
+    }
 
     // The files THIS call just edited (the per-call delta) — used both to grow
     // the run-wide `mutated` set and to scope the per-edit LSP diagnostics query.

@@ -182,6 +182,10 @@ export const EN: Catalog = {
     'This reader is paid (BYOK): set `scrape.apiKeyEnv` to the NAME of the env var holding your API key.',
   'web.reader-jina-hint':
     'Jina works key-less (best-effort); set `scrape.apiKeyEnv` for higher limits.',
+  'web.error': 'web fetch failed: {message}',
+  'web.scan-denied': 'That URL is blocked by the network policy / SSRF protection.',
+  'web.scan-result': 'Injection scan: {verdict} (score {score}, sha256 {hash}).',
+  'web.scan-signals': 'Signals: {signals}',
   'insights.no-runs':
     'No local runs yet — nothing to summarise. Start one with: excalibur run "<task>"',
   'insights.title': 'Insights — {runs} runs',

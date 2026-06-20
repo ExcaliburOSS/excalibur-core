@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createEvent,
   diagnosticsPayloadSchema,
+  provenancePayloadSchema,
   excaliburEventSchema,
   excaliburEventTypeSchema,
   parseEventsJsonl,
@@ -41,13 +42,14 @@ describe('createEvent', () => {
     expect(attributed.sessionId).toBe('sess_1');
   });
 
-  it('supports all 28 pinned event types', () => {
-    expect(excaliburEventTypeSchema.options).toHaveLength(28);
+  it('supports all 29 pinned event types', () => {
+    expect(excaliburEventTypeSchema.options).toHaveLength(29);
     expect(excaliburEventTypeSchema.options).toContain('compaction'); // the 24th (context compaction)
     expect(excaliburEventTypeSchema.options).toContain('task_update'); // the 25th (in-session checklist)
     expect(excaliburEventTypeSchema.options).toContain('verification'); // the 26th (mesh verdict)
     expect(excaliburEventTypeSchema.options).toContain('claim'); // the 27th (claim ledger)
     expect(excaliburEventTypeSchema.options).toContain('diagnostics'); // the 28th (LSP per-edit diagnostics)
+    expect(excaliburEventTypeSchema.options).toContain('provenance'); // the 29th (F8 untrusted-content provenance)
     for (const type of excaliburEventTypeSchema.options) {
       const event = createEvent({ runId: 'run_1', type, payload: {} });
       expect(excaliburEventSchema.safeParse(event).success).toBe(true);
@@ -115,6 +117,26 @@ describe('diagnosticsPayloadSchema', () => {
         warningCount: 0,
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('provenancePayloadSchema (F8)', () => {
+  it('validates a provenance payload and round-trips through the event JSONL', () => {
+    const payload = {
+      source: 'web_fetch' as const,
+      url: 'https://example.com/',
+      contentHash: 'a'.repeat(64),
+      fetchedAt: '2026-06-20T00:00:00.000Z',
+      verdict: 'malicious' as const,
+      signals: ['instruction-override', 'tool-bait'],
+      blocked: false,
+    };
+    expect(provenancePayloadSchema.safeParse(payload).success).toBe(true);
+    expect(excaliburEventTypeSchema.safeParse('provenance').success).toBe(true);
+    const event = createEvent({ runId: 'run_1', type: 'provenance', payload });
+    const [parsed] = parseEventsJsonl(serializeEventLine(event));
+    expect(parsed?.type).toBe('provenance');
+    expect(parsed?.payload['verdict']).toBe('malicious');
   });
 });
 
