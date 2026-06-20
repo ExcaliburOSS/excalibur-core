@@ -778,6 +778,12 @@ export const ES: Catalog = {
   'agent-turn.gerund-reviewer': 'Revisando…',
   'agent-turn.gerund-tester': 'Escribiendo tests…',
   'agent-turn.gerund-default': 'Trabajando…',
+  // Variantes con sabor artúrico (opt-in vía ui.flavor: arthurian).
+  'agent-turn.gerund-planner-arthurian': 'Consultando a los sabios…',
+  'agent-turn.gerund-architect-arthurian': 'Trazando los planes de batalla…',
+  'agent-turn.gerund-reviewer-arthurian': 'Juicio por combate…',
+  'agent-turn.gerund-tester-arthurian': 'Probando el filo…',
+  'agent-turn.gerund-default-arthurian': 'En la forja…',
   'event.run-started': '▶ ejecución iniciada',
   'event.workflow': '  workflow: {workflow}',
   'event.methodology': '  metodología: {methodology}',

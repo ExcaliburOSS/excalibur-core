@@ -256,7 +256,7 @@ async function driveLoop(
   // a "Cancelled" message (and it never re-arms). Listener removed in finally.
   const onAbort = (): void => spinner?.cancel();
   ctrl.signal.addEventListener('abort', onAbort);
-  const gerund = deps.t(gerundForRole(options.role));
+  const gerund = deps.t(gerundForRole(options.role, turn.config.ui?.flavor));
   const spinnerText = (activity: string | null): string => {
     const label = activity ?? gerund;
     const cost = costCents !== null ? ` · $${(costCents / 100).toFixed(2)}` : '';
@@ -343,7 +343,10 @@ async function driveLoop(
     const started = createEvent({
       runId: run.id,
       type: 'phase_started',
-      payload: { name: deps.t(gerundForRole(options.role)), phaseId: 'turn' },
+      payload: {
+        name: deps.t(gerundForRole(options.role, turn.config.ui?.flavor)),
+        phaseId: 'turn',
+      },
     });
     runManager.appendEvent(run.id, started);
     view.push(started);
@@ -452,19 +455,20 @@ async function driveLoop(
 
 /** Present-continuous label for the model "thinking" between tool calls, by role. */
 /** The i18n key for a role's transient spinner gerund; translated at the call site. */
-function gerundForRole(role: AgentRole): string {
+function gerundForRole(role: AgentRole, flavor?: string): string {
+  const a = flavor === 'arthurian' ? '-arthurian' : '';
   switch (role) {
     case 'planner':
-      return 'agent-turn.gerund-planner';
+      return `agent-turn.gerund-planner${a}`;
     case 'architect':
-      return 'agent-turn.gerund-architect';
+      return `agent-turn.gerund-architect${a}`;
     case 'reviewer':
     case 'security':
-      return 'agent-turn.gerund-reviewer';
+      return `agent-turn.gerund-reviewer${a}`;
     case 'tester':
-      return 'agent-turn.gerund-tester';
+      return `agent-turn.gerund-tester${a}`;
     default:
-      return 'agent-turn.gerund-default';
+      return `agent-turn.gerund-default${a}`;
   }
 }
 
