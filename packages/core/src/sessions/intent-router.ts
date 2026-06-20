@@ -4,13 +4,13 @@ import { DEFAULT_SAFETY_PRESET_ID, SAFETY_PRESETS } from '../onboarding/onboardi
 /**
  * Structural input parsing + the StatusLine model for the M-Shell REPL.
  *
- * The shell is MODEL-FIRST: a natural-language line is handed to the agent loop,
- * which decides what to do (answer with read tools, or edit/run with write
- * tools), governed by the session's autonomy level — there is NO keyword
- * classifier deciding intent. This module therefore only recognises the two
+ * The shell is MODEL-FIRST. {@link parseStructuralInput} recognises only the two
  * STRUCTURAL forms (syntax, not language): a leading `/` slash command and a
- * leading `!` shell passthrough. Everything else is a natural-language turn the
- * REPL routes straight to the model.
+ * leading `!` shell passthrough. Everything else is a natural-language turn.
+ *
+ * Conversational INTENT (plan / swarm / bg / research / goal vs a plain turn) is
+ * detected by {@link classifyTurnIntent} using an LLM — NEVER keyword/regex — so
+ * it works in ANY language; on no-model/error it falls back to a plain turn.
  */
 
 /** A discriminated decision describing the STRUCTURAL shape of one input line. */
@@ -54,49 +54,82 @@ export function parseStructuralInput(text: string): StructuralInput {
   return { kind: 'natural', text: trimmed };
 }
 
-/** Whether an input expresses an explicit "iterate-until-done" objective. */
-export interface GoalIntent {
-  isGoal: boolean;
-  /** The phrase that signaled it (shown in the offer); empty when not a goal. */
-  signal: string;
+/**
+ * Conversational intent — what a natural-language turn wants. Detected by an LLM
+ * (multi-language), NEVER by keyword/regex: a French/German/… user gets the same
+ * proactive routing as an English one.
+ *
+ * - `chat`: a question / explanation / single direct change → a normal turn.
+ * - `plan`: a multi-step build worth planning first (plan → approve → execute).
+ * - `swarm`: many independent parallelizable subtasks → fan out to agents.
+ * - `bg`: a long-running task to run in the background.
+ * - `research`: needs external/current web info, or deep multi-source research.
+ * - `goal`: an explicit "iterate until it works/passes/done" objective.
+ */
+export type TurnIntent = 'chat' | 'plan' | 'swarm' | 'bg' | 'research' | 'goal';
+
+const TURN_INTENTS: readonly TurnIntent[] = ['chat', 'plan', 'swarm', 'bg', 'research', 'goal'];
+
+export interface IntentContext {
+  /** A real human at a TTY who can answer prompts (plan/offers need this). */
+  interactive: boolean;
+  /** The provider is the deterministic mock (no real model → never classify). */
+  mock: boolean;
+  /** Session autonomy level — routing needs an act-capable level (≥ 2). */
+  level: number;
 }
 
 /**
- * Explicit "iterate-until-done" signals (English + Spanish). These are CLEAR
- * user phrasings of pursue-until-complete — not a general intent classifier.
+ * Injected classifier call: takes the prompt, returns the model's raw answer.
+ * The REPL backs this with the FAST/cheap model (low latency); core stays free
+ * of any model SDK so the routing logic is unit-testable with a fake.
  */
-const GOAL_SIGNALS: readonly RegExp[] = [
-  // English
-  /\b(?:don['’]?t|do not|never)\s+stop\s+(?:until|till)\b/i,
-  /\bkeep\s+(?:going|trying|working|iterating)\b[^.!?]*\b(?:until|till)\b/i,
-  /\b(?:iterate|loop|repeat)\b[^.!?]*\b(?:until|till)\b/i,
-  /\b(?:until|till)\b[^.!?]*\b(?:pass(?:es|ing)?|work(?:s|ing)?|green|done|complete|succeed|finished)\b/i,
-  /\bmake\s+sure\s+(?:all\s+)?(?:the\s+)?tests?\s+(?:pass|are\s+green)/i,
-  /\bfix\s+(?:it\s+)?(?:everything|completely|for\s+good)\b/i,
-  // Spanish
-  /\bno\s+(?:pares|te\s+detengas|dejes\s+de\b[^.!?]*)\b[^.!?]*\bhasta\b/i,
-  /\bsigue\b[^.!?]*\bhasta\s+que\b/i,
-  /\bitera\b[^.!?]*\bhasta\b/i,
-  /\bhasta\s+que\b[^.!?]*\b(?:pase|pasen|funcione|funcionen|est[ée]n?|verde|listo|hecho)\b/i,
-  /\baseg[úu]rate\s+de\s+que\b[^.!?]*\b(?:pase|pasen|funcione|funcionen)\b/i,
-  /\barr[ée]glalo\s+del\s+todo\b/i,
-];
+export type IntentModel = (prompt: string, signal?: AbortSignal) => Promise<string>;
+
+/** Builds the language-agnostic classification prompt (the MODEL handles any language). */
+export function buildIntentPrompt(text: string): string {
+  return [
+    'You are an intent classifier for a coding-agent CLI. Read the user request in ANY language',
+    'and choose the SINGLE best category:',
+    '- chat: a question, explanation, or one small direct change the agent can just do.',
+    '- plan: a multi-step build/change worth planning first.',
+    '- swarm: many independent, parallelizable subtasks.',
+    '- bg: a long-running task to run in the background.',
+    '- research: needs external/current information from the web, or deep investigation.',
+    '- goal: an explicit "keep iterating until it works/passes/done" objective.',
+    'Answer with ONLY the category word (chat, plan, swarm, bg, research, or goal).',
+    '',
+    `Request: ${text}`,
+  ].join('\n');
+}
+
+/** Maps a model answer to a {@link TurnIntent}; anything unrecognized → `chat`. */
+export function parseTurnIntent(modelOutput: string): TurnIntent {
+  const tokens = modelOutput.toLowerCase().match(/[a-z]+/g) ?? [];
+  const found = tokens.find((t) => (TURN_INTENTS as readonly string[]).includes(t));
+  return (found as TurnIntent | undefined) ?? 'chat';
+}
 
 /**
- * Detects an EXPLICIT iterate-until-done objective in a natural-language line so
- * the shell can OFFER the goal loop (`/goal`) — the user always confirms; this
- * never silently reroutes. Conservative by design: a plain "fix the bug" is a
- * normal turn; only clear "…until it passes / no pares hasta…" phrasing matches.
- * Locale-aware (en+es), pure + deterministic.
+ * Classifies a natural-language turn via the injected LLM (multi-language). Gated
+ * to `chat` (a plain model-first turn — the safe default) when there is no real
+ * model, off a TTY, at a read-only level, or on any classifier error/timeout, so
+ * the shell never blocks on classification.
  */
-export function classifyGoalIntent(text: string): GoalIntent {
-  for (const pattern of GOAL_SIGNALS) {
-    const match = text.match(pattern);
-    if (match !== null) {
-      return { isGoal: true, signal: match[0].trim() };
-    }
+export async function classifyTurnIntent(
+  text: string,
+  ctx: IntentContext,
+  classify: IntentModel,
+  signal?: AbortSignal,
+): Promise<TurnIntent> {
+  if (ctx.mock || !ctx.interactive || ctx.level < 2 || text.trim().length === 0) {
+    return 'chat';
   }
-  return { isGoal: false, signal: '' };
+  try {
+    return parseTurnIntent(await classify(buildIntentPrompt(text), signal));
+  } catch {
+    return 'chat';
+  }
 }
 
 /** The surface-agnostic model backing the StatusLine. */

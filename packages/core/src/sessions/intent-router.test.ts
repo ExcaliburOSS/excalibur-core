@@ -1,37 +1,67 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CONFIG, type ExcaliburConfig } from '@excalibur/shared';
-import { buildStatusLineModel, classifyGoalIntent, parseStructuralInput } from './intent-router';
+import {
+  buildIntentPrompt,
+  buildStatusLineModel,
+  classifyTurnIntent,
+  parseStructuralInput,
+  parseTurnIntent,
+  type IntentContext,
+} from './intent-router';
 
-describe('classifyGoalIntent — explicit iterate-until-done detection (en+es)', () => {
-  it('detects English "until it passes/works/done" goals', () => {
-    expect(classifyGoalIntent('fix the parser and keep going until the tests pass').isGoal).toBe(
-      true,
+const live: IntentContext = { interactive: true, mock: false, level: 4 };
+
+describe('classifyTurnIntent — LLM-based, multi-language (no keyword/regex)', () => {
+  it('routes via the injected model regardless of input language', async () => {
+    const plan = vi.fn().mockResolvedValue('plan');
+    // A French build request classifies correctly with NO en/es keywords involved.
+    expect(await classifyTurnIntent('implémente un limiteur de débit', live, plan)).toBe('plan');
+    expect(plan).toHaveBeenCalledOnce();
+    expect(plan.mock.calls[0]?.[0]).toContain('implémente un limiteur de débit');
+
+    const research = vi.fn().mockResolvedValue('research');
+    expect(
+      await classifyTurnIntent('quelles sont les nouveautés de React 19 ?', live, research),
+    ).toBe('research');
+
+    const goal = vi.fn().mockResolvedValue('goal');
+    expect(await classifyTurnIntent('continue jusqu’à ce que les tests passent', live, goal)).toBe(
+      'goal',
     );
-    expect(classifyGoalIntent("don't stop until the build is green").isGoal).toBe(true);
-    expect(classifyGoalIntent('iterate until it works').isGoal).toBe(true);
-    expect(classifyGoalIntent('make sure all the tests pass').isGoal).toBe(true);
   });
 
-  it('detects Spanish goals', () => {
-    expect(classifyGoalIntent('arregla el bug y no pares hasta que pasen los tests').isGoal).toBe(
-      true,
+  it('falls back to chat (no model call) for mock / non-interactive / read-only / empty', async () => {
+    const model = vi.fn().mockResolvedValue('plan');
+    expect(await classifyTurnIntent('build it', { ...live, mock: true }, model)).toBe('chat');
+    expect(await classifyTurnIntent('build it', { ...live, interactive: false }, model)).toBe(
+      'chat',
     );
-    expect(classifyGoalIntent('sigue trabajando hasta que funcione').isGoal).toBe(true);
-    expect(classifyGoalIntent('arréglalo del todo').isGoal).toBe(true);
+    expect(await classifyTurnIntent('build it', { ...live, level: 1 }, model)).toBe('chat');
+    expect(await classifyTurnIntent('   ', live, model)).toBe('chat');
+    expect(model).not.toHaveBeenCalled();
   });
 
-  it('returns the matched signal for the offer message', () => {
-    const intent = classifyGoalIntent('please keep going until the tests pass');
-    expect(intent.isGoal).toBe(true);
-    expect(intent.signal.length).toBeGreaterThan(0);
-    expect(intent.signal.toLowerCase()).toContain('until');
+  it('falls back to chat when the classifier throws/times out', async () => {
+    const model = vi.fn().mockRejectedValue(new Error('timeout'));
+    expect(await classifyTurnIntent('refactor the auth module', live, model)).toBe('chat');
   });
+});
 
-  it('does NOT fire on ordinary one-shot requests (conservative)', () => {
-    expect(classifyGoalIntent('fix the webhook retry bug').isGoal).toBe(false);
-    expect(classifyGoalIntent('what does this function do?').isGoal).toBe(false);
-    expect(classifyGoalIntent('add a test for parseConfig').isGoal).toBe(false);
-    expect(classifyGoalIntent('explain the auth flow').isGoal).toBe(false);
+describe('parseTurnIntent', () => {
+  it('maps the model answer to a category; unknown → chat', () => {
+    expect(parseTurnIntent('plan')).toBe('plan');
+    expect(parseTurnIntent('  RESEARCH\n')).toBe('research');
+    expect(parseTurnIntent('Category: bg')).toBe('bg');
+    expect(parseTurnIntent('je ne sais pas')).toBe('chat');
+    expect(parseTurnIntent('')).toBe('chat');
+  });
+});
+
+describe('buildIntentPrompt', () => {
+  it('embeds the request verbatim and is language-agnostic', () => {
+    const prompt = buildIntentPrompt('faça em segundo plano');
+    expect(prompt).toContain('faça em segundo plano');
+    expect(prompt).toContain('ANY language');
   });
 });
 

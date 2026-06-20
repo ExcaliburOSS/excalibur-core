@@ -4,7 +4,7 @@ import {
   buildStatusLineModel,
   buildTurnSummary,
   changeGlyph,
-  classifyGoalIntent,
+  classifyTurnIntent,
   compactSession,
   compactSessionAsync,
   createExtensionHost,
@@ -18,7 +18,9 @@ import {
   MemoryStore,
   parseStructuralInput,
   type AsyncSummarizer,
+  type IntentModel,
   type LocalSession,
+  type TurnIntent,
 } from '@excalibur/core';
 import { analyzeRepository } from '@excalibur/context-engine';
 import { agentUsesGateway, resolveAgentAdapter } from '@excalibur/agent-runtime';
@@ -65,7 +67,6 @@ import {
   spawnThread,
   type FleetState,
 } from './fleet';
-import { classifyTurnIntent, type TurnIntent } from './intent-router';
 
 const execFileAsync = promisify(execFile);
 
@@ -288,6 +289,9 @@ export async function runInteractiveSession(
     ghostCommands: GHOST_COMMANDS,
     suggest: buildSuggester(deps, runtime),
   });
+  // LLM intent classifier (multi-language), resolved ONCE. undefined → no fast
+  // model / opted out → the shell stays model-first (everything a plain turn).
+  const classifyIntent = buildIntentClassifier(deps, runtime);
 
   // First Ctrl-C (or ESC, on the raw editor) during an in-flight turn cancels
   // it; a second Ctrl-C at an empty prompt exits. We track an AbortController
@@ -529,44 +533,33 @@ export async function runInteractiveSession(
         continue;
       }
 
-      // A line that EXPLICITLY signals iterate-until-done ("…until the tests
-      // pass", "no pares hasta…") OFFERS the autonomous goal loop — the user
-      // confirms; we never silently reroute. Confirm BEFORE beginTurn so the
-      // prompt read isn't fighting the turn-active editor.
-      const goalIntent = deps.ui.isInteractive()
-        ? classifyGoalIntent(text)
-        : { isGoal: false, signal: '' };
-      let asGoal = false;
-      if (goalIntent.isGoal) {
-        asGoal = await deps.ui.confirm(
-          deps.t('repl.goal-offer', {
-            signal: goalIntent.signal,
-            max: GOAL_MAX_ITERATIONS,
-          }),
-          { defaultYes: true },
-        );
-      }
-
-      // Natural-language turn → INTENT-ROUTED (proactive, no arcane commands).
-      // The heuristic router detects, from the message, whether this wants a
-      // plan, a swarm, a background thread, or a direct turn — but only with a
-      // real model on an interactive terminal (else a plain direct turn, so
-      // piped/CI/mock paths keep working). `swarm`/`bg` are OFFERED; `plan`
-      // carries its own gate. Goal-mode (if accepted above) wins. Opt out with
-      // EXCALIBUR_ROUTER=off.
+      // Natural-language turn → INTENT-ROUTED by the LLM classifier (core,
+      // MULTI-LANGUAGE — never keyword/regex). It detects plan / swarm / bg /
+      // research / goal vs a plain turn, via the FAST model. No fast model,
+      // mock, non-interactive, read-only level, or EXCALIBUR_ROUTER=off →
+      // `chat` (a plain model-first turn). swarm/bg/goal are OFFERED; plan
+      // carries its own gate (skipped under auto = zero-prompts).
       const intent: TurnIntent =
-        asGoal || deps.env['EXCALIBUR_ROUTER'] === 'off'
+        classifyIntent === undefined
           ? 'chat'
-          : classifyTurnIntent(text, {
-              interactive: deps.ui.isInteractive(),
-              mock: runtime.model === 'mock',
-              level: runtime.autonomyLevel,
-              auto: runtime.approvals.auto,
-            });
+          : await classifyTurnIntent(
+              text,
+              {
+                interactive: deps.ui.isInteractive(),
+                mock: runtime.model === 'mock',
+                level: runtime.autonomyLevel,
+              },
+              classifyIntent,
+            );
 
-      // Offer the heavier routes BEFORE claiming the turn (so the confirm read
-      // isn't fighting the turn-active editor). Decline → a direct turn.
-      if (intent === 'bg') {
+      // Offer the heavier routes BEFORE claiming the turn (decline → direct turn).
+      let asGoal = false;
+      if (intent === 'goal') {
+        asGoal = await deps.ui.confirm(deps.t('repl.goal-offer', { max: GOAL_MAX_ITERATIONS }), {
+          defaultYes: true,
+        });
+      }
+      if (!asGoal && intent === 'bg') {
         if (await deps.ui.confirm(deps.t('repl.route-bg-offer'), { defaultYes: true })) {
           handleBgCommand(deps, runtime, text, bgControllers);
           printStatusLine(deps, runtime);
@@ -574,6 +567,7 @@ export async function runInteractiveSession(
         }
       }
       const asSwarm =
+        !asGoal &&
         intent === 'swarm' &&
         (await deps.ui.confirm(deps.t('repl.route-swarm-offer'), { defaultYes: true }));
 
@@ -583,9 +577,11 @@ export async function runInteractiveSession(
           await executeGoalLoop(deps, runtime, text, seed, ctrl.signal);
         } else if (asSwarm) {
           await handleSwarmCommand(deps, runtime, text, ctrl.signal);
-        } else if (intent === 'plan') {
+        } else if (intent === 'plan' && !runtime.approvals.auto) {
           await dispatchPlan(deps, runtime, text, ctrl.signal, seed);
         } else {
+          // chat · research (until the native research pipeline lands, F7) ·
+          // plan-under-auto → a direct model-first turn (the model has the tools).
           await dispatchAgentTurn(deps, runtime, text, ctrl.signal, seed);
         }
       } catch (error) {
@@ -702,6 +698,41 @@ function buildSuggester(
     } catch {
       return null; // a background suggestion must never disrupt the prompt
     }
+  };
+}
+
+/**
+ * The LLM intent classifier backing conversational routing — multi-language, via
+ * the FAST/cheap model (low latency; reasoning pinned off). Returns undefined
+ * when there is no real model OR no distinct fast model (so a slow-only or
+ * mock/unconfigured setup never pays a per-turn classification penalty → the
+ * shell stays model-first and routes everything as a plain turn). Mirrors the
+ * ghost suggester: short timeout + tiny output; a slow model simply times out.
+ */
+function buildIntentClassifier(deps: CliDeps, runtime: SessionRuntime): IntentModel | undefined {
+  if (deps.env['EXCALIBUR_ROUTER'] === 'off') {
+    return undefined;
+  }
+  const gateway = loadGatewayContext(runtime.repoRoot);
+  const provider = gateway.cheapProviderName;
+  if (!gateway.configured || provider == null) {
+    return undefined; // no real/fast model → stay model-first (no classification)
+  }
+  const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[provider]
+    ?.type;
+  if (providerType === 'mock') {
+    return undefined;
+  }
+  return async (prompt: string, signal?: AbortSignal): Promise<string> => {
+    const output = await gateway.gateway.chat({
+      provider,
+      messages: [{ role: 'user', content: redactSecrets(prompt) }],
+      maxTokens: 6,
+      timeoutMs: 2500,
+      metadata: { kind: 'intent' },
+      ...(signal !== undefined ? { signal } : {}),
+    });
+    return output.content;
   };
 }
 

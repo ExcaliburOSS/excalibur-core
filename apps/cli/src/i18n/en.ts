@@ -618,7 +618,7 @@ export const EN: Catalog = {
   'repl.cancelled-back-to-prompt': 'Cancelled. Back to the prompt.',
   'repl.ctrl-c-again': 'Press Ctrl-C again to exit.',
   'repl.goal-offer':
-    'That reads as a goal to complete ("{signal}…"). Pursue it across turns until an evaluator says it\'s done (max {max})?',
+    "That reads as a goal to complete. Pursue it across turns until an evaluator says it's done (max {max})?",
   'repl.remember-usage': 'Usage: /remember <a decision, rejection, risk or convention to remember>',
   'repl.remember-saved':
     'Remembered ({detail}). Future runs touching these paths will be primed with it.',

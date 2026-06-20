@@ -291,11 +291,15 @@ export {
 export {
   parseStructuralInput,
   buildStatusLineModel,
-  classifyGoalIntent,
+  classifyTurnIntent,
+  buildIntentPrompt,
+  parseTurnIntent,
   type StructuralInput,
   type StatusLineModel,
   type BuildStatusLineInput,
-  type GoalIntent,
+  type TurnIntent,
+  type IntentContext,
+  type IntentModel,
 } from './sessions/intent-router';
 
 // Core-local errors

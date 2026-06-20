@@ -639,7 +639,7 @@ export const ES: Catalog = {
   'repl.cancelled-back-to-prompt': 'Cancelado. De vuelta al prompt.',
   'repl.ctrl-c-again': 'Pulsa Ctrl-C de nuevo para salir.',
   'repl.goal-offer':
-    'Esto parece un objetivo a completar ("{signal}…"). ¿Perseguirlo a lo largo de varios turnos hasta que un evaluador diga que está hecho (máx. {max})?',
+    'Esto parece un objetivo a completar. ¿Perseguirlo a lo largo de varios turnos hasta que un evaluador diga que está hecho (máx. {max})?',
   'repl.remember-usage': 'Uso: /remember <una decisión, rechazo, riesgo o convención que recordar>',
   'repl.remember-saved':
     'Recordado ({detail}). Las próximas ejecuciones que toquen estas rutas lo tendrán presente.',
