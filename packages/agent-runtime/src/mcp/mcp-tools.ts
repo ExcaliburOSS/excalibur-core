@@ -2,6 +2,8 @@ import type { ToolSpec } from '@excalibur/model-gateway';
 import { McpClient, type JsonObject, type McpToolResult } from './mcp-client';
 import { allowedForRole, toolAccessFor, type McpToolAccess } from './mcp-policy';
 import { assertServerEgress, type McpServerEgress } from './mcp-egress';
+import { McpTokenStore } from './oauth/token-store';
+import { refreshToken } from './oauth/oauth-client';
 import type { PermissionEngine } from '../permissions/permission-engine';
 
 /**
@@ -70,6 +72,8 @@ export interface ConnectMcpOptions {
   engine?: PermissionEngine;
   /** Environment used to resolve `auth.bearerEnv` (defaults to process.env). */
   env?: NodeJS.ProcessEnv;
+  /** OAuth token store for `auth.type: oauth` servers (defaults to the user store). */
+  tokenStore?: McpTokenStore;
 }
 
 const SEPARATOR = '__';
@@ -121,6 +125,33 @@ export async function connectMcpServers(
           warnings.push(
             `MCP server "${serverName}" auth.bearerEnv "${cfg.auth.bearerEnv}" is unset; connecting without it.`,
           );
+        }
+      } else if (cfg.auth?.type === 'oauth' && cfg.url !== undefined) {
+        // OAuth (F6): use the stored access token; refresh it if expired. No
+        // token → skip this server with a clear "run mcp auth" hint (never a
+        // confusing 401 connect failure).
+        const store = options.tokenStore ?? new McpTokenStore();
+        let token = store.get(cfg.url);
+        if (
+          token !== null &&
+          token.expiresAt !== undefined &&
+          token.expiresAt <= Date.now() + 60_000 &&
+          token.refreshToken !== undefined
+        ) {
+          const refreshed = await refreshToken(globalThis.fetch as typeof fetch, token);
+          if (refreshed !== null) {
+            store.set(cfg.url, refreshed);
+            token = refreshed;
+          }
+        }
+        const access = store.validAccessToken(cfg.url);
+        if (access !== null) {
+          authHeaders['Authorization'] = `Bearer ${access}`;
+        } else {
+          warnings.push(
+            `MCP server "${serverName}" needs authorization — run: excalibur mcp auth ${serverName}`,
+          );
+          continue;
         }
       }
 

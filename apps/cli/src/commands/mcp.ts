@@ -1,7 +1,20 @@
-import { closeMcp, connectMcpServers, type McpServerSpec } from '@excalibur/agent-runtime';
+import {
+  authorize,
+  closeMcp,
+  connectMcpServers,
+  lookupServer,
+  McpTokenStore,
+  openBrowser,
+  registryServerToConfig,
+  searchRegistry,
+  startLoopback,
+  type McpServerSpec,
+} from '@excalibur/agent-runtime';
 import type { Command } from 'commander';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
+import { CliUsageError } from '../errors';
+import { readRawConfig, writeRawConfig } from '../lib/config-file';
 import { loadConfigContext } from '../lib/context';
 
 /**
@@ -87,6 +100,103 @@ export function registerMcpCommand(program: Command, deps: CliDeps): void {
         }
       } finally {
         closeMcp(connected);
+      }
+    });
+
+  mcp
+    .command('search')
+    .description('search the curated, signed MCP server registry')
+    .argument('[query]', 'name/description substring')
+    .option('--json', 'machine-readable JSON output')
+    .action((query: string | undefined, options: { json?: boolean }) => {
+      const results = searchRegistry(query ?? '');
+      if (options.json === true) {
+        deps.ui.json(results);
+        return;
+      }
+      if (results.length === 0) {
+        deps.ui.info(deps.t('mcp.registry-empty'));
+        return;
+      }
+      deps.ui.table(
+        [
+          deps.t('mcp.col-name'),
+          deps.t('mcp.col-trust'),
+          deps.t('mcp.col-score'),
+          deps.t('mcp.col-desc'),
+        ],
+        results.map((s) => [s.name, s.trust, String(s.trustScore), s.description]),
+      );
+      deps.ui.info(deps.t('mcp.add-hint'));
+    });
+
+  mcp
+    .command('add')
+    .description('add a server from the signed registry to .excalibur/config.yaml')
+    .argument('<name>', 'registry server name (see `excalibur mcp search`)')
+    .action((name: string) => {
+      const server = lookupServer(name);
+      if (server === undefined) {
+        throw new CliUsageError(deps.t('mcp.registry-unknown', { name }));
+      }
+      const repoRoot = deps.cwd();
+      const raw = readRawConfig(repoRoot);
+      const mcpSection =
+        typeof raw['mcp'] === 'object' && raw['mcp'] !== null
+          ? (raw['mcp'] as Record<string, unknown>)
+          : {};
+      const servers =
+        typeof mcpSection['servers'] === 'object' && mcpSection['servers'] !== null
+          ? (mcpSection['servers'] as Record<string, unknown>)
+          : {};
+      servers[name] = registryServerToConfig(server);
+      mcpSection['servers'] = servers;
+      raw['mcp'] = mcpSection;
+      writeRawConfig(repoRoot, raw);
+      deps.ui.success(
+        deps.t('mcp.added', { name, trust: server.trust, score: String(server.trustScore) }),
+      );
+      if (server.transport === 'http') {
+        deps.ui.info(deps.t('mcp.added-oauth-hint', { name }));
+      }
+    });
+
+  mcp
+    .command('auth')
+    .description('authorize a remote MCP server via OAuth (Dynamic Client Registration + PKCE)')
+    .argument('<name>', 'configured MCP server name')
+    .action(async (name: string) => {
+      const { config } = loadConfigContext(deps.cwd());
+      const server = config.mcp?.servers?.[name] as
+        | { url?: string; auth?: { clientId?: string; scopes?: string[] } }
+        | undefined;
+      if (server === undefined) {
+        throw new CliUsageError(deps.t('mcp.auth-unknown', { name }));
+      }
+      if (server.url === undefined) {
+        throw new CliUsageError(deps.t('mcp.auth-not-remote', { name }));
+      }
+      const serverUrl = server.url;
+      deps.ui.info(deps.t('mcp.auth-starting', { name }));
+      try {
+        const token = await authorize(serverUrl, {
+          fetchImpl: globalThis.fetch as typeof fetch,
+          loopback: () => startLoopback(),
+          openUrl: (url) => {
+            deps.ui.info(deps.t('mcp.auth-open', { url }));
+            openBrowser(url);
+          },
+          ...(server.auth?.clientId !== undefined ? { clientId: server.auth.clientId } : {}),
+          ...(server.auth?.scopes !== undefined ? { scope: server.auth.scopes.join(' ') } : {}),
+        });
+        new McpTokenStore().set(serverUrl, token);
+        deps.ui.success(deps.t('mcp.auth-done', { name }));
+      } catch (error) {
+        deps.ui.error(
+          deps.t('mcp.auth-failed', {
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        );
       }
     });
 }

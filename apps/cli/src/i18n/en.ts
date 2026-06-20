@@ -128,6 +128,22 @@ export const EN: Catalog = {
   'mcp.col-target': 'TARGET',
   'mcp.col-trust': 'TRUST',
   'mcp.probe-hint': "Run `excalibur mcp list --probe` to connect and list each server's tools.",
+  // MCP registry + OAuth (F6)
+  'mcp.col-score': 'SCORE',
+  'mcp.col-desc': 'DESCRIPTION',
+  'mcp.registry-empty': 'No servers matched in the signed registry.',
+  'mcp.add-hint': 'Add one with `excalibur mcp add <name>`.',
+  'mcp.registry-unknown': 'No registry server named "{name}". Run `excalibur mcp search`.',
+  'mcp.added': 'Added MCP server "{name}" ({trust}, score {score}) to .excalibur/config.yaml.',
+  'mcp.added-oauth-hint':
+    'This is a remote server — authorize it with `excalibur mcp auth {name}`.',
+  'mcp.auth-unknown': 'No MCP server named "{name}" in .excalibur/config.yaml.',
+  'mcp.auth-not-remote':
+    'MCP server "{name}" is local (stdio) — OAuth applies to remote (url) servers.',
+  'mcp.auth-starting': 'Authorizing MCP server "{name}" (opening your browser)…',
+  'mcp.auth-open': 'If your browser did not open, visit:\n  {url}',
+  'mcp.auth-done': 'Authorized "{name}" — the token is stored securely (~/.config/excalibur/mcp).',
+  'mcp.auth-failed': 'Authorization failed: {message}',
   // web search (F3)
   'search.usage':
     'Usage: excalibur search <query>. Manage the local engine with `search serve`, or pick a backend with `search provider`.',
@@ -139,10 +155,10 @@ export const EN: Catalog = {
   'search.serve-consent':
     'Start a local SearXNG container via Docker for unlimited, private search?',
   'search.serve-starting': 'Starting a local SearXNG via Docker (the first run pulls the image)…',
-  'search.serve-up': '✓ SearXNG is up at {url} — Excalibur will use it automatically.',
+  'search.serve-up': 'SearXNG is up at {url} — Excalibur will use it automatically.',
   'search.serve-cancelled':
     'Cancelled — no container was started. Search still works via DuckDuckGo.',
-  'search.serve-stopped': '✓ Local SearXNG stopped and removed.',
+  'search.serve-stopped': 'Local SearXNG stopped and removed.',
   'search.serve-not-running': 'No local SearXNG container to stop.',
   'search.serve-no-docker':
     'Docker is not available — search falls back to keyless DuckDuckGo (still free, no setup).',
@@ -163,12 +179,12 @@ export const EN: Catalog = {
   'browser.installing': 'Installing Chromium via Playwright (one-time download)…',
   'browser.cancelled': 'Cancelled — Chromium was not installed. Tier-1 fetch still works (free).',
   'browser.enabled':
-    '✓ Local browser enabled — web_fetch will escalate to a real render when needed.',
-  'browser.disabled': '✓ Local browser disabled — fetch uses the fast Tier-1 path only.',
+    'Local browser enabled — web_fetch will escalate to a real render when needed.',
+  'browser.disabled': 'Local browser disabled — fetch uses the fast Tier-1 path only.',
   'browser.status': 'Local browser: {state} (escalation: {enabled})',
   'browser.on': 'on',
   'browser.off': 'off',
-  'browser.removed': '✓ Chromium uninstalled and browser escalation disabled.',
+  'browser.removed': 'Chromium uninstalled and browser escalation disabled.',
   'browser.remove-none': 'No Chromium to remove; browser escalation disabled.',
   // web fetch + hosted readers (F5)
   'web.usage':

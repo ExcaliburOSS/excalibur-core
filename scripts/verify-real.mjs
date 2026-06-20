@@ -327,6 +327,20 @@ await scenario('mcp — a trusted read-only MCP tool is driven end-to-end by Kim
   assert(ran, 'the MCP echo tool call should have executed (ok)');
 });
 
+await scenario('mcp registry — add a server from the signed registry via the bundle (F6)', () => {
+  const dir = freshRepo();
+  const { out } = exc(dir, ['mcp', 'add', 'filesystem'], 30000);
+  assert(
+    /Added MCP server "filesystem"/.test(out),
+    'mcp add should write the verified registry server',
+  );
+  const cfg = readFileSync(join(dir, '.excalibur/config.yaml'), 'utf8');
+  assert(
+    /server-filesystem/.test(cfg),
+    'config should contain the registry command (Ed25519-verified)',
+  );
+});
+
 await scenario('research command — cited, verified multi-source answer (F7)', () => {
   const dir = freshRepo({ '.excalibur/config.yaml': NET_AUTO });
   const { out } = exc(

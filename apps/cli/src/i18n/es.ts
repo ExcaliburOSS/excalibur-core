@@ -131,6 +131,24 @@ export const ES: Catalog = {
   'mcp.col-trust': 'CONFIANZA',
   'mcp.probe-hint':
     'Ejecuta `excalibur mcp list --probe` para conectar y listar las herramientas de cada servidor.',
+  // registro MCP + OAuth (F6)
+  'mcp.col-score': 'PUNTUACIÓN',
+  'mcp.col-desc': 'DESCRIPCIÓN',
+  'mcp.registry-empty': 'Ningún servidor coincide en el registro firmado.',
+  'mcp.add-hint': 'Añade uno con `excalibur mcp add <nombre>`.',
+  'mcp.registry-unknown':
+    'No hay servidor "{name}" en el registro. Ejecuta `excalibur mcp search`.',
+  'mcp.added':
+    'Añadido el servidor MCP "{name}" ({trust}, puntuación {score}) a .excalibur/config.yaml.',
+  'mcp.added-oauth-hint': 'Es un servidor remoto — autorízalo con `excalibur mcp auth {name}`.',
+  'mcp.auth-unknown': 'No hay servidor MCP "{name}" en .excalibur/config.yaml.',
+  'mcp.auth-not-remote':
+    'El servidor MCP "{name}" es local (stdio) — OAuth aplica a servidores remotos (url).',
+  'mcp.auth-starting': 'Autorizando el servidor MCP "{name}" (abriendo el navegador)…',
+  'mcp.auth-open': 'Si el navegador no se abrió, visita:\n  {url}',
+  'mcp.auth-done':
+    'Autorizado "{name}" — el token se guarda de forma segura (~/.config/excalibur/mcp).',
+  'mcp.auth-failed': 'La autorización falló: {message}',
   // búsqueda web (F3)
   'search.usage':
     'Uso: excalibur search <consulta>. Gestiona el motor local con `search serve`, o elige backend con `search provider`.',
@@ -143,10 +161,10 @@ export const ES: Catalog = {
     '¿Arrancar un contenedor SearXNG local con Docker para búsqueda ilimitada y privada?',
   'search.serve-starting':
     'Arrancando SearXNG local con Docker (la primera vez descarga la imagen)…',
-  'search.serve-up': '✓ SearXNG disponible en {url} — Excalibur lo usará automáticamente.',
+  'search.serve-up': 'SearXNG disponible en {url} — Excalibur lo usará automáticamente.',
   'search.serve-cancelled':
     'Cancelado — no se arrancó ningún contenedor. La búsqueda sigue funcionando vía DuckDuckGo.',
-  'search.serve-stopped': '✓ SearXNG local detenido y eliminado.',
+  'search.serve-stopped': 'SearXNG local detenido y eliminado.',
   'search.serve-not-running': 'No hay contenedor SearXNG local que detener.',
   'search.serve-no-docker':
     'Docker no está disponible — la búsqueda recurre a DuckDuckGo sin clave (igualmente gratis, sin configuración).',
@@ -168,12 +186,12 @@ export const ES: Catalog = {
   'browser.cancelled':
     'Cancelado — no se instaló Chromium. La descarga Tier-1 sigue funcionando (gratis).',
   'browser.enabled':
-    '✓ Navegador local activado — web_fetch escalará a un render real cuando haga falta.',
-  'browser.disabled': '✓ Navegador local desactivado — fetch usa solo la vía rápida Tier-1.',
+    'Navegador local activado — web_fetch escalará a un render real cuando haga falta.',
+  'browser.disabled': 'Navegador local desactivado — fetch usa solo la vía rápida Tier-1.',
   'browser.status': 'Navegador local: {state} (escalado: {enabled})',
   'browser.on': 'activado',
   'browser.off': 'desactivado',
-  'browser.removed': '✓ Chromium desinstalado y escalado de navegador desactivado.',
+  'browser.removed': 'Chromium desinstalado y escalado de navegador desactivado.',
   'browser.remove-none': 'No hay Chromium que eliminar; escalado de navegador desactivado.',
   // fetch web + lectores alojados (F5)
   'web.usage':
