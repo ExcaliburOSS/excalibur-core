@@ -19,6 +19,7 @@ export const NATIVE_TOOL_NAMES = [
   'create_branch',
   'run_tests',
   'update_tasks',
+  'web_fetch',
 ] as const;
 export type NativeToolName = (typeof NATIVE_TOOL_NAMES)[number];
 
@@ -169,6 +170,23 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
             }),
           )
           .describe('The full checklist snapshot (replaces any previous one)'),
+      })
+      .strict(),
+  },
+  {
+    name: 'web_fetch',
+    description:
+      'Fetch a web page or document by URL and return clean, readable text/markdown (scripts, styles and navigation stripped). Use it to read docs, issues, RFCs, or any page for research. Subject to the network policy and SSRF-protected; results are size-capped and secret-redacted. Returns text only (HTML, PDF, JSON, plain text).',
+    parameters: z
+      .object({
+        url: z.string().url().describe('Absolute http(s) URL to fetch'),
+        maxChars: z
+          .number()
+          .int()
+          .positive()
+          .max(100_000)
+          .optional()
+          .describe('Cap on returned characters (default 50000)'),
       })
       .strict(),
   },

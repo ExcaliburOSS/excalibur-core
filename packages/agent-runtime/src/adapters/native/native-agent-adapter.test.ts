@@ -561,6 +561,7 @@ describe('NativeAgentAdapter — role-based tool exposure', () => {
       'read_file',
       'search_code',
       'update_tasks',
+      'web_fetch',
     ]);
     expect(offered).not.toContain('write_file');
     expect(offered).not.toContain('run_command');

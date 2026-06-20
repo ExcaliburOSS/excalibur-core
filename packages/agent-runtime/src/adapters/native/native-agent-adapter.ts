@@ -71,6 +71,8 @@ const READ_ONLY_TOOLS: ReadonlyArray<NativeToolName> = [
   // Maintaining the checklist has no side effects, so even a read-only/planning
   // role may surface its plan as a live to-do list.
   'update_tasks',
+  // Reading the web is non-mutating research — planners/reviewers get it too.
+  'web_fetch',
 ];
 
 /** Roles that get the read-only tool subset (they observe, they do not change the tree). */
@@ -118,6 +120,8 @@ function eventTypeForTool(name: NativeToolName): ExcaliburEventType {
       return 'command_completed';
     case 'update_tasks':
       return 'task_update';
+    case 'web_fetch':
+      return 'tool_call';
   }
 }
 
@@ -685,6 +689,10 @@ export class NativeAgentAdapter implements AgentAdapter {
     if (name === 'run_command') {
       return pass(permissions.checkCommand(String(args['command'] ?? '')));
     }
+    if (name === 'web_fetch') {
+      // SSRF + network policy: a private/metadata target is a HARD deny here.
+      return pass(permissions.checkUrl(String(args['url'] ?? '')));
+    }
     if (name === 'run_tests') {
       // Gate the EXACT command the executor will run (base + pattern), not just
       // the base — otherwise the user approves `npm test` while the shell runs
@@ -835,6 +843,12 @@ function toolEventPayload(
   if (name === 'create_branch') {
     base['branch'] = String(args['name'] ?? '');
   }
+  if (name === 'web_fetch') {
+    base['url'] = String(args['url'] ?? '');
+    if (!ok && /^permission denied/i.test(result.trim())) {
+      base['denied'] = true;
+    }
+  }
   if (name === 'apply_patch') {
     base['simulated'] = false;
   }
@@ -880,6 +894,9 @@ function describeCall(name: NativeToolName, args: Record<string, unknown>): stri
   }
   if (name === 'create_branch') {
     return typeof args['name'] === 'string' ? `branch: ${args['name']}` : undefined;
+  }
+  if (name === 'web_fetch') {
+    return typeof args['url'] === 'string' ? `url: ${args['url']}` : undefined;
   }
   return undefined;
 }

@@ -18,6 +18,7 @@ import type { ExcaliburConfig } from '@excalibur/shared';
 import { getNativeTool, type NativeToolName } from './native-tools';
 import { hasShellMetacharacters, type PermissionEngine } from '../permissions/permission-engine';
 import { runInDockerSandbox, type SandboxLimits } from '../sandbox/docker-sandbox';
+import { webFetch, type FetchImpl } from './web/fetch';
 
 /**
  * Real native-tool executors (OSS-7, M2) — the security-critical core of the
@@ -58,6 +59,8 @@ export interface ToolExecutionContext {
    * work the agent already started.
    */
   signal?: AbortSignal;
+  /** Injectable fetch for `web_fetch` (tests pass a fake; defaults to global fetch). */
+  httpFetch?: FetchImpl;
 }
 
 export interface ToolResult {
@@ -763,6 +766,33 @@ function execUpdateTasks(args: Record<string, unknown>): ToolResult {
  * model. `requiresConfirmation` is NOT handled here — the adapter resolves the
  * confirm-or-decline gate before calling this function.
  */
+/** `web_fetch` — governed by the network policy; SSRF + caps live in webFetch(). */
+async function execWebFetch(
+  args: Record<string, unknown>,
+  ctx: ToolExecutionContext,
+): Promise<ToolResult> {
+  const url = String(args['url'] ?? '');
+  const maxChars = typeof args['maxChars'] === 'number' ? args['maxChars'] : undefined;
+  const decision = ctx.permissions.checkUrl(url);
+  if (!decision.allowed) {
+    return fail(`permission denied: ${decision.reason}`);
+  }
+  try {
+    const res = await webFetch(url, {
+      ...(ctx.httpFetch !== undefined ? { fetchImpl: ctx.httpFetch } : {}),
+      ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
+      ...(maxChars !== undefined ? { maxChars } : {}),
+    });
+    const header =
+      res.title.length > 0 && res.title !== res.url
+        ? `# ${res.title}\n${res.url}\n\n`
+        : `${res.url}\n\n`;
+    return ok(`${header}${res.markdown}`);
+  } catch (error) {
+    return fail(`web_fetch failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 export async function executeNativeTool(
   name: NativeToolName,
   rawArgs: unknown,
@@ -796,6 +826,8 @@ export async function executeNativeTool(
         return await execCreateBranch(args, ctx);
       case 'update_tasks':
         return execUpdateTasks(args);
+      case 'web_fetch':
+        return await execWebFetch(args, ctx);
       default: {
         // Exhaustiveness guard: every NativeToolName is handled above.
         const exhaustive: never = name;
