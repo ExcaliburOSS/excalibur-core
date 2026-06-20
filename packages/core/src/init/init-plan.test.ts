@@ -271,4 +271,22 @@ describe('generateInitPlan — root AGENTS.md generation', () => {
       expect(plan.files.some((file) => file.relPath === 'AGENTS.md')).toBe(true);
     }
   });
+
+  it("localises Excalibur's own instructions to the locale, but keeps AGENTS.md English", () => {
+    const es = generateInitPlan(fakeAnalysis(), { mode: 'team', locale: 'es' });
+    // .excalibur/instructions/*.md follow the chrome locale (Spanish).
+    const general = es.files.find((f) => f.relPath === '.excalibur/instructions/general.md');
+    expect(general?.content).toContain('## Acuerdos de trabajo');
+    expect(general?.content).not.toContain('## Working agreements');
+    // AGENTS.md is the cross-tool standard → ALWAYS English, even at locale es.
+    const agents = es.files.find((f) => f.relPath === 'AGENTS.md');
+    expect(agents?.content).toContain('## Conventions');
+    expect(agents?.content).toContain('## Sensitive areas');
+    expect(agents?.content).not.toContain('## Convenciones');
+
+    // en is unchanged (byte-identical default).
+    const en = generateInitPlan(fakeAnalysis(), { mode: 'team' });
+    const enGeneral = en.files.find((f) => f.relPath === '.excalibur/instructions/general.md');
+    expect(enGeneral?.content).toContain('## Working agreements');
+  });
 });

@@ -14,10 +14,11 @@ import {
   type GatewayChatInput,
   type ProvidersFileConfig,
 } from '@excalibur/model-gateway';
-import type { DetectedSkill, InstructionSource } from '@excalibur/shared';
+import type { DetectedSkill, InstructionSource, Locale, Translator } from '@excalibur/shared';
 import { DEFAULT_METHODOLOGIES, DEFAULT_WORKFLOWS } from '@excalibur/workflow-schema';
 import { EXCALIBUR_DIR } from '../config/load-config';
 import { readTextIfExists, writeFileEnsured } from '../internal/fs-utils';
+import { makeInitTranslator } from './init-catalog';
 
 /**
  * `excalibur init` planning (Build Contract §4.6, onboarding spec §1–§3):
@@ -56,6 +57,8 @@ export interface GenerateInitPlanOptions {
    * When provided, minimal mode also writes `models/providers.yaml`.
    */
   providers?: ProvidersFileConfig;
+  /** Locale for the generated prose (AGENTS.md + instructions); defaults to en. */
+  locale?: Locale;
 }
 
 export interface ApplyInitPlanOptions {
@@ -174,86 +177,93 @@ function buildExtensionsYaml(): string {
   return header + stringifyYaml({ enabled: BUILT_IN_EXTENSIONS.map((pack) => pack.manifest.id) });
 }
 
-function buildGeneralInstructions(analysis: RepoAnalysis): string {
+function buildGeneralInstructions(analysis: RepoAnalysis, t: Translator): string {
   const commands = detectedCommands(analysis);
   const commandLines = Object.entries(commands).map(([key, value]) => `- ${key}: \`${value}\``);
   return [
-    `# Project instructions — ${projectName(analysis)}`,
+    t('init.g.title', { name: projectName(analysis) }),
     '',
-    'General guidance Excalibur prepends to every model prompt for this repository.',
+    t('init.g.intro'),
     '',
-    '## Detected stack',
+    t('init.detected-stack'),
     '',
-    `- Languages: ${analysis.languages.join(', ') || 'unknown'}`,
-    `- Frameworks: ${analysis.frameworks.join(', ') || 'none detected'}`,
-    `- Package manager: ${analysis.packageManager ?? 'unknown'}`,
+    t('init.languages', { value: analysis.languages.join(', ') || t('init.unknown') }),
+    t('init.frameworks', { value: analysis.frameworks.join(', ') || t('init.none-detected') }),
+    t('init.package-manager', { value: analysis.packageManager ?? t('init.unknown') }),
     '',
-    '## Commands',
+    t('init.commands'),
     '',
-    commandLines.length > 0 ? commandLines.join('\n') : '_No commands detected._',
+    commandLines.length > 0 ? commandLines.join('\n') : t('init.g.no-commands'),
     '',
-    '## Working agreements',
+    t('init.working-agreements'),
     '',
-    '- Keep changes small and reviewable.',
-    '- Never commit secrets; use environment variables.',
-    '- Run the detected test and typecheck commands before declaring work done.',
-    '- Update the relevant documentation (ADRs, design/module docs, API reference, CHANGELOG) before declaring work done.',
+    t('init.wa-small'),
+    t('init.secrets'),
+    t('init.wa-verify'),
+    t('init.wa-docs'),
     '',
   ].join('\n');
 }
 
-function buildArchitectureInstructions(analysis: RepoAnalysis): string {
+function buildArchitectureInstructions(analysis: RepoAnalysis, t: Translator): string {
+  const yesNo = (v: boolean): string => (v ? t('init.yes') : t('init.no'));
   return [
-    '# Architecture instructions',
+    t('init.arch.title'),
     '',
-    `- Backend detected: ${analysis.patterns.hasBackend ? 'yes' : 'no'}.`,
-    `- Frontend detected: ${analysis.patterns.hasFrontend ? 'yes' : 'no'}.`,
-    `- API directories: ${analysis.patterns.apiDirs.join(', ') || 'none detected'}.`,
-    `- Domain directories: ${analysis.patterns.domainDirs.join(', ') || 'none detected'}.`,
+    t('init.arch.backend', { value: yesNo(analysis.patterns.hasBackend) }),
+    t('init.arch.frontend', { value: yesNo(analysis.patterns.hasFrontend) }),
+    t('init.arch.api-dirs', {
+      value: analysis.patterns.apiDirs.join(', ') || t('init.none-detected'),
+    }),
+    t('init.arch.domain-dirs', {
+      value: analysis.patterns.domainDirs.join(', ') || t('init.none-detected'),
+    }),
     '',
-    'Describe module boundaries, layering rules and dependency direction here.',
+    t('init.arch.describe'),
     '',
   ].join('\n');
 }
 
-function buildTestingInstructions(analysis: RepoAnalysis): string {
+function buildTestingInstructions(analysis: RepoAnalysis, t: Translator): string {
   const testCommand = analysis.commands.test;
   return [
-    '# Testing instructions',
+    t('init.test.title'),
     '',
-    `- Test directories: ${analysis.patterns.testDirs.join(', ') || 'none detected'}.`,
-    testCommand !== undefined
-      ? `- Run tests with \`${testCommand}\`.`
-      : '- No test command detected — add one before relying on agent verification.',
+    t('init.test.dirs', {
+      value: analysis.patterns.testDirs.join(', ') || t('init.none-detected'),
+    }),
+    testCommand !== undefined ? t('init.test.run', { cmd: testCommand }) : t('init.test.no-cmd'),
     '',
-    'Describe the testing strategy (unit/integration/e2e) and coverage expectations here.',
+    t('init.test.describe'),
     '',
   ].join('\n');
 }
 
-function buildDocumentationInstructions(analysis: RepoAnalysis): string {
+function buildDocumentationInstructions(analysis: RepoAnalysis, t: Translator): string {
   const modules = analysis.patterns.domainDirs;
+  const suffix =
+    modules.length > 0 ? t('init.docs.modules-suffix', { value: modules.join(', ') }) : '';
   return [
-    '# Documentation instructions',
+    t('init.docs.title'),
     '',
-    '- Treat documentation as part of "done" — like passing tests, not an afterthought.',
-    '- Record notable technical decisions as ADRs (e.g. `docs/adr/NNNN-title.md`).',
-    `- Keep module and public API docs current with the change${modules.length > 0 ? ` (modules: ${modules.join(', ')})` : ''}.`,
-    '- Add a `CHANGELOG.md` entry for any user-facing or behavioural change.',
+    t('init.docs.1'),
+    t('init.docs.2'),
+    t('init.docs.3', { suffix }),
+    t('init.docs.4'),
     '',
-    'Describe where documentation lives (docs site, ADR directory, API reference) and the conventions to follow here.',
+    t('init.docs.describe'),
     '',
   ].join('\n');
 }
 
-function buildSecurityInstructions(analysis: RepoAnalysis): string {
+function buildSecurityInstructions(analysis: RepoAnalysis, t: Translator): string {
   const sensitive = analysis.patterns.sensitivePaths;
   return [
-    '# Security instructions',
+    t('init.sec.title'),
     '',
-    '- Never read or write `.env*` files, private keys or secret stores.',
-    `- Sensitive paths detected: ${sensitive.join(', ') || 'none detected'}.`,
-    '- Changes to authentication, billing or payment code require human review.',
+    t('init.sec.1'),
+    t('init.sec.sensitive', { value: sensitive.join(', ') || t('init.none-detected') }),
+    t('init.sec.3'),
     '',
   ].join('\n');
 }
@@ -287,15 +297,20 @@ export interface AgentsMdEnrichment {
   architecture?: string;
 }
 
-function buildAgentsMd(analysis: RepoAnalysis, enrichment: AgentsMdEnrichment = {}): string {
+function buildAgentsMd(
+  analysis: RepoAnalysis,
+  t: Translator,
+  enrichment: AgentsMdEnrichment = {},
+): string {
   const name = projectName(analysis);
   const commands = detectedCommands(analysis);
   const pm = analysis.packageManager;
   const patterns = analysis.patterns;
+  const yesNo = (v: boolean): string => (v ? t('init.yes') : t('init.no'));
 
   const commandLines: string[] = [];
   if (pm !== null) {
-    commandLines.push(`- Install: \`${pm} install\``);
+    commandLines.push(t('init.am.install', { cmd: `${pm} install` }));
   }
   for (const key of ['test', 'lint', 'typecheck', 'build'] as const) {
     const command = commands[key];
@@ -305,28 +320,39 @@ function buildAgentsMd(analysis: RepoAnalysis, enrichment: AgentsMdEnrichment = 
   }
 
   const layout: string[] = [
-    `- Backend: ${patterns.hasBackend ? 'yes' : 'no'} · Frontend: ${patterns.hasFrontend ? 'yes' : 'no'}`,
+    t('init.am.backend-frontend', {
+      backend: yesNo(patterns.hasBackend),
+      frontend: yesNo(patterns.hasFrontend),
+    }),
   ];
-  if (patterns.apiDirs.length > 0) layout.push(`- API: ${patterns.apiDirs.join(', ')}`);
+  if (patterns.apiDirs.length > 0)
+    layout.push(t('init.am.api', { value: patterns.apiDirs.join(', ') }));
   if (patterns.domainDirs.length > 0)
-    layout.push(`- Domain modules: ${patterns.domainDirs.join(', ')}`);
-  if (patterns.testDirs.length > 0) layout.push(`- Tests: ${patterns.testDirs.join(', ')}`);
+    layout.push(t('init.am.domain', { value: patterns.domainDirs.join(', ') }));
+  if (patterns.testDirs.length > 0)
+    layout.push(t('init.am.tests', { value: patterns.testDirs.join(', ') }));
   if (patterns.migrationDirs.length > 0)
-    layout.push(`- Migrations: ${patterns.migrationDirs.join(', ')}`);
+    layout.push(t('init.am.migrations', { value: patterns.migrationDirs.join(', ') }));
 
   const verifyLine =
     commands.test !== undefined
-      ? `- Run \`${commands.test}\`${commands.typecheck !== undefined ? ` and \`${commands.typecheck}\`` : ''} before considering a change done.`
-      : '- Add a test command so changes can be verified before they are considered done.';
+      ? t('init.am.verify', {
+          test: commands.test,
+          and:
+            commands.typecheck !== undefined
+              ? t('init.am.and-typecheck', { cmd: commands.typecheck })
+              : '',
+        })
+      : t('init.am.verify-add');
 
   // Conventions: the deterministic core + any model-enriched, repo-specific
   // bullets (the model only ADDS prose; the factual sections above are never
   // model-generated, so commands/stack/layout can't drift).
   const conventionLines = [
-    '- Keep changes small, focused and reviewable.',
+    t('init.am.conv-small'),
     verifyLine,
-    '- Update the relevant documentation (ADRs, module/API docs, CHANGELOG) as part of any change — not just code.',
-    '- Never commit secrets; use environment variables.',
+    t('init.am.conv-docs'),
+    t('init.secrets'),
     ...(enrichment.conventions ?? [])
       .map((c) => c.trim())
       .filter((c) => c.length > 0)
@@ -336,22 +362,22 @@ function buildAgentsMd(analysis: RepoAnalysis, enrichment: AgentsMdEnrichment = 
   const sections: string[] = [
     `# ${name}`,
     '',
-    '> Guidance for AI coding agents working in this repository. `AGENTS.md` is the',
-    '> cross-tool standard read by Excalibur, Cursor, GitHub Copilot, OpenCode and others.',
-    '> Excalibur generated this from the repository on first `init` — edit it freely and',
-    '> keep it in Git. Excalibur-specific configuration lives in `.excalibur/`.',
+    t('init.am.banner-1'),
+    t('init.am.banner-2'),
+    t('init.am.banner-3'),
+    t('init.am.banner-4'),
     '',
-    '## Stack',
+    t('init.am.stack'),
     '',
-    `- Languages: ${analysis.languages.join(', ') || 'unknown'}`,
-    `- Frameworks: ${analysis.frameworks.join(', ') || 'none detected'}`,
-    `- Package manager: ${pm ?? 'unknown'}`,
+    t('init.languages', { value: analysis.languages.join(', ') || t('init.unknown') }),
+    t('init.frameworks', { value: analysis.frameworks.join(', ') || t('init.none-detected') }),
+    t('init.package-manager', { value: pm ?? t('init.unknown') }),
     '',
-    '## Commands',
+    t('init.commands'),
     '',
-    commandLines.length > 0 ? commandLines.join('\n') : '_No commands detected — add them here._',
+    commandLines.length > 0 ? commandLines.join('\n') : t('init.am.no-commands'),
     '',
-    '## Project layout',
+    t('init.am.layout'),
     '',
     layout.join('\n'),
     '',
@@ -359,19 +385,19 @@ function buildAgentsMd(analysis: RepoAnalysis, enrichment: AgentsMdEnrichment = 
 
   const architecture = (enrichment.architecture ?? '').trim();
   if (architecture.length > 0) {
-    sections.push('## Architecture', '', architecture, '');
+    sections.push(t('init.am.architecture'), '', architecture, '');
   }
 
   sections.push(
-    '## Conventions',
+    t('init.am.conventions'),
     '',
     conventionLines.join('\n'),
     '',
-    '## Sensitive areas',
+    t('init.am.sensitive-areas'),
     '',
     patterns.sensitivePaths.length > 0
-      ? `Take extra care and expect human review for: ${patterns.sensitivePaths.join(', ')}.`
-      : 'Treat authentication, billing, payments and secret-handling code as sensitive (human review).',
+      ? t('init.am.sensitive-detected', { value: patterns.sensitivePaths.join(', ') })
+      : t('init.am.sensitive-default'),
     '',
   );
   return sections.join('\n');
@@ -480,7 +506,10 @@ export async function enrichAgentsMd(
   if (conventions.length === 0 && architecture.length === 0) {
     throw new Error('AGENTS.md enrichment produced no usable content.');
   }
-  return buildAgentsMd(analysis, { conventions, architecture });
+  return buildAgentsMd(analysis, makeInitTranslator(spanish ? 'es' : 'en'), {
+    conventions,
+    architecture,
+  });
 }
 
 function sensitivePathGlobs(analysis: RepoAnalysis): string[] {
@@ -551,12 +580,16 @@ interface PlannedFile {
   content: string;
 }
 
-function minimalFiles(analysis: RepoAnalysis, opts: GenerateInitPlanOptions): PlannedFile[] {
+function minimalFiles(
+  analysis: RepoAnalysis,
+  opts: GenerateInitPlanOptions,
+  t: Translator,
+): PlannedFile[] {
   const files: PlannedFile[] = [
     { relPath: `${EXCALIBUR_DIR}/config.yaml`, content: buildConfigYaml(analysis) },
     {
       relPath: `${EXCALIBUR_DIR}/instructions/general.md`,
-      content: buildGeneralInstructions(analysis),
+      content: buildGeneralInstructions(analysis, t),
     },
     { relPath: `${EXCALIBUR_DIR}/extensions.yaml`, content: buildExtensionsYaml() },
   ];
@@ -569,24 +602,28 @@ function minimalFiles(analysis: RepoAnalysis, opts: GenerateInitPlanOptions): Pl
   return files;
 }
 
-function teamFiles(analysis: RepoAnalysis, opts: GenerateInitPlanOptions): PlannedFile[] {
+function teamFiles(
+  analysis: RepoAnalysis,
+  opts: GenerateInitPlanOptions,
+  t: Translator,
+): PlannedFile[] {
   const providers = opts.providers ?? DEFAULT_PROVIDERS_CONFIG;
   return [
     {
       relPath: `${EXCALIBUR_DIR}/instructions/architecture.md`,
-      content: buildArchitectureInstructions(analysis),
+      content: buildArchitectureInstructions(analysis, t),
     },
     {
       relPath: `${EXCALIBUR_DIR}/instructions/testing.md`,
-      content: buildTestingInstructions(analysis),
+      content: buildTestingInstructions(analysis, t),
     },
     {
       relPath: `${EXCALIBUR_DIR}/instructions/documentation.md`,
-      content: buildDocumentationInstructions(analysis),
+      content: buildDocumentationInstructions(analysis, t),
     },
     {
       relPath: `${EXCALIBUR_DIR}/instructions/security.md`,
-      content: buildSecurityInstructions(analysis),
+      content: buildSecurityInstructions(analysis, t),
     },
     {
       relPath: `${EXCALIBUR_DIR}/policies/standard-safe.yaml`,
@@ -725,9 +762,10 @@ function detectionSummary(analysis: RepoAnalysis, mode: InitMode, files: InitPla
  * `instructions/general.md` and `extensions.yaml`.
  */
 export function generateInitPlan(analysis: RepoAnalysis, opts: GenerateInitPlanOptions): InitPlan {
-  const planned: PlannedFile[] = [...minimalFiles(analysis, opts)];
+  const t = makeInitTranslator(opts.locale);
+  const planned: PlannedFile[] = [...minimalFiles(analysis, opts, t)];
   if (opts.mode === 'team' || opts.mode === 'full') {
-    planned.push(...teamFiles(analysis, opts));
+    planned.push(...teamFiles(analysis, opts, t));
   }
   if (opts.mode === 'full') {
     planned.push(...fullCatalogFiles());
@@ -735,9 +773,14 @@ export function generateInitPlan(analysis: RepoAnalysis, opts: GenerateInitPlanO
 
   // Bootstrap the cross-tool AGENTS.md standard at the repo root when absent
   // (all modes). An existing AGENTS.md is respected (ISD references it) and
-  // never overwritten.
+  // never overwritten. ALWAYS English: AGENTS.md is a cross-tool standard read
+  // by Cursor/Copilot/OpenCode/agents, so English maximises compatibility — the
+  // locale only localises Excalibur's own .excalibur/instructions/*.md.
   if (!hasRootAgentsMd(analysis)) {
-    planned.push({ relPath: 'AGENTS.md', content: buildAgentsMd(analysis) });
+    planned.push({
+      relPath: 'AGENTS.md',
+      content: buildAgentsMd(analysis, makeInitTranslator('en')),
+    });
   }
 
   const files: InitPlanFile[] = planned.map((file) => ({

@@ -109,6 +109,7 @@ export function registerInitCommand(program: Command, deps: CliDeps): void {
 
       const plan = generateInitPlan(analysis, {
         mode,
+        locale: deps.locale,
         ...(providers !== undefined ? { providers } : {}),
       });
 

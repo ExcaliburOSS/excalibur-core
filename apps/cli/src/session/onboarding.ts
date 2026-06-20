@@ -65,6 +65,7 @@ export async function maybeAutoOnboard(
   // re-onboarding to add a provider leaves any existing config untouched.
   const plan = generateInitPlan(analysis, {
     mode: 'minimal',
+    locale: deps.locale,
     ...(providers !== undefined ? { providers } : {}),
   });
   const result = applyInitPlan(repoRoot, plan, { overwrite: false });
