@@ -669,8 +669,23 @@ export const ES: Catalog = {
     'Uso: /loop [--every <seg>] [--times <n>] <prompt> — lo reejecuta periódicamente hasta ESC.',
   'repl.swarm-usage':
     'Uso: /swarm <tarea> — reparte la tarea entre agentes reales en paralelo (subtareas independientes, carriles en vivo).',
+  'repl.route-bg-offer':
+    'Esto parece largo — ¿lo ejecuto en segundo plano (/bg) para que sigas trabajando?',
+  'repl.route-swarm-offer':
+    'Esto parece paralelizable — ¿lo reparto en un swarm de agentes reales (/swarm)?',
+  'repl.bg-usage':
+    'Uso: /bg <tarea> — ejecuta la tarea en segundo plano (su propia ejecución registrada) mientras sigues trabajando.',
+  'repl.bg-started': '▸ segundo plano: {title} — en curso (usa /threads para verlo)',
+  'repl.bg-done': '✓ segundo plano hecho: {title}',
+  'repl.bg-failed': '✗ segundo plano falló: {title} — {error}',
+  'repl.bg-active': '{n} en 2º plano',
+  'repl.threads-none': 'No hay hilos en segundo plano en esta sesión. Inicia uno con /bg <tarea>.',
+  'repl.threads-header':
+    'Hilos en segundo plano — {running} en curso · {done} hechos · {failed} fallidos',
   'repl.help-swarm':
     '  /swarm <tarea>  reparte entre agentes reales en paralelo (subtareas independientes, carriles en vivo)',
+  'repl.help-bg': '  /bg <tarea>    ejecuta una tarea en segundo plano mientras sigues trabajando',
+  'repl.help-threads': '  /threads       lista los hilos en segundo plano (en curso + terminados)',
   'repl.loop-start':
     'En bucle cada {every}s, hasta {times}× — pulsa ESC para detener. (recurrencia, no finalización)',
   'repl.loop-iteration': '  bucle · iteración {iteration}/{times}',

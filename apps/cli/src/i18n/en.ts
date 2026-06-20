@@ -648,6 +648,17 @@ export const EN: Catalog = {
     'Usage: /loop [--every <sec>] [--times <n>] <prompt> — re-runs it periodically until ESC.',
   'repl.swarm-usage':
     'Usage: /swarm <task> — fans the task out to real parallel agents (independent subtasks, live lanes).',
+  'repl.route-bg-offer': 'This looks long-running — run it in the background (/bg) so you can keep working?',
+  'repl.route-swarm-offer':
+    'This looks parallelizable — fan it out to a swarm of real agents (/swarm)?',
+  'repl.bg-usage':
+    'Usage: /bg <task> — runs the task in the background (its own recorded run) while you keep working.',
+  'repl.bg-started': '▸ background: {title} — running (use /threads to check on it)',
+  'repl.bg-done': '✓ background done: {title}',
+  'repl.bg-failed': '✗ background failed: {title} — {error}',
+  'repl.bg-active': '{n} bg',
+  'repl.threads-none': 'No background threads this session. Start one with /bg <task>.',
+  'repl.threads-header': 'Background threads — {running} running · {done} done · {failed} failed',
   'repl.loop-start':
     'Looping every {every}s, up to {times}× — press ESC to stop. (recurrence, not completion)',
   'repl.loop-iteration': '  loop · iteration {iteration}/{times}',
@@ -662,6 +673,8 @@ export const EN: Catalog = {
   'repl.help-loop': '  /loop [--every s] [--times n] <prompt>  re-run periodically until ESC',
   'repl.help-swarm':
     '  /swarm <task>  fan out to real parallel agents (independent subtasks, live lanes)',
+  'repl.help-bg': '  /bg <task>     run a task in the background while you keep working',
+  'repl.help-threads': '  /threads       list the background threads (running + finished)',
   'repl.help-discovery': '  /discovery <idea>  clarify an ambiguous idea before building',
   'repl.help-rewind':
     '  /rewind [id]   rewind a run step-by-step (time-machine; defaults to latest) · Esc-Esc',

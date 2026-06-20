@@ -203,6 +203,38 @@ describe('interactive session (M-Shell, model-first)', () => {
     expect(cli.stdout()).toContain('/swarm <task>');
   });
 
+  it('/bg with no task shows usage and never crashes the session', async () => {
+    const cli = createInteractiveCli({ cwd: repo });
+    cli.send('/bg');
+    cli.send('/exit');
+    const code = await runInteractiveSession(cli.deps, {});
+    expect(code).toBe(0);
+    expect(cli.stdout()).toContain('/bg <task>');
+  });
+
+  it('/bg launches a background thread (its own recorded run) and /threads lists it', async () => {
+    const bgRepo = makeTempRepo();
+    try {
+      const before = new RunManager(bgRepo).listRuns().length;
+      const cli = createInteractiveCli({ cwd: bgRepo });
+      cli.send('/bg add a HELLO constant to src/util.ts');
+      cli.send('/threads');
+      cli.send('/exit');
+      const code = await runInteractiveSession(cli.deps, {});
+      expect(code).toBe(0);
+      const out = cli.stdout();
+      // The thread was announced (/bg) and listed (/threads).
+      expect(out).toContain('background');
+      expect(out).toContain('add a HELLO constant to src/util.ts');
+      // A real run was created synchronously for the background turn.
+      expect(new RunManager(bgRepo).listRuns().length).toBeGreaterThan(before);
+    } finally {
+      // Let any detached background work settle before the dir is removed.
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      removeDir(bgRepo);
+    }
+  });
+
   it('/discovery <idea> runs the explicit clarification flow (discovery session created)', async () => {
     const cli = createInteractiveCli({ cwd: repo });
     cli.send('/discovery the whole onboarding experience');

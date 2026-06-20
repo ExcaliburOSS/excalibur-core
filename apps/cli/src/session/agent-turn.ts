@@ -106,6 +106,14 @@ export interface AgentTurnDeps {
   signal?: AbortSignal;
   /** Injectable adapter (tests pass a fake-gateway-backed native adapter). */
   adapter?: AgentAdapter;
+  /**
+   * Background mode: suppress ALL foreground presentation (no Ink rail, no
+   * spinner, no per-event render, no headers/receipt) and auto-approve tool
+   * calls — the run is still fully recorded to its `events.jsonl`. Used by
+   * `/bg` so a thread can run without fighting the live prompt. Blocked paths
+   * stay hard-denied at the tool-execution layer regardless.
+   */
+  quiet?: boolean;
 }
 
 /**
@@ -224,7 +232,7 @@ async function driveLoop(
   // uses), or — on a piped/CI stdout — the spinner + per-action renderer. The
   // Ink rail OWNS stdin for the turn, so suspend the REPL's raw editor first and
   // resume it on unmount (in the finally).
-  const useInk = deps.ui.isOutputTty();
+  const useInk = turn.quiet !== true && deps.ui.isOutputTty();
   let view: RunViewHandle | null = null;
   if (useInk) {
     deps.ui.suspendInput();
@@ -249,9 +257,11 @@ async function driveLoop(
     view.onEscape(() => ctrl.abort());
   }
 
-  // The breathing indicator + per-action renderer — non-Ink path only.
-  const spinner = view === null ? deps.ui.createSpinner({ unicode }) : null;
-  const renderer = view === null ? new ActionRenderer(deps, { unicode }) : null;
+  // The breathing indicator + per-action renderer — non-Ink path only, and never
+  // in quiet/background mode (the run records silently, nothing hits the prompt).
+  const quiet = turn.quiet === true;
+  const spinner = view === null && !quiet ? deps.ui.createSpinner({ unicode }) : null;
+  const renderer = view === null && !quiet ? new ActionRenderer(deps, { unicode }) : null;
   // Cancel the indicator SYNCHRONOUSLY on abort so its next frame can't overwrite
   // a "Cancelled" message (and it never re-arms). Listener removed in finally.
   const onAbort = (): void => spinner?.cancel();
@@ -269,7 +279,7 @@ async function driveLoop(
     // Approve-once UX: skip the prompt entirely when auto-accept is on (blocked
     // paths are still hard-denied at the tool-execution layer regardless).
     const approvals = turn.approvals;
-    if (approvals?.auto === true) {
+    if (quiet || approvals?.auto === true) {
       return true;
     }
     const detail = req.detail !== undefined ? ` (${req.detail})` : '';
@@ -357,9 +367,9 @@ async function driveLoop(
     for await (const event of stream) {
       if (view !== null) {
         view.push(event);
-      } else {
-        spinner!.stop(); // erase the transient line before any permanent output
-        renderer!.onEvent(event);
+      } else if (renderer !== null) {
+        spinner?.stop(); // erase the transient line before any permanent output
+        renderer.onEvent(event);
       }
       runManager.appendEvent(run.id, event);
 
@@ -445,7 +455,7 @@ async function driveLoop(
       view.unmount();
       deps.ui.resumeInput();
     } else {
-      spinner!.stop();
+      spinner?.stop();
     }
   }
   renderer?.finish();
@@ -519,16 +529,18 @@ export async function runAgentTurn(
   );
   runManager.updateRecord(run.id, { status: 'running' });
 
-  turn.deps.ui.info(
-    turn.deps.t('agent-turn.agent_header', {
-      mode:
-        role === 'planner'
-          ? turn.deps.t('agent-turn.mode_answer')
-          : turn.deps.t('agent-turn.mode_act'),
-      level: turn.autonomyLevel,
-    }),
-  );
-  turn.deps.ui.info(turn.deps.t('agent-turn.run_dir', { id: run.id, dir: run.dir }));
+  if (turn.quiet !== true) {
+    turn.deps.ui.info(
+      turn.deps.t('agent-turn.agent_header', {
+        mode:
+          role === 'planner'
+            ? turn.deps.t('agent-turn.mode_answer')
+            : turn.deps.t('agent-turn.mode_act'),
+        level: turn.autonomyLevel,
+      }),
+    );
+    turn.deps.ui.info(turn.deps.t('agent-turn.run_dir', { id: run.id, dir: run.dir }));
+  }
 
   const result = await driveLoop(turn, adapter, runManager, run, generateId('sess'), {
     role,
@@ -540,8 +552,10 @@ export async function runAgentTurn(
     ...(seedMessages !== undefined && seedMessages.length > 0 ? { seedMessages } : {}),
   });
 
-  finishRun(turn.deps, runManager, run, result.aborted);
-  emitReceipt(turn, runManager, run.id, result.model || turn.providerName);
+  finishRun(turn.deps, runManager, run, result.aborted, turn.quiet === true);
+  if (turn.quiet !== true) {
+    emitReceipt(turn, runManager, run.id, result.model || turn.providerName);
+  }
   return toResult(run.id, result, turn.providerName);
 }
 
@@ -701,12 +715,18 @@ export async function runPlanTurn(
 }
 
 /** Marks the run completed/cancelled and emits a final `run_completed` event. */
-function finishRun(deps: CliDeps, runManager: RunManager, run: LocalRun, aborted: boolean): void {
+function finishRun(
+  deps: CliDeps,
+  runManager: RunManager,
+  run: LocalRun,
+  aborted: boolean,
+  quiet = false,
+): void {
   const status = aborted ? 'cancelled' : 'completed';
   runManager.updateRecord(run.id, { status, completedAt: new Date().toISOString() });
   const event = createEvent({ runId: run.id, type: 'run_completed', payload: { status } });
   runManager.appendEvent(run.id, event);
-  renderEvent(deps, event);
+  if (!quiet) renderEvent(deps, event);
 }
 
 function toResult(runId: string, result: DriveResult, providerName: string): AgentTurnResult {

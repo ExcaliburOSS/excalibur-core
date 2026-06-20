@@ -143,6 +143,10 @@ function buildConfigYaml(analysis: RepoAnalysis): string {
       ? { skills: { sources: skillSourceRefs(analysis.skills) } }
       : {}),
     safety: { preset: 'standard-safe' },
+    // Default to the maximum autonomy (L4 full-agentic): the model acts and
+    // auto-engages plan-mode on natural-language turns. Blocked paths stay
+    // hard-denied and the asked-once auto-accept still governs prompting.
+    autonomy: { default: 4 },
     workflowDefaults: {
       ask: 'ask-repo',
       review: 'review-only',

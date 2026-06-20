@@ -25,7 +25,7 @@ import { agentUsesGateway, resolveAgentAdapter } from '@excalibur/agent-runtime'
 import { estimateTokens, redactSecrets, type ChatMessage } from '@excalibur/model-gateway';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { AutonomyLevel, ExcaliburConfig } from '@excalibur/shared';
+import { generateId, type AutonomyLevel, type ExcaliburConfig } from '@excalibur/shared';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
@@ -57,6 +57,15 @@ import { runGoalLoop } from './goal-loop';
 import { runIntervalLoop } from './interval-loop';
 import { maybeAutoOnboard } from './onboarding';
 import { startSessionDashboard } from './dashboard';
+import {
+  drainBanners,
+  fleetCounts,
+  initialFleet,
+  settleThread,
+  spawnThread,
+  type FleetState,
+} from './fleet';
+import { classifyTurnIntent, type TurnIntent } from './intent-router';
 
 const execFileAsync = promisify(execFile);
 
@@ -112,6 +121,8 @@ interface SessionRuntime {
   costCents: number;
   /** Session approval policy (auto-accept + per-tool "always") — minimum friction. */
   approvals: ApprovalState;
+  /** Background agent threads (the `/bg` fleet); banners drained before each prompt. */
+  fleet: FleetState;
 }
 
 /**
@@ -200,13 +211,16 @@ export async function runInteractiveSession(
     repoRoot,
     config,
     model: gateway.providerName,
-    autonomyLevel: (config.autonomy?.default ?? 3) as AutonomyLevel,
+    // Default to L4 (full agentic) when the config doesn't pin one — onboarding
+    // writes autonomy.default: 4, and pre-existing configs without it get it too.
+    autonomyLevel: (config.autonomy?.default ?? 4) as AutonomyLevel,
     store,
     session,
     costCents: 0,
     // Resolve the saved auto-accept preference; the prompt below sets it the
     // first time (so future sessions never ask).
     approvals: { auto: config.approvals?.auto === true },
+    fleet: initialFleet(),
   };
 
   // Welcome banner (two-column frame + cyberpunk sword) + status line.
@@ -281,6 +295,8 @@ export async function runInteractiveSession(
   // editor can route ESC / queue typed input.
   let inFlight: AbortController | null = null;
   let sawSigintAtPrompt = false;
+  // Background `/bg` threads: id → its AbortController (cancelled on session exit).
+  const bgControllers = new Map<string, AbortController>();
 
   /** Begins a turn: a fresh AbortController + the editor enters turn-mode. */
   const beginTurn = (): AbortController => {
@@ -324,6 +340,16 @@ export async function runInteractiveSession(
 
   try {
     for (;;) {
+      // Surface any finished background-thread banners above the prompt (one-shot).
+      const drained = drainBanners(runtime.fleet);
+      if (drained.banners.length > 0) {
+        runtime.fleet = drained.state;
+        deps.ui.write();
+        for (const banner of drained.banners) {
+          deps.ui.info(banner);
+        }
+        printStatusLine(deps, runtime);
+      }
       const line = await editor.question(pc.cyan('› '));
       if (line === null) {
         break; // EOF / Ctrl-D
@@ -451,6 +477,16 @@ export async function runInteractiveSession(
             printStatusLine(deps, runtime);
             continue;
           }
+          if (input.name === 'bg') {
+            handleBgCommand(deps, runtime, input.argv.join(' '), bgControllers);
+            printStatusLine(deps, runtime);
+            continue;
+          }
+          if (input.name === 'threads') {
+            handleThreadsCommand(deps, runtime);
+            printStatusLine(deps, runtime);
+            continue;
+          }
           const result = handleSlashCommand(deps, runtime, input.name);
           if (result === 'exit') {
             break;
@@ -501,14 +537,42 @@ export async function runInteractiveSession(
         );
       }
 
-      // Natural-language turn → the model-driven agent loop. Goal-mode (if
-      // accepted) iterates to completion; else auto plan-mode at L4; else a
-      // direct turn.
+      // Natural-language turn → INTENT-ROUTED (proactive, no arcane commands).
+      // The heuristic router detects, from the message, whether this wants a
+      // plan, a swarm, a background thread, or a direct turn — but only with a
+      // real model on an interactive terminal (else a plain direct turn, so
+      // piped/CI/mock paths keep working). `swarm`/`bg` are OFFERED; `plan`
+      // carries its own gate. Goal-mode (if accepted above) wins. Opt out with
+      // EXCALIBUR_ROUTER=off.
+      const intent: TurnIntent =
+        asGoal || deps.env['EXCALIBUR_ROUTER'] === 'off'
+          ? 'chat'
+          : classifyTurnIntent(text, {
+              interactive: deps.ui.isInteractive(),
+              mock: runtime.model === 'mock',
+              level: runtime.autonomyLevel,
+            });
+
+      // Offer the heavier routes BEFORE claiming the turn (so the confirm read
+      // isn't fighting the turn-active editor). Decline → a direct turn.
+      if (intent === 'bg') {
+        if (await deps.ui.confirm(deps.t('repl.route-bg-offer'), { defaultYes: true })) {
+          handleBgCommand(deps, runtime, text, bgControllers);
+          printStatusLine(deps, runtime);
+          continue;
+        }
+      }
+      const asSwarm =
+        intent === 'swarm' &&
+        (await deps.ui.confirm(deps.t('repl.route-swarm-offer'), { defaultYes: true }));
+
       const ctrl = beginTurn();
       try {
         if (asGoal) {
           await executeGoalLoop(deps, runtime, text, seed, ctrl.signal);
-        } else if (runtime.autonomyLevel >= 4) {
+        } else if (asSwarm) {
+          await handleSwarmCommand(deps, runtime, text, ctrl.signal);
+        } else if (intent === 'plan') {
           await dispatchPlan(deps, runtime, text, ctrl.signal, seed);
         } else {
           await dispatchAgentTurn(deps, runtime, text, ctrl.signal, seed);
@@ -529,6 +593,10 @@ export async function runInteractiveSession(
     offEscape();
     editor.close();
     dashboard?.stop();
+    // Cancel any still-running background threads so the process can exit cleanly.
+    for (const ctrl of bgControllers.values()) {
+      ctrl.abort();
+    }
   }
 
   closeSession(deps, runtime);
@@ -552,6 +620,8 @@ const GHOST_COMMANDS = [
   'goal',
   'loop',
   'swarm',
+  'bg',
+  'threads',
   'model',
   'clear',
   'exit',
@@ -950,6 +1020,89 @@ async function handleSwarmCommand(
 }
 
 /**
+ * `/bg <task>` — launches a background agent thread. It runs QUIETLY to its own
+ * recorded run (no live rail, auto-approved) so the prompt stays free; when it
+ * finishes a one-shot banner is raised above the next prompt. Blocked paths stay
+ * hard-denied at the tool layer. Never throws to the caller (fire-and-forget).
+ */
+function handleBgCommand(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  task: string,
+  controllers: Map<string, AbortController>,
+): void {
+  const trimmed = task.trim();
+  if (trimmed.length === 0) {
+    deps.ui.warn(deps.t('repl.bg-usage'));
+    return;
+  }
+  // Build the turn deps NOW so a misconfigured model fails HERE (visibly) rather
+  // than inside the detached promise where the rejection would be swallowed.
+  const ctrl = new AbortController();
+  let base: AgentTurnDeps;
+  try {
+    base = agentTurnDeps(deps, runtime, ctrl.signal);
+  } catch (error) {
+    deps.ui.error(error instanceof Error ? error.message : String(error));
+    return;
+  }
+  const id = generateId('bg');
+  const title = trimmed.length > 56 ? `${trimmed.slice(0, 55)}…` : trimmed;
+  runtime.fleet = spawnThread(runtime.fleet, id, title);
+  controllers.set(id, ctrl);
+  runtime.store.appendPromptHistory(`/bg ${redactSecrets(trimmed)}`);
+  deps.ui.info(deps.t('repl.bg-started', { title }));
+
+  const bgDeps: AgentTurnDeps = { ...base, quiet: true, approvals: { auto: true } };
+  void runAgentTurn(bgDeps, trimmed)
+    .then((result) => {
+      if (result.costCents !== null) {
+        runtime.costCents += result.costCents;
+      }
+      runtime.fleet = settleThread(runtime.fleet, id, 'done', deps.t('repl.bg-done', { title }));
+    })
+    .catch((error: unknown) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      runtime.fleet = settleThread(
+        runtime.fleet,
+        id,
+        'failed',
+        deps.t('repl.bg-failed', { title, error: reason }),
+      );
+    })
+    .finally(() => {
+      controllers.delete(id);
+    });
+}
+
+/** `/threads` — lists the background fleet (running + finished this session). */
+function handleThreadsCommand(deps: CliDeps, runtime: SessionRuntime): void {
+  if (runtime.fleet.threads.length === 0) {
+    deps.ui.info(deps.t('repl.threads-none'));
+    return;
+  }
+  const counts = fleetCounts(runtime.fleet);
+  deps.ui.info(
+    deps.t('repl.threads-header', {
+      running: counts.running,
+      done: counts.done,
+      failed: counts.failed,
+    }),
+  );
+  for (const thread of runtime.fleet.threads) {
+    const glyph =
+      thread.status === 'done'
+        ? pc.green('✓')
+        : thread.status === 'failed'
+          ? pc.red('✗')
+          : thread.status === 'blocked'
+            ? pc.yellow('⚑')
+            : pc.cyan('◐');
+    deps.ui.write(`  ${glyph} ${thread.title} ${pc.dim(`(${thread.status})`)}`);
+  }
+}
+
+/**
  * `/plan <task>` — explicit plan-mode. Records the user turn, runs the plan
  * gate, and persists the plan (and execution, when approved).
  */
@@ -1275,6 +1428,8 @@ function handleSlashCommand(
       deps.ui.write(deps.t('repl.help-goal'));
       deps.ui.write(deps.t('repl.help-loop'));
       deps.ui.write(deps.t('repl.help-swarm'));
+      deps.ui.write(deps.t('repl.help-bg'));
+      deps.ui.write(deps.t('repl.help-threads'));
       deps.ui.write(deps.t('repl.help-discovery'));
       deps.ui.write(deps.t('repl.help-rewind'));
       deps.ui.write(deps.t('repl.help-changes'));
@@ -1555,8 +1710,10 @@ function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
     autonomyLevel: runtime.autonomyLevel,
   });
   const cost = `$${(status.costCents / 100).toFixed(2)}`;
+  const active = fleetCounts(runtime.fleet).active;
+  const bg = active > 0 ? ` · ${pc.cyan(deps.t('repl.bg-active', { n: active }))}` : '';
   deps.ui.info(
-    `${status.autonomy} · ${status.workflow} · ${status.model} · ${cost} · ${safetyLine(deps.t, runtime.config)}`,
+    `${status.autonomy} · ${status.workflow} · ${status.model} · ${cost} · ${safetyLine(deps.t, runtime.config)}${bg}`,
   );
 }
 
