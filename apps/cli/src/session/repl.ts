@@ -1541,6 +1541,7 @@ function buildWelcomeContext(deps: CliDeps, repoRoot: string, model: string): We
     user: identity.email ?? '',
     tip,
     whatsNew: deps.t('repl.welcome-whats-new'),
+    epigraph: deps.t('welcome.epigraph'),
     width: process.stdout.columns || 80,
     unicode: deps.env['EXCALIBUR_ASCII'] === undefined,
   };

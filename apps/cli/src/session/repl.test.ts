@@ -73,7 +73,7 @@ describe('interactive session (M-Shell, model-first)', () => {
     expect(code).toBe(0);
     const stdout = cli.stdout();
     // Welcome banner (two-column frame): title + greeting + a tip.
-    expect(stdout).toContain('EXCALIBUR');
+    expect(stdout).toContain('Excalibur');
     expect(stdout).toContain('Welcome back');
     expect(stdout).toContain('Describe what you want');
     // /help capabilities + the model-first explainer.
