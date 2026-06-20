@@ -23,6 +23,7 @@ import { webSearch, type WebSearchResponse } from './web/search-providers';
 import { extractStructured, type GatewayChat } from './web/extract';
 import { politeFetch, RateLimiter } from './web/polite-fetch';
 import { crawl, type CrawlResult } from './web/crawl';
+import { hostedReaderTier } from './web/hosted-readers';
 import type { WebCache } from './web/cache';
 
 /**
@@ -809,10 +810,36 @@ function formatFetch(res: WebFetchResult): string {
 }
 
 /**
+ * Builds the hosted-reader tier (F5) for the run's `scrape` config, or null when
+ * absent / unkeyed. The BYOK key is resolved from the env var NAMED in config.
+ */
+function buildHostedReader(ctx: ToolExecutionContext): TierReader | null {
+  const scrape = ctx.config.scrape;
+  if (scrape === undefined) return null;
+  const env = ctx.scrapeEnv ?? process.env;
+  const apiKey = scrape.apiKeyEnv !== undefined ? env[scrape.apiKeyEnv] : undefined;
+  return hostedReaderTier(
+    {
+      provider: scrape.provider,
+      ...(scrape.apiKeyEnv !== undefined ? { apiKeyEnv: scrape.apiKeyEnv } : {}),
+      ...(scrape.baseUrl !== undefined ? { baseUrl: scrape.baseUrl } : {}),
+      timeoutMs: scrape.timeoutMs,
+      jinaKeyless: scrape.jinaKeyless,
+    },
+    {
+      ...(apiKey !== undefined ? { apiKey } : {}),
+      ...(ctx.httpFetch !== undefined ? { fetchImpl: ctx.httpFetch } : {}),
+      allowHost: (u) => ctx.permissions.isUrlAllowed(u),
+    },
+  );
+}
+
+/**
  * `web_fetch` — governed by the network policy; SSRF + caps live in webFetch().
- * With the opt-in browser enabled (F4), a thin/JS-only Tier-1 result or a
- * 403/429/fetch failure ESCALATES to the local browser tier (ctx.browserReader),
- * which renders the page and returns richer markdown. Falls back to Tier-1.
+ * A TIER-ORDERED pipeline: an OPTIONAL hosted reader (F5, `scrape.mode='prefer'`)
+ * runs FIRST; the free Tier-1 floor always backs it; and a thin/JS-only/403/429
+ * result ESCALATES to the hosted reader (`fallback` mode) and/or the opt-in local
+ * browser (F4). Every tier is best-effort — a failure never aborts the fetch.
  */
 async function execWebFetch(
   args: Record<string, unknown>,
@@ -825,6 +852,7 @@ async function execWebFetch(
     return fail(`permission denied: ${decision.reason}`);
   }
   const browserCfg = ctx.config.browser;
+  const scrapeCfg = ctx.config.scrape;
   const canBrowser = browserCfg?.enabled === true && ctx.browserReader !== undefined;
   const thin = browserCfg?.thinContentChars ?? 200;
   const readerCtx = {
@@ -832,31 +860,44 @@ async function execWebFetch(
     maxBytes: 2 * 1024 * 1024,
     maxChars: maxChars ?? 50_000,
   };
-  const tryBrowser = async (): Promise<WebFetchResult | null> => {
-    if (!canBrowser || ctx.browserReader === undefined) return null;
-    try {
-      return await ctx.browserReader(url, readerCtx);
-    } catch {
-      return null;
+  const hostedReader = buildHostedReader(ctx);
+  // `prefer` mode: the hosted tier runs BEFORE Tier-1 (inside webFetch readers).
+  const preferredReaders =
+    hostedReader !== null && (scrapeCfg?.mode ?? 'prefer') === 'prefer' ? [hostedReader] : [];
+  // Post-Tier-1 escalation order (on a thin native result or a fetch failure):
+  // hosted (`fallback` mode) then the local browser.
+  const fallbackReaders: TierReader[] = [];
+  if (hostedReader !== null && scrapeCfg?.mode === 'fallback') fallbackReaders.push(hostedReader);
+  if (canBrowser && ctx.browserReader !== undefined) fallbackReaders.push(ctx.browserReader);
+  const tryFallbacks = async (): Promise<WebFetchResult | null> => {
+    for (const reader of fallbackReaders) {
+      try {
+        const served = await reader(url, readerCtx);
+        if (served !== null) return served;
+      } catch {
+        // best-effort: try the next fallback tier, ultimately keep the Tier-1 result.
+      }
     }
+    return null;
   };
   try {
     const res = await webFetch(url, {
       ...(ctx.httpFetch !== undefined ? { fetchImpl: ctx.httpFetch } : {}),
       ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
       ...(maxChars !== undefined ? { maxChars } : {}),
+      readers: preferredReaders,
     });
-    if (canBrowser && res.meta.tier === 'native' && res.markdown.trim().length < thin) {
-      const rendered = await tryBrowser();
-      if (rendered !== null && rendered.markdown.length > res.markdown.length) {
-        return ok(formatFetch(rendered));
+    if (res.meta.tier === 'native' && res.markdown.trim().length < thin) {
+      const better = await tryFallbacks();
+      if (better !== null && better.markdown.length > res.markdown.length) {
+        return ok(formatFetch(better));
       }
     }
     return ok(formatFetch(res));
   } catch (error) {
-    const rendered = await tryBrowser();
-    if (rendered !== null) {
-      return ok(formatFetch(rendered));
+    const fallback = await tryFallbacks();
+    if (fallback !== null) {
+      return ok(formatFetch(fallback));
     }
     return fail(`web_fetch failed: ${error instanceof Error ? error.message : String(error)}`);
   }

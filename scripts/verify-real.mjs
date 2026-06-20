@@ -276,6 +276,25 @@ await scenario('web_crawl — bounded polite crawl (F4)', () => {
   assert(crawled, 'web_crawl result must report at least one crawled page');
 });
 
+await scenario('web command — fetches a real page via the tier pipeline (F5)', () => {
+  const dir = freshRepo({ '.excalibur/config.yaml': NET_AUTO });
+  const { out } = exc(dir, ['web', 'https://example.com/'], 60000);
+  assert(/example domain/i.test(out), 'the web command must return the real page (Example Domain)');
+});
+
+await scenario('web — Jina keyless hosted reader, graceful fallback (F5; best-effort)', () => {
+  const cfg =
+    'version: 1\ncommands: {}\npermissions:\n  network:\n    mode: "on"\n    approval: "auto"\nscrape:\n  provider: jina\n  mode: prefer\n  jinaKeyless: true\n';
+  const dir = freshRepo({ '.excalibur/config.yaml': cfg });
+  const { out } = exc(dir, ['web', 'https://example.com/'], 60000);
+  // Either Jina rendered it (via hosted:jina) or it fell back to the free Tier-1 —
+  // a hosted failure must NEVER break the fetch; the real page must come through.
+  assert(
+    /example domain/i.test(out),
+    'jina-prefer must return the page (rendered OR free fallback)',
+  );
+});
+
 await scenario('patch + apply — generates a real diff and applies it', () => {
   const dir = freshRepo();
   const { out } = exc(dir, ['patch', 'Add a multiply(a, b) function to src/math.ts', '--yes']);

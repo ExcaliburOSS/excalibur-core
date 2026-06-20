@@ -169,6 +169,18 @@ export const EN: Catalog = {
   'browser.off': 'off',
   'browser.removed': '✓ Chromium uninstalled and browser escalation disabled.',
   'browser.remove-none': 'No Chromium to remove; browser escalation disabled.',
+  // web fetch + hosted readers (F5)
+  'web.usage':
+    'Usage: excalibur web <url>. Configure an optional hosted reader with `web reader <firecrawl|jina|browserbase>`.',
+  'web.reader-none':
+    'No hosted reader configured — web_fetch uses the free local tiers (Tier-1 + the opt-in browser).',
+  'web.reader-current': 'Hosted reader: {name} (key env: {env}).',
+  'web.reader-set': 'Hosted reader set to {name}.',
+  'web.reader-unknown': 'Unknown hosted reader "{name}". Choose one of: {names}.',
+  'web.reader-byok-hint':
+    'This reader is paid (BYOK): set `scrape.apiKeyEnv` to the NAME of the env var holding your API key.',
+  'web.reader-jina-hint':
+    'Jina works key-less (best-effort); set `scrape.apiKeyEnv` for higher limits.',
   'insights.no-runs':
     'No local runs yet — nothing to summarise. Start one with: excalibur run "<task>"',
   'insights.title': 'Insights — {runs} runs',

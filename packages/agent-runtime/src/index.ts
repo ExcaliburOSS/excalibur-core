@@ -17,6 +17,7 @@ export * from './tools/web/browser-manager';
 export * from './tools/web/browser-fetch';
 export * from './tools/web/extract';
 export * from './tools/web/crawl';
+export * from './tools/web/hosted-readers';
 export * from './permissions/permission-engine';
 export * from './permissions/ssrf-guard';
 export * from './adapters/native/native-agent-adapter';

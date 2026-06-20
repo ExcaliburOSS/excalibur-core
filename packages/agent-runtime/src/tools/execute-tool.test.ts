@@ -530,3 +530,68 @@ describe('executeNativeTool — web_fetch browser escalation (F4)', () => {
     expect(res.result).toContain('Fully rendered content');
   });
 });
+
+describe('executeNativeTool — web_fetch hosted reader tier (F5)', () => {
+  function scrapeConfig(mode: 'prefer' | 'fallback'): ExcaliburConfig {
+    return {
+      ...permissive(),
+      scrape: {
+        provider: 'firecrawl',
+        apiKeyEnv: 'FC_KEY',
+        mode,
+        timeoutMs: 30_000,
+        jinaKeyless: true,
+      },
+    };
+  }
+  const firecrawlOr =
+    (tier1Body: string): FetchImpl =>
+    async (url) =>
+      url.includes('firecrawl')
+        ? new Response(
+            JSON.stringify({
+              data: { markdown: '# Hosted\n\nhosted render body', metadata: { title: 'Hosted' } },
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          )
+        : htmlResponse(tier1Body);
+
+  it('prefers a configured hosted reader and notes the served tier', async () => {
+    const c: ToolExecutionContext = {
+      ...ctx(scrapeConfig('prefer')),
+      httpFetch: firecrawlOr('<html><body><article><p>tier1 body</p></article></body></html>'),
+      scrapeEnv: { FC_KEY: 'k' } as NodeJS.ProcessEnv,
+    };
+    const res = await executeNativeTool('web_fetch', { url: PUBLIC }, c);
+    expect(res.ok).toBe(true);
+    expect(res.result).toContain('via hosted:firecrawl');
+    expect(res.result).toContain('hosted render body');
+  });
+
+  it('falls back to the free Tier-1 floor when the hosted reader fails (no regression)', async () => {
+    const httpFetch: FetchImpl = async (url) =>
+      url.includes('firecrawl')
+        ? new Response('upstream error', { status: 500 })
+        : htmlResponse('<html><body><article><p>tier1 body survives</p></article></body></html>');
+    const c: ToolExecutionContext = {
+      ...ctx(scrapeConfig('prefer')),
+      httpFetch,
+      scrapeEnv: { FC_KEY: 'k' } as NodeJS.ProcessEnv,
+    };
+    const res = await executeNativeTool('web_fetch', { url: PUBLIC }, c);
+    expect(res.ok).toBe(true);
+    expect(res.result).toContain('tier1 body survives');
+  });
+
+  it('uses only the free Tier-1 floor when no scrape provider is configured', async () => {
+    const c: ToolExecutionContext = {
+      ...ctx(),
+      httpFetch: async () =>
+        htmlResponse('<html><body><article><p>free tier only</p></article></body></html>'),
+    };
+    const res = await executeNativeTool('web_fetch', { url: PUBLIC }, c);
+    expect(res.ok).toBe(true);
+    expect(res.result).toContain('free tier only');
+    expect(res.result).not.toContain('via hosted');
+  });
+});

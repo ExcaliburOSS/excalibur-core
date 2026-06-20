@@ -174,6 +174,18 @@ export const ES: Catalog = {
   'browser.off': 'desactivado',
   'browser.removed': '✓ Chromium desinstalado y escalado de navegador desactivado.',
   'browser.remove-none': 'No hay Chromium que eliminar; escalado de navegador desactivado.',
+  // fetch web + lectores alojados (F5)
+  'web.usage':
+    'Uso: excalibur web <url>. Configura un lector alojado opcional con `web reader <firecrawl|jina|browserbase>`.',
+  'web.reader-none':
+    'No hay lector alojado configurado — web_fetch usa las capas locales gratuitas (Tier-1 + el navegador opcional).',
+  'web.reader-current': 'Lector alojado: {name} (env de la clave: {env}).',
+  'web.reader-set': 'Lector alojado fijado a {name}.',
+  'web.reader-unknown': 'Lector alojado desconocido "{name}". Elige uno de: {names}.',
+  'web.reader-byok-hint':
+    'Este lector es de pago (BYOK): define `scrape.apiKeyEnv` con el NOMBRE de la variable de entorno que contiene tu clave.',
+  'web.reader-jina-hint':
+    'Jina funciona sin clave (best-effort); define `scrape.apiKeyEnv` para límites más altos.',
   'insights.no-runs':
     'Aún no hay ejecuciones locales — nada que resumir. Inicia una con: excalibur run "<tarea>"',
   'insights.title': 'Insights — {runs} ejecuciones',

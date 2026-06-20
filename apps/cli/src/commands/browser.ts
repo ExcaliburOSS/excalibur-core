@@ -36,11 +36,8 @@ export function registerBrowserCommand(program: Command, deps: CliDeps): void {
     .description('install Chromium (once) and turn on browser escalation')
     .option('-y, --yes', 'skip the install confirmation prompt')
     .action(async (options: { yes?: boolean }) => {
-      const state = browserState();
-      if (state === 'node-missing') {
-        deps.ui.error(deps.t('browser.node-missing'));
-        return;
-      }
+      // Fast path first (a pure fs check) so we never spawn `npx` before the
+      // user has consented — and so an already-installed Chromium enables instantly.
       if (!chromiumInstalled()) {
         const proceed = await deps.ui.confirm(deps.t('browser.install-consent'), {
           yes: options.yes === true,
@@ -48,6 +45,11 @@ export function registerBrowserCommand(program: Command, deps: CliDeps): void {
         });
         if (!proceed) {
           deps.ui.info(deps.t('browser.cancelled'));
+          return;
+        }
+        // Only now probe for Node (spawns `npx`) — install needs it anyway.
+        if (browserState() === 'node-missing') {
+          deps.ui.error(deps.t('browser.node-missing'));
           return;
         }
         deps.ui.info(deps.t('browser.installing'));

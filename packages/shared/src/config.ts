@@ -313,6 +313,31 @@ export const DEFAULT_CRAWL_CONFIG: CrawlConfig = {
   maxPages: 10,
 };
 
+/**
+ * `scrape:` — OPTIONAL hosted page readers for `web_fetch` (F5). 100% opt-in,
+ * BYOK, PAID. ABSENT BY DEFAULT → `web_fetch` stays fully free on the in-bundle
+ * Tier-1 fetch (F2) + the local-browser Tier-2 (F4). When set, the hosted reader
+ * is a PREFERRED escalation tier: `prefer` tries it FIRST (zero-setup, JS-rendered
+ * / stealth) and falls back to the free tiers on failure; `fallback` uses it ONLY
+ * after the free fetch fails. The key is read from the env var NAMED by
+ * `apiKeyEnv` (never the key, never committed). Jina has a key-less best-effort
+ * mode (`jinaKeyless`).
+ */
+export const scrapeProviderSchema = z.object({
+  provider: z.enum(['firecrawl', 'jina', 'browserbase']),
+  /** Env var NAME holding the BYOK API key (not the key itself). */
+  apiKeyEnv: z.string().min(1).optional(),
+  /** Endpoint override (e.g. a self-hosted Firecrawl, or a regional base). */
+  baseUrl: z.string().url().optional(),
+  /** `prefer` = hosted first then free fallback; `fallback` = only if free fails. */
+  mode: z.enum(['prefer', 'fallback']).default('prefer'),
+  /** Per hosted-call timeout (ms) — hosted renderers are slower than a raw GET. */
+  timeoutMs: z.number().int().positive().max(120_000).default(30_000),
+  /** Allow Jina's key-less best-effort endpoint when no key is set (default true). */
+  jinaKeyless: z.boolean().default(true),
+});
+export type ScrapeProviderConfig = z.infer<typeof scrapeProviderSchema>;
+
 const instructionSourceRefSchema = z.object({
   path: z.string().min(1),
   format: instructionSourceFormatSchema.optional(),
@@ -393,6 +418,7 @@ const baseExcaliburConfigSchema = z.object({
   search: searchProviderSchema.optional(),
   browser: browserConfigSchema.optional(),
   crawl: crawlConfigSchema.optional(),
+  scrape: scrapeProviderSchema.optional(),
   instructions: z.object({ sources: z.array(instructionSourceRefSchema).optional() }).optional(),
   skills: z.object({ sources: z.array(skillSourceRefSchema).optional() }).optional(),
 });
