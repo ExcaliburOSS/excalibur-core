@@ -18,8 +18,12 @@ import { DEFAULT_SEARCH_PROVIDER, type ExcaliburConfig } from '@excalibur/shared
 import { getNativeTool, type NativeToolName } from './native-tools';
 import { hasShellMetacharacters, type PermissionEngine } from '../permissions/permission-engine';
 import { runInDockerSandbox, type SandboxLimits } from '../sandbox/docker-sandbox';
-import { webFetch, type FetchImpl } from './web/fetch';
+import { webFetch, type FetchImpl, type TierReader, type WebFetchResult } from './web/fetch';
 import { webSearch, type WebSearchResponse } from './web/search-providers';
+import { extractStructured, type GatewayChat } from './web/extract';
+import { politeFetch, RateLimiter } from './web/polite-fetch';
+import { crawl, type CrawlResult } from './web/crawl';
+import type { WebCache } from './web/cache';
 
 /**
  * Real native-tool executors (OSS-7, M2) — the security-critical core of the
@@ -69,6 +73,26 @@ export interface ToolExecutionContext {
   resolveSearxng?: () => Promise<string | null>;
   /** Environment used to resolve a BYOK search API key (defaults to process.env). */
   searchEnv?: NodeJS.ProcessEnv;
+  /**
+   * Model gateway (chat only) for `web_extract`'s keyless LLM pass (SP-2; reused
+   * by F7-shaped LLM-in-tool work). Optional + fail-closed: absent → web_extract
+   * errors clearly rather than silently skipping extraction.
+   */
+  gateway?: GatewayChat;
+  /** Model/provider overrides forwarded to the gateway for in-tool model calls. */
+  model?: string;
+  provider?: string;
+  /** Shared per-run on-disk cache + per-host rate limiter for `web_crawl`. */
+  webCache?: WebCache;
+  rateLimiter?: RateLimiter;
+  /** Environment used to resolve a BYOK scrape API key (F5; defaults to process.env). */
+  scrapeEnv?: NodeJS.ProcessEnv;
+  /**
+   * Tier-2 LOCAL browser reader (F4) used to escalate `web_fetch`/`web_extract`
+   * on a thin/blocked Tier-1 result. Injected by the adapter when the browser is
+   * enabled; tests pass a fake. Absent → no escalation (Tier-1 only).
+   */
+  browserReader?: TierReader;
 }
 
 export interface ToolResult {
@@ -774,7 +798,22 @@ function execUpdateTasks(args: Record<string, unknown>): ToolResult {
  * model. `requiresConfirmation` is NOT handled here — the adapter resolves the
  * confirm-or-decline gate before calling this function.
  */
-/** `web_fetch` — governed by the network policy; SSRF + caps live in webFetch(). */
+/** Formats a fetched result for the model, noting the serving tier if not native. */
+function formatFetch(res: WebFetchResult): string {
+  const via = res.meta.tier !== 'native' ? ` (via ${res.meta.tier})` : '';
+  const header =
+    res.title.length > 0 && res.title !== res.url
+      ? `# ${res.title}${via}\n${res.url}\n\n`
+      : `${res.url}${via}\n\n`;
+  return `${header}${res.markdown}`;
+}
+
+/**
+ * `web_fetch` — governed by the network policy; SSRF + caps live in webFetch().
+ * With the opt-in browser enabled (F4), a thin/JS-only Tier-1 result or a
+ * 403/429/fetch failure ESCALATES to the local browser tier (ctx.browserReader),
+ * which renders the page and returns richer markdown. Falls back to Tier-1.
+ */
 async function execWebFetch(
   args: Record<string, unknown>,
   ctx: ToolExecutionContext,
@@ -785,19 +824,171 @@ async function execWebFetch(
   if (!decision.allowed) {
     return fail(`permission denied: ${decision.reason}`);
   }
+  const browserCfg = ctx.config.browser;
+  const canBrowser = browserCfg?.enabled === true && ctx.browserReader !== undefined;
+  const thin = browserCfg?.thinContentChars ?? 200;
+  const readerCtx = {
+    ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
+    maxBytes: 2 * 1024 * 1024,
+    maxChars: maxChars ?? 50_000,
+  };
+  const tryBrowser = async (): Promise<WebFetchResult | null> => {
+    if (!canBrowser || ctx.browserReader === undefined) return null;
+    try {
+      return await ctx.browserReader(url, readerCtx);
+    } catch {
+      return null;
+    }
+  };
   try {
     const res = await webFetch(url, {
       ...(ctx.httpFetch !== undefined ? { fetchImpl: ctx.httpFetch } : {}),
       ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
       ...(maxChars !== undefined ? { maxChars } : {}),
     });
-    const header =
-      res.title.length > 0 && res.title !== res.url
-        ? `# ${res.title}\n${res.url}\n\n`
-        : `${res.url}\n\n`;
-    return ok(`${header}${res.markdown}`);
+    if (canBrowser && res.meta.tier === 'native' && res.markdown.trim().length < thin) {
+      const rendered = await tryBrowser();
+      if (rendered !== null && rendered.markdown.length > res.markdown.length) {
+        return ok(formatFetch(rendered));
+      }
+    }
+    return ok(formatFetch(res));
   } catch (error) {
+    const rendered = await tryBrowser();
+    if (rendered !== null) {
+      return ok(formatFetch(rendered));
+    }
     return fail(`web_fetch failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * `web_extract` (F4) — fetches a page (browser-rendered when enabled, else Tier-1)
+ * then runs ONE constrained model call (ctx.gateway) to return JSON matching the
+ * caller's schema. Fail-closed: no gateway → a clear error, never a silent skip.
+ */
+async function execWebExtract(
+  args: Record<string, unknown>,
+  ctx: ToolExecutionContext,
+): Promise<ToolResult> {
+  const url = String(args['url'] ?? '');
+  const schema = (args['schema'] ?? {}) as Record<string, unknown>;
+  const instructions = typeof args['instructions'] === 'string' ? args['instructions'] : undefined;
+  const maxChars = typeof args['maxChars'] === 'number' ? args['maxChars'] : undefined;
+  const decision = ctx.permissions.checkUrl(url);
+  if (!decision.allowed) {
+    return fail(`permission denied: ${decision.reason}`);
+  }
+  if (ctx.gateway === undefined) {
+    return fail('web_extract needs a model to run; none is configured for this run.');
+  }
+  const browserCfg = ctx.config.browser;
+  const canBrowser = browserCfg?.enabled === true && ctx.browserReader !== undefined;
+  const readerCtx = {
+    ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
+    maxBytes: 2 * 1024 * 1024,
+    maxChars: maxChars ?? 50_000,
+  };
+  try {
+    let page: WebFetchResult | null = null;
+    let source: 'browser' | 'tier1' = 'tier1';
+    if (canBrowser && ctx.browserReader !== undefined) {
+      page = await ctx.browserReader(url, readerCtx).catch(() => null);
+      if (page !== null) source = 'browser';
+    }
+    if (page === null) {
+      page = await webFetch(url, {
+        ...(ctx.httpFetch !== undefined ? { fetchImpl: ctx.httpFetch } : {}),
+        ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
+        ...(maxChars !== undefined ? { maxChars } : {}),
+      });
+    }
+    // Defuddle strips the <title> into page.title (NOT the markdown body), so
+    // prepend it — otherwise title/metadata extractions can't see it.
+    const content =
+      page.title.length > 0 && page.title !== page.url
+        ? `# ${page.title}\n\n${page.markdown}`
+        : page.markdown;
+    const extracted = await extractStructured(url, {
+      schema,
+      markdown: content,
+      gateway: ctx.gateway,
+      source,
+      ...(ctx.model !== undefined ? { model: ctx.model } : {}),
+      ...(ctx.provider !== undefined ? { provider: ctx.provider } : {}),
+      ...(instructions !== undefined ? { instructions } : {}),
+      ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
+    });
+    return ok(
+      `Extracted from ${url} (via ${extracted.source}):\n\n${JSON.stringify(extracted.data, null, 2)}`,
+    );
+  } catch (error) {
+    return fail(`web_extract failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/** Formats a crawl result for the model: a stats line + per-page sections. */
+function formatCrawl(result: CrawlResult): string {
+  if (result.pages.length === 0) {
+    return 'web_crawl found no pages (robots/blocked/empty).';
+  }
+  const s = result.stats;
+  const head = `Crawled ${result.pages.length} page(s) [fetched ${s.fetched}, cached ${s.cached}, robots-skipped ${s.skippedByRobots}, blocked ${s.skippedBlocked}, depth ${s.depthReached}]:`;
+  const sections = result.pages.map((p) => {
+    const title = p.title.length > 0 && p.title !== p.url ? `# ${p.title}\n` : '';
+    return `--- ${p.url}${p.fromCache ? ' (cached)' : ''} ---\n${title}${p.markdown}`;
+  });
+  return `${head}\n\n${sections.join('\n\n')}`;
+}
+
+/**
+ * `web_crawl` (F4) — bounded BFS from a seed URL through the polite-fetch layer
+ * (robots + per-host rate limit + on-disk cache). Network-gated up front; every
+ * discovered URL is independently SSRF/allowlist-checked before it is fetched.
+ */
+async function execWebCrawl(
+  args: Record<string, unknown>,
+  ctx: ToolExecutionContext,
+): Promise<ToolResult> {
+  const url = String(args['url'] ?? '');
+  const net = ctx.permissions.checkNetwork();
+  if (!net.allowed) {
+    return fail(`permission denied: ${net.reason}`);
+  }
+  // The seed itself must clear the SSRF/allowlist gate.
+  const seedDecision = ctx.permissions.checkUrl(url);
+  if (!seedDecision.allowed) {
+    return fail(`permission denied: ${seedDecision.reason}`);
+  }
+  const crawlCfg = ctx.config.crawl;
+  const cache = ctx.webCache;
+  const rateLimiter = ctx.rateLimiter ?? new RateLimiter();
+  const robotsCache = new Map<string, import('./web/polite-fetch').RobotsRules>();
+  const fetchOne = (target: string): ReturnType<typeof politeFetch> =>
+    politeFetch(target, {
+      ...(cache !== undefined ? { cache } : {}),
+      rateLimiter,
+      robotsCache,
+      ...(ctx.httpFetch !== undefined ? { fetchImpl: ctx.httpFetch } : {}),
+      ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
+      respectRobots: crawlCfg?.respectRobots ?? true,
+      perHostDelayMs: crawlCfg?.perHostDelayMs ?? 1000,
+    });
+  try {
+    const result = await crawl(url, {
+      ...(typeof args['maxDepth'] === 'number' ? { maxDepth: args['maxDepth'] } : {}),
+      ...(typeof args['maxPages'] === 'number' ? { maxPages: args['maxPages'] } : {}),
+      hardMaxPages: crawlCfg?.maxPages ?? 10,
+      ...(typeof args['sameHostOnly'] === 'boolean' ? { sameHostOnly: args['sameHostOnly'] } : {}),
+      ...(typeof args['useSitemap'] === 'boolean' ? { useSitemap: args['useSitemap'] } : {}),
+      politeFetch: fetchOne,
+      ...(ctx.httpFetch !== undefined ? { fetchImpl: ctx.httpFetch } : {}),
+      ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
+      isAllowed: (target) => ctx.permissions.checkUrl(target).allowed,
+    });
+    return ok(formatCrawl(result));
+  } catch (error) {
+    return fail(`web_crawl failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -905,6 +1096,10 @@ export async function executeNativeTool(
         return await execWebFetch(args, ctx);
       case 'web_search':
         return await execWebSearch(args, ctx);
+      case 'web_extract':
+        return await execWebExtract(args, ctx);
+      case 'web_crawl':
+        return await execWebCrawl(args, ctx);
       default: {
         // Exhaustiveness guard: every NativeToolName is handled above.
         const exhaustive: never = name;

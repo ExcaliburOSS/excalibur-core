@@ -27,6 +27,9 @@ import {
 import { zodToJsonSchema } from '../../tools/zod-to-json-schema';
 import { executeNativeTool, type ToolExecutionContext } from '../../tools/execute-tool';
 import { resolveLocalSearxng } from '../../tools/web/searxng-manager';
+import { browserReaderFrom } from '../../tools/web/browser-fetch';
+import { WebCache } from '../../tools/web/cache';
+import { RateLimiter } from '../../tools/web/polite-fetch';
 import { PermissionEngine } from '../../permissions/permission-engine';
 import { createLspSession, languageForFile, type LspSession } from '../../lsp';
 import {
@@ -76,6 +79,9 @@ const READ_ONLY_TOOLS: ReadonlyArray<NativeToolName> = [
   'web_fetch',
   // Web search is pure discovery (returns links/snippets, mutates nothing).
   'web_search',
+  // Structured extraction + bounded crawl are read-only research (no mutation).
+  'web_extract',
+  'web_crawl',
 ];
 
 /** Roles that get the read-only tool subset (they observe, they do not change the tree). */
@@ -125,6 +131,8 @@ function eventTypeForTool(name: NativeToolName): ExcaliburEventType {
       return 'task_update';
     case 'web_fetch':
     case 'web_search':
+    case 'web_extract':
+    case 'web_crawl':
       return 'tool_call';
   }
 }
@@ -232,6 +240,8 @@ export class NativeAgentAdapter implements AgentAdapter {
 
     const permissions = new PermissionEngine(input.config.permissions);
     const searchCfg = input.config.search;
+    const browserCfg = input.config.browser;
+    const crawlCfg = input.config.crawl;
     const toolCtx: ToolExecutionContext = {
       workdir: input.workdir,
       config: input.config,
@@ -242,11 +252,34 @@ export class NativeAgentAdapter implements AgentAdapter {
       // web_search: resolve a reachable local SearXNG (probe, and start an
       // existing stopped container when managed) — else null → DuckDuckGo.
       searchEnv: process.env,
+      scrapeEnv: process.env,
       resolveSearxng: () =>
         resolveLocalSearxng({
           autoStart: searchCfg?.manageSearxng ?? true,
           ...(searchCfg?.baseUrl !== undefined ? { baseUrl: searchCfg.baseUrl } : {}),
         }),
+      // web_extract's keyless LLM pass uses the same gateway/model as the loop.
+      gateway: input.gateway,
+      ...(input.model !== undefined ? { model: input.model } : {}),
+      ...(input.provider !== undefined ? { provider: input.provider } : {}),
+      // web_crawl: one shared cache + rate limiter for the whole run, so a
+      // multi-page crawl reuses cached pages and spaces requests per host.
+      webCache: new WebCache(
+        crawlCfg !== undefined
+          ? { ttlMs: crawlCfg.cacheTtlMs, maxEntries: crawlCfg.cacheMaxEntries }
+          : {},
+      ),
+      rateLimiter: new RateLimiter(),
+      // Tier-2 browser reader, only when the user opted in (F4). Absent → Tier-1.
+      ...(browserCfg?.enabled === true
+        ? {
+            browserReader: browserReaderFrom({
+              command: browserCfg.command,
+              args: browserCfg.args,
+              timeoutMs: browserCfg.timeoutMs,
+            }),
+          }
+        : {}),
     };
     // MCP (Model Context Protocol) clients are connected INSIDE the try below so
     // the `finally` that calls closeMcp() always reclaims their subprocesses —
@@ -712,6 +745,15 @@ export class NativeAgentAdapter implements AgentAdapter {
       // is enforced inside the executor on the chosen provider URL.
       return pass(permissions.checkNetwork());
     }
+    if (name === 'web_extract') {
+      // Single concrete URL → SSRF/allowlist gate like web_fetch.
+      return pass(permissions.checkUrl(String(args['url'] ?? '')));
+    }
+    if (name === 'web_crawl') {
+      // Many URLs resolved while crawling; gate on the policy here, each page is
+      // SSRF/allowlist-checked inside the executor before it is fetched.
+      return pass(permissions.checkNetwork());
+    }
     if (name === 'run_tests') {
       // Gate the EXACT command the executor will run (base + pattern), not just
       // the base — otherwise the user approves `npm test` while the shell runs
@@ -874,6 +916,12 @@ function toolEventPayload(
       base['denied'] = true;
     }
   }
+  if (name === 'web_extract' || name === 'web_crawl') {
+    base['url'] = String(args['url'] ?? '');
+    if (!ok && /^permission denied/i.test(result.trim())) {
+      base['denied'] = true;
+    }
+  }
   if (name === 'apply_patch') {
     base['simulated'] = false;
   }
@@ -925,6 +973,9 @@ function describeCall(name: NativeToolName, args: Record<string, unknown>): stri
   }
   if (name === 'web_search') {
     return typeof args['query'] === 'string' ? `query: ${args['query']}` : undefined;
+  }
+  if (name === 'web_extract' || name === 'web_crawl') {
+    return typeof args['url'] === 'string' ? `url: ${args['url']}` : undefined;
   }
   return undefined;
 }

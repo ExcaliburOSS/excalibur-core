@@ -12,9 +12,11 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_CONFIG, type ExcaliburConfig } from '@excalibur/shared';
+import { DEFAULT_BROWSER_CONFIG, DEFAULT_CONFIG, type ExcaliburConfig } from '@excalibur/shared';
 import { PermissionEngine } from '../permissions/permission-engine';
 import { executeNativeTool, type ToolExecutionContext } from './execute-tool';
+import type { FetchImpl, TierReader, WebFetchResult } from './web/fetch';
+import type { GatewayChat } from './web/extract';
 
 /**
  * Direct, offline coverage of the real tool executors (the security-critical
@@ -403,5 +405,128 @@ describe('executeNativeTool — git tools', () => {
     ].join('\n');
     const rejected = await executeNativeTool('apply_patch', { diff: evilDiff }, ctx());
     expect(rejected.ok).toBe(false);
+  });
+});
+
+// --- F4 web executors (web_extract / web_crawl + browser escalation) ---------
+
+// Public-IP host → the SSRF guard short-circuits with NO real DNS (offline).
+const PUBLIC = 'http://93.184.216.34/';
+
+function htmlResponse(body: string): Response {
+  return new Response(body, { headers: { 'content-type': 'text/html' } });
+}
+
+function fakeGateway(reply: string): GatewayChat {
+  return {
+    chat: async () =>
+      ({
+        content: reply,
+        toolCalls: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+        model: 'fake',
+        costCents: null,
+        finishReason: 'stop',
+      }) as Awaited<ReturnType<GatewayChat['chat']>>,
+  };
+}
+
+function richBrowserReader(markdown: string): TierReader {
+  return async (url): Promise<WebFetchResult> => ({
+    url,
+    title: 'Rendered',
+    markdown,
+    text: markdown,
+    meta: {
+      status: 200,
+      contentType: 'text/html',
+      fetchedAt: '2026-06-20T00:00:00.000Z',
+      bytes: markdown.length,
+      truncated: false,
+      tier: 'browser',
+    },
+  });
+}
+
+function browserConfig(enabled: boolean): ExcaliburConfig {
+  return { ...permissive(), browser: { ...DEFAULT_BROWSER_CONFIG, enabled } };
+}
+
+describe('executeNativeTool — web_extract (F4)', () => {
+  it('denies a private/SSRF URL before fetching', async () => {
+    const c: ToolExecutionContext = { ...ctx(), gateway: fakeGateway('{}') };
+    const res = await executeNativeTool('web_extract', { url: 'http://127.0.0.1/', schema: {} }, c);
+    expect(res.ok).toBe(false);
+    expect(res.result.toLowerCase()).toMatch(/permission denied|blocked|private/);
+  });
+
+  it('fails clearly when no model gateway is available', async () => {
+    const res = await executeNativeTool('web_extract', { url: PUBLIC, schema: {} }, ctx());
+    expect(res.ok).toBe(false);
+    expect(res.result).toContain('needs a model');
+  });
+
+  it('extracts structured JSON via the gateway over Tier-1 markdown', async () => {
+    const httpFetch: FetchImpl = async () =>
+      htmlResponse(
+        '<html><head><title>T</title></head><body><article><p>body</p></article></body></html>',
+      );
+    const c: ToolExecutionContext = {
+      ...ctx(),
+      httpFetch,
+      gateway: fakeGateway('{"ok":true}'),
+    };
+    const res = await executeNativeTool(
+      'web_extract',
+      { url: PUBLIC, schema: { type: 'object' } },
+      c,
+    );
+    expect(res.ok).toBe(true);
+    expect(res.result).toContain('"ok": true');
+    expect(res.result).toContain('via tier1');
+  });
+});
+
+describe('executeNativeTool — web_crawl (F4)', () => {
+  it('is denied under a network lockdown', async () => {
+    const locked: ExcaliburConfig = {
+      ...permissive(),
+      permissions: { ...permissive().permissions, network: { mode: 'off', approval: 'ask' } },
+    };
+    const res = await executeNativeTool('web_crawl', { url: PUBLIC }, ctx(locked));
+    expect(res.ok).toBe(false);
+    expect(res.result.toLowerCase()).toContain('network');
+  });
+});
+
+describe('executeNativeTool — web_fetch browser escalation (F4)', () => {
+  it('does NOT escalate when the browser is disabled (Tier-1 only)', async () => {
+    let browserCalled = false;
+    const reader: TierReader = async (url) => {
+      browserCalled = true;
+      return richBrowserReader('rich '.repeat(100))(url, { maxBytes: 1, maxChars: 1 });
+    };
+    const httpFetch: FetchImpl = async () => htmlResponse('<html><body><p>hi</p></body></html>');
+    const c: ToolExecutionContext = {
+      ...ctx(browserConfig(false)),
+      httpFetch,
+      browserReader: reader,
+    };
+    const res = await executeNativeTool('web_fetch', { url: PUBLIC }, c);
+    expect(res.ok).toBe(true);
+    expect(browserCalled).toBe(false);
+  });
+
+  it('escalates a thin Tier-1 result to the browser when enabled', async () => {
+    const httpFetch: FetchImpl = async () => htmlResponse('<html><body><p>hi</p></body></html>');
+    const c: ToolExecutionContext = {
+      ...ctx(browserConfig(true)),
+      httpFetch,
+      browserReader: richBrowserReader('Fully rendered content '.repeat(40)),
+    };
+    const res = await executeNativeTool('web_fetch', { url: PUBLIC }, c);
+    expect(res.ok).toBe(true);
+    expect(res.result).toContain('via browser');
+    expect(res.result).toContain('Fully rendered content');
   });
 });

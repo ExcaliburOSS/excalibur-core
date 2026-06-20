@@ -566,6 +566,8 @@ describe('NativeAgentAdapter — role-based tool exposure', () => {
       'read_file',
       'search_code',
       'update_tasks',
+      'web_crawl',
+      'web_extract',
       'web_fetch',
       'web_search',
     ]);

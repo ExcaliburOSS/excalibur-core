@@ -232,6 +232,50 @@ await scenario('web_search — finds real sources via DuckDuckGo (free, no key)'
   assert(searchEvents.length > 0, 'a web_search tool_call event should be recorded');
 });
 
+await scenario('web_extract — keyless structured extraction over Tier-1 markdown (F4)', () => {
+  const dir = freshRepo({ '.excalibur/config.yaml': NET_AUTO });
+  exc(
+    dir,
+    [
+      'run',
+      'Use the web_extract tool on https://example.com/ with the JSON schema {"type":"object","properties":{"title":{"type":"string"}}} to extract the page title.',
+      '--yes',
+    ],
+    150000,
+  );
+  const events = runEvents(dir);
+  assert(toolsUsed(events).includes('web_extract'), 'should have used web_extract');
+  const got = events.some(
+    (e) =>
+      e.type === 'tool_call' &&
+      (e.payload.tool ?? e.payload.name) === 'web_extract' &&
+      /example domain/i.test(String(e.payload.result ?? '')),
+  );
+  assert(got, 'web_extract result must contain the extracted title (Example Domain)');
+});
+
+await scenario('web_crawl — bounded polite crawl (F4)', () => {
+  const dir = freshRepo({ '.excalibur/config.yaml': NET_AUTO });
+  exc(
+    dir,
+    [
+      'run',
+      'Use the web_crawl tool to crawl https://example.com/ with maxDepth 1, then tell me how many pages you found.',
+      '--yes',
+    ],
+    150000,
+  );
+  const events = runEvents(dir);
+  assert(toolsUsed(events).includes('web_crawl'), 'should have used web_crawl');
+  const crawled = events.some(
+    (e) =>
+      e.type === 'tool_call' &&
+      (e.payload.tool ?? e.payload.name) === 'web_crawl' &&
+      /Crawled \d+ page/i.test(String(e.payload.result ?? '')),
+  );
+  assert(crawled, 'web_crawl result must report at least one crawled page');
+});
+
 await scenario('patch + apply — generates a real diff and applies it', () => {
   const dir = freshRepo();
   const { out } = exc(dir, ['patch', 'Add a multiply(a, b) function to src/math.ts', '--yes']);

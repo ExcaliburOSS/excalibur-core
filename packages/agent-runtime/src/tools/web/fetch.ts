@@ -12,9 +12,26 @@ import { htmlToMarkdown } from './extract-html';
  *   passthrough, anything binary rejected.
  * - Sends a fixed honest User-Agent and NO host env/secrets.
  *
+ * Since F4 `web_fetch` is a TIER-ORDERED pipeline: optional preferred readers
+ * (hosted scrape — F5; a local browser — F4) are tried first; the guaranteed
+ * free floor `tier1Fetch` runs when none is supplied or all decline. A reader
+ * returns `null` to decline (→ try the next / fall to Tier-1). Every result is
+ * stamped with `meta.tier` and char-capped centrally.
+ *
  * The `fetchImpl` is injectable so the whole thing is unit-testable offline.
  */
 export type FetchImpl = (url: string, init?: RequestInit) => Promise<Response>;
+
+/**
+ * A higher tier that can serve a fetch (a hosted reader, a local browser). It
+ * returns a {@link WebFetchResult} or `null` to decline (the pipeline then tries
+ * the next tier, ultimately the free Tier-1 floor). It must honor the SSRF/byte
+ * caps in its `ctx`.
+ */
+export type TierReader = (
+  url: string,
+  ctx: { signal?: AbortSignal; maxBytes: number; maxChars: number },
+) => Promise<WebFetchResult | null>;
 
 export interface WebFetchOptions {
   fetchImpl?: FetchImpl;
@@ -23,6 +40,8 @@ export interface WebFetchOptions {
   maxChars?: number;
   timeoutMs?: number;
   maxRedirects?: number;
+  /** Preferred tiers tried IN ORDER before the free Tier-1 floor (F4/F5). */
+  readers?: TierReader[];
 }
 
 export interface WebFetchResult {
@@ -36,6 +55,8 @@ export interface WebFetchResult {
     fetchedAt: string;
     bytes: number;
     truncated: boolean;
+    /** Which tier served this result: `native` | `browser` | `hosted:<provider>`. */
+    tier: string;
   };
 }
 
@@ -82,13 +103,26 @@ async function readCapped(
   return { buf: Buffer.concat(chunks), truncated: false };
 }
 
-export async function webFetch(
+/** Centralized char cap, applied to EVERY tier's result. */
+function capResult(result: WebFetchResult, maxChars: number): WebFetchResult {
+  if (result.markdown.length <= maxChars) {
+    return result;
+  }
+  const capped = `${result.markdown.slice(0, maxChars)}\n\n…[truncated]`;
+  return { ...result, markdown: capped, text: capped };
+}
+
+/**
+ * The guaranteed FREE floor: a direct fetch with SSRF-rechecked manual redirects,
+ * content-type-aware extraction, and byte caps. Returns UNCAPPED markdown — the
+ * caller (`webFetch`) applies the central char cap. Stamps `meta.tier = 'native'`.
+ */
+export async function tier1Fetch(
   rawUrl: string,
   opts: WebFetchOptions = {},
 ): Promise<WebFetchResult> {
   const fetchImpl = opts.fetchImpl ?? (globalThis.fetch as FetchImpl);
   const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
-  const maxChars = opts.maxChars ?? DEFAULT_MAX_CHARS;
   const maxRedirects = opts.maxRedirects ?? DEFAULT_MAX_REDIRECTS;
   const signal = withTimeout(opts.signal, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 
@@ -136,6 +170,7 @@ export async function webFetch(
     fetchedAt,
     bytes: buf.byteLength,
     truncated,
+    tier: 'native',
   };
 
   let title = url;
@@ -160,7 +195,35 @@ export async function webFetch(
     );
   }
 
-  const capped =
-    markdown.length > maxChars ? `${markdown.slice(0, maxChars)}\n\n…[truncated]` : markdown;
-  return { url, title, markdown: capped, text: capped, meta };
+  return { url, title, markdown, text: markdown, meta };
+}
+
+/**
+ * Fetches `rawUrl` through the tier pipeline: each preferred reader in
+ * `opts.readers` is tried in order (a `null`/throw → next tier); if none serves,
+ * the free `tier1Fetch` floor runs. The returned result is char-capped centrally
+ * and carries `meta.tier`.
+ */
+export async function webFetch(
+  rawUrl: string,
+  opts: WebFetchOptions = {},
+): Promise<WebFetchResult> {
+  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
+  const maxChars = opts.maxChars ?? DEFAULT_MAX_CHARS;
+  const readerCtx = {
+    ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
+    maxBytes,
+    maxChars,
+  };
+  for (const reader of opts.readers ?? []) {
+    try {
+      const served = await reader(rawUrl, readerCtx);
+      if (served !== null) {
+        return capResult(served, maxChars);
+      }
+    } catch {
+      // This tier failed → fall through to the next reader, ultimately Tier-1.
+    }
+  }
+  return capResult(await tier1Fetch(rawUrl, opts), maxChars);
 }

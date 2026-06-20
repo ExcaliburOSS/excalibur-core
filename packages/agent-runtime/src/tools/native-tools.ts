@@ -21,6 +21,8 @@ export const NATIVE_TOOL_NAMES = [
   'update_tasks',
   'web_fetch',
   'web_search',
+  'web_extract',
+  'web_crawl',
 ] as const;
 export type NativeToolName = (typeof NATIVE_TOOL_NAMES)[number];
 
@@ -205,6 +207,56 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
           .max(20)
           .optional()
           .describe('Maximum number of results to return (default 8)'),
+      })
+      .strict(),
+  },
+  {
+    name: 'web_extract',
+    description:
+      'Extract STRUCTURED data from a web page. Give a URL and a JSON Schema describing the fields you want; returns JSON matching that schema. Reads the page (the local browser when enabled, otherwise clean Tier-1 markdown) and runs one extraction pass. Free by default; SSRF-protected and governed by the network policy.',
+    parameters: z
+      .object({
+        url: z.string().url().describe('Absolute http(s) URL to extract from'),
+        schema: z
+          .record(z.unknown())
+          .describe(
+            'JSON-Schema object describing the fields to extract, e.g. {"type":"object","properties":{"price":{"type":"number"}}}',
+          ),
+        instructions: z
+          .string()
+          .min(1)
+          .optional()
+          .describe('Extra natural-language guidance for ambiguous fields'),
+        maxChars: z.number().int().positive().max(100_000).optional(),
+      })
+      .strict(),
+  },
+  {
+    name: 'web_crawl',
+    description:
+      'Crawl a website from a seed URL and return the readable markdown of the pages found. Bounded by depth and page count, polite (robots.txt + per-host rate limit + on-disk cache), and SSRF-protected per page. Use it to gather a small set of related pages (docs sections, a changelog), not to scrape an entire site. Free by default.',
+    parameters: z
+      .object({
+        url: z.string().url().describe('Seed URL to start crawling'),
+        maxDepth: z
+          .number()
+          .int()
+          .min(0)
+          .max(3)
+          .optional()
+          .describe('Link depth from the seed (default 1)'),
+        maxPages: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .describe('Max pages to fetch (default 10, hard-capped by config.crawl.maxPages)'),
+        sameHostOnly: z.boolean().optional().describe('Stay on the seed host (default true)'),
+        useSitemap: z
+          .boolean()
+          .optional()
+          .describe('Seed the frontier from /sitemap.xml (default false)'),
       })
       .strict(),
   },

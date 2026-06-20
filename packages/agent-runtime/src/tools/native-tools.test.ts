@@ -20,6 +20,8 @@ const PINNED_NAMES: NativeToolName[] = [
   'update_tasks',
   'web_fetch',
   'web_search',
+  'web_extract',
+  'web_crawl',
 ];
 
 describe('NATIVE_TOOLS', () => {

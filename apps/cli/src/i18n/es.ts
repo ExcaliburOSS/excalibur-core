@@ -158,6 +158,22 @@ export const ES: Catalog = {
   'search.provider-unknown': 'Backend desconocido "{name}". Elige uno de: {names}.',
   'search.provider-byok-hint':
     'Este backend es de pago (BYOK): define `search.apiKeyEnv` con el NOMBRE de la variable de entorno que contiene tu clave.',
+  // navegador local (F4)
+  'browser.node-missing':
+    'Node/npx no está disponible, así que no se puede instalar el navegador local. La descarga Tier-1 sigue funcionando (gratis).',
+  'browser.install-consent':
+    '¿Instalar Chromium (vía Playwright, ~150MB) para que Excalibur pueda renderizar páginas con mucho JS?',
+  'browser.installing': 'Instalando Chromium vía Playwright (descarga única)…',
+  'browser.cancelled':
+    'Cancelado — no se instaló Chromium. La descarga Tier-1 sigue funcionando (gratis).',
+  'browser.enabled':
+    '✓ Navegador local activado — web_fetch escalará a un render real cuando haga falta.',
+  'browser.disabled': '✓ Navegador local desactivado — fetch usa solo la vía rápida Tier-1.',
+  'browser.status': 'Navegador local: {state} (escalado: {enabled})',
+  'browser.on': 'activado',
+  'browser.off': 'desactivado',
+  'browser.removed': '✓ Chromium desinstalado y escalado de navegador desactivado.',
+  'browser.remove-none': 'No hay Chromium que eliminar; escalado de navegador desactivado.',
   'insights.no-runs':
     'Aún no hay ejecuciones locales — nada que resumir. Inicia una con: excalibur run "<tarea>"',
   'insights.title': 'Insights — {runs} ejecuciones',

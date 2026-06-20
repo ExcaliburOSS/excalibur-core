@@ -256,6 +256,63 @@ export const DEFAULT_SEARCH_PROVIDER: SearchProviderConfig = {
   manageSearxng: true,
 };
 
+/**
+ * `browser:` — Tier-2 LOCAL headless browser (F4). FREE but 100% OPT-IN: nothing
+ * is downloaded until `excalibur browser enable` runs `playwright install
+ * chromium`. When `enabled`, `web_fetch` AUTO-ESCALATES to the local browser on a
+ * 403/429/JS-only/thin-content Tier-1 result, and `web_extract` prefers the
+ * rendered page. Runs via Playwright MCP (`npx @playwright/mcp`) over the existing
+ * MCP client. Chromium is NEVER auto-installed and NEVER bundled.
+ */
+export const browserConfigSchema = z.object({
+  /** Master opt-in switch. False/absent → escalation never fires (Tier-1 only). */
+  enabled: z.boolean().default(false),
+  /** Command for the Playwright MCP server (advanced override). */
+  command: z.string().min(1).default('npx'),
+  args: z.array(z.string()).default(['-y', '@playwright/mcp@latest', '--headless', '--isolated']),
+  /** Per-render wall-clock budget (ms) before falling back to the Tier-1 result. */
+  timeoutMs: z.number().int().positive().default(30_000),
+  /** Markdown shorter than this from Tier-1 counts as "thin" → escalate. */
+  thinContentChars: z.number().int().positive().default(200),
+});
+export type BrowserConfig = z.infer<typeof browserConfigSchema>;
+
+/** Default browser config: present but OFF (Tier-1 only until the user opts in). */
+export const DEFAULT_BROWSER_CONFIG: BrowserConfig = {
+  enabled: false,
+  command: 'npx',
+  args: ['-y', '@playwright/mcp@latest', '--headless', '--isolated'],
+  timeoutMs: 30_000,
+  thinContentChars: 200,
+};
+
+/**
+ * `crawl:` — knobs for `web_crawl`'s transversal polite-fetch layer (F4). All
+ * free, on by default; the SSRF floor + network policy still apply per page.
+ */
+export const crawlConfigSchema = z.object({
+  /** Honor robots.txt allow/deny + Crawl-delay (default true; never silently off). */
+  respectRobots: z.boolean().default(true),
+  /** Min delay between requests to the SAME host, ms (token-bucket spacing). */
+  perHostDelayMs: z.number().int().nonnegative().default(1000),
+  /** TTL for the on-disk ETag/markdown cache, ms (default 24h). */
+  cacheTtlMs: z.number().int().positive().default(86_400_000),
+  /** Max cached entries before LRU prune. */
+  cacheMaxEntries: z.number().int().positive().default(2000),
+  /** Hard upper bound on pages a single crawl may fetch (anti-runaway). */
+  maxPages: z.number().int().positive().max(200).default(10),
+});
+export type CrawlConfig = z.infer<typeof crawlConfigSchema>;
+
+/** Default crawl config: polite + bounded. */
+export const DEFAULT_CRAWL_CONFIG: CrawlConfig = {
+  respectRobots: true,
+  perHostDelayMs: 1000,
+  cacheTtlMs: 86_400_000,
+  cacheMaxEntries: 2000,
+  maxPages: 10,
+};
+
 const instructionSourceRefSchema = z.object({
   path: z.string().min(1),
   format: instructionSourceFormatSchema.optional(),
@@ -334,6 +391,8 @@ const baseExcaliburConfigSchema = z.object({
   sandbox: sandboxConfigSchema.optional(),
   lsp: lspConfigSchema.optional(),
   search: searchProviderSchema.optional(),
+  browser: browserConfigSchema.optional(),
+  crawl: crawlConfigSchema.optional(),
   instructions: z.object({ sources: z.array(instructionSourceRefSchema).optional() }).optional(),
   skills: z.object({ sources: z.array(skillSourceRefSchema).optional() }).optional(),
 });
@@ -438,6 +497,8 @@ export const DEFAULT_CONFIG: ExcaliburConfig = {
       run_tests: 'ask',
       web_fetch: 'ask',
       web_search: 'ask',
+      web_extract: 'ask',
+      web_crawl: 'ask',
     },
     blockedPaths: [...DEFAULT_BLOCKED_PATHS],
     allowedCommands: [...DEFAULT_ALLOWED_COMMANDS],
