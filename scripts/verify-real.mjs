@@ -183,6 +183,24 @@ await scenario('explain — explains a source file', () => {
   assert(out.replace(/\s+/g, ' ').length > 40, 'explanation should be non-trivial');
 });
 
+await scenario('edit tool — surgical find/replace inside a real run (P1.8)', () => {
+  const dir = freshRepo();
+  exc(
+    dir,
+    [
+      'run',
+      'Use the edit tool to change the body of add() in src/math.ts so it returns a - b instead of a + b. Make a single surgical edit.',
+      '--yes',
+    ],
+    150000,
+  );
+  const events = runEvents(dir);
+  assert(toolsUsed(events).includes('edit'), 'the model should have used the edit tool');
+  const after = readFileSync(join(dir, 'src/math.ts'), 'utf8');
+  assert(/a\s*-\s*b/.test(after), 'src/math.ts should now subtract');
+  assert(!/a\s*\+\s*b/.test(after), 'the original a + b should be gone');
+});
+
 await scenario('extension tool — a local extension tool runs inside a real run (P0.1)', () => {
   const motto = 'STRENGTH-IN-STEEL-7731';
   const dir = freshRepo({

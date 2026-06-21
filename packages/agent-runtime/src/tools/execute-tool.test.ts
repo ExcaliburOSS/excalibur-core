@@ -145,6 +145,70 @@ describe('executeNativeTool — read_file', () => {
   });
 });
 
+describe('executeNativeTool — edit', () => {
+  it('replaces a unique substring in place', async () => {
+    writeFileSync(join(dir, 'app.ts'), 'const a = 1;\nconst b = 2;\n');
+    const result = await executeNativeTool(
+      'edit',
+      { path: 'app.ts', oldString: 'const b = 2;', newString: 'const b = 3;' },
+      ctx(),
+    );
+    expect(result.ok).toBe(true);
+    expect(readFileSync(join(dir, 'app.ts'), 'utf8')).toBe('const a = 1;\nconst b = 3;\n');
+  });
+
+  it('fails when oldString is not found', async () => {
+    writeFileSync(join(dir, 'a.ts'), 'hello');
+    const result = await executeNativeTool(
+      'edit',
+      { path: 'a.ts', oldString: 'nope', newString: 'x' },
+      ctx(),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.result).toMatch(/not found/);
+  });
+
+  it('refuses an ambiguous (non-unique) edit unless replaceAll', async () => {
+    writeFileSync(join(dir, 'a.ts'), 'x\nx\nx\n');
+    const ambiguous = await executeNativeTool(
+      'edit',
+      { path: 'a.ts', oldString: 'x', newString: 'y' },
+      ctx(),
+    );
+    expect(ambiguous.ok).toBe(false);
+    expect(ambiguous.result).toMatch(/3 places/);
+
+    const all = await executeNativeTool(
+      'edit',
+      { path: 'a.ts', oldString: 'x', newString: 'y', replaceAll: true },
+      ctx(),
+    );
+    expect(all.ok).toBe(true);
+    expect(readFileSync(join(dir, 'a.ts'), 'utf8')).toBe('y\ny\ny\n');
+  });
+
+  it('fails on a missing file (directs to write_file)', async () => {
+    const result = await executeNativeTool(
+      'edit',
+      { path: 'ghost.ts', oldString: 'a', newString: 'b' },
+      ctx(),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.result).toMatch(/does not exist/);
+  });
+
+  it('denies an edit to a blocked path', async () => {
+    writeFileSync(join(dir, '.env'), 'SECRET=1');
+    const result = await executeNativeTool(
+      'edit',
+      { path: '.env', oldString: 'SECRET=1', newString: 'SECRET=2' },
+      ctx(),
+    );
+    expect(result.ok).toBe(false);
+    expect(readFileSync(join(dir, '.env'), 'utf8')).toBe('SECRET=1');
+  });
+});
+
 describe('executeNativeTool — write_file', () => {
   it('creates parent directories within the tree', async () => {
     const result = await executeNativeTool(

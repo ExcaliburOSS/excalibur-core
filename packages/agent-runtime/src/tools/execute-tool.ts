@@ -455,6 +455,73 @@ function execWriteFile(args: Record<string, unknown>, ctx: ToolExecutionContext)
   return ok(`wrote ${Buffer.byteLength(fileContent)} bytes to "${relPath}"`);
 }
 
+/** Surgical find/replace in an existing file (token-cheaper than a full rewrite). */
+function execEdit(args: Record<string, unknown>, ctx: ToolExecutionContext): ToolResult {
+  const relPath = args['path'] as string;
+  const oldString = args['oldString'] as string;
+  const newString = args['newString'] as string;
+  const replaceAll = args['replaceAll'] === true;
+  const confined = assertConfined(ctx.workdir, relPath);
+  if ('error' in confined) {
+    return fail(`rejected: ${confined.error}`);
+  }
+  const decision = ctx.permissions.checkPath(relPath, 'write');
+  if (!decision.allowed) {
+    return fail(`permission denied: ${decision.reason}`);
+  }
+  if (oldString === newString) {
+    return fail('oldString and newString are identical — nothing to change');
+  }
+  let content: string;
+  try {
+    content = readFileSync(confined.abs, 'utf8');
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (code === 'ENOENT') {
+      return fail(`"${relPath}" does not exist — use write_file to create it`);
+    }
+    return fail(`could not read "${relPath}"`);
+  }
+  const occurrences = content.split(oldString).length - 1;
+  if (occurrences === 0) {
+    return fail(
+      `oldString not found in "${relPath}" — it must match the file exactly (including whitespace)`,
+    );
+  }
+  if (occurrences > 1 && !replaceAll) {
+    return fail(
+      `oldString matches ${occurrences} places in "${relPath}" — add surrounding context to make it unique, or set replaceAll: true`,
+    );
+  }
+  const updated = replaceAll
+    ? content.split(oldString).join(newString)
+    : content.replace(oldString, newString);
+  // Same TOCTOU-safe write as write_file (O_NOFOLLOW refuses a symlinked leaf).
+  let fd: number;
+  try {
+    fd = openSync(
+      confined.abs,
+      fsConstants.O_WRONLY | fsConstants.O_TRUNC | fsConstants.O_NOFOLLOW,
+      0o644,
+    );
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (code === 'ELOOP') {
+      return fail(`permission denied: refusing to write through a symlink: "${relPath}"`);
+    }
+    if (code === 'EACCES' || code === 'EPERM') {
+      return fail(`permission denied: cannot write "${relPath}"`);
+    }
+    return fail(`could not write "${relPath}"`);
+  }
+  try {
+    writeSync(fd, updated, null, 'utf8');
+  } finally {
+    closeSync(fd);
+  }
+  return ok(`edited "${relPath}" (${occurrences} replacement${occurrences === 1 ? '' : 's'})`);
+}
+
 function execListFiles(args: Record<string, unknown>, ctx: ToolExecutionContext): ToolResult {
   const relDir = (args['path'] as string | undefined) ?? '.';
   const glob = args['glob'] as string | undefined;
@@ -1263,6 +1330,8 @@ export async function executeNativeTool(
         return execReadFile(args, ctx);
       case 'write_file':
         return execWriteFile(args, ctx);
+      case 'edit':
+        return execEdit(args, ctx);
       case 'list_files':
         return execListFiles(args, ctx);
       case 'search_code':

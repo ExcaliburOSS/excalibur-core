@@ -19,9 +19,11 @@ Adapters emit the canonical Excalibur event stream (`tool_call`, `file_read`, `f
 
 ### `native`
 
-The default adapter, built on the Model Gateway and nine native tools:
+The default adapter, built on the Model Gateway and its native tools:
 
-`read_file · write_file · list_files · search_code · run_command · git_diff · apply_patch · create_branch · run_tests`
+`read_file · write_file · edit · list_files · search_code · run_command · run_tests · git_diff · apply_patch · create_branch · update_tasks · web_fetch · web_search · web_extract · web_crawl · research`
+
+(`edit` is a surgical find/replace — far cheaper than rewriting a whole file.)
 
 Every tool call passes through the **Permission Engine**: blocked paths are denied, mutating tools default to _ask_, commands outside the allowlist require confirmation (see [security.md](security.md)).
 
@@ -29,7 +31,7 @@ Every tool call passes through the **Permission Engine**: blocked paths are deni
 
 The native loop also folds in everything else the runtime offers:
 
-- **Extension-contributed tools** — tools registered by extensions (`ctx.tools.registerTool`) are offered to the model alongside the nine native tools and execute in the loop, announced as `tool_call`s and gated like any other tool (read-only roles only see tools that opt in via `readOnly`).
+- **Extension-contributed tools** — tools registered by extensions (`ctx.tools.registerTool`) are offered to the model alongside the native tools and execute in the loop, announced as `tool_call`s and gated like any other tool (read-only roles only see tools that opt in via `readOnly`).
 - **LSP per-edit diagnostics** — for editing roles, a run-scoped language-server session reports diagnostics back into the loop after each write (emitted as `diagnostics` events) so the model can fix what it just broke. Configurable via `lsp` in config; enabled by default.
 - **MCP tools** — configured [MCP](https://modelcontextprotocol.io) servers (stdio + Streamable-HTTP) are connected per run and their tools exposed to the model. Remote endpoints sit behind the per-server egress sandbox + SSRF floor; a read-only role only sees a server's non-mutating tools; tool output is scanned for prompt injection before it reaches the model.
 - **Sandbox** — runs can execute inside a per-session Docker sandbox (network none, no host secrets) when configured.

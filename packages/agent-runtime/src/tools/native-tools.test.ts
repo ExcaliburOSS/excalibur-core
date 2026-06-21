@@ -10,6 +10,7 @@ import {
 const PINNED_NAMES: NativeToolName[] = [
   'read_file',
   'write_file',
+  'edit',
   'list_files',
   'search_code',
   'run_command',

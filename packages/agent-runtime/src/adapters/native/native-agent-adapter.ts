@@ -137,6 +137,7 @@ function eventTypeForTool(name: NativeToolName): ExcaliburEventType {
     case 'search_code':
       return 'file_read';
     case 'write_file':
+    case 'edit':
       return 'file_write';
     case 'apply_patch':
       return 'patch_applied';
@@ -228,7 +229,7 @@ interface RunningTotals {
 export class NativeAgentAdapter implements AgentAdapter {
   readonly id = 'native';
   readonly name = 'Excalibur Native Agent';
-  /** The native adapter's capabilities are exactly its nine tools. */
+  /** The native adapter's capabilities are exactly its native tool names. */
   readonly capabilities: string[] = [...NATIVE_TOOL_NAMES];
 
   private readonly stoppedSessions = new Set<string>();
@@ -670,7 +671,10 @@ export class NativeAgentAdapter implements AgentAdapter {
     const editedNow: string[] = [];
     if (ok) {
       const target = pathArgOf(toolName, call.arguments);
-      if (target !== undefined && (toolName === 'write_file' || toolName === 'apply_patch')) {
+      if (
+        target !== undefined &&
+        (toolName === 'write_file' || toolName === 'edit' || toolName === 'apply_patch')
+      ) {
         editedNow.push(target);
       }
       if (toolName === 'apply_patch') {
@@ -959,7 +963,7 @@ export class NativeAgentAdapter implements AgentAdapter {
         reason: 'checklist update (no side effect)',
       };
     }
-    if (name === 'write_file') {
+    if (name === 'write_file' || name === 'edit') {
       return pass(permissions.checkPath(String(args['path'] ?? ''), 'write'));
     }
     if (name === 'read_file' || name === 'list_files') {
@@ -1101,7 +1105,7 @@ function filesAffectedFromDiff(diff: string): string[] {
 
 /** Extracts the repository-relative path arg a tool operates on, if any. */
 function pathArgOf(name: NativeToolName, args: Record<string, unknown>): string | undefined {
-  if (name === 'read_file' || name === 'write_file' || name === 'list_files') {
+  if (name === 'read_file' || name === 'write_file' || name === 'edit' || name === 'list_files') {
     const value = args['path'];
     return typeof value === 'string' ? value : undefined;
   }
@@ -1120,7 +1124,7 @@ function toolEventPayload(
   if (path !== undefined) {
     base['path'] = path;
   }
-  if (name === 'write_file') {
+  if (name === 'write_file' || name === 'edit') {
     base['operation'] = ok ? 'modify' : 'rejected';
   }
   if (name === 'run_command' || name === 'run_tests') {
@@ -1193,7 +1197,7 @@ function redactArgs(args: Record<string, unknown>): Record<string, unknown> {
 
 /** Short human-readable detail for a confirmation request. */
 function describeCall(name: NativeToolName, args: Record<string, unknown>): string | undefined {
-  if (name === 'write_file' || name === 'read_file' || name === 'list_files') {
+  if (name === 'write_file' || name === 'edit' || name === 'read_file' || name === 'list_files') {
     return typeof args['path'] === 'string' ? `path: ${args['path']}` : undefined;
   }
   if (name === 'run_command') {

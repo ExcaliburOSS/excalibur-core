@@ -120,7 +120,7 @@ async function collect(iterable: AsyncIterable<ExcaliburEvent>): Promise<Excalib
 }
 
 describe('NativeAgentAdapter identity', () => {
-  it('is always detected and exposes the nine tools as capabilities', async () => {
+  it('is always detected and exposes its native tools as capabilities', async () => {
     const adapter = new NativeAgentAdapter();
     expect(adapter.id).toBe('native');
     expect(adapter.name.length).toBeGreaterThan(0);

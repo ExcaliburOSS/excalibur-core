@@ -11,6 +11,7 @@ import { z } from 'zod';
 export const NATIVE_TOOL_NAMES = [
   'read_file',
   'write_file',
+  'edit',
   'list_files',
   'search_code',
   'run_command',
@@ -53,6 +54,25 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
       .object({
         path: relativePathSchema,
         content: z.string().describe('Full new file content'),
+      })
+      .strict(),
+  },
+  {
+    name: 'edit',
+    description:
+      'Make a surgical edit to an EXISTING file: replace an exact substring (oldString) with newString — far cheaper than rewriting the whole file. oldString must match exactly (including whitespace/indentation) and be UNIQUE in the file unless replaceAll is set. Use write_file to create a new file.',
+    parameters: z
+      .object({
+        path: relativePathSchema,
+        oldString: z
+          .string()
+          .min(1)
+          .describe('Exact text to replace (must be unique unless replaceAll)'),
+        newString: z.string().describe('Replacement text'),
+        replaceAll: z
+          .boolean()
+          .optional()
+          .describe('Replace every occurrence (default false → oldString must be unique)'),
       })
       .strict(),
   },
