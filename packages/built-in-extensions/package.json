@@ -1,6 +1,6 @@
 {
   "name": "@excalibur/built-in-extensions",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Built-in Excalibur extension packs: the default methodologies, workflows, question packs, prompts, artifact templates, policies, reports, roles and command mappings as declarative extensions",
   "license": "Apache-2.0",

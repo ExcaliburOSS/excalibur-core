@@ -1,6 +1,6 @@
 {
   "name": "@excalibur/agent-runtime",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Agent adapter interfaces, native tools, permission engine and event emission for Excalibur",
   "license": "Apache-2.0",
