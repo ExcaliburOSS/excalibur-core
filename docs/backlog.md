@@ -70,8 +70,10 @@ agents list|show|init` + `run --agent <name>`. The allowlist only NARROWS the
     project; defaults < global < project < env) [Core][auto] — touches `loadExcaliburConfig`.
 12. **`stats` (historical token/cost)** + **session export/import** (JSON/Markdown) ✅ SHIPPED
     [Core][auto] — OC.
-13. **Rebindable keybinds + custom theme loader** [Core][auto] — OC. Today single-key
-    fixed, 5 themes, no loader.
+13. **Custom theme loader** ✅ SHIPPED (022d1e6) — `ui.customTheme` (any subset of the
+    14 palette colors, hex) merged over the named theme; applies everywhere via the
+    Palette pipeline. [Core][auto] — OC. _(Rebindable keybinds split to **13b**:
+    config-driven action→key remap across the 3 input reducers.)_
 14. **More providers + in-TUI model picker + reasoning/vision variants** [Core][auto] —
     OC-P2. From 3 families to a broad catalog; interactive `/models`.
 
