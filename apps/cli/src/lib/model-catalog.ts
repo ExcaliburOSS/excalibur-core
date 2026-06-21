@@ -70,7 +70,7 @@ export interface ProviderCatalogEntry {
   contextWindow?: number;
   /** Verified good+fast pair for the API-key rail; absent → single-model only. */
   pair?: CatalogPair;
-  /** Subscription path; absent → API-key only (e.g. Groq/DeepSeek/OpenRouter). */
+  /** Subscription path; absent → API-key only (e.g. DeepSeek/OpenRouter). */
   subscription?: CatalogSubscription;
 }
 
@@ -79,6 +79,82 @@ export interface ProviderCatalogEntry {
  * most likely already pays for first, then free/local, then the test mock).
  */
 export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
+  {
+    key: 'kimi',
+    label: 'Kimi K2 (Moonshot) — recommended',
+    hint: 'subscription key (Kimi Code) or API · kimi-k2.7-code',
+    type: 'openai-compatible',
+    baseUrl: 'https://api.moonshot.ai/v1',
+    apiKeyEnv: 'MOONSHOT_API_KEY',
+    contextWindow: 262144,
+    pair: {
+      good: 'kimi-k2.7-code',
+      fast: 'moonshot-v1-8k',
+      fastLowLatency:
+        'moonshot-v1-8k is non-reasoning but only 8K ctx (weak fast pick); k2.7-code forces thinking on',
+    },
+    subscription: {
+      kind: 'subscription-key',
+      risk: 'sanctioned',
+      keyConfig: {
+        baseUrl: 'https://api.kimi.com/coding/v1',
+        model: 'kimi-for-coding',
+        apiKeyEnv: 'KIMI_CODE_API_KEY',
+      },
+    },
+  },
+  {
+    key: 'minimax',
+    label: 'MiniMax',
+    hint: 'subscription (MiniMax coding plan) or API · MiniMax-M2',
+    type: 'openai-compatible',
+    baseUrl: 'https://api.minimax.io/v1',
+    apiKeyEnv: 'MINIMAX_API_KEY',
+    pair: {
+      good: 'MiniMax-M2',
+      fast: 'MiniMax-Text-01',
+      fastLowLatency:
+        'MiniMax-Text-01 is a non-reasoning text model — fast for ghost-text/compaction',
+    },
+    subscription: {
+      // The MiniMax coding plan is consumed via the normal platform API key
+      // against the membership quota (sanctioned) — same endpoint, coding model.
+      kind: 'subscription-key',
+      risk: 'sanctioned',
+      keyConfig: {
+        baseUrl: 'https://api.minimax.io/v1',
+        model: 'MiniMax-M2',
+        apiKeyEnv: 'MINIMAX_API_KEY',
+      },
+    },
+  },
+  {
+    key: 'glm',
+    label: 'GLM (Zhipu / Z.ai)',
+    hint: 'GLM Coding Plan subscription or API · GLM-4.6',
+    type: 'openai-compatible',
+    baseUrl: 'https://api.z.ai/api/paas/v4',
+    apiKeyEnv: 'ZAI_API_KEY',
+    contextWindow: 200000,
+    pair: {
+      good: 'glm-4.6',
+      fast: 'glm-4.5-air',
+      fastLowLatency:
+        'glm-4.5-air is the lightweight fast variant; send {"thinking":{"type":"disabled"}} to keep it low-latency',
+      fastExtraBody: { thinking: { type: 'disabled' } },
+    },
+    subscription: {
+      // The GLM Coding Plan is a sanctioned subscription consumed via a coding
+      // API key against the membership quota (own coding endpoint + model).
+      kind: 'subscription-key',
+      risk: 'sanctioned',
+      keyConfig: {
+        baseUrl: 'https://api.z.ai/api/coding/paas/v4',
+        model: 'glm-4.6',
+        apiKeyEnv: 'ZAI_CODING_API_KEY',
+      },
+    },
+  },
   {
     key: 'anthropic',
     label: 'Anthropic (Claude)',
@@ -146,43 +222,6 @@ export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
       },
       disclaimer:
         'Google does NOT permit third-party tools to use your subscription; Excalibur only drives Google’s official CLI and never stores your token — at your own risk.',
-    },
-  },
-  {
-    key: 'kimi',
-    label: 'Kimi K2 (Moonshot) — recommended',
-    hint: 'subscription key (Kimi Code) or API · kimi-k2.7-code',
-    type: 'openai-compatible',
-    baseUrl: 'https://api.moonshot.ai/v1',
-    apiKeyEnv: 'MOONSHOT_API_KEY',
-    contextWindow: 262144,
-    pair: {
-      good: 'kimi-k2.7-code',
-      fast: 'moonshot-v1-8k',
-      fastLowLatency:
-        'moonshot-v1-8k is non-reasoning but only 8K ctx (weak fast pick); k2.7-code forces thinking on',
-    },
-    subscription: {
-      kind: 'subscription-key',
-      risk: 'sanctioned',
-      keyConfig: {
-        baseUrl: 'https://api.kimi.com/coding/v1',
-        model: 'kimi-for-coding',
-        apiKeyEnv: 'KIMI_CODE_API_KEY',
-      },
-    },
-  },
-  {
-    key: 'groq',
-    label: 'Groq — free tier',
-    hint: 'your free signup key · API · gpt-oss + llama-8b-instant',
-    type: 'openai-compatible',
-    baseUrl: 'https://api.groq.com/openai/v1',
-    apiKeyEnv: 'GROQ_API_KEY',
-    pair: {
-      good: 'openai/gpt-oss-120b',
-      fast: 'llama-3.1-8b-instant',
-      fastLowLatency: 'llama-3.1-8b-instant is genuinely fast & non-reasoning (no knob needed)',
     },
   },
   {

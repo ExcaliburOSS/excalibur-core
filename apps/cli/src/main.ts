@@ -6,6 +6,7 @@ import { defaultDeps } from './deps';
 import { buildProgram } from './program';
 import { parseInteractiveArgs, runInteractiveSession } from './session/repl';
 import { EXIT_SUCCESS, describeError, exitCodeForError } from './errors';
+import { loadSecretsIntoEnv } from './lib/secrets-store';
 
 function stdinIsTty(): boolean {
   return process.stdin.isTTY === true;
@@ -17,6 +18,12 @@ function stdinIsTty(): boolean {
  * (0 success · 1 runtime error · 2 usage/validation).
  */
 function main(): void {
+  // Hydrate API keys pasted during onboarding (stored in
+  // ~/.config/excalibur/secrets.env, 0600) into the environment BEFORE deps
+  // capture `process.env` — the real environment always wins (gaps only). This
+  // is why a pasted key "just works" without the user exporting anything.
+  loadSecretsIntoEnv();
+
   const ui = createUi();
 
   // No-subcommand + TTY → the interactive conversational session. Without a

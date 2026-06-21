@@ -9,6 +9,7 @@ import {
   type ParsedKey,
   type RawInputState,
 } from './lib/raw-input';
+import { reduceSelectKey, renderChoiceLine, type SelectState } from './lib/select-input';
 
 /**
  * The single output module of the Excalibur CLI (Build Contract §4.9).
@@ -65,6 +66,12 @@ export interface SelectOptions {
   yes?: boolean;
   /** Zero-based index returned when the prompt is skipped or left empty. */
   defaultIndex?: number;
+  /**
+   * Dim navigation hint shown under the question in the interactive arrow-key
+   * chooser (already translated by the caller). Defaults to a neutral
+   * symbol-based hint; ignored by the numbered fallback.
+   */
+  navHint?: string;
 }
 
 export interface LineEditorOptions {
@@ -217,6 +224,16 @@ export class Ui {
     this.write(pc.bold(text));
   }
 
+  /**
+   * Styles a prompt's question in intense blue + bold — the shared accent for
+   * every interactive question (select/ask/confirm). picocolors auto-disables
+   * color on non-TTY output (NO_COLOR / pipes / tests), so this is a no-op there
+   * and scripted-stdin tests stay byte-for-byte unchanged.
+   */
+  private formatQuestion(text: string): string {
+    return pc.bold(pc.blueBright(text));
+  }
+
   info(text: string): void {
     this.write(pc.dim(text));
   }
@@ -258,9 +275,133 @@ export class Ui {
     if (options.yes === true || !this.interactive) {
       return defaultAnswer;
     }
-    const answer = await this.readLine(`${question} `);
+    const answer = await this.readLine(`${this.formatQuestion(question)} `);
     const trimmed = answer.trim();
     return trimmed.length > 0 ? trimmed : defaultAnswer;
+  }
+
+  /**
+   * Masked free-text prompt for SECRETS (API keys): on a real TTY the typed
+   * value is echoed as dots so a pasted key never appears on screen. On any
+   * non-TTY stdin/stdout (scripted tests, CI, pipes), `--yes`, or
+   * `EXCALIBUR_RAW_INPUT=0`, it falls back to {@link ask} (plain line read), so
+   * scripted paths stay deterministic. Returns the typed value, or the default
+   * when skipped/empty.
+   */
+  async askSecret(question: string, options: AskOptions = {}): Promise<string> {
+    const defaultAnswer = options.defaultAnswer ?? '';
+    if (options.yes === true || !this.interactive) {
+      return defaultAnswer;
+    }
+    const rawAllowed = process.env['EXCALIBUR_RAW_INPUT'] !== '0';
+    if (!(hasTty(this.stdin) && this.isOutputTty() && rawAllowed)) {
+      return this.ask(question, options); // non-TTY: plain (unmasked) line read
+    }
+    return this.readSecretRaw(`${this.formatQuestion(question)} `, defaultAnswer);
+  }
+
+  /** Raw-mode masked reader backing {@link askSecret} (real TTY only). */
+  private readSecretRaw(prompt: string, defaultAnswer: string): Promise<string> {
+    const input = this.stdin as NodeJS.ReadStream;
+    const out = this.stdout;
+    const ESC = String.fromCharCode(27);
+    const isPrintable = (seq: string): boolean => {
+      for (const ch of seq) {
+        const code = ch.codePointAt(0) ?? 0;
+        if (code < 0x20 || code === 0x7f) {
+          return false;
+        }
+      }
+      return true;
+    };
+    let buffer = '';
+
+    const borrowed = this.suspendEditor !== null;
+    if (borrowed) {
+      this.suspendInput();
+    }
+    const render = (): void => {
+      out.write(`\r${ESC}[2K${prompt}${pc.dim('•'.repeat(buffer.length))}`);
+    };
+    const restoreCooked = (): void => {
+      try {
+        if (input.isTTY === true && typeof input.setRawMode === 'function') {
+          input.setRawMode(false);
+        }
+      } catch {
+        // best-effort: never throw while restoring the terminal
+      }
+    };
+    const onTermSignal = (): void => {
+      restoreCooked();
+      process.exit(143);
+    };
+
+    out.write(prompt);
+    return new Promise<string>((resolve) => {
+      let done = false;
+      const finish = (value: string): void => {
+        if (done) {
+          return;
+        }
+        done = true;
+        input.removeListener('keypress', onKeypress);
+        process.removeListener('exit', restoreCooked);
+        process.removeListener('SIGTERM', onTermSignal);
+        process.removeListener('SIGHUP', onTermSignal);
+        restoreCooked();
+        if (borrowed) {
+          this.resumeInput();
+        }
+        out.write('\n');
+        resolve(value.length > 0 ? value : defaultAnswer);
+      };
+      const onKeypress = (_str: string | undefined, key: ParsedKey | undefined): void => {
+        if (key === undefined) {
+          return;
+        }
+        try {
+          if (key.ctrl === true && key.name === 'c') {
+            finish('');
+            process.kill(process.pid, 'SIGINT');
+            return;
+          }
+          if (key.name === 'return' || key.name === 'enter') {
+            finish(buffer);
+            return;
+          }
+          if (key.name === 'backspace') {
+            buffer = buffer.slice(0, -1);
+            render();
+            return;
+          }
+          if (key.ctrl === true && key.name === 'u') {
+            buffer = '';
+            render();
+            return;
+          }
+          if (key.ctrl === true || key.meta === true) {
+            return;
+          }
+          if (key.sequence !== undefined && key.sequence.length > 0 && isPrintable(key.sequence)) {
+            buffer += key.sequence;
+            render();
+          }
+        } catch {
+          finish(buffer);
+        }
+      };
+
+      readline.emitKeypressEvents(input);
+      if (typeof input.setRawMode === 'function') {
+        input.setRawMode(true);
+      }
+      input.resume();
+      input.on('keypress', onKeypress);
+      process.on('exit', restoreCooked);
+      process.once('SIGTERM', onTermSignal);
+      process.once('SIGHUP', onTermSignal);
+    });
   }
 
   /** Yes/no confirmation; renders `[Y/n]` or `[y/N]` per the safe default. */
@@ -270,7 +411,9 @@ export class Ui {
       return defaultYes;
     }
     const suffix = defaultYes ? '[Y/n]' : '[y/N]';
-    const answer = (await this.readLine(`${question} ${suffix} `)).trim().toLowerCase();
+    const answer = (await this.readLine(`${this.formatQuestion(question)} ${pc.dim(suffix)} `))
+      .trim()
+      .toLowerCase();
     if (answer.length === 0) {
       return defaultYes;
     }
@@ -295,7 +438,9 @@ export class Ui {
     // (persisted) so Excalibur stops asking entirely — unifying the per-edit
     // prompt with the `/auto` mode (one concept, not a per-tool allowlist).
     const suffix = defaultYes ? '[Y/n/a]' : '[y/N/a]';
-    const answer = (await this.readLine(`${question} ${suffix} `)).trim().toLowerCase();
+    const answer = (await this.readLine(`${this.formatQuestion(question)} ${pc.dim(suffix)} `))
+      .trim()
+      .toLowerCase();
     if (answer.length === 0) {
       return defaultYes ? 'yes' : 'no';
     }
@@ -305,14 +450,46 @@ export class Ui {
     return answer === 'y' || answer === 'yes' || answer === 's' || answer === 'si' ? 'yes' : 'no';
   }
 
-  /** Numbered chooser; returns the zero-based index of the selection. */
+  /**
+   * Chooser; returns the zero-based index of the selection. On a real TTY this
+   * is an INTERACTIVE arrow-key list: ↑/↓ (and j/k) move the highlight live,
+   * Enter selects, a digit 1–9 jumps-and-selects, Esc takes the default. On any
+   * non-TTY stdin/stdout (scripted tests, CI, pipes), with `--yes`, or with
+   * `EXCALIBUR_RAW_INPUT=0`, it falls back to the deterministic numbered chooser
+   * (type a number), so every scripted path stays byte-for-byte unchanged.
+   */
   async select(
     question: string,
     choices: SelectChoice[],
     options: SelectOptions = {},
   ): Promise<number> {
     const defaultIndex = options.defaultIndex ?? 0;
-    this.write(question);
+    const rawAllowed = process.env['EXCALIBUR_RAW_INPUT'] !== '0';
+    const useArrows =
+      options.yes !== true &&
+      this.interactive &&
+      hasTty(this.stdin) &&
+      this.isOutputTty() &&
+      rawAllowed &&
+      choices.length > 0;
+    if (useArrows) {
+      return this.selectInteractive(question, choices, defaultIndex, options.navHint);
+    }
+    return this.selectByNumber(question, choices, options, defaultIndex);
+  }
+
+  /**
+   * The deterministic numbered chooser (non-TTY / `--yes` / scripted stdin): the
+   * original behavior — print a numbered list (the default row marked with `→`)
+   * and read a typed number. Kept byte-for-byte so every scripted test is stable.
+   */
+  private async selectByNumber(
+    question: string,
+    choices: SelectChoice[],
+    options: SelectOptions,
+    defaultIndex: number,
+  ): Promise<number> {
+    this.write(this.formatQuestion(question));
     choices.forEach((choice, index) => {
       const marker = index === defaultIndex ? pc.cyan('→') : ' ';
       const hint = choice.hint !== undefined ? ` ${pc.dim(choice.hint)}` : '';
@@ -330,6 +507,125 @@ export class Ui {
       return defaultIndex;
     }
     return parsed - 1;
+  }
+
+  /**
+   * The interactive arrow-key chooser (real TTY). Renders the question, an
+   * optional dim nav hint, and the list; drives Node `keypress` events through
+   * the pure {@link reduceSelectKey} reducer, repainting the list block in place
+   * on every move. ALWAYS restores cooked mode (close + process exit/signals) so
+   * the terminal can never be left in raw mode. If a persistent raw editor owns
+   * stdin (e.g. a `/models` prompt mid-REPL), borrow it via suspend/resume.
+   */
+  private selectInteractive(
+    question: string,
+    choices: SelectChoice[],
+    defaultIndex: number,
+    navHint?: string,
+  ): Promise<number> {
+    const input = this.stdin as NodeJS.ReadStream;
+    const out = this.stdout;
+    const ESC = String.fromCharCode(27);
+    const count = choices.length;
+    const safe = (i: number): number => (i < 0 || i >= count ? 0 : i);
+    let state: SelectState = { index: safe(defaultIndex) };
+
+    // Borrow stdin from the persistent raw editor when one is open; hand it back
+    // when we're done. No-op during onboarding (the editor isn't open yet).
+    const borrowed = this.suspendEditor !== null;
+    if (borrowed) {
+      this.suspendInput();
+    }
+
+    const renderRow = (i: number): string =>
+      renderChoiceLine(choices[i] as SelectChoice, i === state.index, i + 1);
+    const repaint = (): void => {
+      out.write(`${ESC}[${count}A`); // up to the first row
+      for (let i = 0; i < count; i += 1) {
+        out.write(`\r${ESC}[2K${renderRow(i)}\n`);
+      }
+    };
+
+    const restoreCooked = (): void => {
+      try {
+        if (input.isTTY === true && typeof input.setRawMode === 'function') {
+          input.setRawMode(false);
+        }
+      } catch {
+        // best-effort: never throw while restoring the terminal
+      }
+    };
+    const onTermSignal = (): void => {
+      restoreCooked();
+      process.exit(143);
+    };
+
+    // Render the header + initial list. The question and nav hint stay static
+    // above the list; only the `count` list rows are repainted on each move.
+    this.write(this.formatQuestion(question));
+    this.write(pc.dim(navHint ?? '  ↑/↓ move · enter select · esc cancel'));
+    for (let i = 0; i < count; i += 1) {
+      out.write(`${renderRow(i)}\n`);
+    }
+
+    return new Promise<number>((resolve) => {
+      let done = false;
+      const onKeypress = (_str: string | undefined, key: ParsedKey | undefined): void => {
+        if (key === undefined) {
+          return;
+        }
+        try {
+          const result = reduceSelectKey(state, key, count);
+          state = result.state;
+          switch (result.action.type) {
+            case 'move':
+              repaint();
+              return;
+            case 'submit':
+              repaint(); // paint the final highlight before leaving
+              finish(result.action.index);
+              return;
+            case 'cancel':
+              finish(safe(defaultIndex));
+              return;
+            case 'sigint':
+              out.write('\n');
+              finish(safe(defaultIndex));
+              process.kill(process.pid, 'SIGINT');
+              return;
+            case 'none':
+              return;
+          }
+        } catch {
+          finish(safe(defaultIndex));
+        }
+      };
+      const finish = (index: number): void => {
+        if (done) {
+          return;
+        }
+        done = true;
+        input.removeListener('keypress', onKeypress);
+        process.removeListener('exit', restoreCooked);
+        process.removeListener('SIGTERM', onTermSignal);
+        process.removeListener('SIGHUP', onTermSignal);
+        restoreCooked();
+        if (borrowed) {
+          this.resumeInput();
+        }
+        resolve(index);
+      };
+
+      readline.emitKeypressEvents(input);
+      if (typeof input.setRawMode === 'function') {
+        input.setRawMode(true);
+      }
+      input.resume();
+      input.on('keypress', onKeypress);
+      process.on('exit', restoreCooked);
+      process.once('SIGTERM', onTermSignal);
+      process.once('SIGHUP', onTermSignal);
+    });
   }
 
   /**

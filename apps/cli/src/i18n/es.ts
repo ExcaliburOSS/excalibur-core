@@ -7,13 +7,13 @@ import type { Catalog } from '@excalibur/shared';
 export const ES: Catalog = {
   'welcome.epigraph': 'La espada está desenvainada. ¿Qué construimos?',
 
+  // Chrome interactivo compartido.
+  'common.select_hint': '↑/↓ para mover · Enter para elegir · Esc para cancelar',
+
   // Onboarding zero-config — primer `excalibur` en un repo sin configurar.
   'onboarding.title': 'Configurando Excalibur para este proyecto…',
   'onboarding.intro':
     'Primera vez por aquí — vamos a conectar un modelo y crear un .excalibur/ mínimo. Tarda unos segundos.',
-  'onboarding.confirm': '¿Configurar Excalibur para este proyecto ahora?',
-  'onboarding.skipped':
-    'Sin problema — funcionando con el mock offline por ahora. Ejecuta `excalibur models setup` cuando quieras.',
   'onboarding.created': 'Creado:',
   'onboarding.noProvider':
     'Sin modelo configurado — funcionando con el mock offline integrado. Ejecuta `excalibur models setup` para conectar un modelo real.',
@@ -512,6 +512,12 @@ export const ES: Catalog = {
     'El parche {id} no se aplicó: {message}. Prueba `excalibur branch {id}` (lo aplica sobre una rama nueva) o regenera el parche.',
 
   // provider-setup
+  'provider-setup.paste_api_key':
+    'Pega tu API key de {label} (o déjalo en blanco para configurar {envName} tú mismo más tarde) — la entrada está oculta:',
+  'provider-setup.saved_key':
+    'Guardé tu key de {label} en {path} (solo tú puedes leerla). Excalibur la carga automáticamente en cada arranque — no hay variable de entorno que configurar. Ejecuta `excalibur models test` para confirmar.',
+  'provider-setup.save_key_failed':
+    'No pude guardar tu key en el fichero de secretos ({message}). Puedes configurar {apiKeyEnv} en tu entorno en su lugar.',
   'provider-setup.detected_env':
     'Se detectó {defaultName} en tu entorno — pulsa Enter para usarla.',
   'provider-setup.ask_env_var_name':

@@ -58,11 +58,21 @@ describe('PROVIDER_CATALOG integrity', () => {
     }
   });
 
+  it('leads with the sanctioned coding-subscription providers: Kimi, MiniMax, GLM', () => {
+    expect(PROVIDER_CATALOG[0]?.key).toBe('kimi');
+    expect(PROVIDER_CATALOG[1]?.key).toBe('minimax');
+    expect(PROVIDER_CATALOG[2]?.key).toBe('glm');
+    for (const key of ['minimax', 'glm']) {
+      expect(catalogEntry(key)?.subscription?.kind).toBe('subscription-key');
+      expect(catalogEntry(key)?.subscription?.risk).toBe('sanctioned');
+    }
+  });
+
   it('Kimi is the recommended subscription-key provider; Anthropic is cli-passthrough', () => {
     expect(catalogEntry('kimi')?.subscription?.kind).toBe('subscription-key');
     expect(catalogEntry('anthropic')?.subscription?.kind).toBe('cli-passthrough');
     expect(catalogEntry('anthropic')?.subscription?.risk).toBe('prohibited');
     // API-only providers have no subscription branch.
-    expect(catalogEntry('groq')?.subscription).toBeUndefined();
+    expect(catalogEntry('deepseek')?.subscription).toBeUndefined();
   });
 });

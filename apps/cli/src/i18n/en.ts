@@ -10,13 +10,13 @@ export const EN: Catalog = {
   // Welcome (arthurian flavor — plan §"Sabor artúrico"; on by default).
   'welcome.epigraph': 'The sword is drawn. What shall we build?',
 
+  // Shared interactive chrome.
+  'common.select_hint': '↑/↓ to move · Enter to select · Esc to cancel',
+
   // Zero-config onboarding — the first `excalibur` run in an unconfigured repo.
   'onboarding.title': 'Setting up Excalibur for this project…',
   'onboarding.intro':
     "First time here — let's connect a model and create a minimal .excalibur/. Takes a few seconds.",
-  'onboarding.confirm': 'Set up Excalibur for this project now?',
-  'onboarding.skipped':
-    'No problem — running on the offline mock for now. Run `excalibur models setup` anytime.',
   'onboarding.created': 'Created:',
   'onboarding.noProvider':
     'No model configured — running on the built-in offline mock. Run `excalibur models setup` to connect a real model.',
@@ -492,6 +492,12 @@ export const EN: Catalog = {
     'Patch {id} did not apply: {message}. Try `excalibur branch {id}` (applies onto a fresh branch) or regenerate the patch.',
 
   // provider-setup
+  'provider-setup.paste_api_key':
+    'Paste your {label} API key (or leave blank to set {envName} yourself later) — input is hidden:',
+  'provider-setup.saved_key':
+    'Saved your {label} key to {path} (owner-only). Excalibur loads it automatically on every run — no environment variable to set. Run `excalibur models test` to confirm.',
+  'provider-setup.save_key_failed':
+    'Could not save your key to the secrets file ({message}). You can set {apiKeyEnv} in your environment instead.',
   'provider-setup.detected_env':
     'Detected {defaultName} in your environment — press Enter to use it.',
   'provider-setup.ask_env_var_name':

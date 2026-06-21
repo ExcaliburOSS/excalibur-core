@@ -6,11 +6,15 @@ import type { ProviderConfig, ProvidersFileConfig } from '@excalibur/model-gatew
 import type { CliDeps } from '../deps';
 import { providersFilePath } from './context';
 import { PROVIDER_CATALOG, type ProviderCatalogEntry } from './model-catalog';
+import { saveSecret } from './secrets-store';
 
 /**
  * Model provider onboarding (onboarding spec §4), shared by `excalibur init` and
- * `excalibur models setup`. Providers store the NAME of an API key environment
- * variable — never a key value.
+ * `excalibur models setup`. The user PASTES their API key (masked); Excalibur
+ * persists it to the global secrets store (`~/.config/excalibur/secrets.env`,
+ * 0600) and loads it on every launch — so a pasted key just works without
+ * touching environment variables. `providers.yaml` records only the NAME of the
+ * key's env var — never the value — so the committed config stays secret-free.
  *
  * Flow: pick a provider, then (for providers with a subscription) choose how you
  * pay — SUBSCRIPTION first (the individual-dev default), API key second (the
@@ -27,37 +31,43 @@ import { PROVIDER_CATALOG, type ProviderCatalogEntry } from './model-catalog';
 const ENV_VAR_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
 const SECRET_LOOKING_PATTERN = /^(sk-|ghp_|gho_|ghs_|xox|AKIA)/;
 
-async function askEnvVarName(deps: CliDeps, defaultName: string, yes: boolean): Promise<string> {
-  if (!yes && (deps.env[defaultName] ?? '').length > 0) {
-    deps.ui.info(deps.t('provider-setup.detected_env', { defaultName }));
+/**
+ * Collects a provider's API key the COMFORTABLE way: the user PASTES the key
+ * (masked input) and Excalibur persists it to the global secrets store
+ * (`~/.config/excalibur/secrets.env`, 0600) AND makes it usable in this very
+ * process — so the connection test and the session that follows just work,
+ * without anyone setting an environment variable. `providers.yaml` still records
+ * only the env var NAME ({@link envName}), so the committed config never holds a
+ * secret. Power-user shortcuts: if the env var is already set in the real
+ * environment we use it as-is; leaving the prompt blank references the env var
+ * for the user to set later. Returns the env var name to write into the config.
+ */
+async function askApiKey(deps: CliDeps, label: string, envName: string): Promise<string> {
+  if ((deps.env[envName] ?? '').length > 0) {
+    deps.ui.info(deps.t('provider-setup.detected_env', { defaultName: envName }));
+    return envName;
   }
-  for (;;) {
-    const answer = await deps.ui.ask(deps.t('provider-setup.ask_env_var_name', { defaultName }), {
-      yes,
-      defaultAnswer: defaultName,
-    });
-    if (SECRET_LOOKING_PATTERN.test(answer)) {
-      deps.ui.warn(deps.t('provider-setup.looks_like_key_value'));
-      continue;
-    }
-    if (!ENV_VAR_NAME_PATTERN.test(answer)) {
-      deps.ui.warn(deps.t('provider-setup.env_var_format'));
-      if (yes || !deps.ui.isInteractive()) {
-        return defaultName;
-      }
-      continue;
-    }
-    return answer;
+  const value = (
+    await deps.ui.askSecret(deps.t('provider-setup.paste_api_key', { label, envName }), {
+      defaultAnswer: '',
+    })
+  ).trim();
+  if (value.length === 0) {
+    deps.ui.info(deps.t('provider-setup.saved_env_unset', { apiKeyEnv: envName }));
+    return envName;
   }
-}
-
-/** Post-save guidance: the provider runs once its API key env var is set. */
-function announceSaved(deps: CliDeps, apiKeyEnv: string): void {
-  if ((deps.env[apiKeyEnv] ?? '').length > 0) {
-    deps.ui.info(deps.t('provider-setup.saved_env_set', { apiKeyEnv }));
-    return;
+  try {
+    const path = saveSecret(envName, value);
+    // Usable immediately (the connection test + this session) and on every
+    // future launch (loadSecretsIntoEnv hydrates it before deps capture env).
+    deps.env[envName] = value;
+    process.env[envName] = value;
+    deps.ui.success(deps.t('provider-setup.saved_key', { label, path }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    deps.ui.warn(deps.t('provider-setup.save_key_failed', { message, apiKeyEnv: envName }));
   }
-  deps.ui.info(deps.t('provider-setup.saved_env_unset', { apiKeyEnv }));
+  return envName;
 }
 
 /** A single-provider config — no bundled mock (the mock is never a fallback). */
@@ -150,7 +160,7 @@ async function setupApiKeyRail(
   deps: CliDeps,
   entry: ProviderCatalogEntry,
 ): Promise<ProvidersFileConfig> {
-  const apiKeyEnv = await askEnvVarName(deps, entry.apiKeyEnv, false);
+  const apiKeyEnv = await askApiKey(deps, entry.label, entry.apiKeyEnv);
   if (entry.pair !== undefined) {
     deps.ui.info(
       deps.t('provider-setup.auto_configured', {
@@ -160,7 +170,6 @@ async function setupApiKeyRail(
         apiKeyEnv,
       }),
     );
-    announceSaved(deps, apiKeyEnv);
     return pairConfig(entry, apiKeyEnv);
   }
   const model = (
@@ -168,7 +177,6 @@ async function setupApiKeyRail(
       defaultAnswer: '',
     })
   ).trim();
-  announceSaved(deps, apiKeyEnv);
   const config: ProviderConfig = { type: entry.type, apiKeyEnv };
   if (entry.baseUrl !== undefined) {
     config.baseUrl = entry.baseUrl;
@@ -197,8 +205,7 @@ async function setupSubscription(
   }
   if (sub.kind === 'subscription-key' && sub.keyConfig !== undefined) {
     deps.ui.info(deps.t('provider-setup.subscription_key_native', { label: entry.label }));
-    const apiKeyEnv = await askEnvVarName(deps, sub.keyConfig.apiKeyEnv, false);
-    announceSaved(deps, apiKeyEnv);
+    const apiKeyEnv = await askApiKey(deps, entry.label, sub.keyConfig.apiKeyEnv);
     return single(entry.key, {
       type: entry.type,
       baseUrl: sub.keyConfig.baseUrl,
@@ -253,11 +260,17 @@ type ProviderChoice =
  */
 export async function promptProviderSetup(
   deps: CliDeps,
-  options: { yes: boolean },
+  options: { yes: boolean; allowLater?: boolean },
 ): Promise<ProvidersFileConfig | null> {
   if (options.yes || !deps.ui.isInteractive()) {
     return MOCK_ONLY; // tests/CI/offline — no key to prompt for
   }
+  // "Configure later" is offered to the explicit `init` / `models setup`
+  // commands (scaffolding without a model is a valid choice there), but NOT to
+  // the zero-friction first-run onboarding — Excalibur is useless without a
+  // model, so the first run always wires one up (the picker still has free
+  // local Ollama / self-hosted for users without a paid key).
+  const allowLater = options.allowLater !== false;
 
   const ollamaDetected = isCommandOnPath('ollama', deps.env);
   // NO mock here: the mock is NEVER offered to an interactive user (it would be
@@ -268,7 +281,7 @@ export async function promptProviderSetup(
     ...PROVIDER_CATALOG.map((entry): ProviderChoice => ({ kind: 'catalog', entry })),
     { kind: 'ollama' },
     { kind: 'self-hosted' },
-    { kind: 'later' },
+    ...(allowLater ? [{ kind: 'later' as const }] : []),
   ];
   const labels = choices.map((choice) => {
     switch (choice.kind) {
@@ -299,6 +312,7 @@ export async function promptProviderSetup(
   const index = await deps.ui.select(deps.t('provider-setup.select_provider'), labels, {
     yes: false,
     defaultIndex: 0,
+    navHint: deps.t('common.select_hint'),
   });
   const choice = choices[index] ?? { kind: 'later' };
 
@@ -319,7 +333,7 @@ export async function promptProviderSetup(
               hint: deps.t('provider-setup.hint_api_key'),
             },
           ],
-          { yes: false, defaultIndex: 0 },
+          { yes: false, defaultIndex: 0, navHint: deps.t('common.select_hint') },
         );
         return how === 0 ? setupSubscription(deps, entry) : setupApiKeyRail(deps, entry);
       }
