@@ -18,6 +18,26 @@ export const ES: Catalog = {
   'onboarding.noProvider':
     'Sin modelo configurado — funcionando con el mock offline integrado. Ejecuta `excalibur models setup` para conectar un modelo real.',
 
+  // Ubicación del proyecto — "¿estás en un proyecto o creas uno nuevo?".
+  'project-location.empty-folder': 'Carpeta vacía — configurando aquí tu nuevo proyecto.',
+  'project-location.root-title': 'Vamos a crear un proyecto nuevo',
+  'project-location.root-intro':
+    'Estás en {cwd} — no es una carpeta de proyecto. Vamos a crear uno (con su propio repositorio git).',
+  'project-location.ambiguous-q': 'Esta carpeta ({cwd}) aún no es un proyecto. ¿Qué quieres hacer?',
+  'project-location.opt-create': 'Crear un proyecto nuevo',
+  'project-location.opt-create-hint': 'una subcarpeta nueva con su propio repo git',
+  'project-location.opt-here': 'Usar este directorio',
+  'project-location.opt-here-hint': 'configurar Excalibur aquí mismo',
+  'project-location.ask-name': 'Nombre del proyecto [my-project]:',
+  'project-location.name-empty': 'Introduce un nombre de proyecto.',
+  'project-location.name-separators':
+    'El nombre no puede contener separadores de ruta ni "..". Usa un nombre de carpeta simple.',
+  'project-location.name-reserved': 'El nombre no puede empezar por punto.',
+  'project-location.name-exists': '"{name}" ya existe aquí — elige otro nombre.',
+  'project-location.created': 'Proyecto {name} creado en {path}.',
+  'new.name-required': 'Hace falta un nombre de proyecto: excalibur new <nombre>.',
+  'new.next-steps': 'Ahora: cd {name} && excalibur — tu primer arranque conecta un modelo.',
+
   // Panel web acompañante, auto-arrancado con la shell interactiva.
   'dashboard.up': '▸ Panel web en {url}',
 

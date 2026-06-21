@@ -12,6 +12,7 @@ import { registerDoctorCommand } from './commands/doctor';
 import { registerExplainCommand } from './commands/explain';
 import { registerExtensionsCommand } from './commands/extensions';
 import { registerInitCommand } from './commands/init';
+import { registerNewCommand } from './commands/new';
 import { registerInstructionsCommand } from './commands/instructions';
 import { registerInsightsCommand } from './commands/insights';
 import { registerBrowserCommand } from './commands/browser';
@@ -81,6 +82,7 @@ export function buildProgram(overrides: Partial<CliDeps> = {}): Command {
     });
 
   registerInitCommand(program, deps);
+  registerNewCommand(program, deps);
   registerAskCommand(program, deps);
   registerExplainCommand(program, deps);
   registerReviewCommand(program, deps);

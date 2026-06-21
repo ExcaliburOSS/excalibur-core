@@ -59,6 +59,7 @@ import {
 import { runGoalLoop } from './goal-loop';
 import { runIntervalLoop } from './interval-loop';
 import { maybeAutoOnboard } from './onboarding';
+import { resolveProjectRoot } from './project-location';
 import { startSessionDashboard } from './dashboard';
 import {
   drainBanners,
@@ -147,7 +148,15 @@ export async function runInteractiveSession(
   deps: CliDeps,
   options: InteractiveSessionOptions = {},
 ): Promise<number> {
-  const repoRoot = deps.cwd();
+  // Smart project-location resolution (proactive): if you launch `excalibur`
+  // somewhere that isn't a project — your home dir, `/`, or an ambiguous folder
+  // — and you actually want to START a project, create one (`mkdir`+`git init`+
+  // `chdir`) instead of scaffolding into `~`. Only on an interactive TTY; a
+  // non-interactive run keeps the cwd unchanged.
+  let repoRoot = deps.cwd();
+  if (deps.ui.isInteractive() && deps.ui.isOutputTty()) {
+    repoRoot = await resolveProjectRoot(deps, repoRoot);
+  }
   // Repo analysis warms the context engine (ISD scanning) once per session, and
   // feeds the zero-config onboarding below.
   const analysis = await analyzeRepository(repoRoot, {

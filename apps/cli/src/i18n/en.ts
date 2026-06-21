@@ -21,6 +21,27 @@ export const EN: Catalog = {
   'onboarding.noProvider':
     'No model configured — running on the built-in offline mock. Run `excalibur models setup` to connect a real model.',
 
+  // Project location — smart "are you in a project, or starting a new one?".
+  'project-location.empty-folder': 'Empty folder — setting up your new project here.',
+  'project-location.root-title': "Let's create a new project",
+  'project-location.root-intro':
+    "You're in {cwd} — not a project folder. Let's create one (it gets its own git repo).",
+  'project-location.ambiguous-q':
+    'This folder ({cwd}) is not a project yet. What would you like to do?',
+  'project-location.opt-create': 'Create a new project',
+  'project-location.opt-create-hint': 'a fresh subfolder with its own git repo',
+  'project-location.opt-here': 'Use this directory',
+  'project-location.opt-here-hint': 'set Excalibur up right here',
+  'project-location.ask-name': 'Project name [my-project]:',
+  'project-location.name-empty': 'Please enter a project name.',
+  'project-location.name-separators':
+    'A project name can’t contain path separators or "..". Use a plain folder name.',
+  'project-location.name-reserved': 'A project name can’t start with a dot.',
+  'project-location.name-exists': '"{name}" already exists here — pick another name.',
+  'project-location.created': 'Created project {name} at {path}.',
+  'new.name-required': 'A project name is required: excalibur new <name>.',
+  'new.next-steps': 'Next: cd {name} && excalibur — your first run connects a model.',
+
   // Companion web dashboard auto-started with the interactive shell.
   'dashboard.up': '▸ Web dashboard at {url}',
 
