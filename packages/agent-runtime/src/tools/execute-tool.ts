@@ -104,6 +104,12 @@ export interface ToolExecutionContext {
    * enabled; absent → the `lsp` tool reports no language server is available.
    */
   lsp?: LspSession;
+  /**
+   * Free-text human channel for the model-callable `question` tool (P1.8b).
+   * Injected when a human is present (interactive shell / interactive run);
+   * absent or returning empty → the tool tells the model to proceed autonomously.
+   */
+  ask?: (question: string) => Promise<string>;
 }
 
 export interface ToolResult {
@@ -1362,6 +1368,41 @@ async function execLsp(
   return ok(`${header} of the symbol at ${relPath}:${line}:${column}:\n${lines.join('\n')}`);
 }
 
+/**
+ * `question` (P1.8b): ask the human a clarifying question mid-run. Returns their
+ * answer, or — when no human channel is wired (autonomous/CI) or they answer
+ * empty — a note telling the model to proceed on its best judgment. Never blocks
+ * a headless run.
+ */
+async function execQuestion(
+  args: Record<string, unknown>,
+  ctx: ToolExecutionContext,
+): Promise<ToolResult> {
+  const question = args['question'] as string;
+  const context = args['context'] as string | undefined;
+  if (ctx.ask === undefined) {
+    return ok(
+      'No human is available to answer (autonomous run). Proceed with your best judgment and state the assumption you made.',
+    );
+  }
+  const prompt =
+    context !== undefined && context.length > 0 ? `${question} (${context})` : question;
+  let answer: string;
+  try {
+    answer = await ctx.ask(prompt);
+  } catch {
+    return ok(
+      'Could not get an answer. Proceed with your best judgment and state your assumption.',
+    );
+  }
+  if (answer.trim().length === 0) {
+    return ok(
+      'No answer was provided. Proceed with your best judgment and state the assumption you made.',
+    );
+  }
+  return ok(`The human answered: ${answer.trim()}`);
+}
+
 export async function executeNativeTool(
   name: NativeToolName,
   rawArgs: unknown,
@@ -1409,6 +1450,8 @@ export async function executeNativeTool(
         return await execResearch(args, ctx);
       case 'lsp':
         return await execLsp(args, ctx);
+      case 'question':
+        return await execQuestion(args, ctx);
       default: {
         // Exhaustiveness guard: every NativeToolName is handled above.
         const exhaustive: never = name;

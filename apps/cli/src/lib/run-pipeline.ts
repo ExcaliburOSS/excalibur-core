@@ -626,6 +626,12 @@ export async function runTask(
     // Without a confirm fn the engine auto-approves ({ auto: true }) —
     // exactly what --yes / non-interactive runs want.
     ...(interactive ? { confirm } : {}),
+    // Free-text human channel for the `question` tool (P1.8b). Only when a human
+    // is at a plain prompt (not under the Ink rail, which owns stdin); otherwise
+    // the tool gracefully tells the model to proceed autonomously.
+    ...(interactive && inkHandle === null
+      ? { ask: (question: string): Promise<string> => deps.ui.ask(question) }
+      : {}),
     onEvent: (event): void => {
       if (inkHandle !== null) {
         inkHandle.push(event);

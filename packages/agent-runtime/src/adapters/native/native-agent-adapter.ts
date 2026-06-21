@@ -107,6 +107,8 @@ const READ_ONLY_TOOLS: ReadonlyArray<NativeToolName> = [
   'research',
   // Code intelligence (definition/references/hover) is read-only navigation.
   'lsp',
+  // Asking the human a clarifying question mutates nothing.
+  'question',
 ];
 
 /** Roles that get the read-only tool subset (they observe, they do not change the tree). */
@@ -161,6 +163,7 @@ function eventTypeForTool(name: NativeToolName): ExcaliburEventType {
     case 'web_crawl':
     case 'research':
     case 'lsp':
+    case 'question':
       return 'tool_call';
   }
 }
@@ -327,6 +330,9 @@ export class NativeAgentAdapter implements AgentAdapter {
       // Thread the run's abort signal so ESC/abort SIGKILLs an in-flight
       // command/test/git process instead of waiting for it to finish.
       ...(input.signal !== undefined ? { signal: input.signal } : {}),
+      // Free-text human channel for the `question` tool (P1.8b). Absent →
+      // the tool tells the model to proceed autonomously.
+      ...(input.ask !== undefined ? { ask: input.ask } : {}),
       // web_search: resolve a reachable local SearXNG (probe, and start an
       // existing stopped container when managed) — else null → DuckDuckGo.
       searchEnv: process.env,
@@ -1060,6 +1066,14 @@ export class NativeAgentAdapter implements AgentAdapter {
     if (name === 'lsp') {
       // Read-only code intelligence — gate like a file read on the queried path.
       return pass(permissions.checkPath(String(args['path'] ?? '.'), 'read'));
+    }
+    if (name === 'question') {
+      // Asking the human IS the interaction — never gate it behind a confirm.
+      return {
+        allowed: true,
+        requiresConfirmation: false,
+        reason: 'clarifying question (no side effect)',
+      };
     }
     if (name === 'run_command') {
       return pass(permissions.checkCommand(String(args['command'] ?? '')));

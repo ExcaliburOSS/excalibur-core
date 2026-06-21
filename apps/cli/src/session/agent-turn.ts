@@ -336,6 +336,10 @@ async function driveLoop(
     gateway: turn.gateway,
     signal: ctrl.signal,
     ...(options.allowConfirm ? { confirm } : {}),
+    // Free-text human channel for the `question` tool (P1.8b): the interactive
+    // shell IS a human at a prompt. deps.ui.ask returns '' when non-interactive,
+    // which the tool reads as "no answer → proceed autonomously".
+    ask: (question: string): Promise<string> => deps.ui.ask(question),
     ...(options.seedMessages !== undefined ? { seedMessages: options.seedMessages } : {}),
   });
 

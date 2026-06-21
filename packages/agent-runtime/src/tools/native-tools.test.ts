@@ -25,6 +25,7 @@ const PINNED_NAMES: NativeToolName[] = [
   'web_crawl',
   'research',
   'lsp',
+  'question',
 ];
 
 describe('NATIVE_TOOLS', () => {
@@ -56,6 +57,8 @@ describe('NATIVE_TOOLS', () => {
     ['run_tests', { command: 'pnpm test', pattern: 'escrow' }],
     ['lsp', { path: 'src/app.ts', line: 12, column: 5, query: 'definition' }],
     ['lsp', { path: 'src/app.ts', line: 1, column: 1, query: 'hover' }],
+    ['question', { question: 'Which database should I target?' }],
+    ['question', { question: 'Use REST or gRPC?', context: 'the spec is ambiguous' }],
   ] as const)('%s accepts valid parameters %j', (name, params) => {
     const tool = getNativeTool(name);
     expect(tool).toBeDefined();
@@ -78,6 +81,9 @@ describe('NATIVE_TOOLS', () => {
     ['lsp', { path: 'x.ts', line: 1, column: 1, query: 'rename' }],
     ['lsp', { path: 'x.ts', line: 0, column: 1, query: 'hover' }],
     ['lsp', { path: 'x.ts', line: 1, column: 1 }],
+    ['question', {}],
+    ['question', { question: '' }],
+    ['question', { question: 'ok', extra: true }],
   ] as const)('%s rejects invalid parameters %j', (name, params) => {
     const tool = getNativeTool(name);
     expect(tool).toBeDefined();

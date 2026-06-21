@@ -26,6 +26,7 @@ export const NATIVE_TOOL_NAMES = [
   'web_crawl',
   'research',
   'lsp',
+  'question',
 ] as const;
 export type NativeToolName = (typeof NATIVE_TOOL_NAMES)[number];
 
@@ -311,6 +312,20 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
         query: z
           .enum(['definition', 'references', 'hover'])
           .describe('What to look up at that position'),
+      })
+      .strict(),
+  },
+  {
+    name: 'question',
+    description:
+      'Ask the human a single clarifying question when the task is genuinely ambiguous and a wrong assumption would be costly (e.g. which of two files, which API, a missing decision). Returns their answer as text. Use SPARINGLY — prefer acting on reasonable assumptions. If no human is available (autonomous/CI run), it returns a note and you must proceed with your best judgment.',
+    parameters: z
+      .object({
+        question: z.string().min(1, 'question must not be empty').describe('The question to ask'),
+        context: z
+          .string()
+          .optional()
+          .describe('Optional one-line context shown with the question (why you are asking)'),
       })
       .strict(),
   },

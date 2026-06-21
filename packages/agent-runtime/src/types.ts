@@ -49,6 +49,14 @@ export interface AgentRunInput {
    */
   confirm?: (req: ConfirmationRequest) => Promise<boolean>;
   /**
+   * Optional free-text human channel for the model-callable `question` tool
+   * (P1.8b). When a human is present (interactive shell / interactive run) the
+   * CLI passes a reader; the tool returns the typed answer. Absent — or an empty
+   * answer — tells the model to proceed on its best judgment (never blocks a
+   * headless/CI run). Additive.
+   */
+  ask?: (question: string) => Promise<string>;
+  /**
    * Optional abort signal. Aborting stops the native tool loop at the next
    * iteration boundary (and is forwarded to the gateway for in-flight cancel).
    * Additive — existing callers pass neither `confirm` nor `signal`.

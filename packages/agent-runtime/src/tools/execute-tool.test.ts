@@ -289,6 +289,36 @@ describe('executeNativeTool — lsp (P1.8b)', () => {
   });
 });
 
+describe('executeNativeTool — question (P1.8b)', () => {
+  it('returns the human answer when an ask channel is present', async () => {
+    const result = await executeNativeTool(
+      'question',
+      { question: 'Use REST or gRPC?', context: 'spec is ambiguous' },
+      { ...ctx(), ask: (q: string) => Promise.resolve(`got: ${q}`) },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.result).toContain('REST or gRPC');
+    expect(result.result).toContain('spec is ambiguous'); // context folded into the prompt
+    expect(result.result).toMatch(/human answered/i);
+  });
+
+  it('tells the model to proceed when no human channel is wired', async () => {
+    const result = await executeNativeTool('question', { question: 'Which db?' }, ctx());
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatch(/no human|proceed/i);
+  });
+
+  it('treats an empty answer as "no answer → proceed"', async () => {
+    const result = await executeNativeTool(
+      'question',
+      { question: 'Which db?' },
+      { ...ctx(), ask: () => Promise.resolve('   ') },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatch(/no answer|proceed/i);
+  });
+});
+
 describe('executeNativeTool — write_file', () => {
   it('creates parent directories within the tree', async () => {
     const result = await executeNativeTool(

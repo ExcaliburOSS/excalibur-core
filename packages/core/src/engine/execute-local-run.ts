@@ -63,6 +63,12 @@ export interface ExecuteLocalRunInput {
   adapter: AgentAdapter;
   config: ExcaliburConfig;
   confirm?: (question: string) => Promise<boolean>;
+  /**
+   * Optional free-text human channel for the model-callable `question` tool
+   * (P1.8b), forwarded to the agent adapter. Present only for interactive runs;
+   * absent → the tool tells the model to proceed autonomously. Additive.
+   */
+  ask?: (question: string) => Promise<string>;
   onEvent?: (e: ExcaliburEvent) => void;
   /**
    * Optional abort signal. Aborting ends the run at the next phase boundary
@@ -482,6 +488,9 @@ class LocalRunExecution {
                 req.detail !== undefined ? `${req.reason} (${req.detail})` : req.reason,
               )
           : (): Promise<boolean> => Promise.resolve(true),
+      // Free-text human channel for the `question` tool (P1.8b). Forwarded only
+      // when an interactive caller supplied it; otherwise the tool proceeds.
+      ...(this.input.ask !== undefined ? { ask: this.input.ask } : {}),
     });
 
     for await (const event of stream) {

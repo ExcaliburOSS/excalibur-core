@@ -564,6 +564,7 @@ describe('NativeAgentAdapter — role-based tool exposure', () => {
       'git_diff',
       'list_files',
       'lsp',
+      'question',
       'read_file',
       'research',
       'search_code',
