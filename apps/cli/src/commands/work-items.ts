@@ -2,8 +2,12 @@ import { execFile } from 'node:child_process';
 import {
   GitHubCliProvider,
   LocalWorkItemProvider,
+  WORK_ITEM_LANES,
+  WORK_ITEM_LANE_LABELS,
+  isWorkItemLane,
   type GhRunner,
   type NormalizedWorkItem,
+  type UpdateWorkItemInput,
   type WorkItemProvider,
 } from '@excalibur/work-items';
 import type { Command } from 'commander';
@@ -184,6 +188,105 @@ export function registerWorkItemsCommand(program: Command, deps: CliDeps): void 
         status,
       });
       deps.ui.success(deps.t('work-items.status-updated', { key, status }));
+    });
+
+  wi.command('board')
+    .description('show the LOCAL work-item kanban board (lanes × items)')
+    .option('--json', 'machine-readable JSON')
+    .action((options: { json?: boolean }) => {
+      const board = new LocalWorkItemProvider(deps.cwd()).board();
+      if (options.json === true) {
+        deps.ui.json(board);
+        return;
+      }
+      const total = board.reduce((n, lane) => n + lane.items.length, 0);
+      if (total === 0) {
+        deps.ui.info('No local work items yet — create one with `excalibur work-items create`.');
+        return;
+      }
+      for (const { lane, items } of board) {
+        deps.ui.write(pc.bold(`${WORK_ITEM_LANE_LABELS[lane]} (${items.length})`));
+        for (const item of items) {
+          const priority = item.priority !== null ? pc.dim(`[${item.priority}] `) : '';
+          const assignee = item.assignee?.name ? pc.dim(` @${item.assignee.name}`) : '';
+          deps.ui.write(`  ${pc.bold(item.key)}  ${priority}${item.title}${assignee}`);
+        }
+        deps.ui.write();
+      }
+    });
+
+  wi.command('edit')
+    .description('edit a LOCAL work item (only the fields you pass change)')
+    .argument('<key>', 'local key (WI-n)')
+    .option('--title <title>', 'new title')
+    .option('--body <text>', 'new description')
+    .option('--label <label...>', 'replace the labels')
+    .option('--priority <priority>', 'set the priority')
+    .option('--assignee <name>', 'set the assignee ("none" clears it)')
+    .option('--parent <key>', 'set the parent work item ("none" clears it)')
+    .option('--status <status>', 'set the raw status (use `move` for kanban lanes)')
+    .option('--json', 'machine-readable JSON')
+    .action(
+      (
+        key: string,
+        options: {
+          title?: string;
+          body?: string;
+          label?: string[];
+          priority?: string;
+          assignee?: string;
+          parent?: string;
+          status?: string;
+          json?: boolean;
+        },
+      ) => {
+        const patch: UpdateWorkItemInput = {};
+        if (options.title !== undefined) patch.title = options.title;
+        if (options.body !== undefined) patch.description = options.body;
+        if (options.label !== undefined) patch.labels = options.label;
+        if (options.priority !== undefined) patch.priority = options.priority;
+        if (options.assignee !== undefined)
+          patch.assignee = options.assignee === 'none' ? null : options.assignee;
+        if (options.parent !== undefined)
+          patch.parentExternalId = options.parent === 'none' ? null : options.parent;
+        if (options.status !== undefined) patch.status = options.status;
+        if (Object.keys(patch).length === 0) {
+          throw new CliUsageError('Pass at least one field to edit (e.g. --title, --priority).');
+        }
+        const updated = new LocalWorkItemProvider(deps.cwd()).updateWorkItem(key, patch);
+        if (options.json === true) {
+          deps.ui.json(updated);
+          return;
+        }
+        deps.ui.success(`Updated ${updated.key}.`);
+        printItem(deps, updated);
+      },
+    );
+
+  wi.command('move')
+    .description('move a LOCAL work item to a kanban lane')
+    .argument('<key>', 'local key (WI-n)')
+    .argument('<lane>', `lane: ${WORK_ITEM_LANES.join(' | ')}`)
+    .action((key: string, lane: string) => {
+      if (!isWorkItemLane(lane)) {
+        throw new CliUsageError(
+          `lane must be one of: ${WORK_ITEM_LANES.join(', ')} (got "${lane}").`,
+        );
+      }
+      const updated = new LocalWorkItemProvider(deps.cwd()).moveWorkItem(key, { lane });
+      deps.ui.success(`Moved ${updated.key} → ${WORK_ITEM_LANE_LABELS[lane]}.`);
+    });
+
+  wi.command('delete')
+    .alias('rm')
+    .description('delete a LOCAL work item')
+    .argument('<key>', 'local key (WI-n)')
+    .action((key: string) => {
+      const deleted = new LocalWorkItemProvider(deps.cwd()).deleteWorkItem(key);
+      if (!deleted) {
+        throw new CliUsageError(`local work item "${key}" not found.`);
+      }
+      deps.ui.success(`Deleted ${key}.`);
     });
 
   wi.command('comment')
