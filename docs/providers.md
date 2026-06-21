@@ -2,7 +2,7 @@
 
 Excalibur talks to models through the **Model Gateway**, configured in `.excalibur/models/providers.yaml`.
 
-> **Mock vs real.** With no provider configured, Excalibur runs on a built-in deterministic **mock** — zero-config, offline, output always prefixed `> Mock provider` so it's never mistaken for a real model (great for trying commands and for CI). Configure a real provider below for actual model-driven work: the `anthropic`, `openai-compatible` (incl. vLLM and custom OpenAI-style endpoints), and `ollama` adapters are supported, with streaming, real token/cost accounting, and secret redaction.
+> **Real, not mock.** The `anthropic`, `openai-compatible` (incl. vLLM, OpenRouter and any custom OpenAI-style endpoint), and `ollama` adapters are shipped and live — real streaming, real token/cost accounting, and secret redaction. A built-in deterministic **mock** still exists, but only as the zero-config offline default and as a CI test double — its output is always prefixed `> Mock provider` so it's never mistaken for a real model. The mock is never a silent runtime fallback for an interactive user: onboarding always wires up a real provider (or free local Ollama).
 
 ## Configuring
 
@@ -12,21 +12,24 @@ The friendly way:
 excalibur models setup
 ```
 
-One question: OpenAI-compatible, Anthropic, OpenRouter, Ollama (auto-detected when installed locally), the built-in mock, or "configure later". For hosted providers Excalibur asks for the **name of the environment variable** holding your API key — never the key itself.
+Pick a provider from the catalog — **Kimi K2 (Moonshot)** (recommended), **MiniMax**, **GLM (Zhipu / Z.ai)**, Anthropic, OpenAI, Google Gemini, DeepSeek, OpenRouter — plus free local **Ollama** (auto-detected when installed), a keyless **self-hosted** endpoint (vLLM/TGI/your own Qwen gateway), or "configure later". For a hosted provider you simply **paste your API key** (masked); Excalibur saves it to a global secrets store (`~/.config/excalibur/secrets.env`, mode `0600`) and loads it on every launch. `providers.yaml` records only the **name of the environment variable** that holds the key — never the value — so the committed config stays secret-free. Pasting one key auto-configures a curated good + fast model pair (`default` + `cheap`).
 
 The resulting file (OSS spec §14 format):
 
 ```yaml
 providers:
-  default: qwen
-  qwen:
+  default: kimi
+  cheap: kimi-fast
+  kimi:
     type: openai-compatible
-    baseUrl: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-    apiKeyEnv: QWEN_API_KEY
-  deepseek:
+    baseUrl: https://api.moonshot.ai/v1
+    apiKeyEnv: MOONSHOT_API_KEY
+    model: kimi-k2.7-code
+  kimi-fast:
     type: openai-compatible
-    baseUrl: https://api.deepseek.com/v1
-    apiKeyEnv: DEEPSEEK_API_KEY
+    baseUrl: https://api.moonshot.ai/v1
+    apiKeyEnv: MOONSHOT_API_KEY
+    model: moonshot-v1-8k
   local:
     type: openai-compatible
     baseUrl: http://localhost:8000/v1
@@ -39,16 +42,18 @@ providers:
     type: mock
 ```
 
-Provider types: `openai-compatible`, `anthropic`, `ollama`, `vllm`, `custom`, `mock`. OpenRouter is `openai-compatible` with `baseUrl: https://openrouter.ai/api/v1`.
+Provider types: `openai-compatible`, `anthropic`, `ollama`, `vllm`, `custom`, `mock`. OpenRouter is `openai-compatible` with `baseUrl: https://openrouter.ai/api/v1`. The `default` and `cheap` keys are **role pointers** (each names a configured provider, not a provider itself): `default` is the main model, `cheap` the fast/low-cost one used for latency-sensitive roles (ghost-text, context compaction). Per-provider knobs like `extraBody`, `timeoutMs`, `maxRetries`, `apiVersion` and `organization` are also supported.
 
 ```bash
-excalibur models list      # shows configured providers and the active one
-excalibur doctor           # also checks that the named env vars are set
+excalibur models list      # shows configured providers, the active one, and per-provider status
+excalibur models test      # sends a tiny request to confirm the provider works
+excalibur doctor           # also checks that the named env vars are set, plus the proxy/CA plan
 ```
 
 ## Key handling rules
 
-- **API keys are never stored in `.excalibur/`** — only environment variable names (`apiKeyEnv`).
+- **API keys are never stored in `.excalibur/`** — only environment variable names (`apiKeyEnv`). A pasted key lives in `~/.config/excalibur/secrets.env` (`0600`), outside any repo.
+- A variable already set in the real environment always wins; the secrets file only fills gaps, so an explicit `export` or CI-injected key is never clobbered.
 - Resolved key values are never logged or persisted.
 - Prompts and logs pass through secret redaction (OpenAI/AWS/GitHub/Slack token shapes, private key blocks, `Authorization` headers, `password=`/`apiKey:` values → `[REDACTED]`).
 
@@ -57,10 +62,10 @@ excalibur doctor           # also checks that the named env vars are set
 Optional per-provider cost rates produce `costCents` on every call (recorded in `model-calls.jsonl` and artifact metadata):
 
 ```yaml
-qwen:
+kimi:
   type: openai-compatible
-  baseUrl: https://example/v1
-  apiKeyEnv: QWEN_API_KEY
+  baseUrl: https://api.moonshot.ai/v1
+  apiKeyEnv: MOONSHOT_API_KEY
   inputCostPerMillionTokensCents: 40
   outputCostPerMillionTokensCents: 120
 ```
@@ -71,15 +76,19 @@ qwen:
 
 ```yaml
 models:
-  default: qwen
+  default: kimi
   byRole:
-    planner: qwen
+    planner: kimi
     implementer: minimax
     security: local-secure
   byPath:
     'src/auth/**': local-secure
 ```
 
+## Corporate proxy & custom CA
+
+Egress (model, web and MCP) honors standard `HTTP(S)_PROXY` / `NO_PROXY` and `NODE_EXTRA_CA_CERTS`, so Excalibur works behind a corporate proxy with a custom certificate authority out of the box. `excalibur doctor` reports the effective proxy/CA plan. Repo-supplied `config.network` settings are honored only when you opt in with `EXCALIBUR_TRUST_REPO_NETWORK`.
+
 ## No provider configured?
 
-Nothing breaks. Commands that need a model fall back to the built-in mock and tell you so, pointing at `excalibur models setup`. You will never see a raw stack trace because a key is missing.
+Nothing breaks. The interactive onboarding always offers a real provider (including free local Ollama and keyless self-hosted endpoints) and points at `excalibur models setup` — you'll never see a raw stack trace because a key is missing. The deterministic mock is reachable only via the explicit non-interactive hatch (`excalibur models setup --yes`, used by tests/CI) or a hand-written `type: mock` entry.

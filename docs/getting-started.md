@@ -2,9 +2,17 @@
 
 Excalibur Core works in minutes, without choosing methodologies, workflows or policies first. This guide walks through the first session in a real repository.
 
-> **Models & safety.** Out of the box Excalibur runs on a built-in deterministic **mock** provider, so you can try every command offline with no API key. Point it at a real model (`.excalibur/models/providers.yaml` + an env-var key — see [providers.md](providers.md)) for real model-driven work. Real runs **do** edit files and run commands — but never without your approval and the Permission Engine's safety floor (see [security.md](security.md)).
+> **Models & safety.** Excalibur drives **real models** out of the box once you point it at one — `anthropic`, `openai-compatible` (incl. vLLM, OpenRouter and custom OpenAI-style endpoints) and `ollama`, with streaming, real token/cost accounting and secret redaction (see [providers.md](providers.md)). With no provider configured it falls back to a built-in deterministic **mock** so you can try every command offline with no API key — its output is always prefixed `> Mock provider`, so it's never mistaken for a real answer. Real runs **do** edit files and run commands — but never without your approval and the Permission Engine's safety floor (see [security.md](security.md)).
 
 ## 1. Build the CLI
+
+The easiest way is npm:
+
+```bash
+npm install -g @excalibur-oss/excalibur   # or: npx @excalibur-oss/excalibur
+```
+
+Or from source:
 
 ```bash
 git clone https://github.com/ExcaliburOSS/excalibur-core.git
@@ -20,7 +28,7 @@ cd your-repo
 excalibur init
 ```
 
-`init` detects your stack (languages, frameworks, package manager), your test/lint/typecheck/build commands, and any AI instruction files you already maintain (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules`, Copilot instructions, `SKILL.md` files, README/docs/ADRs). It then asks **one** optional question — which model provider to use (skippable; the mock is the M1 default) — and writes a minimal `.excalibur/`:
+`init` detects your stack (languages, frameworks, package manager), your test/lint/typecheck/build commands, and any AI instruction files you already maintain (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules`, Copilot instructions, `SKILL.md` files, README/docs/ADRs). It then offers to connect a model provider (skippable — the mock is the zero-config fallback) and writes a minimal `.excalibur/`:
 
 ```text
 .excalibur/config.yaml
@@ -72,7 +80,7 @@ Plan:
 [Enter] continue  [m] change mode  [c] cancel
 ```
 
-Execution styles: `--fast`, `--careful` (Level 4, stronger approvals), `--structured`, `--explore` (engineering alternatives). Every run streams its events to the terminal and stores everything under `.excalibur/runs/<run-id>/`.
+The run drives the real native agent loop — reading, searching, writing files and running real commands/tests through `read_file`/`search_code`/`write_file`/`apply_patch`/`run_command`/`run_tests` (and more). Every tool is path-confined to your repo and gated by the Permission Engine; mutating tools default to asking first. Execution styles: `--fast`, `--careful` (Level 4, stronger approvals), `--structured`, `--explore` (engineering alternatives). Every run streams its events to the terminal and stores everything under `.excalibur/runs/<run-id>/`.
 
 ```bash
 excalibur status     # all local runs
@@ -88,12 +96,25 @@ excalibur discovery "Add AI contract renewal reminders"
 
 Discovery asks 4–8 questions (skippable), scores the answers with deterministic rules, prints a readiness card (problem clarity, evidence, scope, risk, agent readiness) and recommends a next step — which can be **do not build**. Sessions live under `.excalibur/discovery/` and are listed with `excalibur status --discovery`.
 
-## 6. Daily rhythm
+## 6. What else you can do
+
+Beyond the core loop, Excalibur ships a broad surface — all real, most enabled by default:
+
+- **Web, search & research.** `web_fetch`, `web_search` (free SearXNG→DuckDuckGo, optional BYOK Exa/Tavily/Brave) and a native **cited research pipeline** (search → fetch → verify → cite). A governed network layer with an always-on SSRF floor (loopback, private ranges and cloud metadata are blocked) keeps it safe.
+- **MCP.** First-class MCP client (stdio + Streamable-HTTP), with read-only-role gating, per-server egress sandbox, injection scanning, OAuth/DCR and an Ed25519-signed registry.
+- **Swarm.** `excalibur swarm` (or `/swarm` in the shell) fans a task out over isolated git worktrees and grades the results (`--grade`).
+- **The interactive M-Shell.** Just run `excalibur` for a full TUI: live event lanes, background/fleet sessions (`/bg`, Tab-cycle threads via `/threads`), and inline approvals.
+- **Plan mode & the time machine.** Plan-first execution, plus rewind / fork-from-cache to revisit earlier states.
+- **Headless & dashboard.** `run --output-format json/stream-json` and `ask --json-schema` for scripting; `excalibur serve` for a local web dashboard.
+
+A per-session Docker sandbox, LSP per-edit diagnostics fed into the loop, a hard budget cap (`--budget`), the Claim Ledger / Verification Mesh, knowledge-compounding memory (`.excalibur/memory/`) and en+es i18n with auto-detection round out the toolkit. Corporate setups are honored too: `HTTP(S)_PROXY` / `NO_PROXY` / `NODE_EXTRA_CA_CERTS` apply across all egress.
+
+## 7. Daily rhythm
 
 ```bash
 excalibur daily        # today's runs, patches and commits as markdown
 excalibur weekly-plan  # last week summarized + a lightweight plan
-excalibur doctor       # PASS/WARN/FAIL diagnosis of your setup
+excalibur doctor       # PASS/WARN/FAIL diagnosis of your setup (incl. network plan)
 ```
 
 ## Where to go next
@@ -101,6 +122,8 @@ excalibur doctor       # PASS/WARN/FAIL diagnosis of your setup
 - [Configuration](configuration.md) — everything in `.excalibur/config.yaml`
 - [Autonomy levels](autonomy-levels.md) — the 0–4 dial in depth
 - [Workflows](workflows.md) and [Methodologies](methodologies.md) — the built-in catalogs
-- [Model providers](providers.md) — configuring real providers (M2)
+- [Model providers](providers.md) — configuring real providers
 - [Security](security.md) — what `standard-safe` guarantees
 - [Extensions overview](extensions/overview.md) — extending Excalibur
+  </content>
+  </invoke>

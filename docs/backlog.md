@@ -69,7 +69,7 @@ overhaul · **npm publish 1.2.0** (`@excalibur-oss/excalibur`, `latest`).
 15. **M4 GitHub App/Action** (webhook bot: `@excalibur review`/`generate-tests`, triage/PR
     on runners) [Ent/Core][cred] — M4 / OC-P2.
 16. **M4 Linear/Jira providers + Discovery remote intake** (`--from-linear/--from-jira/
---from-github-issue`, today stubs) + **real `pr-create`** [Core][cred] — M4.
+--from-github-issue`, today stubs) [Core][cred] — M4. _(real `pr-create` already shipped — drives `gh pr create`.)_
 17. **M4c Slack/Teams + scheduled agile jobs** (BullMQ daily/weekly; today manual triggers)
     [Ent][cred] — M4c.
 18. **M5 extension permission enforcement** (WARN-only → hard-block), **version locks**,

@@ -2,7 +2,7 @@
 
 > **Experimental.** The Excalibur Enterprise control plane is not public yet. Everything in Excalibur Core works locally without an account, forever.
 
-Excalibur Core and Excalibur Enterprise share the same schemas: autonomy levels, workflow/methodology definitions, the 23-type event format, run artifacts and configuration conventions. That makes local work portable — a local run can later be ingested by Enterprise without translation.
+Excalibur Core and Excalibur Enterprise share the same schemas: autonomy levels, workflow/methodology definitions, the 30-type event format, run artifacts and configuration conventions. That makes local work portable — a local run can later be ingested by Enterprise without translation.
 
 ## Commands
 

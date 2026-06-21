@@ -99,4 +99,4 @@ Or simply drop a YAML file into `.excalibur/workflows/`. See [extensions/creatin
 
 ## Run artifacts
 
-Every run writes `.excalibur/runs/<run-id>/` with `run.json`, `workflow.yaml`, `events.jsonl` (the canonical 23-type event format shared with Excalibur Enterprise), `model-calls.jsonl`, `input.md`, plus the artifacts its phases declare (`diff.patch`, `summary.md`, `review.md`, `test-results.json`, `pr-summary.md`, …). Inspect them with `excalibur logs [runId]`.
+Every run writes `.excalibur/runs/<run-id>/` with `run.json`, `workflow.yaml`, `events.jsonl` (the canonical 30-type event format shared with Excalibur Enterprise), `model-calls.jsonl`, `input.md`, plus the artifacts its phases declare (`diff.patch`, `summary.md`, `review.md`, `test-results.json`, `pr-summary.md`, …). Inspect them with `excalibur logs [runId]`.
