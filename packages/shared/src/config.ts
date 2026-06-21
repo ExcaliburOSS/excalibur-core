@@ -111,6 +111,12 @@ const permissionsSectionSchema = z.object({
   tools: z.record(z.union([z.boolean(), z.literal('ask')])).optional(),
   blockedPaths: z.array(z.string()).optional(),
   allowedCommands: z.array(z.string()).optional(),
+  /**
+   * Command globs that are HARD-DENIED even if allowlisted (deny beats allow) —
+   * a safety net for dangerous commands (e.g. `rm -rf *`, `git push --force`).
+   * Matched (minimatch) against the normalized command.
+   */
+  deniedCommands: z.array(z.string()).optional(),
   network: networkPolicySchema.optional(),
 });
 

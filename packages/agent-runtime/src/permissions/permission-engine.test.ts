@@ -113,6 +113,19 @@ describe('PermissionEngine.checkCommand', () => {
     }
   });
 
+  it('deny-globs override the allowlist (deny beats allow) — P1.11', () => {
+    const engine = new PermissionEngine({
+      tools: { run_command: true },
+      allowedCommands: ['*'],
+      deniedCommands: ['git push --force*', 'rm -rf *'],
+    });
+    // Allowlisted by `*` but force-denied:
+    expectDenied(engine.checkCommand('git push --force origin main'));
+    expectDenied(engine.checkCommand('rm -rf node_modules'));
+    // A non-denied command still flows through the allowlist:
+    expectAllowed(engine.checkCommand('git status'));
+  });
+
   it('allows allowlisted commands without confirmation when run_command is true', () => {
     const engine = new PermissionEngine({ tools: { run_command: true } });
     expectAllowed(engine.checkCommand('npm test'));

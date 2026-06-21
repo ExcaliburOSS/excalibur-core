@@ -103,6 +103,7 @@ export class PermissionEngine {
   private readonly toolFlags: Readonly<Record<string, ToolFlag>>;
   private readonly blockedPaths: ReadonlyArray<string>;
   private readonly allowedCommands: ReadonlyArray<string>;
+  private readonly deniedCommands: ReadonlyArray<string>;
   private readonly network: NetworkPolicy;
 
   constructor(permissions?: PermissionsConfig) {
@@ -112,7 +113,15 @@ export class PermissionEngine {
     this.toolFlags = { ...FALLBACK_TOOL_FLAGS, ...permissions?.tools };
     this.blockedPaths = permissions?.blockedPaths ?? DEFAULT_BLOCKED_PATHS;
     this.allowedCommands = permissions?.allowedCommands ?? DEFAULT_ALLOWED_COMMANDS;
+    this.deniedCommands = permissions?.deniedCommands ?? [];
     this.network = permissions?.network ?? DEFAULT_NETWORK_POLICY;
+  }
+
+  /** The first deny-glob matching the command, if any (deny beats allow). */
+  private deniedBy(command: string): string | undefined {
+    return this.deniedCommands.find(
+      (entry) => normalizeCommand(entry) === command || minimatch(command, entry, { dot: true }),
+    );
   }
 
   private flagFor(tool: string): ToolFlag {
@@ -195,6 +204,15 @@ export class PermissionEngine {
     const flag = this.flagFor('run_command');
     if (flag === false) {
       return deny('Running commands is disabled (run_command: false).');
+    }
+
+    // Deny-globs are a HARD deny that overrides the allowlist (deny beats allow):
+    // a safety net for dangerous commands even when run_command is otherwise allowed.
+    const deniedPattern = this.deniedBy(normalized);
+    if (deniedPattern !== undefined) {
+      return deny(
+        `Command "${normalized}" is denied by permissions.deniedCommands ("${deniedPattern}").`,
+      );
     }
 
     // Network lockdown: a command that needs egress is denied when network is off
