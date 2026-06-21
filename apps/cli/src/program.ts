@@ -41,6 +41,8 @@ import { registerRunCommand } from './commands/run';
 import { registerSwarmCommand } from './commands/swarm';
 import { registerSkillsCommand } from './commands/skills';
 import { registerStatusCommand } from './commands/status';
+import { registerStatsCommand } from './commands/stats';
+import { registerSessionCommand } from './commands/session';
 import { registerUpdateCommand } from './commands/update';
 import { registerWeeklyPlanCommand } from './commands/weekly-plan';
 import { registerWorkflowsCommand } from './commands/workflows';
@@ -91,6 +93,8 @@ export function buildProgram(overrides: Partial<CliDeps> = {}): Command {
   registerRunCommand(program, deps);
   registerSwarmCommand(program, deps);
   registerStatusCommand(program, deps);
+  registerStatsCommand(program, deps);
+  registerSessionCommand(program, deps);
   registerLogsCommand(program, deps);
   registerInsightsCommand(program, deps);
   registerServeCommand(program, deps);
