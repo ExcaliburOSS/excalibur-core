@@ -1,5 +1,12 @@
 # Excalibur — Prioritized backlog (post-1.2.0)
 
+> **CORE PRINCIPLE — work-item-centric dev cycle.** Excalibur's entire development
+> cycle revolves around **task planning = work-items**. Runs AND agents are **linked
+> to a work-item** (the unit of planning); patches, PRs, discovery and reports hang
+> off it. Both the OSS local dashboard and the Enterprise manager web are articulated
+> around tasks/work-items, NOT run trackers. This is foundational to what Excalibur
+> is — see the `dashboard-task-centric` decision and Epic A (D0 first).
+
 > Consolidated from three sources: the **OpenCode feature comparison** (June 2026),
 > the **M1–M8 master roadmap** (`docs/ROADMAP.md`), and other pending tasks /
 > honest in-code gaps. Keep this in sync with `docs/ROADMAP.md` and the live task
@@ -90,21 +97,65 @@ Two epics covering the developer dashboard (Core) and the manager control-plane 
 board and no management/governance web at all — these are pure differentiators. The
 Enterprise governance **engine** (RBAC, policy, audit, budgets, usage) is already built
 and enforced in the API; much of E1–E5 is **surfacing** existing endpoints, not new
-backend. Tasks #153–#167.
+backend. Tasks #153–#167, plus the foundational **Epic W** (#169–#174) below.
 
-### Epic A — OSS local dashboard completion (`excalibur serve`) [Core][auto]
+### Epic W — Work-item-centric core (the spine) — tasks #169–#176
 
-- **D1 (P1) Task Kanban board** — columns Pending / In-progress / Done fed by live
-  `task_update` events + local work-items (`.excalibur/work-items/*.json`) + plan-mode
-  plans. Read-only first. Vanilla JS (keep the zero-dep self-contained bundle). _(This is
-  the kanban the dashboard was always meant to have.)_
-- **D2 (P1) Interactive board actions** — drag-to-change status, approve gates, start/cancel
-  runs from the browser. **Blocked by P0.3** (needs the programmable serve write API).
-- **D3 (P1) Plan & Discovery views** — plan-mode plans + Discovery readiness cards.
-- **D4 (P1) Runs explorer + cost/token charts** — filter/search/compare runs; historical
-  time-series (ties P1.12 `stats`).
-- **D5 (P2) Live SSE + read-only share link** — consume `/stream` (drop the 4s poll); optional
-  read-only share token.
+> **NATIVE-FIRST + autonomous.** Excalibur ships its OWN first-party work-item system
+> with a lightweight kanban and full CRUD — it works completely standalone, no external
+> dependency, for the individual OSS developer AND for teams. External trackers
+> (Linear/Jira/GitHub/Slack — M4) are **OPTIONAL** sync layered on top, never required,
+> never the foundation. The dev cycle: **plan** (native work-items, Discovery/planning
+> refine them) → **execute** (runs/agents linked to a work-item) → **deliver**
+> (patches/PRs linked) → **report** (rolled up by work-item) → _(optional)_ **sync**
+> to/from a tracker. The M4 integrations are the optional ingest+sync ends of THIS loop.
+
+- **WK1 (#175, P0/P1, FOUNDATION) Native work-item store** — kanban model (status lanes,
+  order/rank, priority, sub-tasks, labels, assignee) + full CRUD (create/edit/delete/
+  move/reorder) over the file-based `.excalibur/work-items/` store. Autonomous; the spine.
+- **WK2 (#176, P1) `work-items` CLI** — full CRUD + a terminal `board` (ASCII kanban);
+  autonomous task planning from the CLI, no external tracker. Depends WK1.
+- **W0 (#169, P0/P1) Run↔work-item link data model** — optional `workItemId` on run/
+  patch/interaction records; `work-items run`/`run`/`patch` persist it; back-links
+  exposed. Depends WK1.
+- **W1 (#170, P1) Planning-first flow** — `run` create-or-link a work-item; Discovery
+  emits/refines work-items as the plan; intent router routes planning → work-item.
+- **W2 (#171, P1) Reports/status/insights roll up by work-item.**
+- **W3 (#172, P2) Enterprise** — surface the existing link tables (work-item → runs/
+  patches/PRs); planning-item → work-item → run; agile board (E7) as the backbone.
+- **W4 (#173, P2, OPTIONAL) External tracker sync** — bidirectional, layered on the
+  native store (never required): tracker ↔ work-item, run/patch/PR/status → tracker,
+  `@excalibur` webhook → run on a work-item. **Gives M4 (#142/#143/#144) their meaning.**
+
+### Epic A — OSS local dashboard, TASK-CENTRIC (`excalibur serve`) [Core][auto]
+
+> **Architecture (firm):** the local dashboard is articulated around **tasks /
+> work-items**, NOT a run tracker. Runs are CHILDREN linked to a work-item. The
+> HOME is a task board; drilling a work-item shows its associated runs + patches +
+> PRs + the live `update_tasks` checklist + plan + discovery. Ad-hoc runs (no
+> work-item) sit in a secondary "Unassigned"/Runs tab. (See the
+> `dashboard-task-centric` decision memory.) Today's dashboard is run-centric and
+> must be reframed.
+
+- **D0 (P1, foundational) Run↔work-item link + task-first IA** — add an optional
+  `workItemId` to the run record; a run started from a work-item (`work-items run`)
+  links to it; the serve API exposes work-items with their associated runs/patches.
+  The dashboard's information architecture becomes work-item → (runs, patches, PRs,
+  checklist, plan, discovery). Everything else in Epic A builds on this.
+- **D1 (P1) Task/work-item board (the HOME)** — kanban columns by work-item status
+  (Backlog / Todo / In-progress / Review / Done); cards are work-items (local
+  `.excalibur/work-items/*.json`) + the live `update_tasks` checklist of the active
+  run feeding the in-progress card. Vanilla JS (keep the zero-dep bundle). The board
+  is the landing view, not the runs table.
+- **D2 (P1) Interactive board actions** — drag-to-change work-item status, approve
+  gates, start a run on a work-item, cancel runs — from the browser. **Blocked by
+  P0.3** (needs the programmable serve write API).
+- **D3 (P1) Work-item detail + Plan & Discovery** — work-item drill-down (its runs,
+  patches, PRs, checklist), plan-mode plans, Discovery readiness cards.
+- **D4 (P2) Secondary runs tab + cost/token charts** — filter/search/compare runs
+  (now a secondary view), historical time-series (ties P1.12 `stats`).
+- **D5 (P2) Live SSE + read-only share link** — consume `/stream` (drop the 4s poll);
+  optional read-only share token for a work-item or run.
 
 ### Epic B — Enterprise manager web, advanced screens (`apps/web`) [Ent]
 
