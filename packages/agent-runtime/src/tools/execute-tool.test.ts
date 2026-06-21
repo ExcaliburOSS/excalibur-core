@@ -209,6 +209,86 @@ describe('executeNativeTool — edit', () => {
   });
 });
 
+describe('executeNativeTool — lsp (P1.8b)', () => {
+  // A fake LspSession that records the query and returns canned results.
+  function fakeLsp(over: Partial<Record<string, unknown>> = {}) {
+    const calls: Array<{ relPath: string; line: number; column: number; kind: string }> = [];
+    const session = {
+      ensureStarted: () => {},
+      diagnosticsFor: () => Promise.resolve(null),
+      close: () => {},
+      queryFor: (relPath: string, line: number, column: number, kind: string) => {
+        calls.push({ relPath, line, column, kind });
+        return Promise.resolve(over[kind] ?? null);
+      },
+    };
+    return { session, calls };
+  }
+
+  it('reports gracefully when no language server is wired', async () => {
+    writeFileSync(join(dir, 'a.ts'), 'export const x = 1;\n');
+    const result = await executeNativeTool(
+      'lsp',
+      { path: 'a.ts', line: 1, column: 14, query: 'definition' },
+      ctx(), // no `lsp` on the context
+    );
+    expect(result.ok).toBe(false);
+    expect(result.result).toMatch(/no language server/i);
+  });
+
+  it('formats definition locations as file:line:column', async () => {
+    writeFileSync(join(dir, 'a.ts'), 'export const x = 1;\n');
+    const { session, calls } = fakeLsp({
+      definition: { kind: 'definition', locations: [{ file: 'src/x.ts', line: 4, column: 2 }] },
+    });
+    const result = await executeNativeTool(
+      'lsp',
+      { path: 'a.ts', line: 1, column: 14, query: 'definition' },
+      { ...ctx(), lsp: session as never },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.result).toContain('src/x.ts:4:2');
+    // 1-based position is forwarded verbatim to the session.
+    expect(calls[0]).toEqual({ relPath: 'a.ts', line: 1, column: 14, kind: 'definition' });
+  });
+
+  it('returns hover text', async () => {
+    writeFileSync(join(dir, 'a.ts'), 'export const x = 1;\n');
+    const { session } = fakeLsp({ hover: { kind: 'hover', hover: 'const x: number' } });
+    const result = await executeNativeTool(
+      'lsp',
+      { path: 'a.ts', line: 1, column: 14, query: 'hover' },
+      { ...ctx(), lsp: session as never },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.result).toContain('const x: number');
+  });
+
+  it('reports "no references found" on an empty result', async () => {
+    writeFileSync(join(dir, 'a.ts'), 'export const x = 1;\n');
+    const { session } = fakeLsp({ references: { kind: 'references', locations: [] } });
+    const result = await executeNativeTool(
+      'lsp',
+      { path: 'a.ts', line: 1, column: 14, query: 'references' },
+      { ...ctx(), lsp: session as never },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatch(/no references/i);
+  });
+
+  it('denies an lsp query on a blocked path', async () => {
+    writeFileSync(join(dir, '.env'), 'SECRET=1');
+    const { session } = fakeLsp({ hover: { kind: 'hover', hover: 'leak' } });
+    const result = await executeNativeTool(
+      'lsp',
+      { path: '.env', line: 1, column: 1, query: 'hover' },
+      { ...ctx(), lsp: session as never },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.result).toMatch(/permission denied|blocked/i);
+  });
+});
+
 describe('executeNativeTool — write_file', () => {
   it('creates parent directories within the tree', async () => {
     const result = await executeNativeTool(

@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { relative, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { DiagnosticsPayload, DiagnosticItem, LspConfig } from '@excalibur/shared';
 import { LspClient } from './lsp-client';
 import { LSP_SEVERITY, type DiagnosticSeverity, type LspDiagnostic } from './lsp-protocol';
@@ -14,13 +14,100 @@ import { languageForFile, resolveBinary, resolveServerFor } from './lsp-servers'
  * so the agent loop is never blocked or broken. An `LspSession` interface lets
  * the adapter tests inject a fake.
  */
+/** A resolved code location, repo-relative + 1-based (model-friendly). */
+export interface LspLocation {
+  file: string;
+  line: number;
+  column: number;
+}
+
+/** The kind of on-demand query the `lsp` tool can issue (P1.8b). */
+export type LspQueryKind = 'definition' | 'references' | 'hover';
+
+/** Normalized result of an {@link LspSession.queryFor} call. */
+export interface LspQueryResult {
+  kind: LspQueryKind;
+  /** definition/references → resolved locations (empty if none found). */
+  locations?: LspLocation[];
+  /** hover → the hover text (markdown/plaintext), or null if none. */
+  hover?: string | null;
+}
+
 export interface LspSession {
   /** Non-blocking, idempotent: kick off the server for `language` if not already. */
   ensureStarted(language: string): void;
   /** Diagnostics for ONE just-edited repo-relative file; null when unavailable. */
   diagnosticsFor(relPath: string): Promise<DiagnosticsPayload | null>;
+  /**
+   * On-demand code intelligence (P1.8b `lsp` tool): definition / references /
+   * hover at a 1-based (line,column) in a repo-relative file. TOTALLY graceful —
+   * an unknown language, missing server, read error or timeout resolve to `null`.
+   */
+  queryFor(
+    relPath: string,
+    line: number,
+    column: number,
+    kind: LspQueryKind,
+  ): Promise<LspQueryResult | null>;
   /** Best-effort teardown of every started server. Safe from a `finally`. */
   close(): void;
+}
+
+/** LSP Position (0-based). */
+interface LspPosition {
+  line: number;
+  character: number;
+}
+interface LspRawLocation {
+  uri?: string;
+  targetUri?: string;
+  range?: { start: LspPosition };
+  targetRange?: { start: LspPosition };
+  targetSelectionRange?: { start: LspPosition };
+}
+
+/** Maps an LSP Location / LocationLink to a repo-relative, 1-based location. */
+function toLocation(workdir: string, raw: LspRawLocation): LspLocation | null {
+  const uri = raw.uri ?? raw.targetUri;
+  const range = raw.targetSelectionRange ?? raw.targetRange ?? raw.range;
+  if (typeof uri !== 'string' || range === undefined) {
+    return null;
+  }
+  let abs: string;
+  try {
+    abs = fileURLToPath(uri);
+  } catch {
+    return null;
+  }
+  const rel = relative(workdir, abs);
+  return {
+    file: rel === '' ? abs : rel,
+    line: range.start.line + 1,
+    column: range.start.character + 1,
+  };
+}
+
+/** Extracts a plain string from an LSP Hover.contents (string | MarkupContent | array). */
+function hoverText(hover: unknown): string | null {
+  if (hover === null || typeof hover !== 'object') {
+    return null;
+  }
+  const contents = (hover as { contents?: unknown }).contents;
+  const part = (c: unknown): string => {
+    if (typeof c === 'string') return c;
+    if (c !== null && typeof c === 'object') {
+      const v = (c as { value?: unknown }).value;
+      if (typeof v === 'string') return v;
+    }
+    return '';
+  };
+  const text = Array.isArray(contents)
+    ? contents
+        .map(part)
+        .filter((s) => s.length > 0)
+        .join('\n\n')
+    : part(contents);
+  return text.trim().length > 0 ? text.trim() : null;
 }
 
 export interface CreateLspSessionOptions {
@@ -133,6 +220,72 @@ export function createLspSession(options: CreateLspSessionOptions): LspSession {
         };
       } catch {
         return null; // any unexpected failure → silently skip diagnostics this edit
+      }
+    },
+
+    async queryFor(
+      relPath: string,
+      line: number,
+      column: number,
+      kind: LspQueryKind,
+    ): Promise<LspQueryResult | null> {
+      try {
+        const language = languageForFile(relPath);
+        if (language === null) {
+          return null;
+        }
+        const server = resolveServerFor(language, config.servers);
+        if (server === null) {
+          return null;
+        }
+        const client = await startFor(language);
+        if (client === null) {
+          return null;
+        }
+        const abs = resolve(workdir, relPath);
+        const uri = pathToFileURL(abs).href;
+
+        let text: string;
+        try {
+          if (statSync(abs).size > MAX_FILE_BYTES) {
+            return null;
+          }
+          text = readFileSync(abs, 'utf8');
+        } catch {
+          return null; // file gone — nothing to query
+        }
+        // Sync the document so the server resolves the position against current text.
+        if (client.isOpen(uri)) {
+          client.didChange(uri, text);
+        } else {
+          client.didOpen(uri, server.languageId, text);
+        }
+
+        // The model speaks 1-based; LSP is 0-based.
+        const position: LspPosition = {
+          line: Math.max(0, line - 1),
+          character: Math.max(0, column - 1),
+        };
+
+        if (kind === 'hover') {
+          const raw = await client.hover(uri, position);
+          return { kind, hover: hoverText(raw) };
+        }
+        const raw =
+          kind === 'definition'
+            ? await client.definition(uri, position)
+            : await client.references(uri, position);
+        const list: LspRawLocation[] = Array.isArray(raw)
+          ? (raw as LspRawLocation[])
+          : raw !== null && typeof raw === 'object'
+            ? [raw as LspRawLocation]
+            : [];
+        const locations = list
+          .map((loc) => toLocation(workdir, loc))
+          .filter((loc): loc is LspLocation => loc !== null);
+        return { kind, locations };
+      } catch {
+        return null; // any failure → graceful null (never breaks the loop)
       }
     },
 

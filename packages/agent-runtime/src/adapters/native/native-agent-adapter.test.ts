@@ -563,6 +563,7 @@ describe('NativeAgentAdapter — role-based tool exposure', () => {
     expect(offered.sort()).toEqual([
       'git_diff',
       'list_files',
+      'lsp',
       'read_file',
       'research',
       'search_code',

@@ -17,5 +17,12 @@ export {
   resolveBinary,
   type LspServerCommand,
 } from './lsp-servers';
-export { createLspSession, type LspSession, type CreateLspSessionOptions } from './lsp-session';
+export {
+  createLspSession,
+  type LspSession,
+  type CreateLspSessionOptions,
+  type LspQueryKind,
+  type LspQueryResult,
+  type LspLocation,
+} from './lsp-session';
 export type { LspDiagnostic, DiagnosticSeverity, PublishDiagnosticsParams } from './lsp-protocol';

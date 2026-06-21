@@ -105,6 +105,8 @@ const READ_ONLY_TOOLS: ReadonlyArray<NativeToolName> = [
   'web_crawl',
   // Deep research (search + fetch + cite) is pure read-only discovery.
   'research',
+  // Code intelligence (definition/references/hover) is read-only navigation.
+  'lsp',
 ];
 
 /** Roles that get the read-only tool subset (they observe, they do not change the tree). */
@@ -158,6 +160,7 @@ function eventTypeForTool(name: NativeToolName): ExcaliburEventType {
     case 'web_extract':
     case 'web_crawl':
     case 'research':
+    case 'lsp':
       return 'tool_call';
   }
 }
@@ -415,15 +418,20 @@ export class NativeAgentAdapter implements AgentAdapter {
       for (const warning of mcp.warnings) {
         yield emit('policy_decision', { kind: 'log', decision: 'allow', message: warning });
       }
-      // Editing roles get an LSP session (read-only roles never mutate files).
-      // Gated by config; inert until the first edit of an installed language.
+      // Every role gets an LSP session when enabled: editing roles use it for
+      // per-edit diagnostics, and ALL roles (incl. read-only reviewers) can use
+      // the model-callable `lsp` tool (P1.8b) for definition/references/hover.
+      // It is lazy — no server spawns until the first edit/query of an installed
+      // language — so creating it for read-only roles costs nothing unused.
       const lspCfg = input.config.lsp;
-      if (!READ_ONLY_ROLES.has(input.role) && (lspCfg?.enabled ?? true)) {
+      if (lspCfg?.enabled ?? true) {
         lsp = createLspSession({
           workdir: input.workdir,
           config: lspCfg ?? DEFAULT_LSP_CONFIG,
           ...(input.signal !== undefined ? { signal: input.signal } : {}),
         });
+        // Expose the session to the `lsp` tool executor via the shared tool ctx.
+        toolCtx.lsp = lsp;
       }
       // Extension-contributed tools (extensions-spec.md §5): advertised to the
       // model alongside native + MCP tools, dispatched through their own
@@ -1047,6 +1055,10 @@ export class NativeAgentAdapter implements AgentAdapter {
       return pass(permissions.checkPath(String(args['path'] ?? ''), 'write'));
     }
     if (name === 'read_file' || name === 'list_files') {
+      return pass(permissions.checkPath(String(args['path'] ?? '.'), 'read'));
+    }
+    if (name === 'lsp') {
+      // Read-only code intelligence — gate like a file read on the queried path.
       return pass(permissions.checkPath(String(args['path'] ?? '.'), 'read'));
     }
     if (name === 'run_command') {

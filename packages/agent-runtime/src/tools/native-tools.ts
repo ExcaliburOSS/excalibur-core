@@ -25,6 +25,7 @@ export const NATIVE_TOOL_NAMES = [
   'web_extract',
   'web_crawl',
   'research',
+  'lsp',
 ] as const;
 export type NativeToolName = (typeof NATIVE_TOOL_NAMES)[number];
 
@@ -295,6 +296,21 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
           .max(12)
           .optional()
           .describe('Maximum sources to fetch (default 5)'),
+      })
+      .strict(),
+  },
+  {
+    name: 'lsp',
+    description:
+      'Ask the language server for code intelligence at a position: "definition" (where a symbol is defined), "references" (everywhere it is used), or "hover" (its type/signature/docs). Pass the repo-relative file plus a 1-based line and column pointing AT the symbol. Use it to navigate real code instead of guessing — e.g. before editing a function, find its definition and all references. Returns null gracefully when no language server is available for the file.',
+    parameters: z
+      .object({
+        path: relativePathSchema,
+        line: z.number().int().positive().describe('1-based line of the symbol'),
+        column: z.number().int().positive().describe('1-based column of the symbol'),
+        query: z
+          .enum(['definition', 'references', 'hover'])
+          .describe('What to look up at that position'),
       })
       .strict(),
   },

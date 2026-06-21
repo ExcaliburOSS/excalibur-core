@@ -227,6 +227,29 @@ export class LspClient {
     });
   }
 
+  // ── on-demand queries (P1.8b `lsp` tool) ─────────────────────────────────────
+  // textDocument/{definition,references,hover} for an OPEN document. The caller
+  // (LspSession.queryFor) opens/syncs the doc first. `position` is 0-based.
+
+  /** Go-to-definition: returns Location | Location[] | LocationLink[] (server-shaped). */
+  definition(uri: string, position: { line: number; character: number }): Promise<unknown> {
+    return this.request('textDocument/definition', { textDocument: { uri }, position });
+  }
+
+  /** Find references (including the declaration). Returns Location[] | null. */
+  references(uri: string, position: { line: number; character: number }): Promise<unknown> {
+    return this.request('textDocument/references', {
+      textDocument: { uri },
+      position,
+      context: { includeDeclaration: true },
+    });
+  }
+
+  /** Hover info (type/signature/docs). Returns Hover | null. */
+  hover(uri: string, position: { line: number; character: number }): Promise<unknown> {
+    return this.request('textDocument/hover', { textDocument: { uri }, position });
+  }
+
   // ── JSON-RPC plumbing ─────────────────────────────────────────────────────────
 
   private request(method: string, params: unknown, timeoutMs?: number): Promise<unknown> {

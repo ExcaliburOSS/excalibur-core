@@ -28,6 +28,7 @@ import { hostedReaderTier } from './web/hosted-readers';
 import { guardUntrustedContent, type UntrustedSource } from './web/content-guard';
 import { buildProvenanceRecord, type ProvenanceRecord } from './web/provenance';
 import type { WebCache } from './web/cache';
+import type { LspSession } from '../lsp';
 
 /**
  * Real native-tool executors (OSS-7, M2) — the security-critical core of the
@@ -97,6 +98,12 @@ export interface ToolExecutionContext {
    * enabled; tests pass a fake. Absent → no escalation (Tier-1 only).
    */
   browserReader?: TierReader;
+  /**
+   * Run-scoped LSP session for the model-callable `lsp` tool (P1.8b:
+   * definition/references/hover on demand). Injected by the adapter when LSP is
+   * enabled; absent → the `lsp` tool reports no language server is available.
+   */
+  lsp?: LspSession;
 }
 
 export interface ToolResult {
@@ -1313,6 +1320,48 @@ async function execResearch(
   return guardWeb(formatEvidenceBundle(question, hits.length, sources), 'research', undefined, ctx);
 }
 
+/**
+ * `lsp` (P1.8b): on-demand code intelligence — definition / references / hover
+ * at a 1-based (line,column). Read-only: gated by `read_file` path permission +
+ * path confinement. Graceful when no language server is available for the file.
+ */
+async function execLsp(
+  args: Record<string, unknown>,
+  ctx: ToolExecutionContext,
+): Promise<ToolResult> {
+  const relPath = args['path'] as string;
+  const line = args['line'] as number;
+  const column = args['column'] as number;
+  const query = args['query'] as 'definition' | 'references' | 'hover';
+  const confined = assertConfined(ctx.workdir, relPath);
+  if ('error' in confined) {
+    return fail(`rejected: ${confined.error}`);
+  }
+  const decision = ctx.permissions.checkPath(relPath, 'read');
+  if (!decision.allowed) {
+    return fail(`permission denied: ${decision.reason}`);
+  }
+  if (ctx.lsp === undefined) {
+    return fail('no language server is available (LSP is disabled or unsupported for this file)');
+  }
+  const result = await ctx.lsp.queryFor(relPath, line, column, query);
+  if (result === null) {
+    return fail(
+      `no language server could answer "${query}" for "${relPath}" (unsupported language or no server installed)`,
+    );
+  }
+  if (query === 'hover') {
+    return ok(result.hover ?? `No hover information at ${relPath}:${line}:${column}.`);
+  }
+  const locations = result.locations ?? [];
+  if (locations.length === 0) {
+    return ok(`No ${query} found at ${relPath}:${line}:${column}.`);
+  }
+  const header = query === 'definition' ? 'Definition(s)' : 'Reference(s)';
+  const lines = locations.map((loc) => `  ${loc.file}:${loc.line}:${loc.column}`);
+  return ok(`${header} of the symbol at ${relPath}:${line}:${column}:\n${lines.join('\n')}`);
+}
+
 export async function executeNativeTool(
   name: NativeToolName,
   rawArgs: unknown,
@@ -1358,6 +1407,8 @@ export async function executeNativeTool(
         return await execWebCrawl(args, ctx);
       case 'research':
         return await execResearch(args, ctx);
+      case 'lsp':
+        return await execLsp(args, ctx);
       default: {
         // Exhaustiveness guard: every NativeToolName is handled above.
         const exhaustive: never = name;

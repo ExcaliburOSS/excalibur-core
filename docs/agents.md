@@ -21,9 +21,9 @@ Adapters emit the canonical Excalibur event stream (`tool_call`, `file_read`, `f
 
 The default adapter, built on the Model Gateway and its native tools:
 
-`read_file · write_file · edit · list_files · search_code · run_command · run_tests · git_diff · apply_patch · create_branch · update_tasks · web_fetch · web_search · web_extract · web_crawl · research`
+`read_file · write_file · edit · list_files · search_code · run_command · run_tests · git_diff · apply_patch · create_branch · update_tasks · web_fetch · web_search · web_extract · web_crawl · research · lsp`
 
-(`edit` is a surgical find/replace — far cheaper than rewriting a whole file.)
+(`edit` is a surgical find/replace — far cheaper than rewriting a whole file. `lsp` gives the model on-demand code intelligence — go-to-definition, find-references and hover from the language server, gated read-only.)
 
 Every tool call passes through the **Permission Engine**: blocked paths are denied, mutating tools default to _ask_, commands outside the allowlist require confirmation (see [security.md](security.md)).
 
