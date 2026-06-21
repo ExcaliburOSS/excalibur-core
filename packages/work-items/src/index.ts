@@ -66,4 +66,11 @@ export type { GhRunner } from './github-cli-provider';
 export { MockWorkItemProvider } from './mock-provider';
 
 export { LocalWorkItemProvider } from './local-provider';
-export type { CreateWorkItemInput } from './local-provider';
+export type { CreateWorkItemInput, UpdateWorkItemInput, WorkItemBoardLane } from './local-provider';
+export {
+  WORK_ITEM_LANES,
+  WORK_ITEM_LANE_LABELS,
+  laneOf,
+  isWorkItemLane,
+  type WorkItemLane,
+} from './lanes';

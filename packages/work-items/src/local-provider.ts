@@ -1,9 +1,18 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
+import { laneOf, WORK_ITEM_LANES, type WorkItemLane } from './lanes';
 import {
   normalizedWorkItemSchema,
   type NormalizedWorkItem,
   type NormalizedWorkItemComment,
+  type NormalizedWorkItemUser,
 } from './types';
 import type {
   AddWorkItemCommentInput,
@@ -32,9 +41,39 @@ export interface CreateWorkItemInput {
   labels?: string[];
   status?: string;
   priority?: string;
+  /** Assignee display name (local items have no user directory). */
+  assignee?: string | null;
+  /** Parent work-item key, for sub-tasks. */
+  parentExternalId?: string | null;
+}
+
+/** Fields a {@link LocalWorkItemProvider.updateWorkItem} may patch (all optional). */
+export interface UpdateWorkItemInput {
+  title?: string;
+  description?: string | null;
+  labels?: string[];
+  status?: string;
+  priority?: string | null;
+  assignee?: string | null;
+  parentExternalId?: string | null;
+  order?: number;
+}
+
+/** A kanban lane plus its items, in board order. */
+export interface WorkItemBoardLane {
+  lane: WorkItemLane;
+  items: NormalizedWorkItem[];
 }
 
 const KEY_RE = /^WI-(\d+)$/;
+
+/** Builds a minimal user record from a display name (local items have no directory). */
+function userFromName(name: string | null | undefined): NormalizedWorkItemUser | null {
+  if (name === null || name === undefined || name.trim().length === 0) {
+    return null;
+  }
+  return { externalId: null, name, email: null, username: null };
+}
 
 export class LocalWorkItemProvider implements WorkItemProvider {
   readonly type = 'local' as const;
@@ -94,6 +133,9 @@ export class LocalWorkItemProvider implements WorkItemProvider {
   createWorkItem(input: CreateWorkItemInput): NormalizedWorkItem {
     const key = this.nextKey();
     const ts = this.now().toISOString();
+    // Default stays `open` (laneOf maps it to the To-do lane) so existing
+    // open/closed flows are unchanged; explicit moves use canonical lane ids.
+    const status = input.status ?? 'open';
     const item: NormalizedWorkItem = {
       provider: 'local',
       externalId: key,
@@ -101,23 +143,91 @@ export class LocalWorkItemProvider implements WorkItemProvider {
       url: `file://${this.fileFor(key)}`,
       title: input.title,
       description: input.description ?? null,
-      status: input.status ?? 'open',
+      status,
       priority: input.priority ?? null,
       labels: input.labels ?? [],
-      assignee: null,
+      assignee: userFromName(input.assignee),
       reporter: null,
       project: null,
       team: null,
       cycleOrSprint: null,
-      parentExternalId: null,
+      parentExternalId: input.parentExternalId ?? null,
       comments: [],
       links: [],
       createdAt: ts,
       updatedAt: ts,
+      // Append to the end of its lane so the board has a stable rank.
+      order: this.nextOrder(laneOf(status)),
       raw: { local: true },
     };
     this.write(item);
     return item;
+  }
+
+  /** Reads one item by key (sync); throws if missing. */
+  private readOne(key: string): NormalizedWorkItem {
+    const file = this.fileFor(key);
+    if (!existsSync(file)) {
+      throw new Error(`local work item "${key}" not found`);
+    }
+    return normalizedWorkItemSchema.parse(
+      JSON.parse(readFileSync(file, 'utf8')),
+    ) as NormalizedWorkItem;
+  }
+
+  /** The next free rank in a lane (max + 1; 0 when empty). */
+  private nextOrder(lane: WorkItemLane): number {
+    const orders = this.readAll()
+      .filter((i) => laneOf(i.status) === lane)
+      .map((i) => i.order ?? 0);
+    return orders.length === 0 ? 0 : Math.max(...orders) + 1;
+  }
+
+  /** Edits a local work item's fields (only provided keys change). */
+  updateWorkItem(key: string, patch: UpdateWorkItemInput): NormalizedWorkItem {
+    const item = this.readOne(key);
+    if (patch.title !== undefined) item.title = patch.title;
+    if (patch.description !== undefined) item.description = patch.description;
+    if (patch.labels !== undefined) item.labels = patch.labels;
+    if (patch.status !== undefined) item.status = patch.status;
+    if (patch.priority !== undefined) item.priority = patch.priority;
+    if (patch.assignee !== undefined) item.assignee = userFromName(patch.assignee);
+    if (patch.parentExternalId !== undefined) item.parentExternalId = patch.parentExternalId;
+    if (patch.order !== undefined) item.order = patch.order;
+    item.updatedAt = this.now().toISOString();
+    this.write(item);
+    return item;
+  }
+
+  /** Deletes a local work item; returns false if it did not exist. */
+  deleteWorkItem(key: string): boolean {
+    const file = this.fileFor(key);
+    if (!existsSync(file)) {
+      return false;
+    }
+    unlinkSync(file);
+    return true;
+  }
+
+  /** Moves an item to a lane (and rank): the kanban drag/move operation. */
+  moveWorkItem(key: string, target: { lane: WorkItemLane; order?: number }): NormalizedWorkItem {
+    const item = this.readOne(key);
+    item.status = target.lane;
+    item.order = target.order ?? this.nextOrder(target.lane);
+    item.updatedAt = this.now().toISOString();
+    this.write(item);
+    return item;
+  }
+
+  /** The kanban board: every lane with its items in board order (rank, then key). */
+  board(): WorkItemBoardLane[] {
+    const all = this.readAll();
+    return WORK_ITEM_LANES.map((lane) => ({
+      lane,
+      items: all
+        .filter((i) => laneOf(i.status) === lane)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || keyNum(a.key) - keyNum(b.key)),
+    }));
   }
 
   getWorkItem(input: GetWorkItemInput): Promise<NormalizedWorkItem> {

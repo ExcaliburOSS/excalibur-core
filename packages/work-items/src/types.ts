@@ -91,6 +91,11 @@ export type NormalizedWorkItem = {
   links: NormalizedWorkItemLink[];
   createdAt: string | null;
   updatedAt: string | null;
+  /**
+   * Native kanban rank within the item's lane (ascending). Set by the local
+   * store (WK1) for board ordering; remote providers leave it undefined.
+   */
+  order?: number;
   raw: unknown;
 };
 
@@ -114,6 +119,7 @@ export const normalizedWorkItemSchema = z.object({
   links: z.array(normalizedWorkItemLinkSchema),
   createdAt: z.string().nullable(),
   updatedAt: z.string().nullable(),
+  order: z.number().optional(),
   raw: z.unknown(),
 });
 
