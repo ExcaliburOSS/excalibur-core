@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import {
   createEvent,
@@ -25,6 +26,7 @@ import {
   type NativeToolName,
 } from '../../tools/native-tools';
 import { zodToJsonSchema } from '../../tools/zod-to-json-schema';
+import { formatFile } from '../../tools/formatters';
 import {
   extensionToolSpecs,
   extensionToolsByName,
@@ -682,6 +684,29 @@ export class NativeAgentAdapter implements AgentAdapter {
       }
       for (const path of editedNow) {
         mutated.add(path);
+      }
+    }
+
+    // Per-edit formatters (P1.9): format each just-edited file with its language
+    // formatter when one is available (prettier/gofmt/rustfmt/black). Best-effort
+    // and confined to the workdir; a missing/failing formatter never breaks the run.
+    if ((ctx.config.format?.enabled ?? true) && editedNow.length > 0) {
+      for (const rel of [...new Set(editedNow)]) {
+        try {
+          const result = await formatFile(join(ctx.workdir, rel), { workdir: ctx.workdir });
+          if (result.formatted) {
+            events.push({
+              event: emit('policy_decision', {
+                kind: 'log',
+                decision: 'allow',
+                tool: toolName,
+                message: `formatted ${rel} with ${result.formatter}`,
+              }),
+            });
+          }
+        } catch {
+          /* formatting is best-effort — never break the run */
+        }
       }
     }
 

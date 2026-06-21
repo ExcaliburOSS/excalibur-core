@@ -556,6 +556,8 @@ const baseExcaliburConfigSchema = z.object({
   mcp: mcpSectionSchema.optional(),
   sandbox: sandboxConfigSchema.optional(),
   lsp: lspConfigSchema.optional(),
+  /** Per-edit formatters (P1.9): auto-format a file after the agent writes it. */
+  format: z.object({ enabled: z.boolean().optional() }).optional(),
   search: searchProviderSchema.optional(),
   browser: browserConfigSchema.optional(),
   crawl: crawlConfigSchema.optional(),
