@@ -7,6 +7,7 @@ import {
   type DiscoveryRecord,
 } from '@excalibur/shared';
 import { DISCOVERY_QUESTION_PACKS } from '@excalibur/workflow-schema';
+import { LocalWorkItemProvider } from '@excalibur/work-items';
 import type { Command } from 'commander';
 import pc from 'picocolors';
 import { CliUsageError } from '../errors';
@@ -103,6 +104,18 @@ export async function runDiscoveryFlow(deps: CliDeps, flow: DiscoveryFlowInput):
   if (record.recommendation === 'do_not_build') {
     deps.ui.warn(deps.t('discovery.doNotBuild'));
   } else {
+    // Discovery IS the planning flow → turn the refined ticket into a tracked
+    // native work item (W1b: planning produces work-items). Buildable verdicts only.
+    const refinedPath = join(session.dir, 'refined-ticket.md');
+    const description = existsSync(refinedPath) ? readFileSync(refinedPath, 'utf8') : null;
+    const created = new LocalWorkItemProvider(repoRoot).createWorkItem({
+      title,
+      ...(description !== null ? { description } : {}),
+      labels: ['discovery'],
+    });
+    deps.ui.success(
+      `Created work item ${created.key} from this discovery — run it with \`excalibur work-items run ${created.key} --local\`.`,
+    );
     const steps = nextSteps(record, title);
     if (steps.length > 0) {
       deps.ui.heading(deps.t('discovery.suggestedNextSteps'));
