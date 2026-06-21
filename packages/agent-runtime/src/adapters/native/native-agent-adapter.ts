@@ -36,6 +36,7 @@ import {
   type ExtensionToolLogger,
 } from '../../tools/extension-tools';
 import { executeNativeTool, type ToolExecutionContext } from '../../tools/execute-tool';
+import { loadSkillIndex, type SkillEntry } from '../../tools/skills-reader';
 import { resolveLocalSearxng } from '../../tools/web/searxng-manager';
 import { browserReaderFrom } from '../../tools/web/browser-fetch';
 import { WebCache } from '../../tools/web/cache';
@@ -109,6 +110,8 @@ const READ_ONLY_TOOLS: ReadonlyArray<NativeToolName> = [
   'lsp',
   // Asking the human a clarifying question mutates nothing.
   'question',
+  // Loading a skill's instructions is read-only progressive disclosure.
+  'skill',
 ];
 
 /** Roles that get the read-only tool subset (they observe, they do not change the tree). */
@@ -164,6 +167,7 @@ function eventTypeForTool(name: NativeToolName): ExcaliburEventType {
     case 'research':
     case 'lsp':
     case 'question':
+    case 'skill':
       return 'tool_call';
   }
 }
@@ -323,10 +327,18 @@ export class NativeAgentAdapter implements AgentAdapter {
     const searchCfg = input.config.search;
     const browserCfg = input.config.browser;
     const crawlCfg = input.config.crawl;
+    // Skill index for the `skill` tool (P1.8b): scan the PROJECT for SKILL.md
+    // files once per run (cheap, bounded). Their names+descriptions are surfaced
+    // in the system prompt; the model pulls a body on demand by name. Project
+    // scope only — we deliberately do NOT scan ~/.claude/skills etc. so an
+    // Excalibur run never silently inherits another tool's global skills.
+    const skillIndex: SkillEntry[] = loadSkillIndex([input.workdir]);
     const toolCtx: ToolExecutionContext = {
       workdir: input.workdir,
       config: input.config,
       permissions,
+      // The skill index (empty → the `skill` tool reports none available).
+      ...(skillIndex.length > 0 ? { skills: skillIndex } : {}),
       // Thread the run's abort signal so ESC/abort SIGKILLs an in-flight
       // command/test/git process instead of waiting for it to finish.
       ...(input.signal !== undefined ? { signal: input.signal } : {}),
@@ -388,15 +400,25 @@ export class NativeAgentAdapter implements AgentAdapter {
     // run's reconstructed turns as context ahead of the new instruction — zero
     // tokens re-spent on the prefix, only `input.prompt` runs live. The system
     // prompt is always freshly built for THIS run's role/workdir/phase.
+    // Progressive disclosure (P1.8b): tell the model WHICH skills exist (names +
+    // one-line descriptions) so it knows to pull a relevant one via the `skill`
+    // tool — without spending their full bodies on every prompt.
+    const skillsHint =
+      skillIndex.length > 0
+        ? `\n\nAvailable skills (load full instructions on demand with the \`skill\` tool when relevant):\n${skillIndex
+            .map((s) => `- ${s.name}: ${s.description}`)
+            .join('\n')}`
+        : '';
+    const systemContent = systemPromptFor(input) + skillsHint;
     const messages: ChatMessage[] =
       input.seedMessages !== undefined && input.seedMessages.length > 0
         ? [
-            { role: 'system', content: systemPromptFor(input) },
+            { role: 'system', content: systemContent },
             ...input.seedMessages,
             { role: 'user', content: input.prompt },
           ]
         : [
-            { role: 'system', content: systemPromptFor(input) },
+            { role: 'system', content: systemContent },
             { role: 'user', content: input.prompt },
           ];
 
@@ -1073,6 +1095,14 @@ export class NativeAgentAdapter implements AgentAdapter {
         allowed: true,
         requiresConfirmation: false,
         reason: 'clarifying question (no side effect)',
+      };
+    }
+    if (name === 'skill') {
+      // Loading skill instructions is read-only progressive disclosure.
+      return {
+        allowed: true,
+        requiresConfirmation: false,
+        reason: 'skill load (read-only)',
       };
     }
     if (name === 'run_command') {

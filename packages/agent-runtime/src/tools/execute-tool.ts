@@ -29,6 +29,7 @@ import { guardUntrustedContent, type UntrustedSource } from './web/content-guard
 import { buildProvenanceRecord, type ProvenanceRecord } from './web/provenance';
 import type { WebCache } from './web/cache';
 import type { LspSession } from '../lsp';
+import { readSkillBody, type SkillEntry } from './skills-reader';
 
 /**
  * Real native-tool executors (OSS-7, M2) — the security-critical core of the
@@ -110,6 +111,13 @@ export interface ToolExecutionContext {
    * absent or returning empty → the tool tells the model to proceed autonomously.
    */
   ask?: (question: string) => Promise<string>;
+  /**
+   * Skill index for the model-callable `skill` tool (P1.8b progressive
+   * disclosure). The adapter scans the project (and user-global) for SKILL.md
+   * files and passes the metadata here; the tool reads a skill's full body
+   * lazily by name. Absent/empty → the tool reports no skills are available.
+   */
+  skills?: ReadonlyArray<SkillEntry>;
 }
 
 export interface ToolResult {
@@ -1403,6 +1411,38 @@ async function execQuestion(
   return ok(`The human answered: ${answer.trim()}`);
 }
 
+/**
+ * `skill` (P1.8b): progressive disclosure. With no name → list available skills
+ * (name + description). With a name → return that skill's full instructions.
+ * Reads the body lazily from the indexed path. Graceful when there are no skills.
+ */
+function execSkill(args: Record<string, unknown>, ctx: ToolExecutionContext): ToolResult {
+  const skills = ctx.skills ?? [];
+  const requested =
+    typeof args['name'] === 'string' ? (args['name'] as string).toLowerCase().trim() : '';
+  if (skills.length === 0) {
+    return ok('No skills are available in this project.');
+  }
+  if (requested.length === 0) {
+    const lines = skills.map((s) => `  - ${s.name}: ${s.description}`);
+    return ok(
+      `Available skills (call \`skill\` with a name to load its full instructions):\n${lines.join('\n')}`,
+    );
+  }
+  const match = skills.find((s) => s.name === requested);
+  if (match === undefined) {
+    const names = skills.map((s) => s.name).join(', ');
+    return fail(`unknown skill "${requested}". Available: ${names}.`);
+  }
+  let body: string;
+  try {
+    body = readSkillBody(match.path);
+  } catch {
+    return fail(`could not read the "${requested}" skill.`);
+  }
+  return ok(`# Skill: ${match.name}\n\n${body}`);
+}
+
 export async function executeNativeTool(
   name: NativeToolName,
   rawArgs: unknown,
@@ -1452,6 +1492,8 @@ export async function executeNativeTool(
         return await execLsp(args, ctx);
       case 'question':
         return await execQuestion(args, ctx);
+      case 'skill':
+        return execSkill(args, ctx);
       default: {
         // Exhaustiveness guard: every NativeToolName is handled above.
         const exhaustive: never = name;

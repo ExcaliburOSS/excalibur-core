@@ -27,6 +27,7 @@ export const NATIVE_TOOL_NAMES = [
   'research',
   'lsp',
   'question',
+  'skill',
 ] as const;
 export type NativeToolName = (typeof NATIVE_TOOL_NAMES)[number];
 
@@ -326,6 +327,19 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
           .string()
           .optional()
           .describe('Optional one-line context shown with the question (why you are asking)'),
+      })
+      .strict(),
+  },
+  {
+    name: 'skill',
+    description:
+      "Load a project SKILL on demand (progressive disclosure). Call with NO name to list the available skills (name + one-line description); call with a name to load that skill's full instructions, then follow them. Skills package reusable, project-specific know-how (deploy steps, conventions, runbooks). Loading a skill is a deliberate pull — only load one when it is clearly relevant to the task.",
+    parameters: z
+      .object({
+        name: z
+          .string()
+          .optional()
+          .describe('Skill name to load; omit to list all available skills'),
       })
       .strict(),
   },

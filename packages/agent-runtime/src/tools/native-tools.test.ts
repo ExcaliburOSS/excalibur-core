@@ -26,6 +26,7 @@ const PINNED_NAMES: NativeToolName[] = [
   'research',
   'lsp',
   'question',
+  'skill',
 ];
 
 describe('NATIVE_TOOLS', () => {
@@ -59,6 +60,8 @@ describe('NATIVE_TOOLS', () => {
     ['lsp', { path: 'src/app.ts', line: 1, column: 1, query: 'hover' }],
     ['question', { question: 'Which database should I target?' }],
     ['question', { question: 'Use REST or gRPC?', context: 'the spec is ambiguous' }],
+    ['skill', {}],
+    ['skill', { name: 'deploy' }],
   ] as const)('%s accepts valid parameters %j', (name, params) => {
     const tool = getNativeTool(name);
     expect(tool).toBeDefined();
@@ -84,6 +87,8 @@ describe('NATIVE_TOOLS', () => {
     ['question', {}],
     ['question', { question: '' }],
     ['question', { question: 'ok', extra: true }],
+    ['skill', { name: 5 }],
+    ['skill', { other: 'x' }],
   ] as const)('%s rejects invalid parameters %j', (name, params) => {
     const tool = getNativeTool(name);
     expect(tool).toBeDefined();

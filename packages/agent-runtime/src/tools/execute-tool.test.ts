@@ -319,6 +319,52 @@ describe('executeNativeTool — question (P1.8b)', () => {
   });
 });
 
+describe('executeNativeTool — skill (P1.8b)', () => {
+  function withSkill(body: string): { ctxWith: ReturnType<typeof ctx>; skillPath: string } {
+    const skillDir = join(dir, 'skills', 'deploy');
+    mkdirSync(skillDir, { recursive: true });
+    const skillPath = join(skillDir, 'SKILL.md');
+    writeFileSync(skillPath, body, 'utf8');
+    const ctxWith = {
+      ...ctx(),
+      skills: [{ name: 'deploy', description: 'Deploys the app', path: skillPath }],
+    };
+    return { ctxWith, skillPath };
+  }
+
+  it('lists available skills when called with no name', async () => {
+    const { ctxWith } = withSkill(
+      '---\nname: deploy\ndescription: Deploys the app\n---\nRun make deploy.',
+    );
+    const result = await executeNativeTool('skill', {}, ctxWith);
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatch(/deploy: Deploys the app/);
+  });
+
+  it('loads a skill body by name', async () => {
+    const { ctxWith } = withSkill(
+      '---\nname: deploy\ndescription: Deploys the app\n---\nStep 1. Run make deploy.',
+    );
+    const result = await executeNativeTool('skill', { name: 'deploy' }, ctxWith);
+    expect(result.ok).toBe(true);
+    expect(result.result).toContain('Step 1. Run make deploy.');
+    expect(result.result).not.toContain('description: Deploys'); // front matter stripped
+  });
+
+  it('reports an unknown skill', async () => {
+    const { ctxWith } = withSkill('body');
+    const result = await executeNativeTool('skill', { name: 'ghost' }, ctxWith);
+    expect(result.ok).toBe(false);
+    expect(result.result).toMatch(/unknown skill/i);
+  });
+
+  it('says none are available when there is no skill index', async () => {
+    const result = await executeNativeTool('skill', {}, ctx());
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatch(/no skills/i);
+  });
+});
+
 describe('executeNativeTool — write_file', () => {
   it('creates parent directories within the tree', async () => {
     const result = await executeNativeTool(

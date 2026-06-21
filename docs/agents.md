@@ -21,9 +21,9 @@ Adapters emit the canonical Excalibur event stream (`tool_call`, `file_read`, `f
 
 The default adapter, built on the Model Gateway and its native tools:
 
-`read_file · write_file · edit · list_files · search_code · run_command · run_tests · git_diff · apply_patch · create_branch · update_tasks · web_fetch · web_search · web_extract · web_crawl · research · lsp · question`
+`read_file · write_file · edit · list_files · search_code · run_command · run_tests · git_diff · apply_patch · create_branch · update_tasks · web_fetch · web_search · web_extract · web_crawl · research · lsp · question · skill`
 
-(`edit` is a surgical find/replace — far cheaper than rewriting a whole file. `lsp` gives the model on-demand code intelligence — go-to-definition, find-references and hover from the language server, gated read-only. `question` lets the model ask the human a clarifying question mid-run; with no human present, e.g. an autonomous/CI run, it returns a note and the model proceeds on its best judgment.)
+(`edit` is a surgical find/replace — far cheaper than rewriting a whole file. `lsp` gives the model on-demand code intelligence — go-to-definition, find-references and hover from the language server, gated read-only. `question` lets the model ask the human a clarifying question mid-run; with no human present, e.g. an autonomous/CI run, it returns a note and the model proceeds on its best judgment. `skill` is progressive disclosure: the system prompt lists available `SKILL.md` skills by name + one line, and the model loads a skill's full instructions on demand only when relevant.)
 
 Every tool call passes through the **Permission Engine**: blocked paths are denied, mutating tools default to _ask_, commands outside the allowlist require confirmation (see [security.md](security.md)).
 

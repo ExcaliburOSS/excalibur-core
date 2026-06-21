@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -568,6 +568,7 @@ describe('NativeAgentAdapter — role-based tool exposure', () => {
       'read_file',
       'research',
       'search_code',
+      'skill',
       'update_tasks',
       'web_crawl',
       'web_extract',
@@ -663,5 +664,32 @@ describe('NativeAgentAdapter — custom agent overrides (P1.7)', () => {
     expect(String(toolMsg?.content ?? '')).toMatch(/denied|disabled|not permitted/i);
     // No command actually completed.
     expect(events.find((e) => e.type === 'command_completed')).toBeUndefined();
+  });
+});
+
+describe('NativeAgentAdapter — skill progressive disclosure (P1.8b)', () => {
+  it('lists discovered SKILL.md skills in the system prompt (so the model can pull them)', async () => {
+    // A skill in the workdir under skills/<name>/SKILL.md.
+    const skillDir = join(tmpRepo, 'skills', 'deploy');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, 'SKILL.md'),
+      '---\nname: deploy\ndescription: How to ship the project\n---\nRun make ship.',
+      'utf8',
+    );
+    const gateway = new FakeGateway([{ content: 'noted' }]);
+    await collect(new NativeAgentAdapter().run(makeInput(gateway)));
+    const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
+    expect(system).toMatch(/Available skills/i);
+    expect(system).toContain('deploy: How to ship the project');
+    // And the `skill` tool is advertised so the model can load it.
+    expect(gateway.received[0]?.tools?.map((t) => t.name)).toContain('skill');
+  });
+
+  it('omits the skills hint when the project has no skills', async () => {
+    const gateway = new FakeGateway([{ content: 'noted' }]);
+    await collect(new NativeAgentAdapter().run(makeInput(gateway)));
+    const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
+    expect(system).not.toMatch(/Available skills/i);
   });
 });
