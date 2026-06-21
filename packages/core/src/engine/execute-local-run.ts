@@ -65,6 +65,13 @@ export interface ExecuteLocalRunInput {
   confirm?: (question: string) => Promise<boolean>;
   onEvent?: (e: ExcaliburEvent) => void;
   /**
+   * Optional abort signal. Aborting ends the run at the next phase boundary
+   * (`status: 'cancelled'`) and is forwarded to the agent adapter so an in-flight
+   * `agent_work` tool loop / model call is cancelled too. Lets a server or the
+   * shell stop a run mid-flight. Additive — existing callers omit it.
+   */
+  signal?: AbortSignal;
+  /**
    * Tools contributed by loaded extensions, forwarded to the agent adapter's
    * `agent_work` runs (extensions-spec.md §5). The CLI activates extensions
    * (`activateExtensions`) and passes the harvested tools here; omit it and runs
@@ -425,6 +432,9 @@ class LocalRunExecution {
       phase: { id: phase.id, name: phase.name, type: phase.type },
       config: this.input.config,
       gateway: this.input.gateway,
+      // Forward the abort signal so cancelling a run kills the in-flight tool
+      // loop / model call, not just the gap between phases.
+      ...(this.input.signal !== undefined ? { signal: this.input.signal } : {}),
       // Extension-contributed tools (extensions-spec.md §5), advertised + executed
       // by the native loop alongside the native tools. Omitted → native set only.
       ...(this.input.extensionTools !== undefined && this.input.extensionTools.length > 0
@@ -921,6 +931,12 @@ class LocalRunExecution {
       });
 
       for (const phase of definition.phases) {
+        // Cancellation: an aborted signal ends the run cleanly at the phase
+        // boundary (the in-flight agent_work loop is aborted via the forwarded
+        // signal; this catches the gap between phases and non-agent phases).
+        if (this.input.signal?.aborted === true) {
+          return this.finish('cancelled');
+        }
         this.emit('phase_started', { name: phase.name, type: phase.type }, phase.id);
 
         let outcome: 'completed' | 'skipped' | 'cancelled' = 'skipped';

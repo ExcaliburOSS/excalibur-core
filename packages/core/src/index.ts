@@ -220,6 +220,13 @@ export {
   BudgetExceededError,
   type ExecuteLocalRunInput,
 } from './engine/execute-local-run';
+export {
+  RunController,
+  type RunHandle,
+  type StartRunOptions,
+  type RunControllerStatus,
+  type PendingApproval,
+} from './engine/run-controller';
 
 // Git helpers
 export {
