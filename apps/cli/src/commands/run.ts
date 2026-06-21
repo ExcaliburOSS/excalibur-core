@@ -32,6 +32,8 @@ interface RunOptions {
   sync?: boolean;
   diagnostics?: boolean;
   budget?: string;
+  workItem?: string;
+  newWorkItem?: boolean;
 }
 
 /** Parses a positive-integer agent count flag (`--agents` / `--max-agents`). */
@@ -130,6 +132,8 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
       '--budget <usd>',
       'hard cost ceiling in USD — deny further model calls once spend reaches it',
     )
+    .option('--work-item <key>', 'link this run to an existing work item (e.g. WI-12)')
+    .option('--new-work-item', 'create a local work item from the task and link the run to it')
     .option('-y, --yes', 'skip prompts and accept safe defaults')
     .action(async (taskWords: string[], options: RunOptions) => {
       const task = taskWords.join(' ').trim();
@@ -155,6 +159,8 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
         ...(options.sync === true ? { sync: true } : {}),
         ...(options.diagnostics === true ? { diagnostics: true } : {}),
         ...(budgetUsd !== undefined ? { budgetUsd } : {}),
+        ...(options.workItem !== undefined ? { workItemId: options.workItem } : {}),
+        ...(options.newWorkItem === true ? { createWorkItem: true } : {}),
       };
 
       // `text` is unchanged: the run streams human output through deps.ui.

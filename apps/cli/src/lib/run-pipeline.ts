@@ -1,5 +1,6 @@
 import { NativeAgentAdapter } from '@excalibur/agent-runtime';
 import { activateExtensions } from '@excalibur/extension-sdk';
+import { LocalWorkItemProvider } from '@excalibur/work-items';
 import {
   RunManager,
   classifyTaskIntent,
@@ -67,6 +68,8 @@ export interface RunTaskOptions {
   budgetUsd?: number;
   /** Links the run to a work item (e.g. `work-items run` — the work-item-centric cycle). */
   workItemId?: string;
+  /** Create a local work item from the task and link the run to it (planning-first). */
+  createWorkItem?: boolean;
   /** Internal: this IS the diagnostics-repair run — do not trigger another (recursion guard). */
   internalRepair?: boolean;
 }
@@ -501,6 +504,16 @@ export async function runTask(
     methodologies.find((entry) => entry.id === choice.workflowId)?.id ??
     null;
 
+  // Planning-first: link the run to a work item — either an explicit one
+  // (`workItemId`) or a fresh local one created from the task (`createWorkItem`).
+  // Ad-hoc runs omit both (they show in the dashboard's "Unassigned" lane).
+  let workItemId = options.workItemId;
+  if (workItemId === undefined && options.createWorkItem === true) {
+    const wi = new LocalWorkItemProvider(repoRoot).createWorkItem({ title: task });
+    workItemId = wi.key;
+    deps.ui.info(`Created work item ${wi.key} for this task and linked the run to it.`);
+  }
+
   const runManager = new RunManager(repoRoot);
   const run = runManager.createRun({
     title: task,
@@ -509,7 +522,7 @@ export async function runTask(
     methodology,
     model: gatewayContext.providerName,
     executionStyle: choice.executionStyle,
-    ...(options.workItemId !== undefined ? { workItemId: options.workItemId } : {}),
+    ...(workItemId !== undefined ? { workItemId } : {}),
   });
   deps.ui.write();
   deps.ui.info(deps.t('run-pipeline.runDir', { id: run.id, dir: run.dir }));

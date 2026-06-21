@@ -227,6 +227,34 @@ await scenario('extension tool — a local extension tool runs inside a real run
   assert(ran, 'the extension tool result should carry the real motto string from its execute()');
 });
 
+await scenario('planning-first — run --new-work-item creates + links a work item (W1)', () => {
+  const dir = freshRepo();
+  exc(
+    dir,
+    [
+      'run',
+      'Explain what src/math.ts exports',
+      '--new-work-item',
+      '--yes',
+      '--workflow',
+      'review-only',
+    ],
+    150000,
+  );
+  // A local work item was created and the run record links to it.
+  const runsDir = join(dir, '.excalibur/runs');
+  const latest = execFileSync('ls', ['-t', runsDir]).toString().trim().split('\n')[0];
+  const record = JSON.parse(readFileSync(join(runsDir, latest, 'run.json'), 'utf8'));
+  assert(
+    typeof record.workItemId === 'string' && /^WI-\d+$/.test(record.workItemId),
+    'the run record should link a freshly-created work item',
+  );
+  assert(
+    existsSync(join(dir, '.excalibur/work-items', `${record.workItemId}.json`)),
+    'the linked work item JSON file should exist',
+  );
+});
+
 // Network config (mode on + auto-approve) so an unattended run can reach the web
 // without a prompt. Quoted so YAML 1.1-style coercion never turns `on` into true.
 const NET_AUTO =
