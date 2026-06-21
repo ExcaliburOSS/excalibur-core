@@ -39,8 +39,12 @@ const MAX_LINE = 2000;
 const DEFAULT_MALICIOUS = 70;
 const DEFAULT_SUSPICIOUS = 30;
 
-/** Zero-width, bidi-control, and BOM characters used to hide instructions. */
-const HIDDEN_CHARS_RE = /[​-‏‪-‮⁦-⁩﻿]/g;
+/**
+ * Zero-width, bidi-control, word-joiner and BOM characters used to hide
+ * instructions. Written as `\u` escapes (not literal) so the source has no
+ * irregular whitespace.
+ */
+const HIDDEN_CHARS_RE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g;
 
 /** Strips hidden (zero-width / bidi / BOM) characters from `text`. */
 export function stripHidden(text: string): string {

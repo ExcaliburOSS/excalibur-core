@@ -2,7 +2,6 @@
 // The private key is NOT in this repo (held by the maintainer); only the signed
 // snapshot + the public key ship. Integrity: the public key fingerprint is PINNED
 // in registry.ts, and the signature is verified over the snapshot at load time.
-/* eslint-disable */
 export const SIGNED_REGISTRY = {
   snapshot: {
     version: 1,

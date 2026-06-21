@@ -47,17 +47,14 @@ describe('parseRobots / robotsAllows', () => {
 });
 
 describe('RateLimiter', () => {
-  it('spaces same-host requests by the delay', async () => {
+  it('reserves per host and resolves immediately when the slot is free', async () => {
     const limiter = new RateLimiter();
-    let clock = 1000;
-    const now = (): number => clock;
-    await limiter.wait('h', 500, now); // first: no wait, reserves +500
-    // Second call would need to wait until 1500; we only assert it reserves forward.
-    const before = clock;
-    // Simulate time NOT advancing; the limiter should compute a positive wait.
-    // (We can't block on real timers here, so just assert the reservation math via a 0 delay host.)
-    await limiter.wait('other', 0, now);
-    expect(clock).toBe(before);
+    const now = (): number => 1000; // fixed clock — no real timers in the test
+    const started = Date.now();
+    await limiter.wait('h', 500, now); // first hit on this host → free, no wait
+    await limiter.wait('other', 500, now); // a different host is independent → no wait
+    // Neither call slept (fresh per-host slots): the test stays well under the delay.
+    expect(Date.now() - started).toBeLessThan(400);
   });
 });
 
