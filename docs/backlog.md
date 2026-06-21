@@ -112,10 +112,10 @@ backend. Tasks #153–#167, plus the foundational **Epic W** (#169–#174) below
 
 - **WK1 (#175, P0/P1, FOUNDATION) Native work-item store** — kanban model (status lanes,
   order/rank, priority, sub-tasks, labels, assignee) + full CRUD (create/edit/delete/
-  move/reorder). **Persistence (never memory-only):** durable git-able files under
-  `.excalibur/work-items/` — markdown + YAML frontmatter (`WI-<n>.md`), human-readable +
-  diff-friendly + consistent with plan-mode plans (today JSON; migrate to md). Enterprise
-  persists in Postgres/Prisma (`WorkItem` model). Autonomous; the spine.
+  move/reorder). **Persistence (never memory-only):** structured **JSON** files under
+  `.excalibur/work-items/WI-<n>.json` (git-able; keep the existing format — JSON mirrors
+  the Enterprise Postgres/Prisma `WorkItem` shape for trivial parity/sync; the body is a
+  markdown string inside the JSON). Enterprise persists in Postgres/Prisma. Autonomous; spine.
 - **WK2 (#176, P1) `work-items` CLI** — full CRUD + a terminal `board` (ASCII kanban);
   autonomous task planning from the CLI, no external tracker. Depends WK1.
 - **W0 (#169, P0/P1) Run↔work-item link data model** — optional `workItemId` on run/
