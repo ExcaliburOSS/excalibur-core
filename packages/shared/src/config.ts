@@ -77,6 +77,36 @@ export const networkPolicySchema = z.object({
 });
 export type NetworkPolicy = z.infer<typeof networkPolicySchema>;
 
+/**
+ * Network TRANSPORT config (distinct from `permissions.network`, which is the
+ * egress POLICY). Corporate proxy + custom CA support: every outbound request
+ * (web fetch, model gateway, MCP, enterprise-sync) funnels through Node's global
+ * `fetch`, so the CLI installs one global undici dispatcher from this config +
+ * the standard env vars at startup. Env vars (`HTTP(S)_PROXY`/`NO_PROXY`/
+ * `NODE_EXTRA_CA_CERTS`) always WIN over config; config fills the gaps.
+ */
+export const networkTransportSchema = z.object({
+  proxy: z
+    .object({
+      /** Proxy URL for http:// targets (fallback when HTTP_PROXY is unset). */
+      http: z.string().optional(),
+      /** Proxy URL for https:// targets (fallback when HTTPS_PROXY is unset). */
+      https: z.string().optional(),
+      /** Comma-separated no-proxy host list (fallback when NO_PROXY is unset). */
+      noProxy: z.string().optional(),
+    })
+    .optional(),
+  tls: z
+    .object({
+      /** Path to a PEM bundle of extra CA certs (corporate root CA / MITM proxy). */
+      caFile: z.string().optional(),
+      /** Set false ONLY to accept self-signed certs (insecure; warned loudly). */
+      rejectUnauthorized: z.boolean().optional(),
+    })
+    .optional(),
+});
+export type NetworkTransportConfig = z.infer<typeof networkTransportSchema>;
+
 const permissionsSectionSchema = z.object({
   tools: z.record(z.union([z.boolean(), z.literal('ask')])).optional(),
   blockedPaths: z.array(z.string()).optional(),
@@ -516,6 +546,8 @@ const baseExcaliburConfigSchema = z.object({
   workflows: workflowsSectionSchema.optional(),
   models: modelsSectionSchema.optional(),
   permissions: permissionsSectionSchema.optional(),
+  /** Network transport (corporate proxy + custom CA); see networkTransportSchema. */
+  network: networkTransportSchema.optional(),
   approvals: approvalsSectionSchema.optional(),
   context: contextSectionSchema.optional(),
   integrations: z.record(z.record(z.string())).optional(),

@@ -17,6 +17,7 @@ import type { Command } from 'commander';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import { providersFilePath } from '../lib/context';
+import { resolveNetworkPlan } from '../lib/network-proxy';
 
 type CheckStatus = 'PASS' | 'WARN' | 'FAIL';
 
@@ -115,6 +116,17 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
               : deps.t('doctor.detail.sourcesMissing', {
                   paths: missing.map((source) => source.path).join(', '),
                 }),
+          );
+
+          // Network transport (corporate proxy + custom CA, P0.2). Pure resolve
+          // (no global side effect): report what egress will honor.
+          const netPlan = resolveNetworkPlan(loaded.config.network, process.env);
+          add(
+            'Network transport (proxy/CA)',
+            netPlan.insecure ? 'WARN' : 'PASS',
+            netPlan.notes.length > 0
+              ? netPlan.notes.join('; ')
+              : 'direct (no proxy or custom CA configured)',
           );
         } catch (error) {
           add('.excalibur/config.yaml', 'FAIL', describe(error));
