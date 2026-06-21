@@ -121,12 +121,15 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
           // Network transport (corporate proxy + custom CA, P0.2). Pure resolve
           // (no global side effect): report what egress will honor.
           const netPlan = resolveNetworkPlan(loaded.config.network, process.env);
+          const caMissing = netPlan.caFile !== null && !existsSync(netPlan.caFile);
+          const netNotes = [...netPlan.notes];
+          if (caMissing) {
+            netNotes.push(`CA file not found: ${netPlan.caFile}`);
+          }
           add(
             'Network transport (proxy/CA)',
-            netPlan.insecure ? 'WARN' : 'PASS',
-            netPlan.notes.length > 0
-              ? netPlan.notes.join('; ')
-              : 'direct (no proxy or custom CA configured)',
+            netPlan.insecure || caMissing ? 'WARN' : 'PASS',
+            netNotes.length > 0 ? netNotes.join('; ') : 'direct (no proxy or custom CA configured)',
           );
         } catch (error) {
           add('.excalibur/config.yaml', 'FAIL', describe(error));
