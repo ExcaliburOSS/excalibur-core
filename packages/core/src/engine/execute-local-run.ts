@@ -7,6 +7,7 @@ import {
   languageForFile,
   PermissionEngine,
   type AgentAdapter,
+  type ExtensionTool,
   type LspSession,
   type ToolExecutionContext,
 } from '@excalibur/agent-runtime';
@@ -63,6 +64,13 @@ export interface ExecuteLocalRunInput {
   config: ExcaliburConfig;
   confirm?: (question: string) => Promise<boolean>;
   onEvent?: (e: ExcaliburEvent) => void;
+  /**
+   * Tools contributed by loaded extensions, forwarded to the agent adapter's
+   * `agent_work` runs (extensions-spec.md §5). The CLI activates extensions
+   * (`activateExtensions`) and passes the harvested tools here; omit it and runs
+   * use the native tool set only. Additive.
+   */
+  extensionTools?: ExtensionTool[];
   /**
    * Hard per-run budget ceiling in CENTS (overrides `config.budget.maxRunUsd`).
    * When the run's accumulated model spend reaches it, the next model call is
@@ -417,6 +425,11 @@ class LocalRunExecution {
       phase: { id: phase.id, name: phase.name, type: phase.type },
       config: this.input.config,
       gateway: this.input.gateway,
+      // Extension-contributed tools (extensions-spec.md §5), advertised + executed
+      // by the native loop alongside the native tools. Omitted → native set only.
+      ...(this.input.extensionTools !== undefined && this.input.extensionTools.length > 0
+        ? { extensionTools: this.input.extensionTools }
+        : {}),
       // Forward a tool-level confirmer mirroring the PHASE policy: with an
       // interactive `confirm` the agent prompts per mutating tool; without one
       // (--yes / non-interactive) it AUTO-APPROVES — matching the auto-approve

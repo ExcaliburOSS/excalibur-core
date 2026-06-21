@@ -183,6 +183,50 @@ await scenario('explain — explains a source file', () => {
   assert(out.replace(/\s+/g, ' ').length > 40, 'explanation should be non-trivial');
 });
 
+await scenario('extension tool — a local extension tool runs inside a real run (P0.1)', () => {
+  const motto = 'STRENGTH-IN-STEEL-7731';
+  const dir = freshRepo({
+    // Allow the contributed tool outright so the unattended run executes it.
+    '.excalibur/config.yaml':
+      'version: 1\ncommands: {}\npermissions:\n  tools:\n    project_motto: true\n',
+    '.excalibur/extensions/motto/excalibur.extension.yaml':
+      'id: motto\nname: Motto\nversion: 1.0.0\nkind: programmatic\nentrypoint: index.js\n',
+    // Plain CJS entrypoint (no SDK import needed — the loader/activation accept
+    // the same { id, name, version, register } shape defineExtension produces).
+    '.excalibur/extensions/motto/index.js': `module.exports = {
+  id: 'motto',
+  name: 'Motto',
+  version: '1.0.0',
+  register(ctx) {
+    ctx.tools.registerTool({
+      name: 'project_motto',
+      description: 'Return the official project motto',
+      inputSchema: { type: 'object', properties: {} },
+      execute: () => Promise.resolve({ success: true, output: 'The project motto is: ${motto}' }),
+    });
+  },
+};
+`,
+  });
+  exc(
+    dir,
+    ['run', 'Call the project_motto tool and tell me the exact project motto it returns.', '--yes'],
+    150000,
+  );
+  const events = runEvents(dir);
+  assert(
+    toolsUsed(events).includes('project_motto'),
+    'the model should have called the extension tool project_motto',
+  );
+  const ran = events.some(
+    (e) =>
+      e.type === 'tool_call' &&
+      (e.payload.tool ?? e.payload.name) === 'project_motto' &&
+      new RegExp(motto).test(String(e.payload.result ?? '')),
+  );
+  assert(ran, 'the extension tool result should carry the real motto string from its execute()');
+});
+
 // Network config (mode on + auto-approve) so an unattended run can reach the web
 // without a prompt. Quoted so YAML 1.1-style coercion never turns `on` into true.
 const NET_AUTO =

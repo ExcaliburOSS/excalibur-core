@@ -1,4 +1,5 @@
 import { NativeAgentAdapter } from '@excalibur/agent-runtime';
+import { activateExtensions } from '@excalibur/extension-sdk';
 import {
   RunManager,
   classifyTaskIntent,
@@ -264,6 +265,15 @@ export async function runTask(
 
   const registry = await createExtensionHost(repoRoot);
   const catalog = workflowCatalog(registry);
+
+  // Activate loaded extensions and harvest the agent tools they contribute, so
+  // the native loop advertises + executes them (extensions-spec.md §5). A
+  // failing extension is reported, never fatal.
+  const activation = await activateExtensions(registry);
+  for (const warning of activation.warnings) {
+    deps.ui.warn(warning);
+  }
+  const extensionTools = activation.tools;
 
   // Ambiguous tasks: recommend Discovery first (onboarding §6) unless the
   // user pinned a workflow/level explicitly. When declined, the run
@@ -547,6 +557,9 @@ export async function runTask(
     gateway: gatewayContext.gateway,
     adapter: new NativeAgentAdapter(),
     config,
+    // Extension-contributed tools harvested from activation, executed by the
+    // native loop alongside the native tools. Omitted when no extension adds one.
+    ...(extensionTools.length > 0 ? { extensionTools } : {}),
     // Hard budget cap: a `--budget` flag (USD→cents) overrides config.budget.maxRunUsd.
     ...(options.budgetUsd !== undefined
       ? { budgetCents: Math.round(options.budgetUsd * 100) }

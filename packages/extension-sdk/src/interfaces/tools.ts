@@ -5,9 +5,10 @@ import type { ExtensionLogger } from '../logger';
  * Agent tool contract (extensions-spec.md §5).
  *
  * Tools registered through `ctx.tools.registerTool` become available to agent
- * adapters alongside the native tools of `@excalibur/agent-runtime`. M1 does
- * not execute extension tools inside runs yet; the interface is the stable
- * surface extensions code against.
+ * adapters alongside the native tools of `@excalibur/agent-runtime`. The host
+ * activates extensions (`activateExtensions`) to harvest these tools and the
+ * native agent loop advertises and EXECUTES them inside runs — gated by the
+ * PermissionEngine and offered to read-only roles only when `readOnly` is set.
  */
 
 /** Execution context handed to a tool by the agent runtime. */
@@ -45,4 +46,25 @@ export interface AgentTool {
   /** JSON-schema-like description of the tool input. */
   inputSchema: unknown;
   execute(input: unknown, context: ToolContext): Promise<ToolResult>;
+  /**
+   * When `true`, the tool is non-mutating and is offered to read-only/planning
+   * roles too (reviewer, architect, …). Default (absent/false): treated as
+   * mutating and hidden from read-only roles — third-party code is gated
+   * conservatively. Additive; pre-existing tools omit it.
+   */
+  readOnly?: boolean;
+}
+
+/** Narrows an arbitrary value to an executable {@link AgentTool}. */
+export function isAgentTool(value: unknown): value is AgentTool {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const tool = value as Partial<AgentTool>;
+  return (
+    typeof tool.name === 'string' &&
+    tool.name.length > 0 &&
+    typeof tool.description === 'string' &&
+    typeof tool.execute === 'function'
+  );
 }

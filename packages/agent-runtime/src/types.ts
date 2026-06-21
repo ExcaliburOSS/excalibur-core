@@ -1,5 +1,6 @@
 import type { AgentRole, ExcaliburConfig, ExcaliburEvent, PhaseType } from '@excalibur/shared';
 import type { ChatMessage, ModelGateway } from '@excalibur/model-gateway';
+import type { ExtensionTool } from './tools/extension-tools';
 
 /**
  * Agent adapter contract (Build Contract §4.4, OSS spec §15).
@@ -65,6 +66,16 @@ export interface AgentRunInput {
    * Additive — ordinary runs omit it.
    */
   seedMessages?: ChatMessage[];
+  /**
+   * Tools contributed by loaded extensions (extensions-spec.md §5), advertised
+   * to the model alongside the native tools and dispatched through their own
+   * `execute()` inside the loop. Gated like any other tool by the
+   * `PermissionEngine` (`checkTool` defaults unknown/extension tools to `ask`)
+   * and offered to read-only roles only when a tool opts in via `readOnly`. The
+   * CLI activates extensions and passes the harvested tools here; ordinary
+   * in-process callers omit it. Additive.
+   */
+  extensionTools?: ExtensionTool[];
 }
 
 /** A request to a human/approver to confirm a mutating tool invocation. */

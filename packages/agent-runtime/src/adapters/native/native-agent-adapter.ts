@@ -25,6 +25,13 @@ import {
   type NativeToolName,
 } from '../../tools/native-tools';
 import { zodToJsonSchema } from '../../tools/zod-to-json-schema';
+import {
+  extensionToolSpecs,
+  extensionToolsByName,
+  type ExtensionTool,
+  type ExtensionToolContext,
+  type ExtensionToolLogger,
+} from '../../tools/extension-tools';
 import { executeNativeTool, type ToolExecutionContext } from '../../tools/execute-tool';
 import { resolveLocalSearxng } from '../../tools/web/searxng-manager';
 import { browserReaderFrom } from '../../tools/web/browser-fetch';
@@ -364,7 +371,19 @@ export class NativeAgentAdapter implements AgentAdapter {
           ...(input.signal !== undefined ? { signal: input.signal } : {}),
         });
       }
-      const tools = [...toolSpecsFor(input.role), ...mcp.specs];
+      // Extension-contributed tools (extensions-spec.md §5): advertised to the
+      // model alongside native + MCP tools, dispatched through their own
+      // execute() below. Read-only roles only see tools that opted in via
+      // `readOnly`. A name clash with a native/MCP tool is resolved native-first
+      // (the dispatch checks MCP, then native, then extension), so extensions
+      // cannot shadow a built-in tool.
+      const extensionTools: ReadonlyArray<ExtensionTool> = input.extensionTools ?? [];
+      const extByName = extensionToolsByName(extensionTools);
+      const tools = [
+        ...toolSpecsFor(input.role),
+        ...mcp.specs,
+        ...extensionToolSpecs(extensionTools, { readOnlyRole: READ_ONLY_ROLES.has(input.role) }),
+      ];
 
       for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
         if (aborted()) {
@@ -467,6 +486,7 @@ export class NativeAgentAdapter implements AgentAdapter {
             mutated,
             emit,
             mcp.byName,
+            extByName,
             lsp,
           )) {
             yield ev.event;
@@ -529,6 +549,7 @@ export class NativeAgentAdapter implements AgentAdapter {
     mutated: Set<string>,
     emit: (type: ExcaliburEventType, payload: Record<string, unknown>) => ExcaliburEvent,
     mcpByName: ReadonlyMap<string, McpToolEntry>,
+    extByName: ReadonlyMap<string, ExtensionTool>,
     lsp: LspSession | null,
   ): Promise<Array<{ event: ExcaliburEvent; toolMessage?: ChatMessage }>> {
     const events: Array<{ event: ExcaliburEvent; toolMessage?: ChatMessage }> = [];
@@ -538,6 +559,13 @@ export class NativeAgentAdapter implements AgentAdapter {
     const mcpEntry = mcpByName.get(call.name);
     if (mcpEntry !== undefined) {
       return this.runMcpToolCall(input, call, mcpEntry, emit);
+    }
+
+    // Extension-contributed tool → dispatch through its own execute(). Checked
+    // AFTER MCP/native names so an extension can never shadow a built-in tool.
+    const extTool = extByName.get(call.name);
+    if (extTool !== undefined && !isNativeToolName(call.name)) {
+      return this.runExtensionToolCall(input, ctx, call, extTool, emit);
     }
 
     if (!isNativeToolName(call.name)) {
@@ -781,6 +809,126 @@ export class NativeAgentAdapter implements AgentAdapter {
         toolMessage: { role: 'tool', toolCallId: call.id, content: message },
       });
     }
+    return events;
+  }
+
+  /**
+   * Executes one extension-contributed tool (extensions-spec.md §5): announce →
+   * gate through the PermissionEngine (`checkTool` defaults unknown/extension
+   * tools to `ask`, so a third-party tool requires confirmation unless the user
+   * pre-allowed it via `permissions.tools[<name>] = true`) → confirm-or-decline
+   * → run the tool's own `execute()` inside a try/catch. The tool's logger calls
+   * surface as `log` events; the result text (redacted) becomes the model's tool
+   * message. An exception is reported as a tool result, never thrown — a faulty
+   * extension can never crash the run.
+   */
+  private async runExtensionToolCall(
+    input: AgentRunInput,
+    ctx: ToolExecutionContext,
+    call: ToolCall,
+    tool: ExtensionTool,
+    emit: (type: ExcaliburEventType, payload: Record<string, unknown>) => ExcaliburEvent,
+  ): Promise<Array<{ event: ExcaliburEvent; toolMessage?: ChatMessage }>> {
+    const events: Array<{ event: ExcaliburEvent; toolMessage?: ChatMessage }> = [];
+    events.push({
+      event: emit('tool_call', {
+        tool: call.name,
+        extension: true,
+        arguments: redactArgs(call.arguments),
+      }),
+    });
+
+    // Extension tools follow the generic tool flag: unknown names default to
+    // `ask` (PermissionEngine.UNKNOWN_TOOL_FLAG), so third-party code is gated
+    // conservatively unless the user explicitly set it `true`.
+    const gate = ctx.permissions.checkTool(call.name);
+    if (!gate.allowed) {
+      const result = `denied: ${gate.reason}`;
+      events.push({
+        event: emit('policy_decision', {
+          kind: 'confirmation',
+          tool: call.name,
+          decision: 'deny',
+          message: result,
+        }),
+        toolMessage: { role: 'tool', toolCallId: call.id, content: result },
+      });
+      return events;
+    }
+    if (gate.requiresConfirmation) {
+      const reason = `extension tool "${call.name}"`;
+      const approved =
+        input.confirm !== undefined
+          ? await input.confirm({ tool: call.name, reason, detail: tool.description })
+          : false;
+      if (!approved) {
+        const result = `user declined: ${reason}`;
+        events.push({
+          event: emit('policy_decision', {
+            kind: 'confirmation',
+            tool: call.name,
+            decision: 'deny',
+            message: result,
+          }),
+          toolMessage: { role: 'tool', toolCallId: call.id, content: result },
+        });
+        return events;
+      }
+    }
+
+    // Capture the tool's logger output so it is auditable on the event stream
+    // (packages never print; the host decides how to surface log events).
+    const logs: string[] = [];
+    const logger: ExtensionToolLogger = {
+      info: (msg) => logs.push(`[info] ${msg}`),
+      warn: (msg) => logs.push(`[warn] ${msg}`),
+      error: (msg) => logs.push(`[error] ${msg}`),
+    };
+    const toolContext: ExtensionToolContext = {
+      workdir: input.workdir,
+      runId: input.runId,
+      sessionId: input.sessionId,
+      role: input.role,
+      config: input.config,
+      logger,
+    };
+
+    let ok: boolean;
+    let content: string;
+    try {
+      const result = await tool.execute(call.arguments, toolContext);
+      ok = result.success === true;
+      const body = ok
+        ? result.output
+        : (result.error ?? result.output ?? 'extension tool reported failure');
+      content = redactSecrets(typeof body === 'string' ? body : String(body));
+    } catch (error) {
+      ok = false;
+      content = redactSecrets(
+        `extension tool "${call.name}" threw: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    for (const line of logs) {
+      events.push({
+        event: emit('policy_decision', {
+          kind: 'log',
+          decision: 'allow',
+          tool: call.name,
+          message: redactSecrets(line),
+        }),
+      });
+    }
+
+    events.push({
+      event: emit('tool_call', {
+        tool: call.name,
+        extension: true,
+        ok,
+        result: content.length > 4000 ? `${content.slice(0, 4000)}…` : content,
+      }),
+      toolMessage: { role: 'tool', toolCallId: call.id, content },
+    });
     return events;
   }
 

@@ -38,6 +38,9 @@ export type {
   WorkflowDefinitionInput,
 } from './context';
 
+export { activateExtensions } from './host/activate';
+export type { ActivateExtensionsOptions, ActivationResult } from './host/activate';
+
 export { createNoopLogger } from './logger';
 export type { ExtensionLogger, ExtensionConfig } from './logger';
 
@@ -51,6 +54,7 @@ export type {
   PostMessageResult,
   ThreadReply,
 } from './interfaces/communication';
+export { isAgentTool } from './interfaces/tools';
 export type { AgentTool, ToolContext, ToolResult } from './interfaces/tools';
 export type {
   ContextSource,
