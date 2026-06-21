@@ -228,6 +228,17 @@ export {
   type PendingApproval,
 } from './engine/run-controller';
 
+// Custom slash commands (P1.6)
+export {
+  loadCustomCommands,
+  expandCustomCommand,
+  shellExecIn,
+  type CustomCommand,
+  type CommandExec,
+  type LoadCustomCommandsOptions,
+  type ExpandCommandOptions,
+} from './commands/custom-commands';
+
 // Git helpers
 export {
   addWorktree,

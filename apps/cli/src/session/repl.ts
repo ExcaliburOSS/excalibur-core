@@ -10,6 +10,8 @@ import {
   createExtensionHost,
   createModelSummarizer,
   DEFAULT_COMPACTION_CONFIG,
+  expandCustomCommand,
+  loadCustomCommands,
   withExtensionMcpServers,
   getGitIdentity,
   getGitInfo,
@@ -180,6 +182,15 @@ export async function runInteractiveSession(
   }
   const gateway = loadGatewayContext(repoRoot);
   const store = new SessionStore(repoRoot);
+
+  // User-defined custom slash commands (P1.6): markdown templates under
+  // .excalibur/commands/ (+ ~/.config/excalibur/commands/ when user-global is on).
+  // Loaded once; consulted only as a fallthrough so built-ins always win.
+  const customCommands = loadCustomCommands({
+    repoRoot,
+    homeDir: deps.homeDir(),
+    includeGlobal: deps.includeUserGlobal,
+  });
 
   // PROACTIVE startup context: read the repo's state BEFORE creating a new
   // session (so `latest` is the PRIOR one) — last activity, active plan, memory.
@@ -508,6 +519,24 @@ export async function runInteractiveSession(
           }
           if (input.name === 'threads') {
             handleThreadsCommand(deps, runtime);
+            printStatusLine(deps, runtime);
+            continue;
+          }
+          // User-defined custom slash command (P1.6) — fallthrough AFTER built-ins
+          // so a user command can never shadow one. Expand its template ($ARGUMENTS,
+          // $1, !`cmd`, @file) and run it as a normal turn.
+          const custom = customCommands.get(input.name);
+          if (custom !== undefined) {
+            const expanded = await expandCustomCommand(custom.body, {
+              argv: input.argv,
+              repoRoot: runtime.repoRoot,
+            });
+            const safe = redactSecrets(`/${input.name} ${input.argv.join(' ')}`.trim());
+            store.appendPromptHistory(safe);
+            store.appendTurn(session.id, { role: 'user', kind: 'message', text: safe });
+            const ctrl = beginTurn();
+            await dispatchAgentTurn(deps, runtime, expanded, ctrl.signal, sessionSeed(runtime));
+            endTurn();
             printStatusLine(deps, runtime);
             continue;
           }

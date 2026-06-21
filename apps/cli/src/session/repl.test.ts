@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { RunManager } from '@excalibur/core';
@@ -62,6 +62,29 @@ describe('interactive session (M-Shell, model-first)', () => {
     const history = readFileSync(join(repo, '.excalibur', 'sessions', 'history'), 'utf8');
     expect(history).toContain('[REDACTED]');
     expect(history).not.toContain(key);
+  });
+
+  it('runs a user-defined custom slash command (P1.6)', async () => {
+    mkdirSync(join(repo, '.excalibur', 'commands'), { recursive: true });
+    writeFileSync(
+      join(repo, '.excalibur', 'commands', 'greet.md'),
+      '---\ndescription: Greet someone\n---\nSay hello to $1 from the repo.',
+      'utf8',
+    );
+    const before = new Set(sessionDirs());
+    const cli = createInteractiveCli({ cwd: repo });
+    cli.send('/greet World');
+    cli.send('/exit');
+    await runInteractiveSession(cli.deps, {});
+
+    // The custom-command path is the only one that records `/<name> <args>` as a
+    // user turn, so its presence proves the command was recognized + executed.
+    const id = sessionDirs().find((dir) => !before.has(dir));
+    expect(id).toBeDefined();
+    const transcript = readTranscript(id as string);
+    const userTurn = transcript.find((turn) => turn['role'] === 'user');
+    expect(String(userTurn?.['text'])).toContain('/greet World');
+    expect(cli.stdout()).not.toMatch(/unknown command/i);
   });
 
   it('prints the welcome banner + status line, runs /help, then /exit', async () => {
