@@ -34,6 +34,7 @@ interface RunOptions {
   budget?: string;
   workItem?: string;
   newWorkItem?: boolean;
+  agent?: string;
 }
 
 /** Parses a positive-integer agent count flag (`--agents` / `--max-agents`). */
@@ -113,6 +114,10 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
     .option('--structured', 'structured execution style (structured-feature)')
     .option('--explore', 'explore engineering alternatives')
     .option('--workflow <id>', 'use an explicit workflow id')
+    .option(
+      '--agent <name>',
+      'run with a self-contained custom agent (.excalibur/agents/<name>.md)',
+    )
     .option('--agents <n>', 'override the auto-sized agent count (power user; default: auto)')
     .option('--max-agents <n>', 'hard ceiling on the agent count')
     .option(
@@ -153,6 +158,7 @@ export function registerRunCommand(program: Command, deps: CliDeps): void {
         ...(explicitLevel !== undefined ? { level: explicitLevel } : {}),
         ...(explicitStyle !== undefined ? { style: explicitStyle } : {}),
         ...(options.workflow !== undefined ? { workflow: options.workflow } : {}),
+        ...(options.agent !== undefined ? { agent: options.agent } : {}),
         ...(agents !== undefined ? { agents } : {}),
         ...(maxAgents !== undefined ? { maxAgents } : {}),
         ...(options.yes === true ? { yes: true } : {}),

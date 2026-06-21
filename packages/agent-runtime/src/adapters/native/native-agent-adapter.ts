@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import {
   createEvent,
+  DEFAULT_BLOCKED_PATHS,
   DEFAULT_LSP_CONFIG,
   type AgentRole,
   type DiagnosticsPayload,
@@ -161,11 +162,49 @@ function eventTypeForTool(name: NativeToolName): ExcaliburEventType {
   }
 }
 
+/**
+ * Merges a custom agent's permission overrides OVER the project permissions
+ * (P1.7). Per-tool flags merge object-wise; `allowedCommands`/`network` are
+ * replaced when the agent specifies them; the DENY lists (`deniedCommands`,
+ * `blockedPaths`) are UNIONED — an agent can only tighten, never lift a denial
+ * the project set (deny always wins). Returns the base untouched when there is
+ * no override.
+ */
+function mergeAgentPermissions(
+  base: ExcaliburConfig['permissions'],
+  override: ExcaliburConfig['permissions'],
+): ExcaliburConfig['permissions'] {
+  if (override === undefined) {
+    return base;
+  }
+  const merged: NonNullable<ExcaliburConfig['permissions']> = { ...base, ...override };
+  if (base?.tools !== undefined || override.tools !== undefined) {
+    merged.tools = { ...base?.tools, ...override.tools };
+  }
+  if (override.deniedCommands !== undefined) {
+    merged.deniedCommands = [...(base?.deniedCommands ?? []), ...override.deniedCommands];
+  }
+  if (override.blockedPaths !== undefined) {
+    // Union with the project's blocked paths (or the safe defaults the engine
+    // would otherwise apply) so an agent's list never DROPS a project denial.
+    merged.blockedPaths = [
+      ...(base?.blockedPaths ?? DEFAULT_BLOCKED_PATHS),
+      ...override.blockedPaths,
+    ];
+  }
+  return merged;
+}
+
 /** Builds the JSON-Schema tool specs the gateway sends to the model. */
-function toolSpecsFor(role: AgentRole): ToolSpec[] {
-  const allowed: ReadonlyArray<NativeToolName> = READ_ONLY_ROLES.has(role)
+function toolSpecsFor(role: AgentRole, allowedTools?: ReadonlyArray<string>): ToolSpec[] {
+  const base: ReadonlyArray<NativeToolName> = READ_ONLY_ROLES.has(role)
     ? READ_ONLY_TOOLS
     : NATIVE_TOOL_NAMES;
+  // A custom agent's `tools:` allowlist can only NARROW the role's floor (it
+  // intersects — a read-only role can never be widened to mutate). Names that
+  // aren't native tools simply don't match and are dropped.
+  const allowed: ReadonlyArray<NativeToolName> =
+    allowedTools !== undefined ? base.filter((name) => allowedTools.includes(name)) : base;
   const defs: ReadonlyArray<NativeToolDefinition> = NATIVE_TOOLS.filter((def) =>
     allowed.includes(def.name),
   );
@@ -202,8 +241,16 @@ function adversarialPreamble(role: AgentRunInput['role']): string[] {
 function systemPromptFor(input: AgentRunInput): string {
   const phase =
     input.phase !== undefined ? ` for phase "${input.phase.name}" (${input.phase.type})` : '';
+  // A custom agent (P1.7) supplies its own persona, used in place of the default
+  // role header. The operational protocol below still applies so the agent never
+  // loses the tool-use contract (workdir, tool authority, `update_tasks`).
+  const persona = input.systemPrompt?.trim();
+  const header =
+    persona !== undefined && persona.length > 0
+      ? persona
+      : `You are the Excalibur native agent acting as the "${input.role}" role${phase}.`;
   return [
-    `You are the Excalibur native agent acting as the "${input.role}" role${phase}.`,
+    header,
     ...adversarialPreamble(input.role),
     `Working directory: ${input.workdir}.`,
     'You can call the provided tools to read and change the repository. Tool results',
@@ -262,7 +309,11 @@ export class NativeAgentAdapter implements AgentAdapter {
         sessionId: input.sessionId,
       });
 
-    const permissions = new PermissionEngine(input.config.permissions);
+    // A custom agent (P1.7) may carry its own permission overrides; merge them
+    // over the project's (deny lists union — the agent can only tighten).
+    const permissions = new PermissionEngine(
+      mergeAgentPermissions(input.config.permissions, input.permissions),
+    );
     const searchCfg = input.config.search;
     const browserCfg = input.config.browser;
     const crawlCfg = input.config.crawl;
@@ -383,7 +434,7 @@ export class NativeAgentAdapter implements AgentAdapter {
       const extensionTools: ReadonlyArray<ExtensionTool> = input.extensionTools ?? [];
       const extByName = extensionToolsByName(extensionTools);
       const tools = [
-        ...toolSpecsFor(input.role),
+        ...toolSpecsFor(input.role, input.allowedTools),
         ...mcp.specs,
         ...extensionToolSpecs(extensionTools, { readOnlyRole: READ_ONLY_ROLES.has(input.role) }),
       ];
@@ -410,6 +461,10 @@ export class NativeAgentAdapter implements AgentAdapter {
         }
         if (input.model !== undefined) {
           chatInput.model = input.model;
+        }
+        // A custom agent's sampling temperature (P1.7), when set.
+        if (input.temperature !== undefined) {
+          chatInput.temperature = input.temperature;
         }
         if (input.signal !== undefined) {
           chatInput.signal = input.signal;

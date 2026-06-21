@@ -599,3 +599,67 @@ describe('NativeAgentAdapter — role-based tool exposure', () => {
     expect(system).not.toContain('ADVERSARIAL reviewer');
   });
 });
+
+describe('NativeAgentAdapter — custom agent overrides (P1.7)', () => {
+  it('uses the custom systemPrompt as the persona header but keeps the tool protocol', async () => {
+    const gateway = new FakeGateway([{ content: 'done' }]);
+    await collect(
+      new NativeAgentAdapter().run(
+        makeInput(gateway, { systemPrompt: 'You are Merlin, a wise refactoring sage.' }),
+      ),
+    );
+    const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
+    // Persona replaces the default "You are the Excalibur native agent acting as…".
+    expect(system).toContain('You are Merlin, a wise refactoring sage.');
+    expect(system).not.toContain('acting as the "implementer" role');
+    // The operational protocol still applies (the tool-use contract is preserved).
+    expect(system).toContain('update_tasks');
+  });
+
+  it('forwards the agent temperature to the gateway', async () => {
+    const gateway = new FakeGateway([{ content: 'done' }]);
+    await collect(new NativeAgentAdapter().run(makeInput(gateway, { temperature: 0.15 })));
+    expect(gateway.received[0]?.temperature).toBe(0.15);
+  });
+
+  it('narrows the advertised tools to the allowlist (intersected with the role floor)', async () => {
+    const gateway = new FakeGateway([{ content: 'done' }]);
+    await collect(
+      new NativeAgentAdapter().run(
+        makeInput(gateway, { allowedTools: ['read_file', 'search_code'] }),
+      ),
+    );
+    const names = gateway.received[0]?.tools?.map((t) => t.name) ?? [];
+    expect(names.sort()).toEqual(['read_file', 'search_code']);
+  });
+
+  it('cannot widen a read-only role beyond its floor via allowedTools (deny wins)', async () => {
+    const gateway = new FakeGateway([{ content: 'done' }]);
+    await collect(
+      new NativeAgentAdapter().run(
+        // A planner (read-only) asking for write_file gets nothing extra.
+        makeInput(gateway, { role: 'planner', allowedTools: ['read_file', 'write_file'] }),
+      ),
+    );
+    const names = gateway.received[0]?.tools?.map((t) => t.name) ?? [];
+    expect(names).toContain('read_file');
+    expect(names).not.toContain('write_file');
+  });
+
+  it('merges agent permission overrides so the agent can tighten (deny a tool)', async () => {
+    // The project config allows run_command; the agent denies it → denied.
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'run_command', { command: 'echo hi' })] },
+      { content: 'done' },
+    ]);
+    const events = await collect(
+      new NativeAgentAdapter().run(
+        makeInput(gateway, { permissions: { tools: { run_command: false } } }),
+      ),
+    );
+    const toolMsg = gateway.received[1]?.messages.find((m) => m.role === 'tool');
+    expect(String(toolMsg?.content ?? '')).toMatch(/denied|disabled|not permitted/i);
+    // No command actually completed.
+    expect(events.find((e) => e.type === 'command_completed')).toBeUndefined();
+  });
+});

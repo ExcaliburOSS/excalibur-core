@@ -84,6 +84,22 @@ export interface ExecuteLocalRunInput {
    * DENIED and the run ends `failed`. Undefined → fall back to config → no cap.
    */
   budgetCents?: number;
+  /**
+   * Self-contained custom agent overrides (P1.7). When the user selects a custom
+   * agent (`--agent <name>` → a `.excalibur/agents/<name>.md` file), the CLI
+   * resolves it and passes its persona, model, sampling and guardrails here; the
+   * engine applies them to every `agent_work` phase. Additive — ordinary runs
+   * omit it and use the workflow's role + the run's configured provider.
+   */
+  agent?: {
+    systemPrompt?: string;
+    role?: AgentRole;
+    model?: string;
+    provider?: string;
+    temperature?: number;
+    allowedTools?: string[];
+    permissions?: ExcaliburConfig['permissions'];
+  };
 }
 
 /** Thrown when a run hits its hard budget cap — Excalibur STOPS, it doesn't just track. */
@@ -413,7 +429,15 @@ class LocalRunExecution {
   }
 
   private async agentWorkPhase(phase: WorkflowPhase): Promise<void> {
-    const role: AgentRole = phase.role ?? 'implementer';
+    // A custom agent (P1.7) overrides the role; otherwise the phase's role wins.
+    const agent = this.input.agent;
+    const role: AgentRole = agent?.role ?? phase.role ?? 'implementer';
+    // Provider precedence: the custom agent's provider > the run's configured
+    // provider (`record.model` is the PROVIDER name — forward it as `provider`
+    // so the gateway resolves its real model id; passing it as `model` would
+    // clobber the model id → 404 model_not_found).
+    const provider =
+      agent?.provider ?? (this.run.record.model !== null ? this.run.record.model : undefined);
     const prompt =
       this.instructionsMarkdown.length > 0
         ? `${this.instructionsMarkdown}\n\nTask: ${this.run.record.title}`
@@ -425,10 +449,14 @@ class LocalRunExecution {
       workdir: this.input.repoRoot,
       prompt,
       role,
-      // `record.model` is the PROVIDER name; forward it as `provider` so the
-      // gateway picks that provider and resolves its real model id (passing it
-      // as `model` would clobber the model id → 404 model_not_found).
-      ...(this.run.record.model !== null ? { provider: this.run.record.model } : {}),
+      ...(provider !== undefined ? { provider } : {}),
+      // Custom agent (P1.7): a model id, sampling, persona, tool allowlist and
+      // permission overrides, each applied only when the agent specifies it.
+      ...(agent?.model !== undefined ? { model: agent.model } : {}),
+      ...(agent?.temperature !== undefined ? { temperature: agent.temperature } : {}),
+      ...(agent?.systemPrompt !== undefined ? { systemPrompt: agent.systemPrompt } : {}),
+      ...(agent?.allowedTools !== undefined ? { allowedTools: agent.allowedTools } : {}),
+      ...(agent?.permissions !== undefined ? { permissions: agent.permissions } : {}),
       phase: { id: phase.id, name: phase.name, type: phase.type },
       config: this.input.config,
       gateway: this.input.gateway,

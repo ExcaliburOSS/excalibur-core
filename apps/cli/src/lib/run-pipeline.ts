@@ -8,9 +8,11 @@ import {
   estimateRun,
   executeLocalRun,
   planAgentAllocation,
+  resolveCustomAgent,
   selectWorkflow,
   workflowCatalog,
   type AdditionalContextSource,
+  type CustomAgent,
   type RunEstimate,
   type TaskIntent,
 } from '@excalibur/core';
@@ -70,8 +72,29 @@ export interface RunTaskOptions {
   workItemId?: string;
   /** Create a local work item from the task and link the run to it (planning-first). */
   createWorkItem?: boolean;
+  /**
+   * Name of a self-contained custom agent (P1.7) to run with — a
+   * `.excalibur/agents/<name>.md` file. Its persona, model, sampling and
+   * guardrails are applied to every `agent_work` phase. Unknown name → error.
+   */
+  agent?: string;
   /** Internal: this IS the diagnostics-repair run — do not trigger another (recursion guard). */
   internalRepair?: boolean;
+}
+
+/** Maps a resolved custom agent onto the engine's agent-override shape. */
+function agentOverrides(
+  agent: CustomAgent,
+): NonNullable<Parameters<typeof executeLocalRun>[0]['agent']> {
+  return {
+    systemPrompt: agent.systemPrompt,
+    ...(agent.role !== undefined ? { role: agent.role } : {}),
+    ...(agent.model !== undefined ? { model: agent.model } : {}),
+    ...(agent.provider !== undefined ? { provider: agent.provider } : {}),
+    ...(agent.temperature !== undefined ? { temperature: agent.temperature } : {}),
+    ...(agent.tools !== undefined ? { allowedTools: agent.tools } : {}),
+    ...(agent.permissions !== undefined ? { permissions: agent.permissions } : {}),
+  };
 }
 
 /** Formats a {@link RunEstimate} as the plan card's one-line forecast. */
@@ -257,6 +280,23 @@ export async function runTask(
 ): Promise<RunRecord | null> {
   const repoRoot = deps.cwd();
   const yes = options.yes === true;
+
+  // Self-contained custom agent (P1.7): resolve `--agent <name>` early so an
+  // unknown name fails before any work, with a clear message.
+  let customAgent: CustomAgent | null = null;
+  if (options.agent !== undefined) {
+    customAgent = resolveCustomAgent(options.agent, {
+      repoRoot,
+      homeDir: deps.homeDir(),
+      includeGlobal: deps.includeUserGlobal,
+    });
+    if (customAgent === null) {
+      throw new CliUsageError(
+        `unknown agent "${options.agent}". Add .excalibur/agents/${options.agent}.md ` +
+          `(or run \`excalibur agents list\` to see what's available).`,
+      );
+    }
+  }
 
   const explicitLevel = options.level;
   const explicitStyle = options.style;
@@ -576,6 +616,9 @@ export async function runTask(
     // Extension-contributed tools harvested from activation, executed by the
     // native loop alongside the native tools. Omitted when no extension adds one.
     ...(extensionTools.length > 0 ? { extensionTools } : {}),
+    // Custom agent (P1.7): persona, model, sampling and guardrails applied to
+    // every agent_work phase. Omitted → the workflow's role + configured model.
+    ...(customAgent !== null ? { agent: agentOverrides(customAgent) } : {}),
     // Hard budget cap: a `--budget` flag (USD→cents) overrides config.budget.maxRunUsd.
     ...(options.budgetUsd !== undefined
       ? { budgetCents: Math.round(options.budgetUsd * 100) }

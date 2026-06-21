@@ -23,6 +23,7 @@ import { registerWebCommand } from './commands/web';
 import { registerServeCommand } from './commands/serve';
 import { registerAcpCommand } from './commands/acp';
 import { registerWorkItemsCommand } from './commands/work-items';
+import { registerAgentsCommand } from './commands/agents';
 import { registerLoginCommands } from './commands/login';
 import { registerLogsCommand } from './commands/logs';
 import { registerMethodologiesCommand } from './commands/methodologies';
@@ -100,6 +101,7 @@ export function buildProgram(overrides: Partial<CliDeps> = {}): Command {
   registerServeCommand(program, deps);
   registerAcpCommand(program, deps);
   registerWorkItemsCommand(program, deps);
+  registerAgentsCommand(program, deps);
   registerMcpCommand(program, deps);
   registerSearchCommand(program, deps);
   registerBrowserCommand(program, deps);

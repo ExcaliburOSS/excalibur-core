@@ -76,6 +76,33 @@ export interface AgentRunInput {
    * in-process callers omit it. Additive.
    */
   extensionTools?: ExtensionTool[];
+  /**
+   * Self-contained custom agent overrides (P1.7). When a user selects a custom
+   * agent (a `.excalibur/agents/<name>.md` file), the CLI resolves it and passes
+   * these so the native loop runs with that agent's persona, model, sampling and
+   * guardrails. All additive; an ordinary run omits every field.
+   */
+  /**
+   * The agent's persona, used VERBATIM as the system prompt's header in place of
+   * the default "You are the Excalibur native agent acting as the <role>" line.
+   * The operational protocol (workdir, tool authority, `update_tasks`) is still
+   * appended, so a custom prompt never loses the tool-use contract.
+   */
+  systemPrompt?: string;
+  /** Sampling temperature forwarded to the model (omitted → provider default). */
+  temperature?: number;
+  /**
+   * Native tool allowlist. INTERSECTS the role's tool set — it can only NARROW
+   * what the role already grants (a read-only role can never be widened to
+   * mutate), so deny always wins. Names not in the native catalog are ignored.
+   */
+  allowedTools?: string[];
+  /**
+   * Per-agent permission overrides, merged OVER `config.permissions` before the
+   * `PermissionEngine` is built (deny lists are unioned — an agent can tighten
+   * but the project's denials always still apply).
+   */
+  permissions?: ExcaliburConfig['permissions'];
 }
 
 /** A request to a human/approver to confirm a mutating tool invocation. */

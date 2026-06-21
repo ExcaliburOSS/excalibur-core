@@ -46,8 +46,11 @@ overhaul · **npm publish 1.2.0** (`@excalibur-oss/excalibur`, `latest`).
    hotkeys + selection/`@File#L37-42` passing; rides on the ACP/serve work (P0.3).
 6. **User custom slash commands** (markdown `/name` with `$ARGUMENTS`/`$1`/`!cmd`/`@file`)
    [Core][auto] — OC-P1. Ours are hardcoded; we already have `{{var}}` templating.
-7. **Self-contained custom agents** (one `.md` = mode+model+temp+prompt+tools+permissions)
-   [Core][auto] — OC-P1. Today `role_definition` is description-only.
+7. **Self-contained custom agents** ✅ SHIPPED — one `.excalibur/agents/<name>.md` =
+   persona(body)+role+model+provider+temp+tools-allowlist+permissions. `excalibur
+agents list|show|init` + `run --agent <name>`. The allowlist only NARROWS the
+   role floor (deny wins); agent permissions union the project denials. _(Interactive
+   shell `/agent` selection is follow-up **7b**.)_ [Core][auto] — OC-P1.
 8. **Model-callable tools: `edit` (surgical find/replace), `skill` (lazy-load),
    `question`, `lsp`** [Core][auto] — OC-P1. `edit` saves tokens vs full rewrite;
    `skill` gives progressive disclosure; `lsp`/`question` give defs/refs + clarifications.
@@ -55,9 +58,12 @@ overhaul · **npm publish 1.2.0** (`@excalibur-oss/excalibur`, `latest`).
    OC-P1. Zero-to-one: we have nothing today.
 10. **Auto-install LSP servers + widen coverage** (5 → ~28 langs) [Core][auto] — OC-P2.
     Turns our (superior) LSP-in-loop integration into an asterisk-free win.
-11. **Global user config layer + per-command bash deny globs** (last-match-wins)
-    [Core][auto] — OC. Today: project-file only + flat allowlist.
-12. **`stats` (historical token/cost)** + **session export/import** (JSON/Markdown/sanitize)
+11. **Per-command bash deny globs** ✅ SHIPPED (476aaac) — `permissions.deniedCommands`
+    hard-denies even when allowlisted (deny beats allow), checked before the allowlist.
+    [Core][auto] — OC. _(Global user config layer split to **11b**.)_
+    11b. **Global user config layer** (`~/.config/excalibur/config.yaml` merged UNDER the
+    project; defaults < global < project < env) [Core][auto] — touches `loadExcaliburConfig`.
+12. **`stats` (historical token/cost)** + **session export/import** (JSON/Markdown) ✅ SHIPPED
     [Core][auto] — OC.
 13. **Rebindable keybinds + custom theme loader** [Core][auto] — OC. Today single-key
     fixed, 5 themes, no loader.

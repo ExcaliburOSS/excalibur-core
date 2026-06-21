@@ -239,6 +239,16 @@ export {
   type ExpandCommandOptions,
 } from './commands/custom-commands';
 
+// Self-contained custom agents (P1.7)
+export {
+  loadCustomAgents,
+  resolveCustomAgent,
+  parseAgentFile,
+  type CustomAgent,
+  type AgentPermissions,
+  type LoadCustomAgentsOptions,
+} from './agents/custom-agents';
+
 // Git helpers
 export {
   addWorktree,

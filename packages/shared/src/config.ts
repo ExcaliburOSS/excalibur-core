@@ -107,7 +107,7 @@ export const networkTransportSchema = z.object({
 });
 export type NetworkTransportConfig = z.infer<typeof networkTransportSchema>;
 
-const permissionsSectionSchema = z.object({
+export const permissionsSectionSchema = z.object({
   tools: z.record(z.union([z.boolean(), z.literal('ask')])).optional(),
   blockedPaths: z.array(z.string()).optional(),
   allowedCommands: z.array(z.string()).optional(),
