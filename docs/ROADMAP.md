@@ -139,11 +139,24 @@ OpenCode. **Nearly all shipped.**
   `ask --json-schema`); **`serve`** + web dashboard (HTTP+SSE).
 - **P2** ✅ (mostly) — **grader/rubric** loop (`swarm --grade`); **hard budget cap**;
   **Claim Ledger**; **Verification Mesh**; **insights**; Knowledge Compounding.
-- **P2 still open** 🔴 — **background/detached sessions + live fleet view** (Tab-cycle /
-  pause/park across concurrent sessions — `serve` is a viewer, not a background
-  executor); MCP legacy SSE/WebSocket + **OAuth**; VS Code extension.
+- **P2 — since shipped (2026-06-20→21)** ✅ — **background/fleet** (`/bg` + `/threads`,
+  Tab-cycle concurrent sessions); **MCP OAuth/DCR** + **Ed25519-signed registry**;
+  the entire **F1–F8 external-access epic** (governed network + SSRF · web_fetch ·
+  free web_search SearXNG→DuckDuckGo · web_extract/web_crawl · opt-in local browser ·
+  hosted readers BYOK · native cited research + intent route · anti-injection +
+  provenance) — all in **1.2.0** (published to npm).
+- **P2 still open** 🔴 — **VS Code/IDE extension**; ACP server; programmable `serve`
+  backend; see `docs/backlog.md`.
 
 ---
+
+> **Update 2026-06-21:** the F1–F8 external-access epic, MCP OAuth/DCR + signed
+> registry, background/fleet, and the onboarding overhaul all SHIPPED in **1.2.0**
+> (published to npm). The full prioritized, deduplicated backlog of what remains —
+> merged with the OpenCode feature-gap analysis — now lives in **`docs/backlog.md`**.
+> Headline open items: real extension-tool execution + SDK publish, corporate
+> proxy/CA, programmable serve + ACP, IDE extension, M4 (GitHub App/Linear/Jira/Slack),
+> and the Enterprise milestones (M3-Ent, M5 SSO, M6 runners, M7 sync/CMUX, M8 GA).
 
 ## Current state (2026-06-19) and what remains
 
