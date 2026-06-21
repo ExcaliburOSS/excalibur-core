@@ -201,6 +201,52 @@ await scenario('edit tool — surgical find/replace inside a real run (P1.8)', (
   assert(!/a\s*\+\s*b/.test(after), 'the original a + b should be gone');
 });
 
+await scenario('custom agent — run --agent applies persona + read-only allowlist (P1.7)', () => {
+  const dir = freshRepo({
+    // A read-only auditor: role reviewer, allowed only read tools, write/run
+    // denied. It must drive the model yet NEVER mutate the tree.
+    '.excalibur/agents/auditor.md': `---
+name: Read-Only Auditor
+description: Reviews code; never edits
+role: reviewer
+tools: [read_file, list_files, search_code, git_diff]
+permissions:
+  tools:
+    write_file: false
+    run_command: false
+---
+You are a read-only auditor. Read src/math.ts and report whether add() has
+explicit parameter types. DO NOT modify any file. Reply with a short finding.
+`,
+  });
+  // The agent is listed + selectable.
+  const list = exc(dir, ['agents', 'list']);
+  assert(/auditor/.test(list.out), 'agents list should show the custom agent');
+  // An unknown agent fails fast.
+  const ghost = exc(dir, ['run', 'do x', '--agent', 'ghost', '--yes']);
+  assert(
+    ghost.code !== 0 && /unknown agent/i.test(ghost.out),
+    'run --agent <unknown> should fail fast',
+  );
+  // A real run with the read-only agent: it drives the model but never writes.
+  const before = readFileSync(join(dir, 'src/math.ts'), 'utf8');
+  exc(
+    dir,
+    ['run', 'Audit src/math.ts for explicit parameter types', '--agent', 'auditor', '--yes'],
+    150000,
+  );
+  const events = runEvents(dir);
+  assert(
+    events.some((e) => e.type === 'model_call'),
+    'the agent run should drive a real model',
+  );
+  assert(
+    readFileSync(join(dir, 'src/math.ts'), 'utf8') === before,
+    'a read-only agent must NOT modify the file (allowlist + deny held)',
+  );
+  assert(!events.some((e) => e.type === 'file_write'), 'a read-only agent must emit no file_write');
+});
+
 await scenario('extension tool — a local extension tool runs inside a real run (P0.1)', () => {
   const motto = 'STRENGTH-IN-STEEL-7731';
   const dir = freshRepo({
