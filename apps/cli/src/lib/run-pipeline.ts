@@ -27,6 +27,7 @@ import {
 } from '@excalibur/shared';
 import { type WorkflowDefinition } from '@excalibur/workflow-schema';
 import {
+  applyCustomColors,
   detectColorTier,
   detectThemeSync,
   paletteFor,
@@ -392,7 +393,10 @@ export async function runTask(
   const mode = detectThemeSync() ?? 'dark';
   // Honour the configured theme preset (ui.theme: auto/dark/light/daltonized/…)
   // across the WHOLE live rail, not just the diff view.
-  const palette = paletteFor(config.ui?.theme ?? 'auto', mode);
+  const palette = applyCustomColors(
+    paletteFor(config.ui?.theme ?? 'auto', mode),
+    config.ui?.customTheme,
+  );
 
   // The intent-driven run prompt (onboarding §6).
   for (;;) {

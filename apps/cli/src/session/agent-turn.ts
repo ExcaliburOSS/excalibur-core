@@ -34,7 +34,7 @@ import {
   type ExcaliburEvent,
   type LocalRun,
 } from '@excalibur/shared';
-import { detectColorTier, detectThemeSync, paletteFor } from '@excalibur/tui';
+import { applyCustomColors, detectColorTier, detectThemeSync, paletteFor } from '@excalibur/tui';
 import type { RunViewHandle } from '@excalibur/tui/ink';
 import type { ChatMessage, ModelGateway } from '@excalibur/model-gateway';
 import { execFileSync } from 'node:child_process';
@@ -241,7 +241,10 @@ async function driveLoop(
     const ink = await loadInkUi();
     const mode = detectThemeSync() ?? 'dark';
     view = ink.mountRunView({
-      palette: paletteFor(turn.config.ui?.theme ?? 'auto', mode),
+      palette: applyCustomColors(
+        paletteFor(turn.config.ui?.theme ?? 'auto', mode),
+        turn.config.ui?.customTheme,
+      ),
       tier: detectColorTier(),
       mode,
       reduce: {

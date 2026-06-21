@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   THEME_NAMES,
+  applyCustomColors,
   daltonizedDark,
   daltonizedLight,
   darkColors,
@@ -59,5 +60,37 @@ describe('theme presets', () => {
 
   it('THEME_NAMES lists every selectable name', () => {
     expect(THEME_NAMES).toEqual(['auto', 'dark', 'light', 'daltonized', 'high-contrast']);
+  });
+});
+
+describe('applyCustomColors (P1.13 custom theme loader)', () => {
+  it('returns the base unchanged when there are no overrides', () => {
+    expect(applyCustomColors(darkColors)).toEqual(darkColors);
+    expect(applyCustomColors(darkColors, {})).toEqual(darkColors);
+  });
+
+  it('merges only the provided colors and never changes mode', () => {
+    const merged = applyCustomColors(darkColors, { accent: '#FF00AA', danger: '#000000' });
+    expect(merged.accent).toBe('#FF00AA');
+    expect(merged.danger).toBe('#000000');
+    expect(merged.mode).toBe('dark'); // mode always from the base
+    expect(merged.success).toBe(darkColors.success); // untouched colors preserved
+  });
+
+  it('ignores undefined/empty override values (never blanks a color)', () => {
+    const merged = applyCustomColors(lightColors, {
+      accent: '#123456',
+      success: undefined,
+      warn: '',
+    });
+    expect(merged.accent).toBe('#123456');
+    expect(merged.success).toBe(lightColors.success);
+    expect(merged.warn).toBe(lightColors.warn);
+  });
+
+  it('does not mutate the base palette', () => {
+    const before = { ...darkColors };
+    applyCustomColors(darkColors, { accent: '#FFFFFF' });
+    expect(darkColors).toEqual(before);
   });
 });

@@ -167,6 +167,28 @@ export function paletteFor(name: ThemeName, mode: ThemeMode): Palette {
   }
 }
 
+/**
+ * Merges user color overrides (P1.13 `ui.customTheme`) OVER a base palette.
+ * Only the provided keys win; `mode` always comes from the base. A `undefined`
+ * overrides object (or one with no keys) returns the base unchanged. Ignores any
+ * `undefined`/empty values so a partially-specified override never blanks a color.
+ */
+export function applyCustomColors(
+  base: Palette,
+  overrides?: Partial<Omit<Palette, 'mode'>>,
+): Palette {
+  if (overrides === undefined) {
+    return base;
+  }
+  const result = { ...base } as unknown as Record<string, string>;
+  for (const [key, value] of Object.entries(overrides)) {
+    if (typeof value === 'string' && value.length > 0) {
+      result[key] = value;
+    }
+  }
+  return result as unknown as Palette;
+}
+
 type GlyphSet = {
   done: string;
   running: string;

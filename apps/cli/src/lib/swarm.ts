@@ -9,6 +9,7 @@ import {
   type SwarmResult,
 } from '@excalibur/core';
 import {
+  applyCustomColors,
   detectColorTier,
   detectThemeSync,
   paletteFor,
@@ -317,7 +318,10 @@ export async function runSwarmFlow(
   deps.ui.info(deps.t('swarm.running'));
   const tier = detectColorTier();
   const mode = detectThemeSync() ?? 'dark';
-  const palette = paletteFor(ctx.config.ui?.theme ?? 'auto', mode);
+  const palette = applyCustomColors(
+    paletteFor(ctx.config.ui?.theme ?? 'auto', mode),
+    ctx.config.ui?.customTheme,
+  );
   const railLabels = {
     swarm: deps.t('rail.swarm'),
     lanes: deps.t('rail.lanes'),

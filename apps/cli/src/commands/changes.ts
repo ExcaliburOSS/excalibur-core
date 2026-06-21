@@ -1,5 +1,11 @@
 import { buildTurnSummary, changeGlyph, loadReplay, reconstructStateAt } from '@excalibur/core';
-import { detectColorTier, detectThemeSync, paletteFor, renderDiff } from '@excalibur/tui';
+import {
+  applyCustomColors,
+  detectColorTier,
+  detectThemeSync,
+  paletteFor,
+  renderDiff,
+} from '@excalibur/tui';
 import type { Command } from 'commander';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
@@ -67,7 +73,10 @@ export function registerChangesCommand(program: Command, deps: CliDeps): void {
           const tier = detectColorTier(deps.env, isTty);
           const mode = detectThemeSync() ?? 'dark';
           const { config } = loadConfigContext(repoRoot);
-          const palette = paletteFor(config.ui?.theme ?? 'auto', mode);
+          const palette = applyCustomColors(
+            paletteFor(config.ui?.theme ?? 'auto', mode),
+            config.ui?.customTheme,
+          );
           const width = process.stdout.columns ?? 80;
           for (const line of renderDiff(diff, { tier, palette, width })) {
             deps.ui.write(line);

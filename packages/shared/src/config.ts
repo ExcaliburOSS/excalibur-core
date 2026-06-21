@@ -500,10 +500,41 @@ const skillSourceRefSchema = z.object({
 });
 
 /** Presentation settings for the TUI (theme preset, arthurian flavour). */
+/** A 6-digit hex color (e.g. `#5BC8FF`) — the format every palette color uses. */
+const hexColorSchema = z
+  .string()
+  .regex(/^#[0-9a-fA-F]{6}$/, 'must be a 6-digit hex color like "#5BC8FF"');
+
+/**
+ * Custom theme overrides (P1.13): any subset of the palette's 14 colors, merged
+ * OVER the resolved base theme (`ui.theme`). Lets a user tweak one accent or
+ * author a full palette without forking — `mode` still comes from the base.
+ */
+const customThemeSchema = z
+  .object({
+    accent: hexColorSchema.optional(),
+    accentDim: hexColorSchema.optional(),
+    success: hexColorSchema.optional(),
+    warn: hexColorSchema.optional(),
+    danger: hexColorSchema.optional(),
+    text: hexColorSchema.optional(),
+    muted: hexColorSchema.optional(),
+    rail: hexColorSchema.optional(),
+    diffAddFg: hexColorSchema.optional(),
+    diffDelFg: hexColorSchema.optional(),
+    diffAddBg: hexColorSchema.optional(),
+    diffDelBg: hexColorSchema.optional(),
+    diffAddWordBg: hexColorSchema.optional(),
+    diffDelWordBg: hexColorSchema.optional(),
+  })
+  .strict();
+
 const uiSectionSchema = z
   .object({
     /** Named theme: `auto` (follow terminal) | `dark` | `light` | `daltonized` | `high-contrast`. */
     theme: z.enum(['auto', 'dark', 'light', 'daltonized', 'high-contrast']).optional(),
+    /** Custom color overrides merged over the named theme (P1.13). */
+    customTheme: customThemeSchema.optional(),
     /** Caption flavour for phase spinners: `plain` (default) | `arthurian`. */
     flavor: z.enum(['plain', 'arthurian']).optional(),
     /** Auto-start the read-only web dashboard with the interactive shell (default true). */

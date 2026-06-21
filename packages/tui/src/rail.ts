@@ -39,6 +39,7 @@ export {
   formatTokens,
   getColors,
   paletteFor,
+  applyCustomColors,
   THEME_NAMES,
   type ThemeMode,
   type ThemeName,
