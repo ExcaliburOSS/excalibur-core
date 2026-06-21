@@ -15,6 +15,8 @@ export {
   resolveServerFor,
   binaryOnPath,
   resolveBinary,
+  lspAvailabilityFor,
+  installHintFor,
   type LspServerCommand,
 } from './lsp-servers';
 export {

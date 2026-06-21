@@ -287,6 +287,21 @@ describe('executeNativeTool — lsp (P1.8b)', () => {
     expect(result.ok).toBe(false);
     expect(result.result).toMatch(/permission denied|blocked/i);
   });
+
+  it('surfaces a precise install hint when the server is missing (P1.10)', async () => {
+    // .zig is a known language but zls is almost certainly not installed here →
+    // queryFor returns null and execLsp turns it into actionable guidance.
+    writeFileSync(join(dir, 'main.zig'), 'const x = 1;\n');
+    const { session } = fakeLsp({}); // queryFor returns null for every kind
+    const result = await executeNativeTool(
+      'lsp',
+      { path: 'main.zig', line: 1, column: 7, query: 'definition' },
+      { ...ctx(), lsp: session as never },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.result).toMatch(/zig language server/i);
+    expect(result.result).toMatch(/install/i);
+  });
 });
 
 describe('executeNativeTool — question (P1.8b)', () => {

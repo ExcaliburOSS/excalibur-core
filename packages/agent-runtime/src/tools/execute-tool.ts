@@ -28,7 +28,7 @@ import { hostedReaderTier } from './web/hosted-readers';
 import { guardUntrustedContent, type UntrustedSource } from './web/content-guard';
 import { buildProvenanceRecord, type ProvenanceRecord } from './web/provenance';
 import type { WebCache } from './web/cache';
-import type { LspSession } from '../lsp';
+import { lspAvailabilityFor, type LspSession } from '../lsp';
 import { readSkillBody, type SkillEntry } from './skills-reader';
 
 /**
@@ -1360,9 +1360,20 @@ async function execLsp(
   }
   const result = await ctx.lsp.queryFor(relPath, line, column, query);
   if (result === null) {
-    return fail(
-      `no language server could answer "${query}" for "${relPath}" (unsupported language or no server installed)`,
-    );
+    // Turn a silent "no server" into actionable guidance (P1.10): tell the model
+    // whether the file type is unsupported or the server is just not installed,
+    // and in the latter case exactly how to install it.
+    const availability = lspAvailabilityFor(relPath, ctx.config.lsp?.servers);
+    if (availability.status === 'missing') {
+      const how = availability.install !== null ? ` Install it with: ${availability.install}` : '';
+      return fail(
+        `the ${availability.language} language server ("${availability.command}") is not installed, so "${query}" is unavailable for "${relPath}".${how}`,
+      );
+    }
+    if (availability.status === 'unsupported') {
+      return fail(`no language server is configured for "${relPath}" (unsupported file type).`);
+    }
+    return fail(`the language server returned no "${query}" result for "${relPath}".`);
   }
   if (query === 'hover') {
     return ok(result.hover ?? `No hover information at ${relPath}:${line}:${column}.`);

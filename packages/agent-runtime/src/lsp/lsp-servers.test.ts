@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { dirname, isAbsolute } from 'node:path';
-import { binaryOnPath, languageForFile, resolveBinary, resolveServerFor } from './lsp-servers';
+import {
+  binaryOnPath,
+  installHintFor,
+  languageForFile,
+  lspAvailabilityFor,
+  resolveBinary,
+  resolveServerFor,
+} from './lsp-servers';
 
 describe('languageForFile', () => {
   it('maps known extensions to a language id', () => {
@@ -12,10 +19,51 @@ describe('languageForFile', () => {
     expect(languageForFile('l.rs')).toBe('rust');
   });
 
+  it('covers the widened language set (P1.10)', () => {
+    expect(languageForFile('main.c')).toBe('c');
+    expect(languageForFile('app.cpp')).toBe('cpp');
+    expect(languageForFile('A.java')).toBe('java');
+    expect(languageForFile('m.rb')).toBe('ruby');
+    expect(languageForFile('i.php')).toBe('php');
+    expect(languageForFile('s.sh')).toBe('shell');
+    expect(languageForFile('m.lua')).toBe('lua');
+    expect(languageForFile('p.cs')).toBe('csharp');
+    expect(languageForFile('m.kt')).toBe('kotlin');
+    expect(languageForFile('s.swift')).toBe('swift');
+    expect(languageForFile('d.dart')).toBe('dart');
+    expect(languageForFile('c.yaml')).toBe('yaml');
+    expect(languageForFile('data.json')).toBe('json');
+    expect(languageForFile('README.md')).toBe('markdown');
+    expect(languageForFile('main.zig')).toBe('zig');
+    expect(languageForFile('infra.tf')).toBe('terraform');
+  });
+
   it('returns null for unsupported files', () => {
-    expect(languageForFile('README.md')).toBeNull();
-    expect(languageForFile('data.json')).toBeNull();
+    expect(languageForFile('a.cobol')).toBeNull();
     expect(languageForFile('noext')).toBeNull();
+  });
+});
+
+describe('lspAvailabilityFor / installHintFor (P1.10)', () => {
+  it('reports an install hint when a known language has no server installed', () => {
+    const a = lspAvailabilityFor('main.zig'); // zls almost certainly not on PATH in CI
+    expect(a.status).toBe('missing');
+    if (a.status === 'missing') {
+      expect(a.language).toBe('zig');
+      expect(a.command).toBe('zls');
+      expect(a.install).toMatch(/zls/i);
+    }
+  });
+
+  it('reports unsupported for an unknown file type', () => {
+    expect(lspAvailabilityFor('a.cobol').status).toBe('unsupported');
+  });
+
+  it('installHintFor returns the per-language install command', () => {
+    expect(installHintFor('go')).toMatch(/go install .*gopls/);
+    expect(installHintFor('rust')).toMatch(/rustup/);
+    expect(installHintFor('python')).toMatch(/pyright/);
+    expect(installHintFor('cobol')).toBeNull();
   });
 });
 

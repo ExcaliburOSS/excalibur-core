@@ -58,8 +58,11 @@ agents list|show|init` + `run --agent <name>`. The allowlist only NARROWS the
    P1.8b (7cccf16/80f542d/bda5b01). 19 native tools; all read-only ones gated read-only. [Core][auto] — OC-P1.
 9. **Per-edit formatters** (prettier/biome/gofmt/rustfmt, auto on write) [Core][auto] —
    OC-P1. Zero-to-one: we have nothing today.
-10. **Auto-install LSP servers + widen coverage** (5 → ~28 langs) [Core][auto] — OC-P2.
-    Turns our (superior) LSP-in-loop integration into an asterisk-free win.
+10. **Widen LSP coverage (5 → ~28 langs) + precise install hints** ✅ SHIPPED — the
+    registry now maps ~28 languages to their conventional servers; a missing server
+    no longer fails silently — the `lsp` tool surfaces the exact install command.
+    [Core][auto] — OC-P2. _(Actual auto-INSTALL execution — running npm/go/rustup
+    mid-run, network-gated + opt-in — is split to follow-up **10b**.)_
 11. **Per-command bash deny globs** ✅ SHIPPED (476aaac) — `permissions.deniedCommands`
     hard-denies even when allowlisted (deny beats allow), checked before the allowlist.
     [Core][auto] — OC. _(Global user config layer split to **11b**.)_
