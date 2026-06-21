@@ -76,6 +76,8 @@ export interface StartRunOptions {
   extensionTools?: ExtensionTool[];
   /** Hard budget cap in cents. */
   budgetCents?: number;
+  /** Links the run to a work item (the work-item-centric cycle). */
+  workItemId?: string;
   /** Pre-built workflow catalog; built from the repo's extension host if omitted. */
   catalog?: ReadonlyArray<{ id: string; definition: WorkflowDefinition }>;
 }
@@ -202,6 +204,7 @@ export class RunController {
       methodology: null,
       model: options.config.models?.default ?? null,
       executionStyle,
+      ...(options.workItemId !== undefined ? { workItemId: options.workItemId } : {}),
     });
 
     const exec = new RunExecution(run.id, selection.workflowId);

@@ -29,6 +29,8 @@ export interface CreateRunInput {
   methodology?: string | null;
   model?: string | null;
   executionStyle?: ExecutionStyle | null;
+  /** The work item this run executes against (links the run to the kanban). */
+  workItemId?: string | null;
 }
 
 /** One `model-calls.jsonl` line (Build Contract §6). */
@@ -77,6 +79,9 @@ export class RunManager {
       executionStyle: input.executionStyle ?? null,
       startedAt: startedAt.toISOString(),
       completedAt: null,
+      ...(input.workItemId !== undefined && input.workItemId !== null
+        ? { workItemId: input.workItemId }
+        : {}),
     };
 
     this.writeRecord(dir, record);
@@ -140,6 +145,16 @@ export class RunManager {
       }
     }
     return runs;
+  }
+
+  /**
+   * The runs linked to a work item (newest first) — the work-item → runs
+   * back-link the dashboard/board use to show a work item's execution history.
+   */
+  runsForWorkItem(workItemId: string): LocalRun[] {
+    return this.listRuns()
+      .filter((run) => run.record.workItemId === workItemId)
+      .sort((a, b) => b.record.startedAt.localeCompare(a.record.startedAt));
   }
 
   latestRun(): LocalRun | null {

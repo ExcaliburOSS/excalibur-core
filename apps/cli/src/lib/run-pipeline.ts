@@ -65,6 +65,8 @@ export interface RunTaskOptions {
   diagnostics?: boolean;
   /** Hard per-run budget ceiling in US dollars (`--budget`); overrides config. */
   budgetUsd?: number;
+  /** Links the run to a work item (e.g. `work-items run` — the work-item-centric cycle). */
+  workItemId?: string;
   /** Internal: this IS the diagnostics-repair run — do not trigger another (recursion guard). */
   internalRepair?: boolean;
 }
@@ -507,6 +509,7 @@ export async function runTask(
     methodology,
     model: gatewayContext.providerName,
     executionStyle: choice.executionStyle,
+    ...(options.workItemId !== undefined ? { workItemId: options.workItemId } : {}),
   });
   deps.ui.write();
   deps.ui.info(deps.t('run-pipeline.runDir', { id: run.id, dir: run.dir }));

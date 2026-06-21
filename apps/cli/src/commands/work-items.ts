@@ -344,6 +344,9 @@ export function registerWorkItemsCommand(program: Command, deps: CliDeps): void 
         const record = await runTask(deps, task, {
           ...(options.careful === true ? { style: 'careful' as const } : {}),
           ...(options.yes === true ? { yes: true } : {}),
+          // Link the run to this work item (the work-item-centric cycle): the run
+          // record carries workItemId, so the board/dashboard show it under WI.
+          workItemId: item.key,
         });
         if (record === null) {
           return; // cancelled or diverted to Discovery

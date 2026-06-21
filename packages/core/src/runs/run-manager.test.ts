@@ -62,6 +62,19 @@ describe('RunManager', () => {
     expect(manager.getRun(run.id).record.status).toBe('completed');
   });
 
+  it('links a run to a work item and finds it via runsForWorkItem', () => {
+    const linked = manager.createRun({
+      title: 'Implement WI-7',
+      autonomyLevel: 3,
+      workflow: 'fast-fix',
+      workItemId: 'WI-7',
+    });
+    manager.createRun({ title: 'unrelated', autonomyLevel: 1, workflow: 'assist' });
+    expect(manager.getRun(linked.id).record.workItemId).toBe('WI-7');
+    expect(manager.runsForWorkItem('WI-7').map((r) => r.id)).toEqual([linked.id]);
+    expect(manager.runsForWorkItem('WI-999')).toEqual([]);
+  });
+
   it('appends model calls as JSONL lines', () => {
     const run = manager.createRun({ title: 'T', autonomyLevel: 1, workflow: 'assist' });
     manager.appendModelCall(run.id, {

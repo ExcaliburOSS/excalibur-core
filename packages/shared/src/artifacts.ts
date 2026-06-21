@@ -39,6 +39,12 @@ export const runRecordSchema = z.object({
    * Optional + nullable: ordinary runs omit it entirely (back-compatible).
    */
   forkedFrom: forkOriginSchema.nullable().optional(),
+  /**
+   * The work item this run executes against (work-item-centric cycle): runs and
+   * agents are LINKED to a work item, so a work item can show its runs/patches.
+   * Optional + nullable — ad-hoc runs omit it (back-compatible).
+   */
+  workItemId: z.string().nullable().optional(),
 });
 export type RunRecord = z.infer<typeof runRecordSchema>;
 
