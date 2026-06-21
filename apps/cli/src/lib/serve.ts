@@ -19,12 +19,35 @@ import { dashboardHtml } from './dashboard';
  * drive it with real requests; the command wires it to a port + the console.
  */
 
+/**
+ * The write surface (P0.3b). When supplied, `serve` becomes a control plane:
+ * POST endpoints start / cancel / approve runs (driven by a `RunController`).
+ * Omitted → the server stays strictly read-only (a POST returns 403). Injected
+ * (not built in `serve.ts`) so this module stays free of the run pipeline + so
+ * tests can drive it with a fake.
+ */
+export interface ServeWriteHandler {
+  /** Start a run for a task; returns its id. */
+  startRun(input: {
+    task: string;
+    workflow?: string;
+    autonomyLevel?: number;
+    executionStyle?: string;
+  }): Promise<{ runId: string }>;
+  /** Cancel a run; false if unknown. */
+  cancel(runId: string): boolean;
+  /** Answer a run's pending approval; false if the run is unknown. */
+  approve(runId: string, decision: boolean): boolean;
+}
+
 export interface ServeOptions {
   repoRoot: string;
   /** Shared secret required on every request (`?token=` or `Authorization: Bearer`). */
   token: string;
   /** Injectable clock for the SSE poll loop (tests). */
   pollMs?: number;
+  /** When set, enables the POST write surface (start/cancel/approve runs). */
+  write?: ServeWriteHandler;
 }
 
 interface Json {
@@ -187,7 +210,102 @@ function streamRun(repoRoot: string, id: string, res: ServerResponse, pollMs: nu
   res.on('close', () => clearInterval(timer));
 }
 
-/** Builds the (read-only, token-gated) Excalibur HTTP/SSE server. */
+/** Reads a JSON request body (capped at 1 MiB); `{}` for an empty body. */
+function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > 1_000_000) {
+        reject(new Error('request body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      const text = Buffer.concat(chunks).toString('utf8').trim();
+      if (text.length === 0) {
+        resolve({});
+        return;
+      }
+      try {
+        const value: unknown = JSON.parse(text);
+        resolve(
+          typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {},
+        );
+      } catch {
+        reject(new Error('invalid JSON body'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+/** Handles the POST write surface (start/cancel/approve). 403 when write is disabled. */
+async function handleWrite(
+  options: ServeOptions,
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+): Promise<void> {
+  const send = (status: number, body: unknown): void => {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(body));
+  };
+  if (options.write === undefined) {
+    send(403, { error: 'write surface disabled — start the server with `serve --write`' });
+    return;
+  }
+  const path = url.pathname.replace(/\/+$/, '') || '/';
+  try {
+    if (path === '/api/runs') {
+      const body = await readJsonBody(req);
+      const task = typeof body['task'] === 'string' ? body['task'].trim() : '';
+      if (task.length === 0) {
+        send(400, { error: 'a non-empty "task" is required' });
+        return;
+      }
+      const out = await options.write.startRun({
+        task,
+        ...(typeof body['workflow'] === 'string' ? { workflow: body['workflow'] } : {}),
+        ...(typeof body['autonomyLevel'] === 'number'
+          ? { autonomyLevel: body['autonomyLevel'] }
+          : {}),
+        ...(typeof body['executionStyle'] === 'string'
+          ? { executionStyle: body['executionStyle'] }
+          : {}),
+      });
+      send(201, out);
+      return;
+    }
+    const match = /^\/api\/runs\/([^/]+)\/(cancel|approve)$/.exec(path);
+    if (match !== null) {
+      const id = decodeURIComponent(match[1] as string);
+      if (!RUN_ID.test(id)) {
+        send(400, { error: 'invalid run id' });
+        return;
+      }
+      if (match[2] === 'cancel') {
+        send(200, { cancelled: options.write.cancel(id) });
+        return;
+      }
+      const body = await readJsonBody(req);
+      if (typeof body['decision'] !== 'boolean') {
+        send(400, { error: 'a boolean "decision" is required' });
+        return;
+      }
+      send(200, { ok: options.write.approve(id, body['decision']) });
+      return;
+    }
+    send(404, { error: 'not found' });
+  } catch (error) {
+    send(400, { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+/** Builds the token-gated Excalibur HTTP/SSE server (read-only, or +write surface). */
 export function createExcaliburServer(options: ServeOptions): Server {
   const pollMs = options.pollMs ?? 500;
   return createServer((req, res) => {
@@ -195,6 +313,11 @@ export function createExcaliburServer(options: ServeOptions): Server {
     if (tokenOf(req, url) !== options.token) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'unauthorized — pass ?token= or Authorization: Bearer' }));
+      return;
+    }
+    // Mutations go through the POST write surface (start/cancel/approve runs).
+    if (req.method === 'POST') {
+      void handleWrite(options, req, res, url);
       return;
     }
     let result: Json | Html | 'sse' | null;

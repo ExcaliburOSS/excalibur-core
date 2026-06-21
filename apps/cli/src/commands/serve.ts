@@ -1,8 +1,44 @@
 import { randomBytes } from 'node:crypto';
 import type { Command } from 'commander';
+import { RunController } from '@excalibur/core';
+import { executionStyleSchema, isAutonomyLevel, type ExecutionStyle } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
-import { createExcaliburServer } from '../lib/serve';
+import { loadConfigContext, loadGatewayContext } from '../lib/context';
+import { createExcaliburServer, type ServeWriteHandler } from '../lib/serve';
+
+/** Builds the control-plane write handler: start/cancel/approve runs via a RunController. */
+function buildWriteHandler(repoRoot: string): ServeWriteHandler {
+  const { config } = loadConfigContext(repoRoot);
+  const { gateway } = loadGatewayContext(repoRoot);
+  const controller = new RunController();
+  return {
+    startRun: async (input) => {
+      const style = executionStyleSchema.safeParse(input.executionStyle);
+      const handle = await controller.startRun({
+        repoRoot,
+        task: input.task,
+        gateway,
+        config,
+        ...(input.workflow !== undefined ? { workflow: input.workflow } : {}),
+        ...(input.autonomyLevel !== undefined && isAutonomyLevel(input.autonomyLevel)
+          ? { autonomyLevel: input.autonomyLevel }
+          : {}),
+        ...(style.success ? { executionStyle: style.data as ExecutionStyle } : {}),
+      });
+      return { runId: handle.runId };
+    },
+    cancel: (runId) => controller.cancel(runId),
+    approve: (runId, decision) => {
+      const handle = controller.get(runId);
+      if (handle === undefined) {
+        return false;
+      }
+      handle.approve(decision);
+      return true;
+    },
+  };
+}
 
 /**
  * `excalibur serve [--port N] [--host H]` — a local, read-only HTTP + SSE server
@@ -19,7 +55,11 @@ export function registerServeCommand(program: Command, deps: CliDeps): void {
     .option('--port <n>', 'port to listen on', '4319')
     .option('--host <host>', 'host to bind (localhost by default for safety)', '127.0.0.1')
     .option('--token <token>', 'shared secret (default: a random per-process token)')
-    .action((options: { port?: string; host?: string; token?: string }) => {
+    .option(
+      '--write',
+      'enable the control-plane write surface (POST start/cancel/approve runs) — runs EXECUTE',
+    )
+    .action((options: { port?: string; host?: string; token?: string; write?: boolean }) => {
       const port = Number.parseInt(options.port ?? '4319', 10);
       if (!Number.isInteger(port) || port < 1 || port > 65535) {
         throw new CliUsageError(`--port must be 1..65535 (got "${options.port}").`);
@@ -28,7 +68,12 @@ export function registerServeCommand(program: Command, deps: CliDeps): void {
       const token = options.token ?? randomBytes(16).toString('hex');
       const repoRoot = deps.cwd();
 
-      const server = createExcaliburServer({ repoRoot, token });
+      const write = options.write === true ? buildWriteHandler(repoRoot) : undefined;
+      const server = createExcaliburServer({
+        repoRoot,
+        token,
+        ...(write !== undefined ? { write } : {}),
+      });
       server.on('error', (error: NodeJS.ErrnoException) => {
         if (error.code === 'EADDRINUSE') {
           deps.ui.error(deps.t('serve.port-in-use', { port }));
@@ -42,6 +87,11 @@ export function registerServeCommand(program: Command, deps: CliDeps): void {
         deps.ui.success(deps.t('serve.listening', { base }));
         deps.ui.write(deps.t('serve.token', { token }));
         deps.ui.write(deps.t('serve.example', { base, token }));
+        if (write !== undefined) {
+          deps.ui.warn(
+            'Write surface ENABLED: POST /api/runs (start), /api/runs/:id/cancel, /api/runs/:id/approve — these EXECUTE runs. Keep the token secret + the bind localhost.',
+          );
+        }
         deps.ui.write(deps.t('serve.stop'));
       });
 
