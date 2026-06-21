@@ -10,6 +10,7 @@ import {
   type UpdateWorkItemInput,
   type WorkItemProvider,
 } from '@excalibur/work-items';
+import { RunManager } from '@excalibur/core';
 import type { Command } from 'commander';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
@@ -173,6 +174,17 @@ export function registerWorkItemsCommand(program: Command, deps: CliDeps): void 
           );
         }
       }
+      // Work-item-centric rollup (W2): the runs this work item drove.
+      const runs = new RunManager(deps.cwd()).runsForWorkItem(item.key);
+      if (runs.length > 0) {
+        deps.ui.write();
+        deps.ui.write(pc.dim(`runs (${runs.length}):`));
+        for (const r of runs) {
+          deps.ui.write(
+            `  ${pc.bold(r.record.id)}  ${statusColor(r.record.status)}  ${r.record.title}`,
+          );
+        }
+      }
     });
 
   wi.command('status')
@@ -204,12 +216,22 @@ export function registerWorkItemsCommand(program: Command, deps: CliDeps): void 
         deps.ui.info('No local work items yet — create one with `excalibur work-items create`.');
         return;
       }
+      // Roll up runs by work item once (W2): show how many runs each card drove.
+      const runCountByWorkItem = new Map<string, number>();
+      for (const run of new RunManager(deps.cwd()).listRuns()) {
+        const wi = run.record.workItemId;
+        if (wi !== undefined && wi !== null) {
+          runCountByWorkItem.set(wi, (runCountByWorkItem.get(wi) ?? 0) + 1);
+        }
+      }
       for (const { lane, items } of board) {
         deps.ui.write(pc.bold(`${WORK_ITEM_LANE_LABELS[lane]} (${items.length})`));
         for (const item of items) {
           const priority = item.priority !== null ? pc.dim(`[${item.priority}] `) : '';
           const assignee = item.assignee?.name ? pc.dim(` @${item.assignee.name}`) : '';
-          deps.ui.write(`  ${pc.bold(item.key)}  ${priority}${item.title}${assignee}`);
+          const runs = runCountByWorkItem.get(item.key) ?? 0;
+          const runBadge = runs > 0 ? pc.dim(` (${runs} run${runs === 1 ? '' : 's'})`) : '';
+          deps.ui.write(`  ${pc.bold(item.key)}  ${priority}${item.title}${assignee}${runBadge}`);
         }
         deps.ui.write();
       }

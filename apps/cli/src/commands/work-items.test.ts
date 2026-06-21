@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { RunManager } from '@excalibur/core';
 import { createTestCli, makeTempRepo, removeDir } from '../test-utils';
 
-/** WK2: the local kanban CLI — create → board → move → edit → delete. */
+/** WK2: the local kanban CLI — create → board → move → edit → delete.  W2: run rollups. */
 
 describe('excalibur work-items (local kanban CLI)', () => {
   let repo: string;
@@ -69,5 +70,24 @@ describe('excalibur work-items (local kanban CLI)', () => {
     const cli = createTestCli({ cwd: repo });
     await cli.run('work-items', 'board');
     expect(cli.stdout()).toMatch(/No local work items/);
+  });
+
+  it('rolls up the runs a work item drove — show + board (W2)', async () => {
+    await createTestCli({ cwd: repo }).run('work-items', 'create', 'Tracked task');
+    // Link a run to WI-1 (as `work-items run` / `run --work-item` would).
+    new RunManager(repo).createRun({
+      title: 'do WI-1',
+      autonomyLevel: 3,
+      workflow: 'fast-fix',
+      workItemId: 'WI-1',
+    });
+
+    const show = createTestCli({ cwd: repo });
+    await show.run('work-items', 'show', 'WI-1', '--local');
+    expect(show.stdout()).toMatch(/runs \(1\)/);
+
+    const board = createTestCli({ cwd: repo });
+    await board.run('work-items', 'board');
+    expect(board.stdout()).toMatch(/1 run/);
   });
 });
