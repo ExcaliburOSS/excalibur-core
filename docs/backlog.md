@@ -51,9 +51,11 @@ overhaul · **npm publish 1.2.0** (`@excalibur-oss/excalibur`, `latest`).
 agents list|show|init` + `run --agent <name>`. The allowlist only NARROWS the
    role floor (deny wins); agent permissions union the project denials. _(Interactive
    shell `/agent` selection is follow-up **7b**.)_ [Core][auto] — OC-P1.
-8. **Model-callable tools: `edit` (surgical find/replace), `skill` (lazy-load),
-   `question`, `lsp`** [Core][auto] — OC-P1. `edit` saves tokens vs full rewrite;
-   `skill` gives progressive disclosure; `lsp`/`question` give defs/refs + clarifications.
+8. **Model-callable tools: `edit` · `skill` · `question` · `lsp`** ✅ SHIPPED — `edit`
+   (P1.8) surgical find/replace; `lsp` (def/refs/hover), `question` (clarify the
+   human, graceful-proceed headless) and `skill` (progressive disclosure: system
+   prompt lists project SKILL.md by name, model pulls the body on demand) all in
+   P1.8b (7cccf16/80f542d/bda5b01). 19 native tools; all read-only ones gated read-only. [Core][auto] — OC-P1.
 9. **Per-edit formatters** (prettier/biome/gofmt/rustfmt, auto on write) [Core][auto] —
    OC-P1. Zero-to-one: we have nothing today.
 10. **Auto-install LSP servers + widen coverage** (5 → ~28 langs) [Core][auto] — OC-P2.
