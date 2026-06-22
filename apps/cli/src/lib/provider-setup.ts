@@ -131,6 +131,11 @@ function pairConfig(entry: ProviderCatalogEntry, apiKeyEnv: string): ProvidersFi
   if (entry.contextWindow !== undefined) {
     good.contextWindow = entry.contextWindow;
   }
+  // Persist the declared capabilities on the default provider (P1.14) so
+  // `models list` + the `/models` picker can route/surface by capability.
+  if (entry.capabilities !== undefined) {
+    good.capabilities = entry.capabilities;
+  }
   return {
     providers: {
       default: entry.key,

@@ -68,6 +68,12 @@ export interface ProviderCatalogEntry {
   /** Suggested API key env var NAME (never a value). */
   apiKeyEnv: string;
   contextWindow?: number;
+  /**
+   * Declared capabilities of the GOOD model (P1.14): written to the default
+   * provider's `capabilities` in providers.yaml, surfaced by `excalibur models
+   * list` and the in-shell `/models` picker. Absent → unknown / assume baseline.
+   */
+  capabilities?: { reasoning?: boolean; vision?: boolean; tools?: boolean };
   /** Verified good+fast pair for the API-key rail; absent → single-model only. */
   pair?: CatalogPair;
   /** Subscription path; absent → API-key only (e.g. DeepSeek/OpenRouter). */
@@ -87,6 +93,7 @@ export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
     baseUrl: 'https://api.moonshot.ai/v1',
     apiKeyEnv: 'MOONSHOT_API_KEY',
     contextWindow: 262144,
+    capabilities: { reasoning: true, tools: true },
     pair: {
       good: 'kimi-k2.7-code',
       fast: 'moonshot-v1-8k',
@@ -110,6 +117,7 @@ export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
     type: 'openai-compatible',
     baseUrl: 'https://api.minimax.io/v1',
     apiKeyEnv: 'MINIMAX_API_KEY',
+    capabilities: { reasoning: true, tools: true },
     pair: {
       good: 'MiniMax-M2',
       fast: 'MiniMax-Text-01',
@@ -136,6 +144,7 @@ export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
     baseUrl: 'https://api.z.ai/api/paas/v4',
     apiKeyEnv: 'ZAI_API_KEY',
     contextWindow: 200000,
+    capabilities: { reasoning: true, tools: true },
     pair: {
       good: 'glm-4.6',
       fast: 'glm-4.5-air',
@@ -161,6 +170,7 @@ export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
     hint: 'Claude Pro/Max subscription (via Claude Code) or API · Opus + Haiku',
     type: 'anthropic',
     apiKeyEnv: 'ANTHROPIC_API_KEY',
+    capabilities: { reasoning: true, vision: true, tools: true },
     pair: {
       good: 'claude-opus-4-8',
       fast: 'claude-haiku-4-5',
@@ -184,6 +194,7 @@ export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
     type: 'openai-compatible',
     baseUrl: 'https://api.openai.com/v1',
     apiKeyEnv: 'OPENAI_API_KEY',
+    capabilities: { reasoning: true, vision: true, tools: true },
     pair: {
       good: 'gpt-5.5',
       fast: 'gpt-5.4-nano',
@@ -206,6 +217,7 @@ export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
     type: 'openai-compatible',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     apiKeyEnv: 'GEMINI_API_KEY',
+    capabilities: { reasoning: true, vision: true, tools: true },
     pair: {
       good: 'gemini-3.5-flash',
       fast: 'gemini-3.1-flash-lite',
@@ -231,6 +243,7 @@ export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
     type: 'openai-compatible',
     baseUrl: 'https://api.deepseek.com',
     apiKeyEnv: 'DEEPSEEK_API_KEY',
+    capabilities: { reasoning: true, tools: true },
     pair: {
       good: 'deepseek-v4-pro',
       fast: 'deepseek-v4-flash',
@@ -252,6 +265,78 @@ export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
       fastLowLatency:
         "reasoning_effort='minimal' (the genuine floor; 'none' doesn't disable on this Gemini-3 model); use nitro/exacto routing",
       fastExtraBody: { reasoning_effort: 'minimal' },
+    },
+  },
+  {
+    key: 'groq',
+    label: 'Groq',
+    hint: 'free tier · ultra-fast inference · gpt-oss + Llama',
+    type: 'openai-compatible',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    apiKeyEnv: 'GROQ_API_KEY',
+    contextWindow: 131072,
+    capabilities: { reasoning: true, tools: true },
+    pair: {
+      // Verified against Groq's live /v1/models (mid-2026).
+      good: 'openai/gpt-oss-120b',
+      fast: 'llama-3.1-8b-instant',
+      fastLowLatency: 'llama-3.1-8b-instant is non-reasoning and extremely fast on Groq',
+    },
+  },
+  {
+    key: 'xai',
+    label: 'xAI (Grok)',
+    hint: 'API · grok-4 + grok-4-fast',
+    type: 'openai-compatible',
+    baseUrl: 'https://api.x.ai/v1',
+    apiKeyEnv: 'XAI_API_KEY',
+    capabilities: { reasoning: true, vision: true, tools: true },
+    pair: {
+      good: 'grok-4',
+      fast: 'grok-4-fast',
+      fastLowLatency: 'grok-4-fast is the low-latency variant for ghost-text/compaction',
+    },
+  },
+  {
+    key: 'cerebras',
+    label: 'Cerebras',
+    hint: 'free tier · fastest inference (wafer-scale) · Qwen + Llama',
+    type: 'openai-compatible',
+    baseUrl: 'https://api.cerebras.ai/v1',
+    apiKeyEnv: 'CEREBRAS_API_KEY',
+    capabilities: { reasoning: true, tools: true },
+    pair: {
+      good: 'qwen-3-coder-480b',
+      fast: 'llama-3.3-70b',
+      fastLowLatency: 'Cerebras serves all models at very low latency; the 70b is the snappy pick',
+    },
+  },
+  {
+    key: 'together',
+    label: 'Together AI',
+    hint: 'API · open models (DeepSeek, Qwen, Llama)',
+    type: 'openai-compatible',
+    baseUrl: 'https://api.together.xyz/v1',
+    apiKeyEnv: 'TOGETHER_API_KEY',
+    capabilities: { tools: true },
+    pair: {
+      good: 'deepseek-ai/DeepSeek-V3',
+      fast: 'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+      fastLowLatency: 'the Turbo Llama is the low-latency fast pick',
+    },
+  },
+  {
+    key: 'fireworks',
+    label: 'Fireworks AI',
+    hint: 'API · fast open-model serving',
+    type: 'openai-compatible',
+    baseUrl: 'https://api.fireworks.ai/inference/v1',
+    apiKeyEnv: 'FIREWORKS_API_KEY',
+    capabilities: { tools: true },
+    pair: {
+      good: 'accounts/fireworks/models/deepseek-v3',
+      fast: 'accounts/fireworks/models/llama-v3p1-8b-instruct',
+      fastLowLatency: 'the 8b instruct model is the low-latency fast pick',
     },
   },
 ];

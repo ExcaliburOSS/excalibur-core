@@ -75,4 +75,24 @@ describe('PROVIDER_CATALOG integrity', () => {
     // API-only providers have no subscription branch.
     expect(catalogEntry('deepseek')?.subscription).toBeUndefined();
   });
+
+  it('includes the P1.14 providers (broad catalog)', () => {
+    for (const key of ['groq', 'xai', 'cerebras', 'together', 'fireworks']) {
+      const entry = catalogEntry(key);
+      expect(entry, key).toBeDefined();
+      expect(entry?.pair?.good.length ?? 0).toBeGreaterThan(0);
+    }
+  });
+
+  it('declared capabilities are well-formed booleans (P1.14)', () => {
+    for (const entry of PROVIDER_CATALOG) {
+      if (entry.capabilities === undefined) continue;
+      for (const value of Object.values(entry.capabilities)) {
+        expect(typeof value).toBe('boolean');
+      }
+    }
+    // Spot-check a few known capabilities.
+    expect(catalogEntry('anthropic')?.capabilities?.vision).toBe(true);
+    expect(catalogEntry('kimi')?.capabilities?.reasoning).toBe(true);
+  });
 });
