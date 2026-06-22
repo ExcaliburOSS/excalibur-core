@@ -34,6 +34,19 @@ export const providerConfigSchema = z.object({
   maxRetries: z.number().int().nonnegative().optional(),
   /** Advertised context-window size (tokens); informational for clients. */
   contextWindow: z.number().int().positive().optional(),
+  /**
+   * Declared model capabilities (P1.14) — informational metadata clients use to
+   * route by capability (e.g. pick a `reasoning` model for review, a `vision`
+   * model for image input) and to surface in `excalibur models list`. Optional
+   * and additive; absent means "unknown / assume baseline text + tools".
+   */
+  capabilities: z
+    .object({
+      reasoning: z.boolean().optional(),
+      vision: z.boolean().optional(),
+      tools: z.boolean().optional(),
+    })
+    .optional(),
   /** Anthropic `anthropic-version` header override (e.g. `2023-06-01`). */
   apiVersion: z.string().min(1).optional(),
   /** OpenAI-compatible `openai-organization` header value. */

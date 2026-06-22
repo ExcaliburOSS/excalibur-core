@@ -68,6 +68,19 @@ function toWireMessage(message: ChatMessage): Record<string, unknown> {
       })),
     };
   }
+  // Vision (P1.14): a message with images becomes the OpenAI multimodal content
+  // array — the text part plus one `image_url` part per image (URL or data: URL).
+  // Only user/assistant carry images; text-only messages keep a plain string.
+  if (message.images !== undefined && message.images.length > 0) {
+    const parts: Array<Record<string, unknown>> = [];
+    if (message.content.length > 0) {
+      parts.push({ type: 'text', text: message.content });
+    }
+    for (const image of message.images) {
+      parts.push({ type: 'image_url', image_url: { url: image.url } });
+    }
+    return { role: message.role, content: parts };
+  }
   return { role: message.role, content: message.content };
 }
 
@@ -132,6 +145,12 @@ export class OpenAICompatibleAdapter extends BaseHttpProvider {
           parameters: tool.parameters,
         },
       }));
+    }
+    // Reasoning effort (P1.14): the OpenAI-compatible knob for reasoning models.
+    // An explicit request value wins over a provider's reasoning-off `extraBody`
+    // because `payload` is merged OVER `extra` below.
+    if (input.reasoningEffort !== undefined) {
+      payload['reasoning_effort'] = input.reasoningEffort;
     }
     if (stream) {
       payload['stream_options'] = { include_usage: true };

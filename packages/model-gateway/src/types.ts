@@ -27,9 +27,25 @@ export interface ToolCall {
   arguments: Record<string, unknown>;
 }
 
+/**
+ * An image attached to a message for vision-capable models (P1.14). The URL may
+ * be an `https://…` link or a `data:<mediaType>;base64,…` URL (e.g. a local file
+ * encoded by the caller). Additive — text-only messages omit `images`.
+ */
+export interface ImagePart {
+  url: string;
+}
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  /**
+   * Images to send alongside `content` to a vision-capable model (P1.14). The
+   * `content` string stays the text part; adapters that support vision combine
+   * the two into the provider's multimodal wire form. Text-only providers ignore
+   * it. Additive — kept separate so `content` remains a plain string everywhere.
+   */
+  images?: ImagePart[];
   /**
    * Tool calls this assistant turn requested (when the model asked to call one
    * or more tools). Present only on `assistant` messages that requested tools.
@@ -42,6 +58,13 @@ export interface ChatMessage {
   toolCallId?: string;
 }
 
+/**
+ * How hard a reasoning-capable model should think (P1.14). Maps to the
+ * provider's reasoning knob (OpenAI-style `reasoning_effort`, etc.). Additive —
+ * omit it for non-reasoning models / default behavior.
+ */
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
+
 export interface ChatInput {
   model?: string;
   messages: ChatMessage[];
@@ -52,6 +75,13 @@ export interface ChatInput {
    * and additive — text-only requests omit it and behave exactly as before.
    */
   tools?: ToolSpec[];
+  /**
+   * Reasoning effort for a reasoning-capable model (P1.14). Adapters map it to
+   * the provider's knob (e.g. OpenAI-compatible `reasoning_effort`). Additive —
+   * omit for non-reasoning models. An explicit value overrides a provider's
+   * configured reasoning-off `extraBody`.
+   */
+  reasoningEffort?: ReasoningEffort;
   metadata?: Record<string, unknown>;
   /**
    * Per-request timeout in milliseconds for real provider adapters (OSS-4, M2).

@@ -246,6 +246,60 @@ describe('OpenAICompatibleAdapter', () => {
     expect(body.thinking).toEqual({ type: 'disabled' }); // additive key survives
   });
 
+  it('sends reasoning_effort when requested, overriding a reasoning-off extraBody (P1.14)', async () => {
+    const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);
+    const adapter = new OpenAICompatibleAdapter({
+      name: 'reasoner',
+      cfg: openaiCfg({ extraBody: { reasoning_effort: 'none' } }),
+      transport,
+      hooks,
+    });
+    await adapter.chat({ ...input, reasoningEffort: 'high' });
+    const body = JSON.parse(transport.requests[0]?.request.body ?? '{}');
+    // An explicit request value wins over the pinned reasoning-off knob.
+    expect(body.reasoning_effort).toBe('high');
+  });
+
+  it('omits reasoning_effort when not requested', async () => {
+    const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);
+    const adapter = new OpenAICompatibleAdapter({ name: 'q', cfg: openaiCfg(), transport, hooks });
+    await adapter.chat(input);
+    const body = JSON.parse(transport.requests[0]?.request.body ?? '{}');
+    expect('reasoning_effort' in body).toBe(false);
+  });
+
+  it('maps message images to the OpenAI multimodal content array (vision, P1.14)', async () => {
+    const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);
+    const adapter = new OpenAICompatibleAdapter({ name: 'q', cfg: openaiCfg(), transport, hooks });
+    await adapter.chat({
+      ...input,
+      messages: [
+        {
+          role: 'user',
+          content: 'What is in this image?',
+          images: [{ url: 'https://example.test/a.png' }, { url: 'data:image/png;base64,iVBOR' }],
+        },
+      ],
+    });
+    const body = JSON.parse(transport.requests[0]?.request.body ?? '{}');
+    const parts = body.messages[0].content;
+    expect(Array.isArray(parts)).toBe(true);
+    expect(parts[0]).toEqual({ type: 'text', text: 'What is in this image?' });
+    expect(parts[1]).toEqual({ type: 'image_url', image_url: { url: 'https://example.test/a.png' } });
+    expect(parts[2]).toEqual({
+      type: 'image_url',
+      image_url: { url: 'data:image/png;base64,iVBOR' },
+    });
+  });
+
+  it('keeps content a plain string when a message has no images', async () => {
+    const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);
+    const adapter = new OpenAICompatibleAdapter({ name: 'q', cfg: openaiCfg(), transport, hooks });
+    await adapter.chat(input);
+    const body = JSON.parse(transport.requests[0]?.request.body ?? '{}');
+    expect(typeof body.messages[0].content).toBe('string');
+  });
+
   it('stream() concatenation equals content, parses [DONE] and the final usage chunk', async () => {
     const transport = new QueueTransport([
       fakeResponse({ body: fixture('openai.stream.sse.txt') }),
