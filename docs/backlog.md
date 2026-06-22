@@ -167,17 +167,27 @@ backend. Tasks #153–#167, plus the foundational **Epic W** (#169–#174) below
 > work-item) sit in a secondary "Unassigned"/Runs tab. (See the
 > `dashboard-task-centric` decision memory.) Today's dashboard is run-centric and
 > must be reframed.
+>
+> **STACK (decided 2026-06-22, D0):** the dashboard is a **Svelte 5 + Vite + TS**
+> SPA compiled by `vite-plugin-singlefile` to ONE self-contained `index.html`,
+> **embedded into the CLI** (the build copies it to `dist/dashboard.html`) and
+> served by `excalibur serve` at `/`. One process, no extra setup, framework
+> compiles away → small bundle. Supersedes the earlier "vanilla JS" note. Wire
+> contracts live in `@excalibur/shared` (`dashboard.ts`); the server maps domain
+> → DTO in `apps/cli/src/lib/dashboard-data.ts`.
 
-- **D0 (P1, foundational) Run↔work-item link + task-first IA** — add an optional
-  `workItemId` to the run record; a run started from a work-item (`work-items run`)
-  links to it; the serve API exposes work-items with their associated runs/patches.
-  The dashboard's information architecture becomes work-item → (runs, patches, PRs,
-  checklist, plan, discovery). Everything else in Epic A builds on this.
+- **D0 (P1, foundational) Run↔work-item link + task-first IA — ✅ DONE (ac6c994).**
+  `RunRecord.workItemId` + `runsForWorkItem` already existed (W0); D0 added the
+  web layer: shared dashboard contracts, the `apps/dashboard` Svelte SPA skeleton
+  (task-first nav: Board/Runs/Insights/Plans + work-item drill-down), the serve
+  endpoints `GET /api/board` + `GET /api/work-items/:key`, and the embed pipeline.
+  Verified e2e vs a real `excalibur serve`. Everything else in Epic A builds on this.
 - **D1 (P1) Task/work-item board (the HOME)** — kanban columns by work-item status
   (Backlog / Todo / In-progress / Review / Done); cards are work-items (local
   `.excalibur/work-items/*.json`) + the live `update_tasks` checklist of the active
-  run feeding the in-progress card. Vanilla JS (keep the zero-dep bundle). The board
-  is the landing view, not the runs table.
+  run feeding the in-progress card. (Read-only board already renders in D0; D1 =
+  full board polish + the live checklist.) The board is the landing view, not the
+  runs table.
 - **D2 (P1) Interactive board actions** — drag-to-change work-item status, approve
   gates, start a run on a work-item, cancel runs — from the browser. **Blocked by
   P0.3** (needs the programmable serve write API).
