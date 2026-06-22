@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXCALIBUR_DIR } from '../config/load-config';
 
@@ -87,4 +87,105 @@ export function savePlan(repoRoot: string, input: SavePlanInput): string {
   const body = `# Plan: ${input.task}\n\n${input.planMarkdown.trim()}\n`;
   writeFileSync(file, `${frontmatter}${body}`, 'utf8');
   return file;
+}
+
+/** A parsed plan artifact (frontmatter + markdown body), as read back from disk. */
+export interface StoredPlan {
+  /** The filename without `.md` — the stable plan id (e.g. `20260622-101500-ship-d3`). */
+  id: string;
+  task: string;
+  status: PlanStatus;
+  planRun: string | null;
+  execRun: string | null;
+  /** ISO timestamp from the frontmatter, or null if absent/unparseable. */
+  created: string | null;
+  /** The markdown body (without the frontmatter block). */
+  body: string;
+}
+
+const PLAN_STATUSES: ReadonlySet<string> = new Set([
+  'proposed',
+  'approved',
+  'executed',
+  'cancelled',
+]);
+
+/** Unescapes a YAML double-quoted scalar as written by {@link savePlan}. */
+function unquote(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) {
+    return trimmed.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
+  return trimmed;
+}
+
+/** Splits a plan file into its (simple) frontmatter map and the body markdown. */
+function parsePlanFile(id: string, content: string): StoredPlan | null {
+  const match = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(content);
+  if (match === null) {
+    return null; // not a frontmatter doc → skip
+  }
+  const fields: Record<string, string> = {};
+  for (const line of (match[1] ?? '').split('\n')) {
+    const kv = /^([a-zA-Z]+):\s*(.*)$/.exec(line);
+    if (kv !== null) {
+      fields[kv[1] as string] = kv[2] as string;
+    }
+  }
+  const statusRaw = (fields['status'] ?? '').trim();
+  const status: PlanStatus = PLAN_STATUSES.has(statusRaw) ? (statusRaw as PlanStatus) : 'proposed';
+  return {
+    id,
+    task: fields['task'] !== undefined ? unquote(fields['task']) : id,
+    status,
+    planRun: fields['planRun'] !== undefined ? fields['planRun'].trim() : null,
+    execRun: fields['execRun'] !== undefined ? fields['execRun'].trim() : null,
+    created: fields['created'] !== undefined ? fields['created'].trim() : null,
+    body: (match[2] ?? '').trim(),
+  };
+}
+
+/**
+ * Reads one plan by id (filename without `.md`), or null if it does not exist /
+ * is not a valid plan doc. The id is confined to a single path segment so it
+ * can never escape the plans folder.
+ */
+export function readPlan(repoRoot: string, id: string): StoredPlan | null {
+  if (id.length === 0 || id.includes('/') || id.includes('\\') || id.includes('..')) {
+    return null;
+  }
+  const file = join(plansDir(repoRoot), `${id}.md`);
+  if (!existsSync(file)) {
+    return null;
+  }
+  try {
+    return parsePlanFile(id, readFileSync(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Lists all saved plans, NEWEST FIRST (the `<stamp>-<slug>` filenames sort
+ * chronologically, so a reverse lexical sort is newest-first). Never throws — a
+ * missing folder or an unparseable file is skipped.
+ */
+export function listPlans(repoRoot: string): StoredPlan[] {
+  const dir = plansDir(repoRoot);
+  let names: string[];
+  try {
+    names = readdirSync(dir).filter((n) => n.endsWith('.md'));
+  } catch {
+    return []; // no plans folder yet
+  }
+  names.sort((a, b) => b.localeCompare(a)); // newest first
+  const plans: StoredPlan[] = [];
+  for (const name of names) {
+    const id = name.slice(0, -'.md'.length);
+    const plan = readPlan(repoRoot, id);
+    if (plan !== null) {
+      plans.push(plan);
+    }
+  }
+  return plans;
 }

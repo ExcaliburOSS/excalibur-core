@@ -61,10 +61,13 @@ export {
 } from './swarm/agent-allocation';
 export {
   savePlan,
+  listPlans,
+  readPlan,
   plansDir,
   slugify,
   type PlanStatus,
   type SavePlanInput,
+  type StoredPlan,
 } from './plans/plan-store';
 export {
   planVerificationMesh,

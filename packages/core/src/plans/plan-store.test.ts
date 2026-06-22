@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { makeTempDir, removeDir } from '../test-utils';
-import { plansDir, savePlan, slugify } from './plan-store';
+import { listPlans, plansDir, readPlan, savePlan, slugify } from './plan-store';
 
 describe('slugify', () => {
   it('produces a filesystem-safe, capped slug', () => {
@@ -58,6 +58,60 @@ describe('savePlan', () => {
       const md = readFileSync(file, 'utf8');
       expect(md).toContain('status: approved');
       expect(md).not.toContain('execRun:');
+    } finally {
+      removeDir(repo);
+    }
+  });
+});
+
+describe('listPlans / readPlan (D3 reader)', () => {
+  it('round-trips saved plans, newest first, parsing the frontmatter', () => {
+    const repo = makeTempDir();
+    try {
+      savePlan(repo, {
+        task: 'First "quoted" task',
+        planMarkdown: '1. alpha',
+        status: 'approved',
+        planRunId: 'run_p1',
+        now: new Date('2026-06-17T09:00:00.000Z'),
+      });
+      savePlan(repo, {
+        task: 'Second task',
+        planMarkdown: '1. beta\n2. gamma',
+        status: 'executed',
+        planRunId: 'run_p2',
+        execRunId: 'run_e2',
+        now: new Date('2026-06-18T09:00:00.000Z'),
+      });
+
+      const plans = listPlans(repo);
+      expect(plans).toHaveLength(2);
+      // Newest first (2026-06-18 before 2026-06-17).
+      expect(plans[0]?.task).toBe('Second task');
+      expect(plans[0]?.status).toBe('executed');
+      expect(plans[0]?.planRun).toBe('run_p2');
+      expect(plans[0]?.execRun).toBe('run_e2');
+      // Quotes in the task are unescaped on read.
+      expect(plans[1]?.task).toBe('First "quoted" task');
+      expect(plans[1]?.execRun).toBeNull();
+
+      // readPlan by id returns the body too.
+      const one = readPlan(repo, plans[0]!.id);
+      expect(one?.body).toContain('2. gamma');
+      expect(one?.created).toBe('2026-06-18T09:00:00.000Z');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('returns [] when there is no plans folder and null for unknown / unsafe ids', () => {
+    const repo = makeTempDir();
+    try {
+      expect(listPlans(repo)).toEqual([]);
+      expect(readPlan(repo, 'nope')).toBeNull();
+      // Path-traversal ids are refused.
+      expect(readPlan(repo, '../../etc/passwd')).toBeNull();
+      expect(readPlan(repo, 'a/b')).toBeNull();
     } finally {
       removeDir(repo);
     }
