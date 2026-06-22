@@ -12,6 +12,7 @@ export * from './discovery';
 export * from './errors';
 export * from './artifacts';
 export * from './config';
+export * from './dashboard';
 export * from './ids';
 export * from './i18n';
 export * from './instructions';

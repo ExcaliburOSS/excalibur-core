@@ -1,0 +1,118 @@
+<script lang="ts">
+  import { createRouter } from './lib/router.svelte';
+  import { t } from './lib/i18n';
+  import Board from './pages/Board.svelte';
+  import WorkItem from './pages/WorkItem.svelte';
+  import Runs from './pages/Runs.svelte';
+  import Insights from './pages/Insights.svelte';
+  import Plans from './pages/Plans.svelte';
+
+  const router = createRouter();
+
+  const NAV: { href: string; key: string; match: string[] }[] = [
+    { href: '#/', key: 'nav.board', match: ['board', 'workItem'] },
+    { href: '#/runs', key: 'nav.runs', match: ['runs', 'run'] },
+    { href: '#/insights', key: 'nav.insights', match: ['insights'] },
+    { href: '#/plans', key: 'nav.plans', match: ['plans'] },
+  ];
+</script>
+
+<div class="shell">
+  <header class="topbar">
+    <a class="brand" href="#/">
+      <span class="sword" aria-hidden="true">⚔</span>
+      <span class="word">Excalibur</span>
+      <span class="tag faint">{t('app.tagline')}</span>
+    </a>
+    <nav>
+      {#each NAV as item (item.href)}
+        <a href={item.href} class:active={item.match.includes(router.current.name)}>
+          {t(item.key)}
+        </a>
+      {/each}
+    </nav>
+  </header>
+
+  <main>
+    {#if router.current.name === 'board'}
+      <Board />
+    {:else if router.current.name === 'workItem'}
+      <WorkItem key={router.current.params.key ?? ''} />
+    {:else if router.current.name === 'runs' || router.current.name === 'run'}
+      <Runs />
+    {:else if router.current.name === 'insights'}
+      <Insights />
+    {:else if router.current.name === 'plans'}
+      <Plans />
+    {:else}
+      <div class="empty">{t('common.notFound')}</div>
+    {/if}
+  </main>
+</div>
+
+<style>
+  .shell {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 20px 64px;
+  }
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 10;
+  }
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    color: var(--text);
+  }
+  .brand:hover {
+    text-decoration: none;
+  }
+  .sword {
+    color: var(--accent);
+    font-size: 18px;
+  }
+  .word {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .tag {
+    font-size: 12px;
+  }
+  nav {
+    display: flex;
+    gap: 4px;
+  }
+  nav a {
+    color: var(--muted);
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-weight: 500;
+  }
+  nav a:hover {
+    color: var(--text);
+    background: var(--panel);
+    text-decoration: none;
+  }
+  nav a.active {
+    color: var(--text);
+    background: var(--panel-2);
+  }
+  main {
+    padding-top: 24px;
+  }
+  .empty {
+    padding: 64px 0;
+    text-align: center;
+    color: var(--muted);
+  }
+</style>

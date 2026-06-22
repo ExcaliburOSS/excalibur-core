@@ -1,0 +1,82 @@
+/*
+ * Excalibur dashboard design tokens (D0). Dark-first, editorial, monospace
+ * accents — consistent with the CLI's cyberpunk-sword identity. A single token
+ * layer here so D1–D5 views stay visually coherent without re-deciding colors.
+ */
+:root {
+  --bg: #0b0e14;
+  --panel: #11151f;
+  --panel-2: #161b27;
+  --line: #232b3a;
+  --line-strong: #33405a;
+  --text: #e6ebf5;
+  --muted: #8a96ab;
+  --faint: #5b6577;
+  --accent: #5b9dff;
+  --accent-dim: #2b4a7a;
+  --ok: #4ec9a8;
+  --warn: #e2b341;
+  --bad: #e5687a;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
+  --sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Inter, Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100%;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+code,
+.mono {
+  font-family: var(--mono);
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.muted {
+  color: var(--muted);
+}
+.faint {
+  color: var(--faint);
+}

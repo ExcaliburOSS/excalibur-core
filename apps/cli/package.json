@@ -41,7 +41,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node scripts/copy-dashboard.mjs",
     "dev": "tsx src/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
@@ -51,6 +51,7 @@
   "devDependencies": {
     "@excalibur/agent-runtime": "workspace:*",
     "@excalibur/built-in-extensions": "workspace:*",
+    "@excalibur/dashboard": "workspace:*",
     "@excalibur/context-engine": "workspace:*",
     "@excalibur/core": "workspace:*",
     "@excalibur/declarative-schemas": "workspace:*",

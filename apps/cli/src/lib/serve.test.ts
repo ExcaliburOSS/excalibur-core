@@ -1,9 +1,11 @@
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { RunManager } from '@excalibur/core';
+import { LocalWorkItemProvider } from '@excalibur/work-items';
 import { createEvent } from '@excalibur/shared';
 import type { Server } from 'node:http';
 import { createExcaliburServer } from './serve';
+import { dashboardHtml } from './dashboard';
 import { makeTempDir, removeDir } from '../test-utils';
 
 const TOKEN = 'test-token-abc';
@@ -13,9 +15,16 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
   let server: Server;
   let base: string;
   let runId: string;
+  let workItemKey: string;
 
   beforeAll(async () => {
     repoRoot = makeTempDir();
+    // A work item the board + drill-down endpoints surface (task-first IA, D0).
+    workItemKey = new LocalWorkItemProvider(repoRoot).createWorkItem({
+      title: 'Wire the dashboard',
+      status: 'in_progress',
+      labels: ['dashboard'],
+    }).key;
     const manager = new RunManager(repoRoot);
     const run = manager.createRun({
       title: 'Add a feature',
@@ -23,6 +32,7 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
       workflow: 'fast-fix',
       model: 'kimi',
       executionStyle: 'fast',
+      workItemId: workItemKey,
     });
     runId = run.id;
     manager.appendEvent(
@@ -74,25 +84,30 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
   const get = (path: string, token = TOKEN): Promise<Response> =>
     fetch(`${base}${path}${path.includes('?') ? '&' : '?'}token=${token}`);
 
-  it('serves the self-contained web dashboard at / (HTML, token-gated)', async () => {
+  it('serves a web dashboard at / (HTML, token-gated)', async () => {
     const res = await get('/');
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
     const html = await res.text();
-    expect(html).toContain('EXCALIBUR');
-    expect(html).toContain('/api/runs'); // the embedded client calls the API
-    expect(html).toContain('/api/insights');
-    // Stored-XSS guard: untrusted fields (run titles, agent event text) MUST be
-    // escaped before innerHTML, and a CSP limits exfiltration as defense-in-depth.
+    // Invariants true of BOTH the embedded Svelte app and the legacy fallback
+    // (which one serves depends on whether the dashboard has been built).
+    expect(html.toLowerCase()).toContain('excalibur');
+    expect(html).toContain('/api/'); // the client calls the JSON API
+    // The dashboard is behind the token too.
+    expect((await fetch(`${base}/`)).status).toBe(401);
+  });
+
+  it('the legacy fallback dashboard escapes untrusted fields + sets a CSP', () => {
+    // The inline page is the fallback when the Svelte build is absent; its
+    // stored-XSS guards (escape untrusted run titles / agent text) + CSP are
+    // verified directly so the assertion is independent of build state.
+    const html = dashboardHtml();
     expect(html).toContain('const esc=');
     expect(html).toContain('esc(record.title)');
     expect(html).toContain('esc(e.text');
     expect(html).toContain('esc(r.workflow)');
     expect(html).toContain('Content-Security-Policy');
-    // No raw (unescaped) interpolation of the untrusted run title remains.
     expect(html).not.toContain("'<p class=title>'+record.title");
-    // The dashboard is behind the token too.
-    expect((await fetch(`${base}/`)).status).toBe(401);
   });
 
   it('rejects a request with no/invalid token (401)', async () => {
@@ -138,6 +153,46 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
   it('404s an unknown run and 400s a malformed id', async () => {
     expect((await get('/api/runs/run_20990101_000000')).status).toBe(404);
     expect((await get('/api/runs/not-a-run')).status).toBe(400);
+  });
+
+  it('serves the task-first kanban board (work items projected onto lanes)', async () => {
+    const res = await get('/api/board');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      lanes: { lane: string; label: string; items: { key: string; runCount: number }[] }[];
+      generatedAt: string;
+    };
+    expect(body.lanes.map((l) => l.lane)).toEqual([
+      'backlog',
+      'todo',
+      'in_progress',
+      'review',
+      'done',
+    ]);
+    const card = body.lanes
+      .find((l) => l.lane === 'in_progress')
+      ?.items.find((i) => i.key === workItemKey);
+    expect(card).toBeDefined();
+    expect(card?.runCount).toBeGreaterThanOrEqual(1); // the linked run
+    expect(typeof body.generatedAt).toBe('string');
+  });
+
+  it('serves a work-item drill-down with its linked runs', async () => {
+    const res = await get(`/api/work-items/${workItemKey}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      key: string;
+      lane: string;
+      runs: { id: string; workItemId: string | null }[];
+    };
+    expect(body.key).toBe(workItemKey);
+    expect(body.lane).toBe('in_progress');
+    expect(body.runs.some((r) => r.id === runId && r.workItemId === workItemKey)).toBe(true);
+  });
+
+  it('404s an unknown work item and 400s a malformed key', async () => {
+    expect((await get('/api/work-items/WI-9999')).status).toBe(404);
+    expect((await get('/api/work-items/not-a-key')).status).toBe(400);
   });
 
   it('streams a completed run as SSE (replays events, ends)', async () => {

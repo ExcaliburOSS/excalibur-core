@@ -17,3 +17,8 @@ packages/workflow-schema/default-methodologies/
 # Intentional fixture repo (a "real" project with a planted bug) parsed by
 # the context-engine + CLI demo tests; its formatting is part of the fixture.
 examples/demo-repo/
+
+# Svelte components — the root Prettier has no `.svelte` parser; the dashboard
+# app formats/checks its own components via svelte tooling. Its `.ts`/`.css`/
+# `.html` ARE still formatted by the root Prettier.
+**/*.svelte

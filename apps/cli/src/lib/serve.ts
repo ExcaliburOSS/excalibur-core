@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { collectInsights, RunManager } from '@excalibur/core';
 import { reduceRail } from '@excalibur/tui';
 import { dashboardHtml } from './dashboard';
+import { dashboardAppHtml } from './dashboard-app';
+import { buildBoard, buildWorkItemDetail } from './dashboard-data';
 
 /**
  * `excalibur serve` (plan P1.12 / the headless-server enabler) — a local,
@@ -61,6 +63,8 @@ interface Html {
 }
 
 const RUN_ID = /^run_\d{8}_\d{6}(?:_[a-z0-9]+)?$/;
+const WORK_ITEM_PATH = /^\/api\/work-items\/([^/]+)$/;
+const WORK_ITEM_KEY = /^WI-\d+$/;
 
 /** Extracts the bearer/query token from a request. */
 function tokenOf(req: IncomingMessage, url: URL): string | null {
@@ -77,7 +81,9 @@ function route(repoRoot: string, url: URL): Json | Html | 'sse' | null {
   const path = url.pathname.replace(/\/+$/, '') || '/';
 
   if (path === '/') {
-    return { status: 200, html: dashboardHtml() };
+    // Prefer the embedded Svelte dashboard (D0); fall back to the legacy inline
+    // page when the dashboard hasn't been built (e.g. dev/tests).
+    return { status: 200, html: dashboardAppHtml() ?? dashboardHtml() };
   }
   if (path === '/health') {
     return { status: 200, body: { ok: true, service: 'excalibur', repoRoot } };
@@ -87,6 +93,10 @@ function route(repoRoot: string, url: URL): Json | Html | 'sse' | null {
   }
   if (path === '/api/insights') {
     return { status: 200, body: collectInsights(repoRoot) };
+  }
+  if (path === '/api/board') {
+    // The task-first kanban home (D1) — work items projected onto the 5 lanes.
+    return { status: 200, body: buildBoard(repoRoot) };
   }
   const runMatch = /^\/api\/runs\/([^/]+)(\/events|\/stream)?$/.exec(path);
   if (runMatch !== null) {
@@ -131,6 +141,33 @@ function route(repoRoot: string, url: URL): Json | Html | 'sse' | null {
     };
   }
   return { status: 404, body: { error: 'not found' } };
+}
+
+/**
+ * Handles `GET /api/work-items/:key` (async — the local provider reads the item
+ * off disk). Replies 400 for a malformed key, 404 when the item is unknown.
+ */
+async function handleWorkItem(repoRoot: string, key: string, res: ServerResponse): Promise<void> {
+  const send = (status: number, body: unknown): void => {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(body));
+  };
+  if (!WORK_ITEM_KEY.test(key)) {
+    send(400, { error: 'invalid work item key' });
+    return;
+  }
+  let detail;
+  try {
+    detail = await buildWorkItemDetail(repoRoot, key);
+  } catch (error) {
+    send(500, { error: error instanceof Error ? error.message : String(error) });
+    return;
+  }
+  if (detail === null) {
+    send(404, { error: `work item ${key} not found` });
+    return;
+  }
+  send(200, detail);
 }
 
 /** Streams a run's events as SSE: replay all, then tail appended lines until done. */
@@ -318,6 +355,13 @@ export function createExcaliburServer(options: ServeOptions): Server {
     // Mutations go through the POST write surface (start/cancel/approve runs).
     if (req.method === 'POST') {
       void handleWrite(options, req, res, url);
+      return;
+    }
+    // The work-item detail is async (reads the item off disk), so it is handled
+    // ahead of the synchronous router.
+    const wiMatch = WORK_ITEM_PATH.exec(url.pathname.replace(/\/+$/, ''));
+    if (wiMatch !== null) {
+      void handleWorkItem(options.repoRoot, decodeURIComponent(wiMatch[1] as string), res);
       return;
     }
     let result: Json | Html | 'sse' | null;

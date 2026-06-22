@@ -15,7 +15,7 @@ staged=$(git diff --cached --name-only --diff-filter=ACM)
 [ -z "$staged" ] && exit 0
 
 # Prettier covers code + data/docs.
-fmt=$(printf '%s\n' "$staged" | grep -E '\.(ts|tsx|js|cjs|mjs|cts|mts|json|md|ya?ml)$' || true)
+fmt=$(printf '%s\n' "$staged" | grep -E '\.(ts|tsx|js|cjs|mjs|cts|mts|json|md|ya?ml|css|scss|html)$' || true)
 if [ -n "$fmt" ]; then
   printf '%s\n' "$fmt" | xargs pnpm exec prettier --write
   printf '%s\n' "$fmt" | xargs git add

@@ -25,7 +25,7 @@ changed=$(git diff --name-only --diff-filter=ACMR "$range" 2>/dev/null || true)
 [ -z "$changed" ] && exit 0
 
 lint=$(printf '%s\n' "$changed" | grep -E '\.(ts|tsx|js|cjs|mjs|cts|mts)$' || true)
-fmt=$(printf '%s\n' "$changed" | grep -E '\.(ts|tsx|js|cjs|mjs|cts|mts|json|md|ya?ml)$' || true)
+fmt=$(printf '%s\n' "$changed" | grep -E '\.(ts|tsx|js|cjs|mjs|cts|mts|json|md|ya?ml|css|scss|html)$' || true)
 
 if [ -n "$lint" ]; then
   echo "pre-push: eslint $(printf '%s\n' "$lint" | wc -l | tr -d ' ') file(s)…"
