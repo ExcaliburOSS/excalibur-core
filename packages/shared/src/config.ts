@@ -542,6 +542,29 @@ const uiSectionSchema = z
   })
   .optional();
 
+/**
+ * Rebindable keybindings (P1.13b). A single key (a key name like `up`/`tab`/
+ * `escape` or a single character) or a list of keys, per picker action. Modifier
+ * combos are rejected by the resolver (FIRM single-key rule). Only the list
+ * picker (`/models`, onboarding) is rebindable today — the REPL line editor keeps
+ * its standard, context-sensitive editing keys.
+ */
+const keyBindingSchema = z.union([z.string(), z.array(z.string())]);
+const keybindingsSectionSchema = z
+  .object({
+    select: z
+      .object({
+        up: keyBindingSchema.optional(),
+        down: keyBindingSchema.optional(),
+        top: keyBindingSchema.optional(),
+        bottom: keyBindingSchema.optional(),
+        accept: keyBindingSchema.optional(),
+        cancel: keyBindingSchema.optional(),
+      })
+      .optional(),
+  })
+  .optional();
+
 /** Adversarial Verification Mesh policy (proportional by default; governable here). */
 const verificationSectionSchema = z
   .object({
@@ -569,6 +592,8 @@ const baseExcaliburConfigSchema = z.object({
   language: z.string().optional(),
   /** TUI presentation (theme preset, flavour). */
   ui: uiSectionSchema,
+  /** Rebindable picker keybindings (P1.13b). */
+  keybindings: keybindingsSectionSchema,
   /** Adversarial Verification Mesh policy. */
   verification: verificationSectionSchema,
   /** Hard per-run budget cap (deny-by-dollars). */

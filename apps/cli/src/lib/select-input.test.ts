@@ -2,6 +2,7 @@ import { PassThrough, Readable, Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { reduceSelectKey, renderChoiceLine, type SelectState } from './select-input';
 import type { ParsedKey } from './raw-input';
+import { resolveSelectKeymap } from './keymap';
 import { Ui } from '../ui';
 
 /**
@@ -33,6 +34,24 @@ describe('reduceSelectKey (pure state machine)', () => {
   it('home/end jump to the edges', () => {
     expect(reduceSelectKey(at(2), key({ name: 'home' }), 4).state.index).toBe(0);
     expect(reduceSelectKey(at(0), key({ name: 'end' }), 4).state.index).toBe(3);
+  });
+
+  it('honors a custom keymap (P1.13b): rebound accept/cancel + nav keys', () => {
+    const km = resolveSelectKeymap({ accept: 'l', cancel: 'q', down: ['s', 'down'] });
+    // Rebound accept (sequence 'l') submits.
+    expect(reduceSelectKey(at(1), key({ name: 'l', sequence: 'l' }), 3, km).action).toEqual({
+      type: 'submit',
+      index: 1,
+    });
+    // Rebound cancel.
+    expect(reduceSelectKey(at(0), key({ sequence: 'q' }), 3, km).action).toEqual({
+      type: 'cancel',
+    });
+    // Rebound down ('s') still advances; the default 'down' arrow still works too.
+    expect(reduceSelectKey(at(0), key({ name: 's', sequence: 's' }), 3, km).state.index).toBe(1);
+    expect(reduceSelectKey(at(0), key({ name: 'down' }), 3, km).state.index).toBe(1);
+    // The default Enter is NOT bound to accept anymore (accept was remapped to 'l').
+    expect(reduceSelectKey(at(1), key({ name: 'return' }), 3, km).action).toEqual({ type: 'none' });
   });
 
   it('Enter submits the current index', () => {

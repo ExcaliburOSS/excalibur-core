@@ -20,6 +20,7 @@
 import pc from 'picocolors';
 import type { ParsedKey } from './raw-input';
 import type { SelectChoice } from '../ui';
+import { DEFAULT_SELECT_KEYMAP, selectActionFor, type SelectKeymap } from './keymap';
 
 /** The chooser's mutable state — just the highlighted row. */
 export interface SelectState {
@@ -52,31 +53,25 @@ export function reduceSelectKey(
   state: SelectState,
   key: ParsedKey,
   count: number,
+  keymap: SelectKeymap = DEFAULT_SELECT_KEYMAP,
 ): { state: SelectState; action: SelectAction } {
   if (key.ctrl === true && key.name === 'c') {
     return { state, action: { type: 'sigint' } };
   }
-  // Plain keys only — modifier combos never navigate (single-key rule).
-  if (key.ctrl === true || key.meta === true) {
-    return { state, action: { type: 'none' } };
-  }
-
-  switch (key.name) {
+  // Resolve the key against the (possibly user-overridden) picker keymap.
+  // selectActionFor already rejects modifier combos (single-key rule).
+  switch (selectActionFor(key, keymap)) {
     case 'up':
-    case 'k':
       return { state: { index: wrap(state.index - 1, count) }, action: { type: 'move' } };
     case 'down':
-    case 'j':
-    case 'tab':
       return { state: { index: wrap(state.index + 1, count) }, action: { type: 'move' } };
-    case 'home':
+    case 'top':
       return { state: { index: 0 }, action: { type: 'move' } };
-    case 'end':
+    case 'bottom':
       return { state: { index: Math.max(0, count - 1) }, action: { type: 'move' } };
-    case 'return':
-    case 'enter':
+    case 'accept':
       return { state, action: { type: 'submit', index: state.index } };
-    case 'escape':
+    case 'cancel':
       return { state, action: { type: 'cancel' } };
     default:
       break;

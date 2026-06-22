@@ -10,6 +10,7 @@ import {
   type RawInputState,
 } from './lib/raw-input';
 import { reduceSelectKey, renderChoiceLine, type SelectState } from './lib/select-input';
+import type { SelectKeymap } from './lib/keymap';
 
 /**
  * The single output module of the Excalibur CLI (Build Contract §4.9).
@@ -72,6 +73,12 @@ export interface SelectOptions {
    * symbol-based hint; ignored by the numbered fallback.
    */
   navHint?: string;
+  /**
+   * Effective picker keybindings (P1.13b). Defaults to the built-in arrow/jk set;
+   * callers with config pass `resolveSelectKeymap(config.keybindings?.select)` to
+   * honor user-rebound keys. Ignored by the numbered fallback.
+   */
+  keymap?: SelectKeymap;
 }
 
 export interface LineEditorOptions {
@@ -473,7 +480,13 @@ export class Ui {
       rawAllowed &&
       choices.length > 0;
     if (useArrows) {
-      return this.selectInteractive(question, choices, defaultIndex, options.navHint);
+      return this.selectInteractive(
+        question,
+        choices,
+        defaultIndex,
+        options.navHint,
+        options.keymap,
+      );
     }
     return this.selectByNumber(question, choices, options, defaultIndex);
   }
@@ -522,6 +535,7 @@ export class Ui {
     choices: SelectChoice[],
     defaultIndex: number,
     navHint?: string,
+    keymap?: SelectKeymap,
   ): Promise<number> {
     const input = this.stdin as NodeJS.ReadStream;
     const out = this.stdout;
@@ -575,7 +589,7 @@ export class Ui {
           return;
         }
         try {
-          const result = reduceSelectKey(state, key, count);
+          const result = reduceSelectKey(state, key, count, keymap);
           state = result.state;
           switch (result.action.type) {
             case 'move':

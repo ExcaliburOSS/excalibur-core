@@ -48,6 +48,7 @@ import { buildStartupContext } from '../lib/startup-context';
 import { setAutoApprove } from '../lib/config-file';
 import { writeProvidersFile } from '../lib/provider-setup';
 import { listSwitchableProviders, providerHint } from '../lib/model-switch';
+import { resolveSelectKeymap } from '../lib/keymap';
 import { LOG_SENTINEL, REWIND_SENTINEL } from '../ui';
 import { CLI_VERSION } from '../program';
 import { renderWelcome, type WelcomeContext } from './welcome';
@@ -1541,6 +1542,7 @@ async function handleModelsCommand(deps: CliDeps, runtime: SessionRuntime): Prom
   );
   const picked = await deps.ui.select('Select the active model provider', choices, {
     defaultIndex,
+    keymap: resolveSelectKeymap(runtime.config.keybindings?.select),
   });
   const chosen = providers[picked];
   if (chosen === undefined || chosen.current) {
