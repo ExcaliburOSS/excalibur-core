@@ -83,26 +83,35 @@ const bad = (m: string): void => {
   failures += 1;
 };
 
+function check(cond: boolean, good: string, ill: string): void {
+  if (cond) ok(good);
+  else bad(ill);
+}
+
 try {
   const init = await client.initialize();
-  init.protocolVersion === 1
-    ? ok(`initialize → protocolVersion ${init.protocolVersion}`)
-    : bad(`unexpected protocolVersion: ${JSON.stringify(init)}`);
+  check(
+    init.protocolVersion === 1,
+    `initialize → protocolVersion ${init.protocolVersion}`,
+    `unexpected protocolVersion: ${JSON.stringify(init)}`,
+  );
 
   await client.authenticate();
   ok('authenticate → ok');
 
   const sessionId = await client.newSession(dir);
-  sessionId.length > 0 ? ok(`session/new → ${sessionId}`) : bad('empty sessionId');
+  check(sessionId.length > 0, `session/new → ${sessionId}`, 'empty sessionId');
 
   const { stopReason } = await client.prompt(
     sessionId,
     'Reply with a one-sentence greeting. Do not create or edit any files.',
   );
-  stopReason === 'end_turn'
-    ? ok(`session/prompt → stopReason "${stopReason}"`)
-    : bad(`unexpected stopReason "${stopReason}"`);
-  chunks > 0 ? ok(`streamed ${chunks} assistant message chunk(s)`) : bad('no assistant chunks streamed');
+  check(
+    stopReason === 'end_turn',
+    `session/prompt → stopReason "${stopReason}"`,
+    `unexpected stopReason "${stopReason}"`,
+  );
+  check(chunks > 0, `streamed ${chunks} assistant message chunk(s)`, 'no assistant chunks streamed');
 } catch (error) {
   bad(`threw: ${error instanceof Error ? error.message : String(error)}`);
 } finally {
