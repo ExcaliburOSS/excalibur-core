@@ -30,6 +30,13 @@ export const DASHBOARD_LANE_LABELS: Readonly<Record<DashboardLane, string>> = {
   done: 'Done',
 };
 
+/** A single item of the agent's live checklist (the `task_update` snapshot). */
+export interface ChecklistItemDto {
+  id: string;
+  text: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
 /** A work item as it appears on a board card (compact). */
 export interface WorkItemSummary {
   /** Stable key, e.g. `WI-12`. */
@@ -46,6 +53,17 @@ export interface WorkItemSummary {
   /** Kanban rank within the lane (lower = higher). */
   order: number;
   updatedAt: string | null;
+  /**
+   * The id of an in-flight run advancing this item (`running` /
+   * `waiting_approval`), or null. When set, the card shows a live indicator.
+   */
+  activeRunId: string | null;
+  /**
+   * The active run's latest `update_tasks` checklist snapshot (D1). Empty when
+   * there is no active run or it hasn't emitted a checklist yet. Lets the
+   * in-progress card surface the agent's live plan without opening the run.
+   */
+  checklist: ChecklistItemDto[];
 }
 
 /** One board column: a lane plus its cards in board order. */

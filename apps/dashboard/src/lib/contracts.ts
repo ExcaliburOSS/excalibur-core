@@ -6,6 +6,7 @@
  */
 export type {
   BoardResponse,
+  ChecklistItemDto,
   DashboardBoardLane,
   DashboardLane,
   DiscoverySummary,

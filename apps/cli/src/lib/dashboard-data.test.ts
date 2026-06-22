@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { RunManager } from '@excalibur/core';
+import { createEvent } from '@excalibur/shared';
 import { LocalWorkItemProvider } from '@excalibur/work-items';
 import { buildBoard, buildWorkItemDetail } from './dashboard-data';
 import { makeTempDir, removeDir } from '../test-utils';
@@ -91,5 +92,77 @@ describe('dashboard-data (store → DTO mappers)', () => {
 
   it('returns null for an unknown work item', async () => {
     expect(await buildWorkItemDetail(repoRoot, 'WI-999')).toBeNull();
+  });
+
+  it("surfaces the active run's live checklist on the in-progress card (D1)", () => {
+    const provider = new LocalWorkItemProvider(repoRoot);
+    const item = provider.createWorkItem({ title: 'Live work', status: 'in_progress' });
+
+    const manager = new RunManager(repoRoot);
+    const run = manager.createRun({
+      title: 'driving',
+      autonomyLevel: 3,
+      workflow: 'agent-work',
+      executionStyle: 'careful',
+      workItemId: item.key,
+    });
+    manager.updateRecord(run.id, { status: 'running' }); // in flight
+    // Two checklist snapshots — the LATEST must win.
+    manager.appendEvent(
+      run.id,
+      createEvent({
+        runId: run.id,
+        type: 'task_update',
+        payload: { tasks: [{ id: 't1', text: 'old', status: 'pending' }] },
+      }),
+    );
+    manager.appendEvent(
+      run.id,
+      createEvent({
+        runId: run.id,
+        type: 'task_update',
+        payload: {
+          tasks: [
+            { id: 't1', text: 'analyze', status: 'completed' },
+            { id: 't2', text: 'implement', status: 'in_progress' },
+            { id: 't3', text: 'test', status: 'pending' },
+          ],
+        },
+      }),
+    );
+
+    const card = buildBoard(repoRoot)
+      .lanes.find((l) => l.lane === 'in_progress')
+      ?.items.find((i) => i.key === item.key);
+    expect(card?.activeRunId).toBe(run.id);
+    expect(card?.checklist.map((c) => c.text)).toEqual(['analyze', 'implement', 'test']);
+    expect(card?.checklist.filter((c) => c.status === 'completed')).toHaveLength(1);
+  });
+
+  it('shows no checklist when the run is finished (not active)', () => {
+    const provider = new LocalWorkItemProvider(repoRoot);
+    const item = provider.createWorkItem({ title: 'Done work', status: 'done' });
+    const manager = new RunManager(repoRoot);
+    const run = manager.createRun({
+      title: 'finished',
+      autonomyLevel: 3,
+      workflow: 'fast-fix',
+      executionStyle: 'fast',
+      workItemId: item.key,
+    });
+    manager.updateRecord(run.id, { status: 'completed' });
+    manager.appendEvent(
+      run.id,
+      createEvent({
+        runId: run.id,
+        type: 'task_update',
+        payload: { tasks: [{ id: 't1', text: 'x', status: 'completed' }] },
+      }),
+    );
+    const card = buildBoard(repoRoot)
+      .lanes.find((l) => l.lane === 'done')
+      ?.items.find((i) => i.key === item.key);
+    expect(card?.activeRunId).toBeNull();
+    expect(card?.checklist).toEqual([]);
   });
 });

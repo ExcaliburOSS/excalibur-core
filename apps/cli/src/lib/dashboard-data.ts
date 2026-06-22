@@ -12,6 +12,7 @@ import {
 import {
   DASHBOARD_LANES,
   type BoardResponse,
+  type ChecklistItemDto,
   type DashboardBoardLane,
   type DashboardLane,
   type RunSummary,
@@ -40,7 +41,61 @@ function userName(user: NormalizedWorkItemUser | null): string | null {
   return user.name ?? user.username ?? null;
 }
 
-function summarize(item: NormalizedWorkItem, runCount: number): WorkItemSummary {
+/** A run is "active" (in flight) when it is running or awaiting an approval. */
+function isActiveRun(run: LocalRun): boolean {
+  return run.record.status === 'running' || run.record.status === 'waiting_approval';
+}
+
+/**
+ * The active run's latest `update_tasks` checklist (last snapshot wins), read
+ * from its event log. Empty when there is no active run or no checklist yet —
+ * never throws (a missing/corrupt log just yields []).
+ */
+function activeChecklist(
+  runs: LocalRun[],
+  manager: RunManager,
+): { activeRunId: string | null; checklist: ChecklistItemDto[] } {
+  // Newest-first (runsForWorkItem already sorts) → first active run wins.
+  const active = runs.find(isActiveRun);
+  if (active === undefined) {
+    return { activeRunId: null, checklist: [] };
+  }
+  let checklist: ChecklistItemDto[] = [];
+  try {
+    const events = manager.readEvents(active.id);
+    for (let i = events.length - 1; i >= 0; i -= 1) {
+      const event = events[i];
+      if (event?.type === 'task_update') {
+        const tasks = (event.payload as { tasks?: unknown }).tasks;
+        if (Array.isArray(tasks)) {
+          checklist = tasks
+            .filter((t): t is ChecklistItemDto => {
+              const item = t as Partial<ChecklistItemDto>;
+              return (
+                typeof item.id === 'string' &&
+                typeof item.text === 'string' &&
+                (item.status === 'pending' ||
+                  item.status === 'in_progress' ||
+                  item.status === 'completed')
+              );
+            })
+            .map((t) => ({ id: t.id, text: t.text, status: t.status }));
+        }
+        break; // last task_update snapshot wins
+      }
+    }
+  } catch {
+    /* unreadable log → no checklist */
+  }
+  return { activeRunId: active.record.id, checklist };
+}
+
+function summarize(
+  item: NormalizedWorkItem,
+  runs: LocalRun[],
+  manager: RunManager,
+): WorkItemSummary {
+  const { activeRunId, checklist } = activeChecklist(runs, manager);
   return {
     key: item.key,
     title: item.title,
@@ -49,9 +104,11 @@ function summarize(item: NormalizedWorkItem, runCount: number): WorkItemSummary 
     priority: item.priority,
     labels: item.labels,
     assignee: userName(item.assignee),
-    runCount,
+    runCount: runs.length,
     order: item.order ?? 0,
     updatedAt: item.updatedAt,
+    activeRunId,
+    checklist,
   };
 }
 
@@ -83,7 +140,7 @@ export function buildBoard(repoRoot: string): BoardResponse {
   const lanes: DashboardBoardLane[] = provider.board().map((column) => ({
     lane: column.lane,
     label: WORK_ITEM_LANE_LABELS[column.lane],
-    items: column.items.map((item) => summarize(item, manager.runsForWorkItem(item.key).length)),
+    items: column.items.map((item) => summarize(item, manager.runsForWorkItem(item.key), manager)),
   }));
   return { lanes, generatedAt: new Date().toISOString() };
 }
