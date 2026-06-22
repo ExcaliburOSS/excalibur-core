@@ -109,6 +109,21 @@ export interface AgentTurnDeps {
   /** Injectable adapter (tests pass a fake-gateway-backed native adapter). */
   adapter?: AgentAdapter;
   /**
+   * Active self-contained custom agent (P1.7b — selected with `/agent <name>`):
+   * its persona/model/sampling/guardrails override the turn defaults. Additive —
+   * absent → the standard role/provider for the autonomy level.
+   */
+  agent?: {
+    name: string;
+    systemPrompt?: string;
+    role?: AgentRole;
+    model?: string;
+    provider?: string;
+    temperature?: number;
+    allowedTools?: string[];
+    permissions?: ExcaliburConfig['permissions'];
+  };
+  /**
    * Background mode: suppress ALL foreground presentation (no Ink rail, no
    * spinner, no per-event render, no headers/receipt) and auto-approve tool
    * calls — the run is still fully recorded to its `events.jsonl`. Used by
@@ -328,16 +343,26 @@ async function driveLoop(
     return choice !== 'no';
   };
 
+  // Active custom agent (P1.7b /agent): its persona/model/sampling/guardrails
+  // override the turn defaults. role + provider fall back to the turn's when the
+  // agent doesn't pin them; the rest (systemPrompt/temperature/allowedTools/
+  // permissions) apply only when set. Mirrors execute-local-run's agent overrides.
+  const agent = turn.agent;
   const stream = adapter.run({
     runId: run.id,
     sessionId,
     workdir: options.workdir ?? turn.repoRoot,
     prompt: options.prompt,
-    role: options.role,
-    provider: turn.providerName,
+    role: agent?.role ?? options.role,
+    provider: agent?.provider ?? turn.providerName,
     config: turn.config,
     gateway: turn.gateway,
     signal: ctrl.signal,
+    ...(agent?.model !== undefined ? { model: agent.model } : {}),
+    ...(agent?.temperature !== undefined ? { temperature: agent.temperature } : {}),
+    ...(agent?.systemPrompt !== undefined ? { systemPrompt: agent.systemPrompt } : {}),
+    ...(agent?.allowedTools !== undefined ? { allowedTools: agent.allowedTools } : {}),
+    ...(agent?.permissions !== undefined ? { permissions: agent.permissions } : {}),
     ...(options.allowConfirm ? { confirm } : {}),
     // Free-text human channel for the `question` tool (P1.8b): the interactive
     // shell IS a human at a prompt. deps.ui.ask returns '' when non-interactive,

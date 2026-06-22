@@ -107,6 +107,35 @@ describe('roleForAutonomy', () => {
   });
 });
 
+describe('runAgentTurn — active custom agent (P1.7b /agent)', () => {
+  it('applies the agent persona to the system prompt and narrows the toolset', async () => {
+    const h = makeHarness();
+    const received: ChatInput[] = [];
+    const gw = {
+      chat: (input: ChatInput): Promise<ChatOutput> => {
+        received.push(input);
+        return Promise.resolve(output('audited.'));
+      },
+    } as unknown as ModelGateway;
+    const deps: AgentTurnDeps = {
+      ...turnDeps(h.deps, gw, 3), // L3 → implementer by default…
+      agent: {
+        name: 'auditor',
+        role: 'planner', // …but the agent pins a read-only role,
+        systemPrompt: 'You are the Auditor.',
+        allowedTools: ['read_file', 'search_code'], // and narrows the tools.
+      },
+    };
+    await runAgentTurn(deps, 'audit the repo');
+    const first = received[0];
+    expect(first).toBeDefined();
+    // Persona replaces the default "acting as the <role>" header.
+    expect(String(first?.messages?.[0]?.content ?? '')).toContain('You are the Auditor.');
+    // Tools = the allowlist intersected with the planner read-only floor.
+    expect(first?.tools?.map((t) => t.name).sort()).toEqual(['read_file', 'search_code']);
+  });
+});
+
 describe('runAgentTurn — the real agentic loop (fake gateway)', () => {
   it('drives model → tool → model: a read tool call then a final answer', async () => {
     const h = makeHarness();

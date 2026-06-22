@@ -12,6 +12,9 @@ import {
   DEFAULT_COMPACTION_CONFIG,
   expandCustomCommand,
   loadCustomCommands,
+  loadCustomAgents,
+  resolveCustomAgent,
+  type CustomAgent,
   withExtensionMcpServers,
   getGitIdentity,
   getGitInfo,
@@ -131,6 +134,8 @@ interface SessionRuntime {
   approvals: ApprovalState;
   /** Background agent threads (the `/bg` fleet); banners drained before each prompt. */
   fleet: FleetState;
+  /** Active self-contained custom agent for the session (`/agent <name>`); null = none (P1.7b). */
+  activeAgent: CustomAgent | null;
 }
 
 /**
@@ -246,6 +251,7 @@ export async function runInteractiveSession(
     // first time (so future sessions never ask).
     approvals: { auto: config.approvals?.auto === true },
     fleet: initialFleet(),
+    activeAgent: null,
   };
 
   // Welcome banner (two-column frame + cyberpunk sword) + status line.
@@ -527,6 +533,11 @@ export async function runInteractiveSession(
           }
           if (input.name === 'models') {
             await handleModelsCommand(deps, runtime);
+            printStatusLine(deps, runtime);
+            continue;
+          }
+          if (input.name === 'agent') {
+            handleAgentCommand(deps, runtime, input.argv);
             printStatusLine(deps, runtime);
             continue;
           }
@@ -814,6 +825,23 @@ function agentTurnDeps(deps: CliDeps, runtime: SessionRuntime, signal: AbortSign
     approvals: runtime.approvals,
     adapter,
     signal,
+    // Active custom agent (P1.7b /agent): its persona/model/sampling/guardrails
+    // override this turn's defaults. Maps CustomAgent → the turn-deps override shape.
+    ...(runtime.activeAgent !== null ? { agent: agentTurnOverride(runtime.activeAgent) } : {}),
+  };
+}
+
+/** Maps a {@link CustomAgent} onto the agent-turn override shape (P1.7b). */
+function agentTurnOverride(a: CustomAgent): NonNullable<AgentTurnDeps['agent']> {
+  return {
+    name: a.name,
+    systemPrompt: a.systemPrompt,
+    ...(a.role !== undefined ? { role: a.role } : {}),
+    ...(a.model !== undefined ? { model: a.model } : {}),
+    ...(a.provider !== undefined ? { provider: a.provider } : {}),
+    ...(a.temperature !== undefined ? { temperature: a.temperature } : {}),
+    ...(a.tools !== undefined ? { allowedTools: a.tools } : {}),
+    ...(a.permissions !== undefined ? { permissions: a.permissions } : {}),
   };
 }
 
@@ -1518,6 +1546,65 @@ async function runShellPassthrough(
  * fallback otherwise). The chosen provider is written as `default` in
  * providers.yaml, so the NEXT turn (which re-reads the gateway) uses it.
  */
+/**
+ * `/agent [name|off]` — select a self-contained custom agent for the session
+ * (P1.7b). Its persona/model/sampling/guardrails apply to every subsequent turn
+ * (the engine already supports the overrides via P1.7). No arg lists the
+ * available agents + the active one; `off`/`none`/`clear` returns to default.
+ */
+function handleAgentCommand(deps: CliDeps, runtime: SessionRuntime, argv: string[]): void {
+  const arg = (argv[0] ?? '').trim();
+  const opts = {
+    repoRoot: runtime.repoRoot,
+    homeDir: deps.homeDir(),
+    includeGlobal: deps.includeUserGlobal,
+  };
+
+  if (arg === 'off' || arg === 'none' || arg === 'clear') {
+    if (runtime.activeAgent === null) {
+      deps.ui.info('No custom agent is active.');
+    } else {
+      const prev = runtime.activeAgent.name;
+      runtime.activeAgent = null;
+      deps.ui.success(`Custom agent "${prev}" cleared — back to the default agent.`);
+    }
+    return;
+  }
+
+  if (arg.length === 0) {
+    // List available agents + show the active one.
+    const agents = [...loadCustomAgents(opts).values()].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+    deps.ui.write(
+      runtime.activeAgent !== null
+        ? `Active agent: ${runtime.activeAgent.name} (${runtime.activeAgent.displayName})`
+        : 'Active agent: (default)',
+    );
+    if (agents.length === 0) {
+      deps.ui.info('No custom agents. Create one with `excalibur agents init <name>`.');
+      return;
+    }
+    deps.ui.write('');
+    deps.ui.table(
+      ['NAME', 'ROLE', 'MODEL', 'DESCRIPTION'],
+      agents.map((a) => [a.name, a.role ?? '-', a.model ?? a.provider ?? '-', a.description]),
+    );
+    deps.ui.info('Switch with: /agent <name>   ·   clear with: /agent off');
+    return;
+  }
+
+  const agent = resolveCustomAgent(arg, opts);
+  if (agent === null) {
+    deps.ui.warn(`Unknown agent "${arg}". Run /agent to list available agents.`);
+    return;
+  }
+  runtime.activeAgent = agent;
+  deps.ui.success(
+    `Agent → ${agent.name} (${agent.displayName})${agent.model !== undefined ? ` · ${agent.model}` : ''}`,
+  );
+}
+
 async function handleModelsCommand(deps: CliDeps, runtime: SessionRuntime): Promise<void> {
   const ctx = loadGatewayContext(runtime.repoRoot);
   if (!ctx.configured || ctx.providersPath === null) {
@@ -1594,6 +1681,7 @@ function handleSlashCommand(
       deps.ui.write(deps.t('repl.help-remember'));
       deps.ui.write(deps.t('repl.help-model'));
       deps.ui.write('  /models    switch the active model provider (interactive picker)');
+      deps.ui.write('  /agent     select a custom agent for the session ( /agent <name> | off )');
       deps.ui.write(deps.t('repl.help-clear'));
       deps.ui.write(deps.t('repl.help-exit'));
       deps.ui.write('');
