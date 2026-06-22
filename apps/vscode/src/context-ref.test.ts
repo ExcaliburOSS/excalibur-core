@@ -65,6 +65,22 @@ describe('buildPrompt', () => {
     expect(prompt.length).toBeLessThan(huge.length);
   });
 
+  it('uses a longer fence when the code itself contains a triple backtick', () => {
+    // A markdown file whose content has a ``` block (e.g. README) must not break
+    // out of the surrounding fence.
+    const code = ['# Title', '', '```', 'nested code', '```', ''].join('\n');
+    const prompt = buildPrompt('review', {
+      filePath: 'README.md',
+      languageId: 'markdown',
+      selection: { startLine: 1, endLine: 6, text: code },
+    });
+    // The wrapping fence must be 4+ backticks so the inner ``` stays contained.
+    expect(prompt).toContain('````markdown');
+    expect(prompt).toContain('nested code');
+    // The inner triple-backtick survives verbatim inside the 4-backtick fence.
+    expect(prompt).toContain('```\nnested code\n```');
+  });
+
   it('ignores an empty/whitespace selection', () => {
     const prompt = buildPrompt('do x', {
       filePath: 'a.ts',

@@ -187,19 +187,27 @@ export class AcpClient {
       this.handlers.onLog?.(`ACP: ignoring non-JSON line: ${trimmed.slice(0, 200)}`);
       return;
     }
-    // A response to one of our requests (has id + result/error, no method).
-    if (message.id !== undefined && message.method === undefined) {
-      this.resolveResponse(message);
-      return;
-    }
-    // A server→client request (has id AND method) — only request_permission today.
-    if (message.id !== undefined && message.method !== undefined) {
-      void this.handleServerRequest(message);
-      return;
-    }
-    // A notification (method, no id) — session/update.
-    if (message.method !== undefined) {
-      this.handleNotification(message);
+    // The dispatch is wrapped so NO handler throw — or a malformed peer message —
+    // can ever escape into the transport's read loop and drop the rest of a chunk.
+    // The transport delivers one line per call, so logging + returning skips only
+    // this message and the loop keeps draining subsequent lines.
+    try {
+      // A response to one of our requests (has id + result/error, no method).
+      if (message.id !== undefined && message.method === undefined) {
+        this.resolveResponse(message);
+        return;
+      }
+      // A server→client request (has id AND method) — only request_permission today.
+      if (message.id !== undefined && message.method !== undefined) {
+        void this.handleServerRequest(message);
+        return;
+      }
+      // A notification (method, no id) — session/update.
+      if (message.method !== undefined) {
+        this.handleNotification(message);
+      }
+    } catch (error) {
+      this.handlers.onLog?.(`ACP: dispatch error (ignored): ${describe(error)}`);
     }
   }
 
@@ -208,10 +216,23 @@ export class AcpClient {
     const pending = this.pending.get(id);
     if (pending === undefined) return;
     this.pending.delete(id);
-    if (message.error !== undefined) {
-      pending.reject(new AcpError(message.error.message, message.error.code));
-    } else {
+    // A malformed peer can send `error: null` / a non-object error. Validate the
+    // shape so a request is ALWAYS settled (never left hanging) and we never
+    // dereference a null error. `null !== undefined` is true, so an explicit
+    // `error: null` must not be treated as a real error.
+    const err = message.error;
+    if (err !== undefined && err !== null && typeof err === 'object') {
+      const e = err as { message?: unknown; code?: unknown };
+      pending.reject(
+        new AcpError(
+          typeof e.message === 'string' ? e.message : 'ACP error',
+          typeof e.code === 'number' ? e.code : undefined,
+        ),
+      );
+    } else if ('result' in message) {
       pending.resolve(message.result);
+    } else {
+      pending.reject(new AcpError('ACP response missing both result and a valid error'));
     }
   }
 
@@ -219,7 +240,13 @@ export class AcpClient {
     if (message.method !== 'session/update') return;
     const params = message.params as { sessionId?: string; update?: SessionUpdate } | undefined;
     if (params?.update === undefined) return;
-    this.handlers.onUpdate?.(params.sessionId ?? '', params.update);
+    // Defensive: a throwing onUpdate must never break the read loop (mirrors the
+    // onPermission guard). receive()'s try/catch is the backstop; this localizes it.
+    try {
+      this.handlers.onUpdate?.(params.sessionId ?? '', params.update);
+    } catch (error) {
+      this.handlers.onLog?.(`ACP onUpdate handler threw (ignored): ${describe(error)}`);
+    }
   }
 
   private async handleServerRequest(message: JsonRpcMessage): Promise<void> {

@@ -24,7 +24,15 @@ export function registerAcpCommand(program: Command, deps: CliDeps): void {
         defaultCwd: repoRoot,
         startRun: ({ cwd, prompt }) => {
           const { config } = loadConfigContext(cwd);
-          const { gateway, providerName } = loadGatewayContext(cwd);
+          const { gateway, providerName, configured } = loadGatewayContext(cwd);
+          // The mock is a test double, NEVER a silent runtime fallback: refuse
+          // (the editor surfaces this as a JSON-RPC error) rather than quietly
+          // running the agent against the mock when no provider is configured.
+          if (!configured) {
+            throw new Error(
+              'No model provider configured — add .excalibur/models/providers.yaml (e.g. run `excalibur models`) before using Excalibur in your editor.',
+            );
+          }
           // Pass the RESOLVED provider (providers.yaml default, e.g. `groq`) so the
           // run uses the configured real model — without it the run falls back to
           // the `mock` provider and fails when only real providers are configured.

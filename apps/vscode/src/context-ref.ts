@@ -23,10 +23,16 @@ const MAX_SNIPPET_CHARS = 16_000;
 function fence(languageId: string | undefined, body: string): string {
   const lang = languageId !== undefined && languageId.length > 0 ? languageId : '';
   const clipped =
-    body.length > MAX_SNIPPET_CHARS
-      ? `${body.slice(0, MAX_SNIPPET_CHARS)}\n… (truncated)`
-      : body;
-  return `\`\`\`${lang}\n${clipped}\n\`\`\``;
+    body.length > MAX_SNIPPET_CHARS ? `${body.slice(0, MAX_SNIPPET_CHARS)}\n… (truncated)` : body;
+  // CommonMark: the fence must be LONGER than any backtick run inside the body,
+  // else a file containing ``` would break out of the block and corrupt the
+  // prompt structure. Use (longest run + 1), with a floor of 3.
+  let longest = 0;
+  for (const match of clipped.matchAll(/`+/g)) {
+    longest = Math.max(longest, match[0].length);
+  }
+  const ticks = '`'.repeat(Math.max(3, longest + 1));
+  return `${ticks}${lang}\n${clipped}\n${ticks}`;
 }
 
 /** A one-line `file (lines a-b)` location header, or just the file, or empty. */

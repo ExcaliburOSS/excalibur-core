@@ -48,8 +48,38 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
-  active?.client.dispose();
-  active = null;
+  if (active !== null) {
+    killRun(active);
+    active = null;
+  }
+}
+
+/**
+ * Tears a run down HARD: dispose the ACP client (EOF on stdin), then SIGTERM the
+ * child, escalating to SIGKILL if it doesn't exit. Without this, closing stdin
+ * alone leaves a mid-tool-execution CLI orphaned (it keeps editing / spending
+ * tokens with no parent). Idempotent + never throws.
+ */
+function killRun(run: ActiveRun): void {
+  try {
+    run.client.dispose();
+  } catch {
+    /* already disposed */
+  }
+  try {
+    run.child.kill('SIGTERM');
+  } catch {
+    /* already dead */
+  }
+  const timer = setTimeout(() => {
+    try {
+      run.child.kill('SIGKILL');
+    } catch {
+      /* gone */
+    }
+  }, 3000);
+  timer.unref?.();
+  run.child.once('exit', () => clearTimeout(timer));
 }
 
 // ── commands ──────────────────────────────────────────────────────────────────
@@ -110,11 +140,26 @@ function cancelCommand(): void {
     void vscode.window.showInformationMessage('Excalibur: nothing is running.');
     return;
   }
-  active.cancelled = true;
-  if (active.sessionId !== null) {
-    active.client.cancel(active.sessionId);
-  }
+  const run = active;
+  run.cancelled = true;
   out().appendLine('— cancellation requested —');
+  if (run.sessionId !== null) {
+    // Ask the CLI to stop gracefully, then HARD-kill if it doesn't honor it
+    // within the grace window (a session/cancel is a best-effort notification —
+    // a hung/uncooperative run must still be stoppable).
+    run.client.cancel(run.sessionId);
+    const timer = setTimeout(() => {
+      if (active === run) {
+        out().appendLine('— forcing stop —');
+        killRun(run);
+      }
+    }, 4000);
+    timer.unref?.();
+  } else {
+    // Still initializing (no session yet) — nothing to cancel gracefully; the
+    // child is already spawned, so stop it now.
+    killRun(run);
+  }
 }
 
 function openTerminalCommand(): void {
@@ -137,8 +182,7 @@ async function startRun(prompt: string): Promise<void> {
     if (choice !== 'Cancel & Start') {
       return;
     }
-    cancelCommand();
-    active?.client.dispose();
+    killRun(active);
     active = null;
   }
 
@@ -163,6 +207,15 @@ async function startRun(prompt: string): Promise<void> {
     return;
   }
 
+  // EPIPE safety: a write to a child that has closed its read end emits an async
+  // 'error' on the stream; with NO listener Node escalates it to an uncaught
+  // exception that can crash the whole extension host. Swallow + log all three.
+  const swallow = (label: string) => (error: Error): void =>
+    channel.appendLine(`· ${label}: ${describe(error)}`);
+  child.stdin.on('error', swallow('stdin error'));
+  child.stdout.on('error', swallow('stdout error'));
+  child.stderr.on('error', swallow('stderr error'));
+
   const transport = stdioTransport(child, channel);
   const run: ActiveRun = { client: undefined as never, child, sessionId: null, cancelled: false };
   const client = new AcpClient(transport, {
@@ -175,11 +228,25 @@ async function startRun(prompt: string): Promise<void> {
   void setRunning(true);
 
   let spawnFailed = false;
+  let exited = false;
+  let exitCode: number | null = null;
   child.on('error', (error) => {
     spawnFailed = true;
     void vscode.window.showErrorMessage(
       `Excalibur: failed to start "${command}" — ${describe(error)}. Set "excalibur.command" to the CLI path.`,
     );
+  });
+  child.on('exit', (code) => {
+    exited = true;
+    exitCode = code;
+  });
+  // Drive cleanup off the child lifecycle too: if the process goes away, never
+  // leave the `excalibur.running` key stuck on (it gates the Cancel affordances).
+  child.on('close', () => {
+    if (active === run) {
+      active = null;
+      void setRunning(false);
+    }
   });
 
   try {
@@ -188,20 +255,26 @@ async function startRun(prompt: string): Promise<void> {
     const sessionId = await client.newSession(cwd);
     run.sessionId = sessionId;
     const { stopReason } = await client.prompt(sessionId, prompt);
-    channel.appendLine(
-      stopReason === 'cancelled' ? '\n■ cancelled' : '\n■ done',
-    );
+    channel.appendLine(stopReason === 'cancelled' ? '\n■ cancelled' : '\n■ done');
   } catch (error) {
     if (!spawnFailed && !run.cancelled) {
-      channel.appendLine(`\n✗ ${describe(error)}`);
-      void vscode.window.showErrorMessage(`Excalibur: ${describe(error)}`);
+      // Distinguish "the CLI died before/at the handshake" from a protocol error,
+      // so a misconfigured command gives actionable guidance instead of an opaque
+      // "ACP transport closed".
+      const message = exited
+        ? `the CLI exited (code ${exitCode ?? '?'}) before responding — check that \`${command} ${args.join(' ')}\` runs and the CLI is installed.`
+        : describe(error);
+      channel.appendLine(`\n✗ ${message}`);
+      void vscode.window.showErrorMessage(`Excalibur: ${message}`);
     }
   } finally {
-    client.dispose();
+    killRun(run);
+    // Only relinquish the running state if THIS run is still the active one — a
+    // newer pre-empting run owns the key otherwise (avoids a stuck/false toggle).
     if (active === run) {
       active = null;
+      void setRunning(false);
     }
-    void setRunning(false);
   }
 }
 

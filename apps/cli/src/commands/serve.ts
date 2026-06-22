@@ -10,10 +10,17 @@ import { createExcaliburServer, type ServeWriteHandler } from '../lib/serve';
 /** Builds the control-plane write handler: start/cancel/approve runs via a RunController. */
 function buildWriteHandler(repoRoot: string): ServeWriteHandler {
   const { config } = loadConfigContext(repoRoot);
-  const { gateway, providerName } = loadGatewayContext(repoRoot);
+  const { gateway, providerName, configured } = loadGatewayContext(repoRoot);
   const controller = new RunController();
   return {
     startRun: async (input) => {
+      // Refuse rather than silently run the mock test double (mirrors the `run`
+      // command's requireConfiguredModel guard); handleWrite turns this into 400.
+      if (!configured) {
+        throw new Error(
+          'no model provider configured — add .excalibur/models/providers.yaml (e.g. run `excalibur models`).',
+        );
+      }
       const style = executionStyleSchema.safeParse(input.executionStyle);
       const handle = await controller.startRun({
         repoRoot,

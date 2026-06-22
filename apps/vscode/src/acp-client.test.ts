@@ -178,6 +178,47 @@ describe('AcpClient — robustness', () => {
     expect(onLog).toHaveBeenCalled();
   });
 
+  it('settles (rejects) a request on a malformed error response — never hangs', async () => {
+    const t = new FakeTransport();
+    const client = new AcpClient(t);
+    const p = client.newSession('/repo');
+    const req = t.last();
+    // A non-conforming peer sends `error: null` — must NOT be dereferenced and
+    // must still settle the request (regression: used to throw + hang forever).
+    t.emit({ jsonrpc: '2.0', id: req.id, error: null });
+    await expect(p).rejects.toThrow(/missing both result and a valid error|ACP/);
+  });
+
+  it('rejects gracefully on a non-object error payload', async () => {
+    const t = new FakeTransport();
+    const client = new AcpClient(t);
+    const p = client.newSession('/repo');
+    const req = t.last();
+    t.emit({ jsonrpc: '2.0', id: req.id, error: 'oops' });
+    await expect(p).rejects.toThrow();
+  });
+
+  it('a throwing onUpdate handler never breaks the read loop', async () => {
+    const t = new FakeTransport();
+    const client = new AcpClient(t, {
+      onUpdate: () => {
+        throw new Error('boom');
+      },
+      onLog: () => {},
+    });
+    const p = client.prompt('s1', 'go');
+    const req = t.last();
+    // This update makes onUpdate throw — it must be contained...
+    t.emit({
+      jsonrpc: '2.0',
+      method: 'session/update',
+      params: { sessionId: 's1', update: { sessionUpdate: 'agent_message_chunk' } },
+    });
+    // ...so the very next message (the prompt response) is still processed.
+    t.emit({ jsonrpc: '2.0', id: req.id, result: { stopReason: 'end_turn' } });
+    await expect(p).resolves.toEqual({ stopReason: 'end_turn' });
+  });
+
   it('rejects in-flight requests when the transport closes', async () => {
     const t = new FakeTransport();
     const client = new AcpClient(t);
