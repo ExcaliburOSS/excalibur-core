@@ -1,4 +1,4 @@
-import { RunManager } from '@excalibur/core';
+import { RunManager, listPlans, readPlan, DiscoveryManager } from '@excalibur/core';
 import type { LocalRun } from '@excalibur/shared';
 import {
   LocalWorkItemProvider,
@@ -16,6 +16,9 @@ import {
   type ChecklistItemDto,
   type DashboardBoardLane,
   type DashboardLane,
+  type DiscoverySummary,
+  type PlanDetail,
+  type PlanSummary,
   type RunSummary,
   type WorkItemDetail,
   type WorkItemSummary,
@@ -233,4 +236,49 @@ export function moveWorkItemLane(repoRoot: string, key: string, lane: string): W
   const item = provider.moveWorkItem(key, { lane }); // throws if the key is unknown
   const manager = new RunManager(repoRoot);
   return summarize(item, manager.runsForWorkItem(item.key), manager);
+}
+
+/** Plans list for the Plans & Discovery view (D3), newest first. */
+export function buildPlans(repoRoot: string): PlanSummary[] {
+  return listPlans(repoRoot).map((p) => ({
+    id: p.id,
+    task: p.task,
+    status: p.status,
+    created: p.created,
+    planRun: p.planRun,
+    execRun: p.execRun,
+  }));
+}
+
+/** One plan with its markdown body (D3 drill-in), or null if unknown. */
+export function buildPlanDetail(repoRoot: string, id: string): PlanDetail | null {
+  const p = readPlan(repoRoot, id);
+  if (p === null) {
+    return null;
+  }
+  return {
+    id: p.id,
+    task: p.task,
+    status: p.status,
+    created: p.created,
+    planRun: p.planRun,
+    execRun: p.execRun,
+    body: p.body,
+  };
+}
+
+/** Discovery sessions for the Plans & Discovery view (D3), newest first. */
+export function buildDiscovery(repoRoot: string): DiscoverySummary[] {
+  return new DiscoveryManager(repoRoot)
+    .listSessions()
+    .map((s) => ({
+      id: s.record.id,
+      title: s.record.title,
+      status: s.record.status,
+      recommendation: s.record.recommendation,
+      recommendedAutonomyLevel: s.record.recommendedAutonomyLevel,
+      createdAt: s.record.createdAt,
+      completedAt: s.record.completedAt,
+    }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

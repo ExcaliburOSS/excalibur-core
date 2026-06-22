@@ -9,6 +9,9 @@ import { dashboardAppHtml } from './dashboard-app';
 import {
   buildBoard,
   buildWorkItemDetail,
+  buildPlans,
+  buildPlanDetail,
+  buildDiscovery,
   moveWorkItemLane,
   InvalidLaneError,
 } from './dashboard-data';
@@ -105,6 +108,19 @@ function route(repoRoot: string, url: URL, writable: boolean): Json | Html | 'ss
   if (path === '/api/board') {
     // The task-first kanban home (D1) — work items projected onto the 5 lanes.
     return { status: 200, body: buildBoard(repoRoot) };
+  }
+  if (path === '/api/plans') {
+    return { status: 200, body: { plans: buildPlans(repoRoot) } }; // D3
+  }
+  if (path === '/api/discovery') {
+    return { status: 200, body: { discovery: buildDiscovery(repoRoot) } }; // D3
+  }
+  const planMatch = /^\/api\/plans\/([^/]+)$/.exec(path);
+  if (planMatch !== null) {
+    const detail = buildPlanDetail(repoRoot, decodeURIComponent(planMatch[1] as string));
+    return detail === null
+      ? { status: 404, body: { error: 'plan not found' } }
+      : { status: 200, body: detail };
   }
   const runMatch = /^\/api\/runs\/([^/]+)(\/events|\/stream)?$/.exec(path);
   if (runMatch !== null) {

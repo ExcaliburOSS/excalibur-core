@@ -144,6 +144,22 @@ export interface WorkItemDetail {
   plans: PlanRefDto[];
 }
 
+/** A saved plan as it appears in the Plans list (D3). */
+export interface PlanSummary {
+  /** Filename-without-`.md` id (e.g. `20260622-101500-ship-d3`). */
+  id: string;
+  task: string;
+  status: 'proposed' | 'approved' | 'executed' | 'cancelled';
+  created: string | null;
+  planRun: string | null;
+  execRun: string | null;
+}
+
+/** A plan with its markdown body (D3 drill-in). */
+export interface PlanDetail extends PlanSummary {
+  body: string;
+}
+
 /** A discovery session summary (D3). */
 export interface DiscoverySummary {
   id: string;
@@ -184,4 +200,7 @@ export const DASHBOARD_API = {
   runEvents: (id: string) => `/api/runs/${encodeURIComponent(id)}/events`,
   runStream: (id: string) => `/api/runs/${encodeURIComponent(id)}/stream`,
   insights: '/api/insights',
+  plans: '/api/plans',
+  plan: (id: string) => `/api/plans/${encodeURIComponent(id)}`,
+  discovery: '/api/discovery',
 } as const;

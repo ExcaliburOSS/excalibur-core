@@ -1,6 +1,6 @@
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { RunManager } from '@excalibur/core';
+import { RunManager, savePlan } from '@excalibur/core';
 import { LocalWorkItemProvider } from '@excalibur/work-items';
 import { createEvent } from '@excalibur/shared';
 import type { Server } from 'node:http';
@@ -323,6 +323,52 @@ describe('excalibur serve — interactive write surface (D2)', () => {
     expect(startCalls[0]).toMatchObject({ task: 'do it', workItemId: wiKey });
     // a malformed workItemId is rejected
     expect((await post('/api/runs', { task: 'x', workItemId: 'evil/../x' })).status).toBe(400);
+  });
+});
+
+describe('excalibur serve — plans & discovery (D3)', () => {
+  let repoRoot: string;
+  let server: Server;
+  let base: string;
+  let planId: string;
+
+  beforeAll(async () => {
+    repoRoot = makeTempDir();
+    const file = savePlan(repoRoot, {
+      task: 'Ship the dashboard',
+      planMarkdown: '1. board\n2. detail',
+      status: 'approved',
+      planRunId: 'run_plan_x',
+      now: new Date('2026-06-22T10:00:00.000Z'),
+    });
+    planId = file.replace(/.*\//, '').replace(/\.md$/, '');
+    server = createExcaliburServer({ repoRoot, token: TOKEN, pollMs: 50 });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+  afterAll(() => {
+    server.close();
+    removeDir(repoRoot);
+  });
+  const get = (p: string): Promise<Response> => fetch(`${base}${p}?token=${TOKEN}`);
+
+  it('lists saved plans and serves a plan body', async () => {
+    const list = (await (await get('/api/plans')).json()) as {
+      plans: { id: string; task: string; status: string }[];
+    };
+    expect(list.plans.some((p) => p.id === planId && p.task === 'Ship the dashboard')).toBe(true);
+
+    const detail = (await (await get(`/api/plans/${planId}`)).json()) as { body: string };
+    expect(detail.body).toContain('2. detail');
+
+    expect((await get('/api/plans/nope-not-real')).status).toBe(404);
+  });
+
+  it('serves the (empty) discovery list', async () => {
+    const res = await get('/api/discovery');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { discovery: unknown[] };
+    expect(Array.isArray(body.discovery)).toBe(true);
   });
 });
 

@@ -7,6 +7,9 @@
 import type {
   BoardResponse,
   DashboardLane,
+  DiscoverySummary,
+  PlanDetail,
+  PlanSummary,
   RunRecord,
   WorkItemDetail,
   WorkItemSummary,
@@ -104,6 +107,17 @@ export const fetchRuns = (): Promise<{ runs: RunRecord[] }> => get('/api/runs');
 
 /** Aggregate insights for the analytics view (D4). */
 export const fetchInsights = (): Promise<Record<string, unknown>> => get('/api/insights');
+
+/** Saved plans (D3). */
+export const fetchPlans = (): Promise<{ plans: PlanSummary[] }> => get('/api/plans');
+
+/** One plan with its markdown body (D3). */
+export const fetchPlan = (id: string): Promise<PlanDetail> =>
+  get(`/api/plans/${encodeURIComponent(id)}`);
+
+/** Discovery sessions (D3). */
+export const fetchDiscovery = (): Promise<{ discovery: DiscoverySummary[] }> =>
+  get('/api/discovery');
 
 // ---- write surface (D2; only succeeds when `excalibur serve --write`) ----
 
