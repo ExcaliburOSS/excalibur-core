@@ -93,6 +93,25 @@ describe('RunController', () => {
     expect(types).toContain('run_completed');
   });
 
+  it('writes the resolved provider (model option) onto the run record', async () => {
+    // Regression: the ACP + serve paths used to omit `model`, so runs fell back
+    // to the `mock` provider and failed when only a real provider was configured.
+    const rc = new RunController();
+    const handle = await rc.startRun({
+      repoRoot,
+      task: 'x',
+      gateway,
+      config,
+      model: 'a-real-provider',
+      workflow: 'review-only',
+      catalog: [{ id: 'review-only', definition: getDefaultWorkflow('review-only')! }],
+    });
+    const record = new RunManager(repoRoot).getRun(handle.runId).record;
+    expect(record.model).toBe('a-real-provider');
+    handle.cancel();
+    await handle.record.catch(() => undefined);
+  });
+
   it('answers an approval out-of-band via approve()', async () => {
     const rc = new RunController();
     const handle = await rc.startRun({

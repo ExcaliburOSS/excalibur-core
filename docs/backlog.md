@@ -42,8 +42,15 @@ overhaul · **npm publish 1.2.0** (`@excalibur-oss/excalibur`, `latest`).
 
 ## P1 — Agent ergonomics + reach, autonomous
 
-5. **IDE extension** (VS Code/Cursor/Windsurf) [Core/new][auto] — OC-P0.3 / M7. Launch
-   hotkeys + selection/`@File#L37-42` passing; rides on the ACP/serve work (P0.3).
+5. **IDE extension** (VS Code/Cursor/Windsurf) ✅ SHIPPED — new `apps/vscode` package: a
+   thin extension that spawns `excalibur acp` and bridges it over ACP (ndjson JSON-RPC).
+   Commands (Run / Ask About Selection / Explain File / Review / Cancel / Open Terminal) +
+   keybindings + editor context menu; streams assistant text/tool calls/plan to an output
+   channel; native permission modals; selection + file passed as prompt context. Builds to
+   a single CJS bundle (tsup, `vscode` externalized), `@types/vscode` devDep only. Verified
+   end-to-end vs a real model (the AcpClient ↔ real `excalibur acp` ↔ Groq). _(Fixed a real
+   ACP+serve bug en route: runs defaulted to the `mock` provider — now thread the resolved
+   providers.yaml default; regression-tested.)_ [Core/new][auto] — OC-P0.3 / M7.
 6. **User custom slash commands** (markdown `/name` with `$ARGUMENTS`/`$1`/`!cmd`/`@file`)
    [Core][auto] — OC-P1. Ours are hardcoded; we already have `{{var}}` templating.
 7. **Self-contained custom agents** ✅ SHIPPED — one `.excalibur/agents/<name>.md` =

@@ -24,8 +24,17 @@ export function registerAcpCommand(program: Command, deps: CliDeps): void {
         defaultCwd: repoRoot,
         startRun: ({ cwd, prompt }) => {
           const { config } = loadConfigContext(cwd);
-          const { gateway } = loadGatewayContext(cwd);
-          return controller.startRun({ repoRoot: cwd, task: prompt, gateway, config });
+          const { gateway, providerName } = loadGatewayContext(cwd);
+          // Pass the RESOLVED provider (providers.yaml default, e.g. `groq`) so the
+          // run uses the configured real model — without it the run falls back to
+          // the `mock` provider and fails when only real providers are configured.
+          return controller.startRun({
+            repoRoot: cwd,
+            task: prompt,
+            gateway,
+            config,
+            model: providerName,
+          });
         },
       });
       // Keep the process alive until the editor closes stdin.

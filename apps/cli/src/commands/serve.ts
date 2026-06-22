@@ -10,7 +10,7 @@ import { createExcaliburServer, type ServeWriteHandler } from '../lib/serve';
 /** Builds the control-plane write handler: start/cancel/approve runs via a RunController. */
 function buildWriteHandler(repoRoot: string): ServeWriteHandler {
   const { config } = loadConfigContext(repoRoot);
-  const { gateway } = loadGatewayContext(repoRoot);
+  const { gateway, providerName } = loadGatewayContext(repoRoot);
   const controller = new RunController();
   return {
     startRun: async (input) => {
@@ -20,6 +20,9 @@ function buildWriteHandler(repoRoot: string): ServeWriteHandler {
         task: input.task,
         gateway,
         config,
+        // Resolved provider (providers.yaml default) so the run uses the real
+        // configured model rather than falling back to the `mock` provider.
+        model: providerName,
         ...(input.workflow !== undefined ? { workflow: input.workflow } : {}),
         ...(input.autonomyLevel !== undefined && isAutonomyLevel(input.autonomyLevel)
           ? { autonomyLevel: input.autonomyLevel }

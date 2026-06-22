@@ -1,0 +1,122 @@
+{
+  "name": "excalibur-vscode",
+  "displayName": "Excalibur",
+  "description": "Excalibur — local-first AI coding agent in VS Code, Cursor and Windsurf via the Agent Client Protocol (ACP).",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "publisher": "excalibur-oss",
+  "author": "ExcaliburOSS",
+  "private": true,
+  "homepage": "https://github.com/ExcaliburOSS/excalibur-core/tree/main/apps/vscode#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ExcaliburOSS/excalibur-core.git",
+    "directory": "apps/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/ExcaliburOSS/excalibur-core/issues"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "agentic",
+    "acp",
+    "agent-client-protocol",
+    "coding-assistant",
+    "excalibur"
+  ],
+  "categories": ["AI", "Chat", "Programming Languages"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      { "command": "excalibur.run", "title": "Run a Task", "category": "Excalibur" },
+      {
+        "command": "excalibur.askSelection",
+        "title": "Ask About Selection",
+        "category": "Excalibur"
+      },
+      { "command": "excalibur.explainFile", "title": "Explain This File", "category": "Excalibur" },
+      {
+        "command": "excalibur.reviewSelection",
+        "title": "Review Selection",
+        "category": "Excalibur"
+      },
+      { "command": "excalibur.cancel", "title": "Cancel the Running Agent", "category": "Excalibur" },
+      {
+        "command": "excalibur.openTerminal",
+        "title": "Open Excalibur Terminal",
+        "category": "Excalibur"
+      }
+    ],
+    "keybindings": [
+      { "command": "excalibur.run", "key": "ctrl+shift+a", "mac": "cmd+shift+a" },
+      {
+        "command": "excalibur.askSelection",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "editorHasSelection"
+      },
+      { "command": "excalibur.cancel", "key": "escape", "when": "excalibur.running" }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "excalibur.askSelection",
+          "when": "editorHasSelection",
+          "group": "navigation@9"
+        },
+        {
+          "command": "excalibur.reviewSelection",
+          "when": "editorHasSelection",
+          "group": "navigation@9"
+        }
+      ],
+      "commandPalette": [{ "command": "excalibur.cancel", "when": "excalibur.running" }]
+    },
+    "configuration": {
+      "title": "Excalibur",
+      "properties": {
+        "excalibur.command": {
+          "type": "string",
+          "default": "excalibur",
+          "markdownDescription": "Path to the Excalibur CLI binary (must be on PATH or an absolute path). Install with `npm i -g @excalibur-oss/excalibur`."
+        },
+        "excalibur.args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["acp"],
+          "description": "Arguments used to launch the CLI in ACP (Agent Client Protocol) mode."
+        },
+        "excalibur.autoApprove": {
+          "type": "string",
+          "enum": ["ask", "allow"],
+          "enumDescriptions": [
+            "Prompt for every tool action that needs approval (safe default).",
+            "Auto-approve every tool action (use only in trusted repos)."
+          ],
+          "default": "ask",
+          "description": "Permission policy for tool actions the agent requests during a run."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src",
+    "package": "pnpm run build && vsce package --no-dependencies",
+    "vscode:prepublish": "pnpm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.8.3",
+    "vitest": "^3.0.5"
+  }
+}

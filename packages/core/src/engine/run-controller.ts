@@ -64,6 +64,14 @@ export interface StartRunOptions {
   task: string;
   gateway: ModelGateway;
   config: ExcaliburConfig;
+  /**
+   * Provider name to drive the run (a providers.yaml key, e.g. `groq`). The CLI
+   * resolves the configured default and passes it; the gateway then uses that
+   * provider's real model. Falls back to `config.models?.default`. Without it a
+   * run would default to the `mock` provider and fail when only real providers
+   * are configured (the configured default lives in providers.yaml, not config).
+   */
+  model?: string;
   /** Default 3 (Level 3). */
   autonomyLevel?: AutonomyLevel;
   /** Default `team_default`. */
@@ -202,7 +210,10 @@ export class RunController {
       autonomyLevel,
       workflow: selection.workflowId,
       methodology: null,
-      model: options.config.models?.default ?? null,
+      // Prefer the caller-resolved provider (from providers.yaml), then config,
+      // else null. `null` lets the gateway pick its own default; passing the
+      // resolved provider is what makes a real-model run actually use it.
+      model: options.model ?? options.config.models?.default ?? null,
       executionStyle,
       ...(options.workItemId !== undefined ? { workItemId: options.workItemId } : {}),
     });
