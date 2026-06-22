@@ -6,7 +6,12 @@ import { collectInsights, RunManager } from '@excalibur/core';
 import { reduceRail } from '@excalibur/tui';
 import { dashboardHtml } from './dashboard';
 import { dashboardAppHtml } from './dashboard-app';
-import { buildBoard, buildWorkItemDetail } from './dashboard-data';
+import {
+  buildBoard,
+  buildWorkItemDetail,
+  moveWorkItemLane,
+  InvalidLaneError,
+} from './dashboard-data';
 
 /**
  * `excalibur serve` (plan P1.12 / the headless-server enabler) — a local,
@@ -35,6 +40,8 @@ export interface ServeWriteHandler {
     workflow?: string;
     autonomyLevel?: number;
     executionStyle?: string;
+    /** Link the run to a work item (D2: "start a run on this card"). */
+    workItemId?: string;
   }): Promise<{ runId: string }>;
   /** Cancel a run; false if unknown. */
   cancel(runId: string): boolean;
@@ -76,7 +83,7 @@ function tokenOf(req: IncomingMessage, url: URL): string | null {
 }
 
 /** Routes a request to a payload, an HTML page, or 'sse' for the stream route. */
-function route(repoRoot: string, url: URL): Json | Html | 'sse' | null {
+function route(repoRoot: string, url: URL, writable: boolean): Json | Html | 'sse' | null {
   const manager = new RunManager(repoRoot);
   const path = url.pathname.replace(/\/+$/, '') || '/';
 
@@ -86,7 +93,8 @@ function route(repoRoot: string, url: URL): Json | Html | 'sse' | null {
     return { status: 200, html: dashboardAppHtml() ?? dashboardHtml() };
   }
   if (path === '/health') {
-    return { status: 200, body: { ok: true, service: 'excalibur', repoRoot } };
+    // `write` lets the dashboard enable/disable its interactive actions (D2).
+    return { status: 200, body: { ok: true, service: 'excalibur', repoRoot, write: writable } };
   }
   if (path === '/api/runs') {
     return { status: 200, body: { runs: manager.listRuns().map((r) => r.record) } };
@@ -304,6 +312,11 @@ async function handleWrite(
         send(400, { error: 'a non-empty "task" is required' });
         return;
       }
+      const workItemId = typeof body['workItemId'] === 'string' ? body['workItemId'] : undefined;
+      if (workItemId !== undefined && !WORK_ITEM_KEY.test(workItemId)) {
+        send(400, { error: 'invalid workItemId' });
+        return;
+      }
       const out = await options.write.startRun({
         task,
         ...(typeof body['workflow'] === 'string' ? { workflow: body['workflow'] } : {}),
@@ -313,8 +326,30 @@ async function handleWrite(
         ...(typeof body['executionStyle'] === 'string'
           ? { executionStyle: body['executionStyle'] }
           : {}),
+        ...(workItemId !== undefined ? { workItemId } : {}),
       });
       send(201, out);
+      return;
+    }
+    // D2: move a work item to another lane (drag-to-change-status).
+    const moveMatch = /^\/api\/work-items\/([^/]+)\/move$/.exec(path);
+    if (moveMatch !== null) {
+      const key = decodeURIComponent(moveMatch[1] as string);
+      if (!WORK_ITEM_KEY.test(key)) {
+        send(400, { error: 'invalid work item key' });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const lane = typeof body['lane'] === 'string' ? body['lane'] : '';
+      try {
+        send(200, moveWorkItemLane(options.repoRoot, key, lane));
+      } catch (error) {
+        if (error instanceof InvalidLaneError) {
+          send(400, { error: error.message });
+        } else {
+          send(404, { error: `work item ${key} not found` });
+        }
+      }
       return;
     }
     const match = /^\/api\/runs\/([^/]+)\/(cancel|approve)$/.exec(path);
@@ -366,7 +401,7 @@ export function createExcaliburServer(options: ServeOptions): Server {
     }
     let result: Json | Html | 'sse' | null;
     try {
-      result = route(options.repoRoot, url);
+      result = route(options.repoRoot, url, options.write !== undefined);
     } catch (error) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));

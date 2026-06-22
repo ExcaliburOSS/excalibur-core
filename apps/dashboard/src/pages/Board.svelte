@@ -1,7 +1,14 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { fetchBoard, ApiError } from '../lib/api';
-  import { LANES, LANE_COLORS, type BoardResponse, type WorkItemSummary } from '../lib/contracts';
+  import { fetchBoard, fetchHealth, moveWorkItem, startRun, ApiError } from '../lib/api';
+  import {
+    LANES,
+    LANE_COLORS,
+    type BoardResponse,
+    type DashboardLane,
+    type WorkItemSummary,
+  } from '../lib/contracts';
+  import { navigate } from '../lib/router.svelte';
   import { t } from '../lib/i18n';
 
   let board = $state<BoardResponse | null>(null);
@@ -10,6 +17,9 @@
   let staleError = $state<string | null>(null);
   let loading = $state(true);
   let live = $state(true);
+  let writable = $state(false); // interactive actions enabled (serve --write)
+  let dragKey = $state<string | null>(null);
+  let dropLane = $state<DashboardLane | null>(null);
   let inFlight = false; // guards against overlapping/clobbering polls
   let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -36,9 +46,12 @@
 
   onMount(() => {
     void load();
+    fetchHealth()
+      .then((h) => (writable = h.write))
+      .catch(() => (writable = false));
     // Poll while "Live" (D5 will swap this for an SSE board stream).
     timer = setInterval(() => {
-      if (live && document.visibilityState === 'visible') void load(true);
+      if (live && !dragKey && document.visibilityState === 'visible') void load(true);
     }, 4000);
   });
   onDestroy(() => {
@@ -46,6 +59,51 @@
   });
 
   const laneLabel = (lane: string): string => t(`lane.${lane}`);
+
+  /** Optimistically move a card to a lane, then persist; revert (reload) on failure. */
+  async function moveTo(key: string, lane: DashboardLane): Promise<void> {
+    if (board === null) return;
+    let card: WorkItemSummary | undefined;
+    for (const col of board.lanes) {
+      const idx = col.items.findIndex((i) => i.key === key);
+      if (idx >= 0) {
+        if (col.lane === lane) return; // dropped on its own lane — no-op
+        card = col.items.splice(idx, 1)[0];
+        break;
+      }
+    }
+    if (card === undefined) return;
+    card.lane = lane;
+    board.lanes.find((l) => l.lane === lane)?.items.push(card);
+    try {
+      const updated = await moveWorkItem(key, lane);
+      const target = board.lanes.find((l) => l.lane === lane);
+      const i = target?.items.findIndex((c) => c.key === key) ?? -1;
+      if (target && i >= 0) target.items[i] = updated; // reconcile with server truth
+    } catch (e) {
+      staleError = e instanceof ApiError ? `${e.status} · ${e.message}` : t('board.moveFailed', { key });
+      void load(); // revert the optimistic move to server state
+    }
+  }
+
+  function onDrop(e: DragEvent, lane: DashboardLane): void {
+    e.preventDefault();
+    const key = dragKey ?? e.dataTransfer?.getData('text/plain') ?? '';
+    dragKey = null;
+    dropLane = null;
+    if (key.length > 0) void moveTo(key, lane);
+  }
+
+  async function onStartRun(e: MouseEvent, item: WorkItemSummary): Promise<void> {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const { runId } = await startRun({ task: item.title, workItemId: item.key });
+      navigate(`/runs/${runId}`);
+    } catch (err) {
+      staleError = err instanceof ApiError ? `${err.status} · ${err.message}` : String(err);
+    }
+  }
 
   const laneItems = (lane: string): WorkItemSummary[] =>
     board?.lanes.find((l) => l.lane === lane)?.items ?? [];
@@ -90,19 +148,49 @@
   <div class="board">
     {#each LANES as lane (lane)}
       {@const items = laneItems(lane)}
-      <section class="lane">
+      <section class="lane" class:dropping={writable && dropLane === lane}>
         <header style="--lane: {LANE_COLORS[lane]}">
           <span class="ldot"></span>
           <h3>{laneLabel(lane)}</h3>
           <span class="lcount faint">{items.length}</span>
         </header>
-        <div class="cards">
+        <div
+          class="cards"
+          role="list"
+          ondragover={writable
+            ? (e) => {
+                e.preventDefault();
+                dropLane = lane;
+              }
+            : undefined}
+          ondrop={writable ? (e) => onDrop(e, lane) : undefined}
+        >
           {#each items as item (item.key)}
-            <a class="card" class:active={item.activeRunId !== null} href={`#/work-items/${item.key}`}>
+            <a
+              class="card"
+              class:active={item.activeRunId !== null}
+              class:dragging={dragKey === item.key}
+              href={`#/work-items/${item.key}`}
+              draggable={writable}
+              ondragstart={writable
+                ? (e) => {
+                    dragKey = item.key;
+                    e.dataTransfer?.setData('text/plain', item.key);
+                  }
+                : undefined}
+              ondragend={() => {
+                dragKey = null;
+                dropLane = null;
+              }}
+            >
               <div class="top">
                 <span class="key mono faint">{item.key}</span>
                 {#if item.activeRunId !== null}
                   <span class="running"><span class="pulse"></span>{t('board.active')}</span>
+                {:else if writable}
+                  <button class="start" onclick={(e) => onStartRun(e, item)}>
+                    ▸ {t('board.startRun')}
+                  </button>
                 {/if}
               </div>
               <div class="title">{item.title}</div>
@@ -312,6 +400,27 @@
   }
   .card.active {
     border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+  }
+  .card[draggable='true'] {
+    cursor: grab;
+  }
+  .card.dragging {
+    opacity: 0.5;
+  }
+  .lane.dropping {
+    outline: 2px dashed var(--accent);
+    outline-offset: -2px;
+  }
+  .start {
+    font-size: 10px;
+    color: var(--accent);
+    background: transparent;
+    border: 1px solid var(--accent-dim);
+    border-radius: 999px;
+    padding: 1px 8px;
+  }
+  .start:hover {
+    background: var(--accent-dim);
   }
   .top {
     display: flex;

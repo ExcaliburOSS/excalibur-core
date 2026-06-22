@@ -259,3 +259,99 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
     expect(text).toContain('event: end');
   });
 });
+
+describe('excalibur serve — interactive write surface (D2)', () => {
+  let repoRoot: string;
+  let server: Server;
+  let base: string;
+  let wiKey: string;
+  const startCalls: Array<{ task: string; workItemId?: string }> = [];
+
+  beforeAll(async () => {
+    repoRoot = makeTempDir();
+    wiKey = new LocalWorkItemProvider(repoRoot).createWorkItem({
+      title: 'Drag me',
+      status: 'todo',
+    }).key;
+    const write = {
+      startRun: (input: { task: string; workItemId?: string }) => {
+        startCalls.push(input);
+        return Promise.resolve({ runId: 'run_20260101_000000' });
+      },
+      cancel: () => true,
+      approve: () => true,
+    };
+    server = createExcaliburServer({ repoRoot, token: TOKEN, pollMs: 50, write });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+  afterAll(() => {
+    server.close();
+    removeDir(repoRoot);
+  });
+
+  const post = (path: string, body: unknown): Promise<Response> =>
+    fetch(`${base}${path}?token=${TOKEN}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('/health reports write: true when the write surface is on', async () => {
+    const res = await fetch(`${base}/health?token=${TOKEN}`);
+    const body = (await res.json()) as { write: boolean };
+    expect(body.write).toBe(true);
+  });
+
+  it('moves a work item to another lane', async () => {
+    const res = await post(`/api/work-items/${wiKey}/move`, { lane: 'done' });
+    expect(res.status).toBe(200);
+    const card = (await res.json()) as { key: string; lane: string };
+    expect(card.key).toBe(wiKey);
+    expect(card.lane).toBe('done');
+  });
+
+  it('400s an invalid lane and 404s an unknown work item', async () => {
+    expect((await post(`/api/work-items/${wiKey}/move`, { lane: 'nonsense' })).status).toBe(400);
+    expect((await post('/api/work-items/WI-9999/move', { lane: 'done' })).status).toBe(404);
+  });
+
+  it('passes workItemId through to startRun', async () => {
+    startCalls.length = 0;
+    const res = await post('/api/runs', { task: 'do it', workItemId: wiKey });
+    expect(res.status).toBe(201);
+    expect(startCalls[0]).toMatchObject({ task: 'do it', workItemId: wiKey });
+    // a malformed workItemId is rejected
+    expect((await post('/api/runs', { task: 'x', workItemId: 'evil/../x' })).status).toBe(400);
+  });
+});
+
+describe('excalibur serve — write surface OFF (read-only)', () => {
+  let repoRoot: string;
+  let server: Server;
+  let base: string;
+
+  beforeAll(async () => {
+    repoRoot = makeTempDir();
+    server = createExcaliburServer({ repoRoot, token: TOKEN, pollMs: 50 }); // no write
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+  afterAll(() => {
+    server.close();
+    removeDir(repoRoot);
+  });
+
+  it('/health reports write: false and a move is refused with 403', async () => {
+    const health = (await (await fetch(`${base}/health?token=${TOKEN}`)).json()) as {
+      write: boolean;
+    };
+    expect(health.write).toBe(false);
+    const res = await fetch(`${base}/api/work-items/WI-1/move?token=${TOKEN}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lane: 'done' }),
+    });
+    expect(res.status).toBe(403);
+  });
+});

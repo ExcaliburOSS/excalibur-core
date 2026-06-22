@@ -1,6 +1,15 @@
 <script lang="ts">
-  import { fetchWorkItem, ApiError } from '../lib/api';
+  import { onMount } from 'svelte';
+  import {
+    fetchWorkItem,
+    fetchHealth,
+    startRun,
+    cancelRun,
+    approveRun,
+    ApiError,
+  } from '../lib/api';
   import { type WorkItemDetail } from '../lib/contracts';
+  import { navigate } from '../lib/router.svelte';
   import { t } from '../lib/i18n';
 
   const { key }: { key: string } = $props();
@@ -8,6 +17,43 @@
   let item = $state<WorkItemDetail | null>(null);
   let error = $state<string | null>(null);
   let loading = $state(true);
+  let writable = $state(false);
+  let actionError = $state<string | null>(null);
+
+  onMount(() => {
+    fetchHealth()
+      .then((h) => (writable = h.write))
+      .catch(() => (writable = false));
+  });
+
+  async function reload(): Promise<void> {
+    try {
+      item = await fetchWorkItem(key);
+    } catch {
+      /* keep current */
+    }
+  }
+
+  async function act(fn: () => Promise<unknown>): Promise<void> {
+    actionError = null;
+    try {
+      await fn();
+      await reload();
+    } catch (e) {
+      actionError = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
+    }
+  }
+
+  async function onStartRun(): Promise<void> {
+    if (item === null) return;
+    actionError = null;
+    try {
+      const { runId } = await startRun({ task: item.title, workItemId: item.key });
+      navigate(`/runs/${runId}`);
+    } catch (e) {
+      actionError = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
+    }
+  }
 
   // Re-fetch whenever `key` changes — the component instance is REUSED when
   // navigating WI-1 → WI-2 (same route branch), so onMount alone would show
@@ -58,7 +104,16 @@
       {#if item.assignee}<span class="badge">@{item.assignee}</span>{/if}
       {#each item.labels as label (label)}<span class="badge">{label}</span>{/each}
     </div>
+    {#if writable}
+      <div class="actions">
+        <button class="act go" onclick={onStartRun}>▸ {t('workItem.startRun')}</button>
+      </div>
+    {/if}
   </header>
+
+  {#if actionError !== null}
+    <div class="action-error" role="status">{t('workItem.actionFailed')}: {actionError}</div>
+  {/if}
 
   {#if item.description}
     <p class="desc">{item.description}</p>
@@ -75,6 +130,18 @@
             <a class="mono" href={`#/runs/${run.id}`}>{run.id}</a>
             <span class="st st-{run.status}">{t('status.' + run.status)}</span>
             <span class="faint">{run.workflow}{run.model ? ` · ${run.model}` : ''}</span>
+            {#if writable && run.status === 'running'}
+              <button class="act" onclick={() => act(() => cancelRun(run.id))}>
+                {t('workItem.cancelRun')}
+              </button>
+            {:else if writable && run.status === 'waiting_approval'}
+              <button class="act go" onclick={() => act(() => approveRun(run.id, true))}>
+                {t('workItem.approve')}
+              </button>
+              <button class="act no" onclick={() => act(() => approveRun(run.id, false))}>
+                {t('workItem.reject')}
+              </button>
+            {/if}
           </li>
         {/each}
       </ul>
@@ -165,6 +232,38 @@
     display: flex;
     gap: 10px;
     align-items: center;
+  }
+  .actions {
+    margin-top: 12px;
+  }
+  .act {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+  .act:hover {
+    color: var(--text);
+    border-color: var(--line-strong);
+  }
+  .act.go {
+    color: var(--ok);
+    border-color: color-mix(in srgb, var(--ok) 40%, var(--line));
+  }
+  .act.no {
+    color: var(--bad);
+    border-color: color-mix(in srgb, var(--bad) 40%, var(--line));
+  }
+  .action-error {
+    margin: 12px 0;
+    padding: 6px 12px;
+    border: 1px solid color-mix(in srgb, var(--bad) 40%, var(--line));
+    background: color-mix(in srgb, var(--bad) 10%, transparent);
+    color: var(--bad);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
   }
   .st {
     font-size: 11px;

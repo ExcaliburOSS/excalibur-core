@@ -4,7 +4,13 @@
  * page URL (`?token=…`) — exactly how the legacy dashboard authenticated. Every
  * response is typed against the shared dashboard contracts.
  */
-import type { BoardResponse, RunRecord, WorkItemDetail } from './contracts';
+import type {
+  BoardResponse,
+  DashboardLane,
+  RunRecord,
+  WorkItemDetail,
+  WorkItemSummary,
+} from './contracts';
 
 /** The token the server embedded in this page's URL (query or hash). */
 function authToken(): string {
@@ -54,9 +60,36 @@ async function get<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** Health probe (also confirms the token is valid). */
-export const fetchHealth = (): Promise<{ ok: boolean; service: string; repoRoot: string }> =>
-  get('/health');
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${authToken()}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const b = (await res.json()) as { error?: string };
+      if (typeof b.error === 'string') detail = b.error;
+    } catch {
+      /* keep statusText */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  return (await res.json()) as T;
+}
+
+/** Health probe — `write` reports whether the interactive surface is enabled (D2). */
+export const fetchHealth = (): Promise<{
+  ok: boolean;
+  service: string;
+  repoRoot: string;
+  write: boolean;
+}> => get('/health');
 
 /** The kanban board (D1). */
 export const fetchBoard = (): Promise<BoardResponse> => get('/api/board');
@@ -71,5 +104,25 @@ export const fetchRuns = (): Promise<{ runs: RunRecord[] }> => get('/api/runs');
 
 /** Aggregate insights for the analytics view (D4). */
 export const fetchInsights = (): Promise<Record<string, unknown>> => get('/api/insights');
+
+// ---- write surface (D2; only succeeds when `excalibur serve --write`) ----
+
+/** Move a work item to another lane (drag-to-change-status). Returns the updated card. */
+export const moveWorkItem = (key: string, lane: DashboardLane): Promise<WorkItemSummary> =>
+  post(`/api/work-items/${encodeURIComponent(key)}/move`, { lane });
+
+/** Start a run, optionally linked to a work item. */
+export const startRun = (input: {
+  task: string;
+  workItemId?: string;
+}): Promise<{ runId: string }> => post('/api/runs', input);
+
+/** Cancel a run. */
+export const cancelRun = (id: string): Promise<{ cancelled: boolean }> =>
+  post(`/api/runs/${encodeURIComponent(id)}/cancel`, {});
+
+/** Answer a run's pending approval. */
+export const approveRun = (id: string, decision: boolean): Promise<{ ok: boolean }> =>
+  post(`/api/runs/${encodeURIComponent(id)}/approve`, { decision });
 
 export { authToken };

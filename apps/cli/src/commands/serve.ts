@@ -35,6 +35,7 @@ function buildWriteHandler(repoRoot: string): ServeWriteHandler {
           ? { autonomyLevel: input.autonomyLevel }
           : {}),
         ...(style.success ? { executionStyle: style.data as ExecutionStyle } : {}),
+        ...(input.workItemId !== undefined ? { workItemId: input.workItemId } : {}),
       });
       return { runId: handle.runId };
     },
@@ -99,7 +100,7 @@ export function registerServeCommand(program: Command, deps: CliDeps): void {
         deps.ui.write(deps.t('serve.example', { base, token }));
         if (write !== undefined) {
           deps.ui.warn(
-            'Write surface ENABLED: POST /api/runs (start), /api/runs/:id/cancel, /api/runs/:id/approve — these EXECUTE runs. Keep the token secret + the bind localhost.',
+            'Write surface ENABLED: POST /api/runs (start), /api/runs/:id/cancel, /api/runs/:id/approve (these EXECUTE runs) + /api/work-items/:key/move (drag-to-change-lane). Keep the token secret + the bind localhost.',
           );
         }
         deps.ui.write(deps.t('serve.stop'));

@@ -2,6 +2,7 @@ import { RunManager } from '@excalibur/core';
 import type { LocalRun } from '@excalibur/shared';
 import {
   LocalWorkItemProvider,
+  isWorkItemLane,
   laneOf,
   WORK_ITEM_LANES,
   WORK_ITEM_LANE_LABELS,
@@ -214,4 +215,22 @@ export async function buildWorkItemDetail(
     // Plans are linked in D3; D0 ships the (empty) contract slot.
     plans: [],
   };
+}
+
+/** Raised by {@link moveWorkItemLane} for an invalid target lane (→ 400). */
+export class InvalidLaneError extends Error {}
+
+/**
+ * Moves a work item to a target lane (D2 drag-to-change-status) and returns the
+ * updated card summary. Throws {@link InvalidLaneError} for an unknown lane and
+ * re-throws the provider's not-found error for an unknown key.
+ */
+export function moveWorkItemLane(repoRoot: string, key: string, lane: string): WorkItemSummary {
+  if (!isWorkItemLane(lane)) {
+    throw new InvalidLaneError(`invalid lane "${lane}"`);
+  }
+  const provider = new LocalWorkItemProvider(repoRoot);
+  const item = provider.moveWorkItem(key, { lane }); // throws if the key is unknown
+  const manager = new RunManager(repoRoot);
+  return summarize(item, manager.runsForWorkItem(item.key), manager);
 }
