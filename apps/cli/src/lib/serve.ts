@@ -378,7 +378,15 @@ export function createExcaliburServer(options: ServeOptions): Server {
       return;
     }
     if (result === 'sse') {
-      const id = decodeURIComponent(/\/api\/runs\/([^/]+)\/stream$/.exec(url.pathname)?.[1] ?? '');
+      // Extract the id from the SAME normalized path route() matched on — using
+      // the raw pathname would miss a trailing slash and yield an empty id.
+      const normalized = url.pathname.replace(/\/+$/, '');
+      const id = decodeURIComponent(/\/api\/runs\/([^/]+)\/stream$/.exec(normalized)?.[1] ?? '');
+      if (id.length === 0) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'invalid run id' }));
+        return;
+      }
       streamRun(options.repoRoot, id, res, pollMs);
       return;
     }

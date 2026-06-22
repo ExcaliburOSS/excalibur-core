@@ -80,4 +80,15 @@ describe('LocalWorkItemProvider', () => {
     await expect(p.validateCredentials()).resolves.toBe(true);
     await expect(p.listWorkItems(ID)).resolves.toEqual([]); // empty backlog → no dir, no error
   });
+
+  it('refuses a path-traversal / malformed key (confined to WI-<n>)', async () => {
+    const p = new LocalWorkItemProvider(freshRepo(), { now: clock() });
+    for (const bad of ['../../etc/passwd', 'WI-1/../../x', 'nope', 'WI-', '']) {
+      // The key guard rejects before any disk access (normalize the sync throw
+      // and the promise rejection into one assertion).
+      await expect(
+        Promise.resolve().then(() => p.getWorkItem({ ...ID, externalIdOrKey: bad })),
+      ).rejects.toThrow(/invalid work item key/);
+    }
+  });
 });

@@ -46,7 +46,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint src",
-    "prepublishOnly": "pnpm run build"
+    "prepublishOnly": "pnpm --filter @excalibur/dashboard build && pnpm run build"
   },
   "devDependencies": {
     "@excalibur/agent-runtime": "workspace:*",

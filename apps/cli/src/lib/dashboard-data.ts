@@ -27,12 +27,31 @@ import {
  */
 
 // Compile-time guard: the dashboard's lane contract (@excalibur/shared) must
-// stay byte-identical to the store's canonical lanes (@excalibur/work-items).
-// If either drifts, one of these assignments stops type-checking.
-const _laneParity: readonly DashboardLane[] = WORK_ITEM_LANES;
-const _laneParityReverse: readonly WorkItemLane[] = DASHBOARD_LANES;
+// stay byte-identical to the store's canonical lanes (@excalibur/work-items) —
+// same members AND same order. This tuple-equality assertion fails to compile if
+// either set drifts in any way (add / remove / rename / REORDER).
+type AssertTupleEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+const _laneParity: AssertTupleEqual<typeof WORK_ITEM_LANES, typeof DASHBOARD_LANES> = true;
 void _laneParity;
-void _laneParityReverse;
+// Keep the element-type relation referenced so both imports stay load-bearing.
+const _laneTypeParity: readonly DashboardLane[] = WORK_ITEM_LANES satisfies readonly WorkItemLane[];
+void _laneTypeParity;
+
+/**
+ * Whether a link URL is safe to render into an `href`. Blocks `javascript:` /
+ * `data:` and other script-bearing schemes (Svelte does NOT sanitize attribute
+ * schemes), and protocol-relative `//host` URLs; allows http(s)/mailto, absolute
+ * paths and fragments. Applied here so a poisoned `.excalibur/work-items/*.json`
+ * (shared/cloned repos) or a remote provider URL can never reach the renderer.
+ */
+function safeLinkUrl(url: string): string {
+  // eslint-disable-next-line no-control-regex -- stripping control chars is the point
+  const cleaned = url.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim();
+  if (/^(https?:|mailto:)/i.test(cleaned)) return cleaned;
+  if (cleaned.startsWith('#')) return cleaned;
+  if (cleaned.startsWith('/') && !cleaned.startsWith('//')) return cleaned;
+  return '#';
+}
 
 function userName(user: NormalizedWorkItemUser | null): string | null {
   if (user === null) {
@@ -137,10 +156,21 @@ function runSummary(run: LocalRun, manager: RunManager): RunSummary {
 export function buildBoard(repoRoot: string): BoardResponse {
   const provider = new LocalWorkItemProvider(repoRoot);
   const manager = new RunManager(repoRoot);
+  // Read every run ONCE and bucket by work item, instead of re-scanning all runs
+  // per card (`runsForWorkItem` calls `listRuns()` each time → O(items×runs) on
+  // every 4s board poll). `listRuns()` is newest-first, so each bucket is too.
+  const runsByItem = new Map<string, LocalRun[]>();
+  for (const run of manager.listRuns()) {
+    const wid = run.record.workItemId;
+    if (wid === null || wid === undefined) continue;
+    const bucket = runsByItem.get(wid);
+    if (bucket === undefined) runsByItem.set(wid, [run]);
+    else bucket.push(run);
+  }
   const lanes: DashboardBoardLane[] = provider.board().map((column) => ({
     lane: column.lane,
     label: WORK_ITEM_LANE_LABELS[column.lane],
-    items: column.items.map((item) => summarize(item, manager.runsForWorkItem(item.key), manager)),
+    items: column.items.map((item) => summarize(item, runsByItem.get(item.key) ?? [], manager)),
   }));
   return { lanes, generatedAt: new Date().toISOString() };
 }
@@ -175,7 +205,7 @@ export async function buildWorkItemDetail(
     updatedAt: item.updatedAt,
     parentKey: item.parentExternalId,
     runs,
-    links: item.links.map((l) => ({ type: l.type, url: l.url, title: l.title })),
+    links: item.links.map((l) => ({ type: l.type, url: safeLinkUrl(l.url), title: l.title })),
     comments: item.comments.map((c) => ({
       author: userName(c.author),
       body: c.body,

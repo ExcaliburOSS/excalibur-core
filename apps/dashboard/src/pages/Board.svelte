@@ -1,31 +1,36 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { fetchBoard, ApiError } from '../lib/api';
-  import {
-    LANES,
-    LANE_LABELS,
-    LANE_COLORS,
-    type BoardResponse,
-    type WorkItemSummary,
-  } from '../lib/contracts';
+  import { LANES, LANE_COLORS, type BoardResponse, type WorkItemSummary } from '../lib/contracts';
   import { t } from '../lib/i18n';
 
   let board = $state<BoardResponse | null>(null);
   let error = $state<string | null>(null);
+  /** A poll that failed AFTER we already had data — surfaced non-destructively. */
+  let staleError = $state<string | null>(null);
   let loading = $state(true);
   let live = $state(true);
+  let inFlight = false; // guards against overlapping/clobbering polls
   let timer: ReturnType<typeof setInterval> | null = null;
 
   /** Refresh the board; quiet (no spinner) on the auto-poll path. */
   async function load(quiet = false): Promise<void> {
+    if (inFlight) return; // a request is already running — don't stack/clobber
+    inFlight = true;
     if (!quiet) loading = true;
     try {
       board = await fetchBoard();
       error = null;
+      staleError = null;
     } catch (e) {
-      error = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
+      const msg = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
+      // Keep the last good board on a background poll failure; only blow away the
+      // view when we have nothing to show.
+      if (board === null) error = msg;
+      else staleError = msg;
     } finally {
       loading = false;
+      inFlight = false;
     }
   }
 
@@ -39,6 +44,8 @@
   onDestroy(() => {
     if (timer !== null) clearInterval(timer);
   });
+
+  const laneLabel = (lane: string): string => t(`lane.${lane}`);
 
   const laneItems = (lane: string): WorkItemSummary[] =>
     board?.lanes.find((l) => l.lane === lane)?.items ?? [];
@@ -69,6 +76,10 @@
   </div>
 </header>
 
+{#if staleError !== null}
+  <div class="stale" role="status">{t('common.error')}: {staleError}</div>
+{/if}
+
 {#if loading && board === null}
   <div class="state muted">{t('common.loading')}</div>
 {:else if error !== null && board === null}
@@ -82,7 +93,7 @@
       <section class="lane">
         <header style="--lane: {LANE_COLORS[lane]}">
           <span class="ldot"></span>
-          <h3>{LANE_LABELS[lane]}</h3>
+          <h3>{laneLabel(lane)}</h3>
           <span class="lcount faint">{items.length}</span>
         </header>
         <div class="cards">
@@ -226,6 +237,24 @@
     100% {
       box-shadow: 0 0 0 0 transparent;
     }
+  }
+  /* Respect users who ask for less motion: drop the looping pulse + bar tween. */
+  @media (prefers-reduced-motion: reduce) {
+    .pulse {
+      animation: none;
+    }
+    .fill {
+      transition: none;
+    }
+  }
+  .stale {
+    margin: -4px 0 14px;
+    padding: 6px 12px;
+    border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line));
+    background: color-mix(in srgb, var(--warn) 10%, transparent);
+    color: var(--warn);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
   }
   .state {
     padding: 64px 0;

@@ -1,8 +1,12 @@
 /**
  * Re-exports the dashboard wire contracts (the single source of truth lives in
  * `@excalibur/shared`) as TYPE-ONLY imports — so nothing from that package's
- * runtime (zod, etc.) is pulled into the browser bundle — plus the few small UI
- * constants the views need at runtime, declared locally to keep the bundle lean.
+ * runtime (zod, `node:crypto`, …) is pulled into the browser bundle. The lane
+ * ORDER + COLORS are small UI constants declared locally; the lane order is
+ * pinned to the shared `DashboardLane` union via `satisfies`, so a renamed/typo'd
+ * lane fails to compile here, and the SERVER mapper carries the authoritative
+ * add/remove/reorder parity guard against `@excalibur/work-items`. Labels are
+ * not duplicated — they are translated via i18n.
  */
 export type {
   BoardResponse,
@@ -11,6 +15,7 @@ export type {
   DashboardLane,
   DiscoverySummary,
   PlanRefDto,
+  RunRecord,
   RunSummary,
   WorkItemCommentDto,
   WorkItemDetail,
@@ -20,19 +25,16 @@ export type {
 
 import type { DashboardLane } from '@excalibur/shared';
 
-/** Lane order for board columns (mirror of WORK_ITEM_LANES). */
-export const LANES: readonly DashboardLane[] = ['backlog', 'todo', 'in_progress', 'review', 'done'];
+/** Lane order for board columns. `satisfies` pins each id to the shared union. */
+export const LANES = [
+  'backlog',
+  'todo',
+  'in_progress',
+  'review',
+  'done',
+] as const satisfies readonly DashboardLane[];
 
-/** Human label per lane. */
-export const LANE_LABELS: Readonly<Record<DashboardLane, string>> = {
-  backlog: 'Backlog',
-  todo: 'To do',
-  in_progress: 'In progress',
-  review: 'Review',
-  done: 'Done',
-};
-
-/** Accent color per lane (board column headers / card stripes). */
+/** Accent color per lane (board column headers / card stripes) — UI only. */
 export const LANE_COLORS: Readonly<Record<DashboardLane, string>> = {
   backlog: '#5b6577',
   todo: '#5b9dff',

@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { fetchWorkItem, ApiError } from '../lib/api';
-  import { LANE_LABELS, type WorkItemDetail } from '../lib/contracts';
+  import { type WorkItemDetail } from '../lib/contracts';
   import { t } from '../lib/i18n';
 
   const { key }: { key: string } = $props();
@@ -10,15 +9,37 @@
   let error = $state<string | null>(null);
   let loading = $state(true);
 
-  onMount(async () => {
-    try {
-      item = await fetchWorkItem(key);
-    } catch (e) {
-      error = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
-    } finally {
-      loading = false;
-    }
+  // Re-fetch whenever `key` changes — the component instance is REUSED when
+  // navigating WI-1 → WI-2 (same route branch), so onMount alone would show
+  // stale data. An incrementing token discards out-of-order responses.
+  let token = 0;
+  $effect(() => {
+    const k = key;
+    const mine = ++token;
+    loading = true;
+    error = null;
+    item = null;
+    fetchWorkItem(k)
+      .then((d) => {
+        if (mine === token) item = d;
+      })
+      .catch((e: unknown) => {
+        if (mine === token) error = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
+      })
+      .finally(() => {
+        if (mine === token) loading = false;
+      });
   });
+
+  // Defense in depth: the server already sanitizes link URLs, but guard the href
+  // here too so a script-bearing scheme can never reach the DOM.
+  const safeHref = (url: string): string => {
+    const c = url.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim();
+    if (/^(https?:|mailto:)/i.test(c)) return c;
+    if (c.startsWith('#')) return c;
+    if (c.startsWith('/') && !c.startsWith('//')) return c;
+    return '#';
+  };
 </script>
 
 <a class="back" href="#/">← {t('workItem.back')}</a>
@@ -32,7 +53,7 @@
     <div class="key mono faint">{item.key}</div>
     <h1>{item.title}</h1>
     <div class="badges">
-      <span class="lane">{LANE_LABELS[item.lane]}</span>
+      <span class="lane">{t('lane.' + item.lane)}</span>
       {#if item.priority}<span class="badge">{item.priority}</span>{/if}
       {#if item.assignee}<span class="badge">@{item.assignee}</span>{/if}
       {#each item.labels as label (label)}<span class="badge">{label}</span>{/each}
@@ -52,7 +73,7 @@
         {#each item.runs as run (run.id)}
           <li>
             <a class="mono" href={`#/runs/${run.id}`}>{run.id}</a>
-            <span class="st st-{run.status}">{run.status}</span>
+            <span class="st st-{run.status}">{t('status.' + run.status)}</span>
             <span class="faint">{run.workflow}{run.model ? ` · ${run.model}` : ''}</span>
           </li>
         {/each}
@@ -65,7 +86,7 @@
       <h2>{t('workItem.links')}</h2>
       <ul class="links">
         {#each item.links as link (link.url)}
-          <li><a href={link.url} target="_blank" rel="noreferrer">{link.title ?? link.url}</a>
+          <li><a href={safeHref(link.url)} target="_blank" rel="noreferrer">{link.title ?? link.url}</a>
             <span class="faint small">{link.type}</span></li>
         {/each}
       </ul>

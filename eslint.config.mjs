@@ -9,10 +9,10 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/coverage/**',
       'examples/demo-repo/**',
-      // The Svelte dashboard is type-checked + linted by `svelte-check` (the
-      // canonical Svelte tool); the root TS-ESLint config can't parse `.svelte`
-      // files or their runes. The app owns its own `typecheck` gate.
-      'apps/dashboard/**',
+      // Only `.svelte` files are exempt (the root TS-ESLint config can't parse
+      // them or their runes — svelte-check owns those). The dashboard's plain
+      // `.ts` files ARE linted by the root config.
+      'apps/dashboard/**/*.svelte',
     ],
   },
   js.configs.recommended,

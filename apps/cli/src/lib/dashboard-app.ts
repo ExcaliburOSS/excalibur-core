@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path';
  * even before the dashboard has been built.
  */
 
-let cached: string | null | undefined;
+let cached: string | undefined;
 
 function candidatePaths(): string[] {
   const paths: string[] = [];
@@ -33,7 +33,12 @@ function candidatePaths(): string[] {
   return paths;
 }
 
-/** The built dashboard HTML, or null if it hasn't been built/shipped. Cached. */
+/**
+ * The built dashboard HTML, or null if it hasn't been built/shipped. Only a
+ * SUCCESSFUL read is cached — a miss is not memoized, so a dashboard built after
+ * the server started (or a first request that raced the build) is picked up on a
+ * later request rather than wedged to the legacy page for the process lifetime.
+ */
 export function dashboardAppHtml(): string | null {
   if (cached !== undefined) {
     return cached;
@@ -49,8 +54,7 @@ export function dashboardAppHtml(): string | null {
       /* try the next candidate */
     }
   }
-  cached = null;
-  return cached;
+  return null; // not found — do NOT cache, so a later call retries
 }
 
 /** Test-only: reset the memoized lookup. */

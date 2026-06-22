@@ -4,7 +4,7 @@
  * page URL (`?token=…`) — exactly how the legacy dashboard authenticated. Every
  * response is typed against the shared dashboard contracts.
  */
-import type { BoardResponse, RunSummary, WorkItemDetail } from './contracts';
+import type { BoardResponse, RunRecord, WorkItemDetail } from './contracts';
 
 /** The token the server embedded in this page's URL (query or hash). */
 function authToken(): string {
@@ -65,9 +65,9 @@ export const fetchBoard = (): Promise<BoardResponse> => get('/api/board');
 export const fetchWorkItem = (key: string): Promise<WorkItemDetail> =>
   get(`/api/work-items/${encodeURIComponent(key)}`);
 
-/** All runs (the runs explorer, D4). The server returns full RunRecords; the
- * explorer only needs the summary fields, which RunSummary is a subset of. */
-export const fetchRuns = (): Promise<{ runs: RunSummary[] }> => get('/api/runs');
+/** All runs (the runs explorer). `/api/runs` returns full RunRecords today; the
+ * explorer reads a subset. D4 will switch this to rolled-up RunSummary objects. */
+export const fetchRuns = (): Promise<{ runs: RunRecord[] }> => get('/api/runs');
 
 /** Aggregate insights for the analytics view (D4). */
 export const fetchInsights = (): Promise<Record<string, unknown>> => get('/api/insights');

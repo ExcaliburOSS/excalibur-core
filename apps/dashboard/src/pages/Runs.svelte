@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { fetchRuns, ApiError } from '../lib/api';
-  import type { RunSummary } from '../lib/contracts';
+  import type { RunRecord } from '../lib/contracts';
   import { t } from '../lib/i18n';
 
-  let runs = $state<RunSummary[]>([]);
+  let runs = $state<RunRecord[]>([]);
   let error = $state<string | null>(null);
   let loading = $state(true);
 
@@ -23,6 +23,18 @@
     const d = new Date(iso);
     return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
   };
+
+  // A non-color status differentiator (color alone fails a11y / colorblind users).
+  const STATUS_GLYPH: Record<string, string> = {
+    completed: '✓',
+    failed: '✕',
+    running: '▸',
+    waiting_approval: '⏸',
+    queued: '·',
+    cancelled: '⊘',
+  };
+  const statusLabel = (s: string): string => t(`status.${s}`);
+  const statusGlyph = (s: string): string => STATUS_GLYPH[s] ?? '•';
 </script>
 
 <h1>{t('runs.title')} <span class="faint">({runs.length})</span></h1>
@@ -48,7 +60,12 @@
       {#each runs as run (run.id)}
         <tr>
           <td><a class="mono" href={`#/runs/${run.id}`}>{run.title || run.id}</a></td>
-          <td><span class="st st-{run.status}">{run.status}</span></td>
+          <td>
+            <span class="st st-{run.status}" title={statusLabel(run.status)}>
+              <span class="glyph" aria-hidden="true">{statusGlyph(run.status)}</span>
+              {statusLabel(run.status)}
+            </span>
+          </td>
           <td class="faint">{run.workflow}</td>
           <td class="faint">{run.model ?? '—'}</td>
           <td class="faint">{when(run.startedAt)}</td>
@@ -87,18 +104,26 @@
     background: var(--panel);
   }
   .st {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     font-size: 11px;
     padding: 1px 8px;
     border-radius: 999px;
     background: var(--panel-2);
   }
+  .glyph {
+    font-size: 10px;
+  }
   .st-completed {
     color: var(--ok);
   }
-  .st-failed {
+  .st-failed,
+  .st-cancelled {
     color: var(--bad);
   }
-  .st-running {
+  .st-running,
+  .st-waiting_approval {
     color: var(--accent);
   }
 </style>

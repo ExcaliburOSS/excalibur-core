@@ -86,6 +86,12 @@ export class LocalWorkItemProvider implements WorkItemProvider {
   }
 
   private fileFor(key: string): string {
+    // Confine the key to the `WI-<n>` shape so a crafted externalIdOrKey (e.g.
+    // `../../etc/passwd`) can never escape the work-items folder — defense in
+    // depth even though callers/serve already validate the shape.
+    if (!KEY_RE.test(key)) {
+      throw new Error(`invalid work item key "${key}"`);
+    }
     return join(this.dir, `${key}.json`);
   }
 

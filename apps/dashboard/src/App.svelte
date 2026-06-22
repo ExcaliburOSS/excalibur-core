@@ -26,7 +26,8 @@
     </a>
     <nav>
       {#each NAV as item (item.href)}
-        <a href={item.href} class:active={item.match.includes(router.current.name)}>
+        {@const active = item.match.includes(router.current.name)}
+        <a href={item.href} class:active aria-current={active ? 'page' : undefined}>
           {t(item.key)}
         </a>
       {/each}

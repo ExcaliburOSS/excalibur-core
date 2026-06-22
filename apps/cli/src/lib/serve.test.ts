@@ -204,6 +204,16 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
     expect(text).toContain('event: end');
   });
 
+  it('handles a stream URL with a trailing slash (normalized id, no empty-id crash)', async () => {
+    // route() matches on the trailing-slash-normalized path, so the id must be
+    // derived from the SAME normalization — a raw-pathname regex would yield ''.
+    const res = await get(`/api/runs/${runId}/stream/`);
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+    const text = await res.text();
+    expect(text).toContain('event: run_started');
+    expect(text).toContain('event: end');
+  });
+
   it('TAILS events appended AFTER the stream opens (incremental byte-offset tail)', async () => {
     const manager = new RunManager(repoRoot);
     const run = manager.createRun({

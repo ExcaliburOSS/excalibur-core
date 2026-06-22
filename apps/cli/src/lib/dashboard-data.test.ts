@@ -94,6 +94,26 @@ describe('dashboard-data (store → DTO mappers)', () => {
     expect(await buildWorkItemDetail(repoRoot, 'WI-999')).toBeNull();
   });
 
+  it('sanitizes script-bearing link URLs so a javascript: scheme never reaches the client', async () => {
+    const provider = new LocalWorkItemProvider(repoRoot);
+    const item = provider.createWorkItem({ title: 'Has links' });
+    await provider.linkPullRequest({
+      integrationId: 'local',
+      externalIdOrKey: item.key,
+      pullRequest: { provider: 'github', url: 'javascript:alert(document.cookie)', title: 'evil' },
+    });
+    await provider.linkPullRequest({
+      integrationId: 'local',
+      externalIdOrKey: item.key,
+      pullRequest: { provider: 'github', url: 'https://github.com/x/y/pull/1', title: 'ok' },
+    });
+    const detail = await buildWorkItemDetail(repoRoot, item.key);
+    const urls = detail?.links.map((l) => l.url) ?? [];
+    expect(urls).toContain('https://github.com/x/y/pull/1'); // safe URL preserved
+    expect(urls).not.toContain('javascript:alert(document.cookie)'); // neutralized
+    expect(urls.some((u) => u.startsWith('javascript:'))).toBe(false);
+  });
+
   it("surfaces the active run's live checklist on the in-progress card (D1)", () => {
     const provider = new LocalWorkItemProvider(repoRoot);
     const item = provider.createWorkItem({ title: 'Live work', status: 'in_progress' });
