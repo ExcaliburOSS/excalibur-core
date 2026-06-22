@@ -190,7 +190,9 @@ async function startRun(prompt: string): Promise<void> {
   const command = cfg.get<string>('command', 'excalibur');
   const args = cfg.get<string[]>('args', ['acp']);
   const cwd =
-    vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? vscode.workspace.rootPath ?? process.cwd();
+    vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ??
+    vscode.workspace.rootPath ??
+    process.cwd();
 
   const channel = out();
   channel.show(true);
@@ -210,8 +212,10 @@ async function startRun(prompt: string): Promise<void> {
   // EPIPE safety: a write to a child that has closed its read end emits an async
   // 'error' on the stream; with NO listener Node escalates it to an uncaught
   // exception that can crash the whole extension host. Swallow + log all three.
-  const swallow = (label: string) => (error: Error): void =>
-    channel.appendLine(`· ${label}: ${describe(error)}`);
+  const swallow =
+    (label: string) =>
+    (error: Error): void =>
+      channel.appendLine(`· ${label}: ${describe(error)}`);
   child.stdin.on('error', swallow('stdin error'));
   child.stdout.on('error', swallow('stdout error'));
   child.stderr.on('error', swallow('stderr error'));
@@ -344,7 +348,9 @@ function renderUpdate(channel: vscode.OutputChannel, update: SessionUpdate): voi
       channel.appendLine(`\n  ⚙ ${update.title ?? update.toolCallId ?? 'tool'} …`);
       break;
     case 'tool_call_update':
-      channel.appendLine(`  ${update.status === 'failed' ? '✗' : '✓'} ${update.toolCallId ?? 'tool'}`);
+      channel.appendLine(
+        `  ${update.status === 'failed' ? '✗' : '✓'} ${update.toolCallId ?? 'tool'}`,
+      );
       break;
     case 'plan': {
       const entries = update.entries ?? [];
@@ -363,10 +369,7 @@ function renderUpdate(channel: vscode.OutputChannel, update: SessionUpdate): voi
 }
 
 /** Maps an ACP permission request to a native modal; returns the chosen optionId. */
-async function askPermission(
-  request: PermissionRequest,
-  policy: string,
-): Promise<string | null> {
+async function askPermission(request: PermissionRequest, policy: string): Promise<string | null> {
   const allow = request.options.find((o) => o.optionId === 'allow') ?? request.options[0];
   if (policy === 'allow' && allow !== undefined) {
     return allow.optionId;

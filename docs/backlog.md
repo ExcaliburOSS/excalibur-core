@@ -87,10 +87,10 @@ agents list|show|init` + `run --agent <name>`. The allowlist only NARROWS the
 14. **More providers + in-TUI model picker + reasoning/vision variants** ✅ SHIPPED —
     (a) gateway: `ChatInput.reasoningEffort` + `ChatMessage.images` (vision) + providers.yaml
     `capabilities` (78c6771); (b) catalog +5 providers (Groq/xAI/Cerebras/Together/Fireworks)
-    + capability metadata (06dff7c); (c) in-shell `/models` picker reusing Ui.select (b77b8f6).
-    [Core][auto] — OC-P2. _(The 4th part "new adapter family" — a native non-OpenAI-wire
-    adapter, e.g. Gemini generateContent — deferred to **P2.20** where real provider creds
-    enable live verification; Gemini already works via the openai-compat endpoint.)_
+    - capability metadata (06dff7c); (c) in-shell `/models` picker reusing Ui.select (b77b8f6).
+      [Core][auto] — OC-P2. _(The 4th part "new adapter family" — a native non-OpenAI-wire
+      adapter, e.g. Gemini generateContent — deferred to **P2.20** where real provider creds
+      enable live verification; Gemini already works via the openai-compat endpoint.)_
 
 ## P2 — Roadmap M4/M5 (some need credentials)
 

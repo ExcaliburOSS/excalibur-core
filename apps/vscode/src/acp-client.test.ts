@@ -83,7 +83,10 @@ describe('AcpClient — prompt streaming', () => {
     const p = client.prompt('s1', 'do the thing');
     const req = t.last();
     expect(req.method).toBe('session/prompt');
-    expect(req.params).toEqual({ sessionId: 's1', prompt: [{ type: 'text', text: 'do the thing' }] });
+    expect(req.params).toEqual({
+      sessionId: 's1',
+      prompt: [{ type: 'text', text: 'do the thing' }],
+    });
 
     // Stream a couple of notifications (no id) before the response.
     t.emit({

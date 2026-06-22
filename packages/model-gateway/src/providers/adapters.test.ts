@@ -299,7 +299,10 @@ describe('OpenAICompatibleAdapter', () => {
     const parts = body.messages[0].content;
     expect(Array.isArray(parts)).toBe(true);
     expect(parts[0]).toEqual({ type: 'text', text: 'What is in this image?' });
-    expect(parts[1]).toEqual({ type: 'image_url', image_url: { url: 'https://example.test/a.png' } });
+    expect(parts[1]).toEqual({
+      type: 'image_url',
+      image_url: { url: 'https://example.test/a.png' },
+    });
     expect(parts[2]).toEqual({
       type: 'image_url',
       image_url: { url: 'data:image/png;base64,iVBOR' },

@@ -24,14 +24,14 @@ excalibur --version
 
 ## Commands
 
-| Command | Default keybinding | What it does |
-| --- | --- | --- |
-| **Excalibur: Run a Task** | `Ctrl/Cmd+Shift+A` | Ask for a task and run it in the workspace root. |
-| **Excalibur: Ask About Selection** | `Ctrl/Cmd+Shift+E` | Ask a question about the selected code (right-click too). |
-| **Excalibur: Explain This File** | — | Explain the active file. |
-| **Excalibur: Review Selection** | — | Adversarial review of the selected code. |
-| **Excalibur: Cancel the Running Agent** | `Esc` (while running) | Cancel the in-flight run. |
-| **Excalibur: Open Excalibur Terminal** | — | Drop into the interactive shell in a terminal. |
+| Command                                 | Default keybinding    | What it does                                              |
+| --------------------------------------- | --------------------- | --------------------------------------------------------- |
+| **Excalibur: Run a Task**               | `Ctrl/Cmd+Shift+A`    | Ask for a task and run it in the workspace root.          |
+| **Excalibur: Ask About Selection**      | `Ctrl/Cmd+Shift+E`    | Ask a question about the selected code (right-click too). |
+| **Excalibur: Explain This File**        | —                     | Explain the active file.                                  |
+| **Excalibur: Review Selection**         | —                     | Adversarial review of the selected code.                  |
+| **Excalibur: Cancel the Running Agent** | `Esc` (while running) | Cancel the in-flight run.                                 |
+| **Excalibur: Open Excalibur Terminal**  | —                     | Drop into the interactive shell in a terminal.            |
 
 The agent streams its work — assistant text, tool calls and the live plan — into
 the **Excalibur** output channel. The current file and selection (with 1-based
@@ -46,11 +46,11 @@ floor are still enforced by the CLI.
 
 ## Settings
 
-| Setting | Default | Description |
-| --- | --- | --- |
-| `excalibur.command` | `excalibur` | Path to the CLI binary. |
-| `excalibur.args` | `["acp"]` | Arguments to launch ACP mode. |
-| `excalibur.autoApprove` | `ask` | `ask` (prompt per action) or `allow` (auto-approve). |
+| Setting                 | Default     | Description                                          |
+| ----------------------- | ----------- | ---------------------------------------------------- |
+| `excalibur.command`     | `excalibur` | Path to the CLI binary.                              |
+| `excalibur.args`        | `["acp"]`   | Arguments to launch ACP mode.                        |
+| `excalibur.autoApprove` | `ask`       | `ask` (prompt per action) or `allow` (auto-approve). |
 
 ## Editor compatibility
 

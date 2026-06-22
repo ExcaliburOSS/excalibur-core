@@ -111,7 +111,11 @@ try {
     `session/prompt → stopReason "${stopReason}"`,
     `unexpected stopReason "${stopReason}"`,
   );
-  check(chunks > 0, `streamed ${chunks} assistant message chunk(s)`, 'no assistant chunks streamed');
+  check(
+    chunks > 0,
+    `streamed ${chunks} assistant message chunk(s)`,
+    'no assistant chunks streamed',
+  );
 } catch (error) {
   bad(`threw: ${error instanceof Error ? error.message : String(error)}`);
 } finally {
@@ -119,5 +123,7 @@ try {
   rmSync(dir, { recursive: true, force: true });
 }
 
-console.log(failures === 0 ? '\n✓ ACP real smoke PASSED' : `\n✗ ACP real smoke: ${failures} failure(s)`);
+console.log(
+  failures === 0 ? '\n✓ ACP real smoke PASSED' : `\n✗ ACP real smoke: ${failures} failure(s)`,
+);
 process.exit(failures === 0 ? 0 : 1);

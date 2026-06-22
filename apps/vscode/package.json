@@ -25,7 +25,11 @@
     "coding-assistant",
     "excalibur"
   ],
-  "categories": ["AI", "Chat", "Programming Languages"],
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages"
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -33,19 +37,31 @@
   "activationEvents": [],
   "contributes": {
     "commands": [
-      { "command": "excalibur.run", "title": "Run a Task", "category": "Excalibur" },
+      {
+        "command": "excalibur.run",
+        "title": "Run a Task",
+        "category": "Excalibur"
+      },
       {
         "command": "excalibur.askSelection",
         "title": "Ask About Selection",
         "category": "Excalibur"
       },
-      { "command": "excalibur.explainFile", "title": "Explain This File", "category": "Excalibur" },
+      {
+        "command": "excalibur.explainFile",
+        "title": "Explain This File",
+        "category": "Excalibur"
+      },
       {
         "command": "excalibur.reviewSelection",
         "title": "Review Selection",
         "category": "Excalibur"
       },
-      { "command": "excalibur.cancel", "title": "Cancel the Running Agent", "category": "Excalibur" },
+      {
+        "command": "excalibur.cancel",
+        "title": "Cancel the Running Agent",
+        "category": "Excalibur"
+      },
       {
         "command": "excalibur.openTerminal",
         "title": "Open Excalibur Terminal",
@@ -53,14 +69,22 @@
       }
     ],
     "keybindings": [
-      { "command": "excalibur.run", "key": "ctrl+shift+a", "mac": "cmd+shift+a" },
+      {
+        "command": "excalibur.run",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a"
+      },
       {
         "command": "excalibur.askSelection",
         "key": "ctrl+shift+e",
         "mac": "cmd+shift+e",
         "when": "editorHasSelection"
       },
-      { "command": "excalibur.cancel", "key": "escape", "when": "excalibur.running" }
+      {
+        "command": "excalibur.cancel",
+        "key": "escape",
+        "when": "excalibur.running"
+      }
     ],
     "menus": {
       "editor/context": [
@@ -75,7 +99,12 @@
           "group": "navigation@9"
         }
       ],
-      "commandPalette": [{ "command": "excalibur.cancel", "when": "excalibur.running" }]
+      "commandPalette": [
+        {
+          "command": "excalibur.cancel",
+          "when": "excalibur.running"
+        }
+      ]
     },
     "configuration": {
       "title": "Excalibur",
@@ -87,13 +116,20 @@
         },
         "excalibur.args": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["acp"],
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "acp"
+          ],
           "description": "Arguments used to launch the CLI in ACP (Agent Client Protocol) mode."
         },
         "excalibur.autoApprove": {
           "type": "string",
-          "enum": ["ask", "allow"],
+          "enum": [
+            "ask",
+            "allow"
+          ],
           "enumDescriptions": [
             "Prompt for every tool action that needs approval (safe default).",
             "Auto-approve every tool action (use only in trusted repos)."

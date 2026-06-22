@@ -1524,7 +1524,8 @@ async function handleModelsCommand(deps: CliDeps, runtime: SessionRuntime): Prom
     return;
   }
   const section = ctx.providers.providers as Record<string, unknown>;
-  const cheapTarget = typeof section['cheap'] === 'string' ? (section['cheap'] as string) : undefined;
+  const cheapTarget =
+    typeof section['cheap'] === 'string' ? (section['cheap'] as string) : undefined;
   const providers = listSwitchableProviders(section, ctx.providerName, cheapTarget);
   if (providers.filter((p) => !p.current).length === 0) {
     deps.ui.info('Only one model provider is configured — add more with `excalibur models setup`.');

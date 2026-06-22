@@ -6,9 +6,17 @@ import { capabilityHint, listSwitchableProviders, providerHint } from './model-s
 const section = {
   default: 'kimi',
   cheap: 'kimi-fast',
-  kimi: { type: 'openai-compatible', model: 'kimi-k2.7-code', capabilities: { reasoning: true, tools: true } },
+  kimi: {
+    type: 'openai-compatible',
+    model: 'kimi-k2.7-code',
+    capabilities: { reasoning: true, tools: true },
+  },
   'kimi-fast': { type: 'openai-compatible', model: 'moonshot-v1-8k' },
-  groq: { type: 'openai-compatible', model: 'openai/gpt-oss-120b', capabilities: { reasoning: true, tools: true } },
+  groq: {
+    type: 'openai-compatible',
+    model: 'openai/gpt-oss-120b',
+    capabilities: { reasoning: true, tools: true },
+  },
   mock: { type: 'mock' },
 };
 
@@ -28,7 +36,9 @@ describe('listSwitchableProviders', () => {
   });
 
   it('returns an empty list when only reserved pointers + mock exist', () => {
-    expect(listSwitchableProviders({ default: 'mock', mock: { type: 'mock' } }, 'mock')).toEqual([]);
+    expect(listSwitchableProviders({ default: 'mock', mock: { type: 'mock' } }, 'mock')).toEqual(
+      [],
+    );
   });
 
   it('excludes the cheap-pointer target (the reasoning-off -fast sidecar)', () => {
