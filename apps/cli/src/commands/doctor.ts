@@ -88,6 +88,10 @@ export function registerDoctorCommand(program: Command, deps: CliDeps): void {
               ? deps.t('doctor.detail.configValid')
               : deps.t('doctor.detail.configMissing'),
           );
+          // P1.11b: surface the user-global layer when it merged under the project.
+          if (loaded.globalPath !== undefined) {
+            add('user config', 'PASS', `global layer merged from ${loaded.globalPath}`);
+          }
           const presetId = loaded.config.safety?.preset ?? DEFAULT_SAFETY_PRESET_ID;
           add(
             deps.t('doctor.check.safetyPreset'),
