@@ -48,9 +48,12 @@ overhaul · **npm publish 1.2.0** (`@excalibur-oss/excalibur`, `latest`).
    keybindings + editor context menu; streams assistant text/tool calls/plan to an output
    channel; native permission modals; selection + file passed as prompt context. Builds to
    a single CJS bundle (tsup, `vscode` externalized), `@types/vscode` devDep only. Verified
-   end-to-end vs a real model (the AcpClient ↔ real `excalibur acp` ↔ Groq). _(Fixed a real
+   end-to-end vs a real model (the AcpClient ↔ real `excalibur acp` ↔ Groq). Adversarial
+   review found + fixed 11 real bugs (killRun on teardown, loop-proof receive, EPIPE
+   listeners, running-key race, fence injection, refuse-unconfigured). _(Fixed a real
    ACP+serve bug en route: runs defaulted to the `mock` provider — now thread the resolved
-   providers.yaml default; regression-tested.)_ [Core/new][auto] — OC-P0.3 / M7.
+   providers.yaml default + refuse when unconfigured; regression-tested.)_ Polish (webview
+   UI, deeper ACP verbs, Open VSX/Marketplace publish) → **5b**. [Core/new][auto] — OC-P0.3 / M7.
 6. **User custom slash commands** (markdown `/name` with `$ARGUMENTS`/`$1`/`!cmd`/`@file`)
    [Core][auto] — OC-P1. Ours are hardcoded; we already have `{{var}}` templating.
 7. **Self-contained custom agents** ✅ SHIPPED — one `.excalibur/agents/<name>.md` =
