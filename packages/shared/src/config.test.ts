@@ -147,6 +147,8 @@ describe('excaliburConfigSchema', () => {
       enabled: true,
       diagnosticsTimeoutMs: 1500,
       serverStartTimeoutMs: 8000,
+      autoInstall: false, // opt-in: never installs software without explicit consent
+      autoInstallTimeoutMs: 180000,
     });
     // A per-language command override is accepted.
     expect(

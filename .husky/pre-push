@@ -1,0 +1,38 @@
+#!/usr/bin/env sh
+# Pre-push net: the LAST line of defence before CI. Runs the exact CI gates
+# (ESLint + Prettier check) but SCOPED to the files this push actually adds —
+# computed from the commit range git hands the hook on stdin — so it never
+# false-fails on a teammate's uncommitted WIP sitting in the working tree.
+#
+# Typecheck is intentionally NOT run here: it is project-wide (can't be file
+# scoped) and would block on unrelated WIP; run `pnpm typecheck` manually.
+set -e
+
+# git feeds "<local ref> <local sha> <remote ref> <remote sha>" lines on stdin.
+range=""
+while read -r _local lsha _remote rsha; do
+  [ "$lsha" = "0000000000000000000000000000000000000000" ] && continue # branch delete
+  if printf '%s' "$rsha" | grep -qE '^0+$'; then
+    range="$lsha" # new remote branch: check everything reachable from the tip
+  else
+    range="$rsha..$lsha"
+  fi
+done
+
+[ -z "$range" ] && exit 0
+
+changed=$(git diff --name-only --diff-filter=ACMR "$range" 2>/dev/null || true)
+[ -z "$changed" ] && exit 0
+
+lint=$(printf '%s\n' "$changed" | grep -E '\.(ts|tsx|js|cjs|mjs|cts|mts)$' || true)
+fmt=$(printf '%s\n' "$changed" | grep -E '\.(ts|tsx|js|cjs|mjs|cts|mts|json|md|ya?ml)$' || true)
+
+if [ -n "$lint" ]; then
+  echo "pre-push: eslint $(printf '%s\n' "$lint" | wc -l | tr -d ' ') file(s)…"
+  printf '%s\n' "$lint" | xargs pnpm exec eslint --no-warn-ignored
+fi
+if [ -n "$fmt" ]; then
+  echo "pre-push: prettier --check $(printf '%s\n' "$fmt" | wc -l | tr -d ' ') file(s)…"
+  printf '%s\n' "$fmt" | xargs pnpm exec prettier --check
+fi
+echo "pre-push: gates passed."

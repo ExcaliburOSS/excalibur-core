@@ -21,6 +21,8 @@ const realConfig: LspConfig = {
   // Generous settle: under parallel load the semantic pass trails the syntactic one.
   diagnosticsSettleMs: 2000,
   serverStartTimeoutMs: 25000,
+  autoInstall: false,
+  autoInstallTimeoutMs: 180000,
 };
 
 describe.skipIf(!HAS_TSSERVER)('LSP against the real typescript-language-server', () => {

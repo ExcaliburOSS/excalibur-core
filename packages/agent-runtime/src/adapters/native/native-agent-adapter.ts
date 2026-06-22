@@ -392,6 +392,10 @@ export class NativeAgentAdapter implements AgentAdapter {
     // the model. Declared here so the `finally` can always close it; created in
     // the try (it spawns nothing until an edit of a supported, installed language).
     let lsp: LspSession | null = null;
+    // Auto-install progress (P1.10b) is produced lazily during a later tool call,
+    // where we can't yield directly — buffer here and drain into events after the
+    // diagnostics pass that triggers the install.
+    const lspLogs: string[] = [];
     const responseKind = ROLE_TO_RESPONSE_KIND[input.role] ?? 'ask';
     const mutated = new Set<string>();
     const totals: RunningTotals = { inputTokens: 0, outputTokens: 0, costCents: null };
@@ -457,6 +461,7 @@ export class NativeAgentAdapter implements AgentAdapter {
           workdir: input.workdir,
           config: lspCfg ?? DEFAULT_LSP_CONFIG,
           ...(input.signal !== undefined ? { signal: input.signal } : {}),
+          onLog: (message) => lspLogs.push(message),
         });
         // Expose the session to the `lsp` tool executor via the shared tool ctx.
         toolCtx.lsp = lsp;
@@ -582,6 +587,7 @@ export class NativeAgentAdapter implements AgentAdapter {
             mcp.byName,
             extByName,
             lsp,
+            lspLogs,
           )) {
             yield ev.event;
             if (ev.toolMessage !== undefined) {
@@ -645,6 +651,7 @@ export class NativeAgentAdapter implements AgentAdapter {
     mcpByName: ReadonlyMap<string, McpToolEntry>,
     extByName: ReadonlyMap<string, ExtensionTool>,
     lsp: LspSession | null,
+    lspLogs: string[],
   ): Promise<Array<{ event: ExcaliburEvent; toolMessage?: ChatMessage }>> {
     const events: Array<{ event: ExcaliburEvent; toolMessage?: ChatMessage }> = [];
 
@@ -818,6 +825,15 @@ export class NativeAgentAdapter implements AgentAdapter {
         if (diag.errorCount > 0 || diag.warningCount > 0) {
           diagnosticsNote += formatDiagnosticsForModel(diag);
         }
+      }
+    }
+    // Surface any auto-install progress produced while starting servers above.
+    while (lspLogs.length > 0) {
+      const message = lspLogs.shift();
+      if (message !== undefined) {
+        events.push({
+          event: emit('policy_decision', { kind: 'log', decision: 'allow', message }),
+        });
       }
     }
 

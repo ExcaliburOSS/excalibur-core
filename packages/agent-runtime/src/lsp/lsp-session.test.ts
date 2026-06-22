@@ -1,10 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { LspConfig } from '@excalibur/shared';
 import { createLspSession } from './lsp-session';
 import { FAKE_LSP_SERVER } from './__fixtures__/fake-lsp-server';
+
+// Replace the real installer (which would shell out to npm/go/…) with a spy, so
+// the auto-install WIRING can be asserted hermetically. Tests with autoInstall
+// off never reach it, so this is inert for the rest of the suite.
+vi.mock('./lsp-install', () => ({ installLspServer: vi.fn(() => Promise.resolve(false)) }));
+import { installLspServer } from './lsp-install';
+const installMock = vi.mocked(installLspServer);
 
 /**
  * Drives the session against the fake LSP server by pointing the `typescript`
@@ -16,6 +23,8 @@ function fakeConfig(extra: Partial<LspConfig> = {}): LspConfig {
     diagnosticsTimeoutMs: 2000,
     diagnosticsSettleMs: 200,
     serverStartTimeoutMs: 4000,
+    autoInstall: false,
+    autoInstallTimeoutMs: 180000,
     servers: { typescript: { command: process.execPath, args: ['-e', FAKE_LSP_SERVER] } },
     ...extra,
   };
@@ -78,6 +87,51 @@ describe('createLspSession', () => {
     try {
       writeFileSync(join(workdir, 'a.ts'), '__ERR__ bad\n');
       expect(await session.diagnosticsFor('a.ts')).toBeNull();
+    } finally {
+      session.close();
+    }
+  });
+
+  it('does NOT attempt an install when autoInstall is off (the default)', async () => {
+    installMock.mockClear();
+    const session = createLspSession({
+      workdir,
+      config: fakeConfig({
+        servers: { typescript: { command: 'definitely-not-installed-xyzzy' } },
+      }),
+    });
+    try {
+      writeFileSync(join(workdir, 'a.ts'), '__ERR__ bad\n');
+      expect(await session.diagnosticsFor('a.ts')).toBeNull();
+      expect(installMock).not.toHaveBeenCalled();
+    } finally {
+      session.close();
+    }
+  });
+
+  it('attempts a ONE-SHOT install when autoInstall is on and the binary is missing', async () => {
+    installMock.mockClear();
+    const logs: string[] = [];
+    const session = createLspSession({
+      workdir,
+      config: fakeConfig({
+        autoInstall: true,
+        servers: { typescript: { command: 'definitely-not-installed-xyzzy' } },
+      }),
+      onLog: (m) => logs.push(m),
+    });
+    try {
+      // Install mock resolves false → the server stays inert (no spawn).
+      writeFileSync(join(workdir, 'a.ts'), '__ERR__ bad\n');
+      expect(await session.diagnosticsFor('a.ts')).toBeNull();
+      expect(installMock).toHaveBeenCalledTimes(1);
+      expect(installMock).toHaveBeenCalledWith(
+        expect.objectContaining({ serverKey: 'typescript', timeoutMs: 180000 }),
+      );
+      // A second edit of the SAME server must reuse the cached attempt, not re-install.
+      writeFileSync(join(workdir, 'b.ts'), '__ERR__ bad\n');
+      expect(await session.diagnosticsFor('b.ts')).toBeNull();
+      expect(installMock).toHaveBeenCalledTimes(1);
     } finally {
       session.close();
     }

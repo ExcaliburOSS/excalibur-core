@@ -295,6 +295,18 @@ export const lspConfigSchema = z.object({
   diagnosticsSettleMs: z.number().int().positive().default(400),
   /** One-time cold-start budget for the server's initialize + project load (ms). */
   serverStartTimeoutMs: z.number().int().positive().default(8000),
+  /**
+   * Auto-install a missing language server on first use (P1.10b). OFF by default
+   * — installing software hits the network + mutates the global toolchain, so it
+   * is strictly opt-in. When on, Excalibur runs the server's known install
+   * command (npm i -g / go install / rustup component add / gem / pip) ONCE per
+   * server per session, bounded by `autoInstallTimeoutMs`, and only when the
+   * package manager is on PATH. Servers without a scriptable command (brew/manual)
+   * still just surface the install hint.
+   */
+  autoInstall: z.boolean().default(false),
+  /** Hard timeout for one auto-install attempt (ms). */
+  autoInstallTimeoutMs: z.number().int().positive().default(180000),
 });
 export type LspConfig = z.infer<typeof lspConfigSchema>;
 
@@ -304,6 +316,8 @@ export const DEFAULT_LSP_CONFIG: LspConfig = {
   diagnosticsTimeoutMs: 1500,
   diagnosticsSettleMs: 400,
   serverStartTimeoutMs: 8000,
+  autoInstall: false,
+  autoInstallTimeoutMs: 180000,
 };
 
 /**

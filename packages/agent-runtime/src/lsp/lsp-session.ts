@@ -4,7 +4,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { DiagnosticsPayload, DiagnosticItem, LspConfig } from '@excalibur/shared';
 import { LspClient } from './lsp-client';
 import { LSP_SEVERITY, type DiagnosticSeverity, type LspDiagnostic } from './lsp-protocol';
-import { languageForFile, resolveBinary, resolveServerFor } from './lsp-servers';
+import { installLspServer } from './lsp-install';
+import {
+  languageForFile,
+  resolveBinary,
+  resolveServerFor,
+  type LspServerCommand,
+} from './lsp-servers';
 
 /**
  * Run-scoped LSP orchestrator: the adapter holds one of these and asks it for
@@ -114,6 +120,11 @@ export interface CreateLspSessionOptions {
   workdir: string;
   config: LspConfig;
   signal?: AbortSignal;
+  /**
+   * Diagnostic sink for auto-install progress (P1.10b). The adapter forwards it
+   * to a `policy_decision`/log event so the user sees what got installed.
+   */
+  onLog?: (message: string) => void;
 }
 
 /** Files larger than this are skipped (a language server choke + low value). */
@@ -136,16 +147,41 @@ export function createLspSession(options: CreateLspSessionOptions): LspSession {
 
   function startFor(language: string): Promise<LspClient | null> {
     const server = resolveServerFor(language, config.servers);
-    const resolvedCommand = server === null ? null : resolveBinary(server.command);
-    if (server === null || resolvedCommand === null) {
-      return Promise.resolve(null); // unknown language or no server installed → inert
+    if (server === null) {
+      return Promise.resolve(null); // unknown language → inert
     }
     const existing = clients.get(server.serverKey);
     if (existing !== undefined) {
       return existing;
     }
+    // Cache the PROMISE of the whole resolve→(maybe install)→start chain so the
+    // opt-in install runs at most ONCE per server per session, even under
+    // concurrent edits, and a failure is never retried.
+    const started = resolveThenStart(server);
+    clients.set(server.serverKey, started);
+    return started;
+  }
+
+  async function resolveThenStart(server: LspServerCommand): Promise<LspClient | null> {
+    let resolvedCommand = resolveBinary(server.command);
+    // Opt-in (default OFF): if the server binary is missing and the user enabled
+    // `lsp.autoInstall`, try the server's deterministic install command ONCE,
+    // then re-resolve. Best-effort and bounded — failure leaves the session inert.
+    if (resolvedCommand === null && config.autoInstall) {
+      const installed = await installLspServer({
+        serverKey: server.serverKey,
+        timeoutMs: config.autoInstallTimeoutMs,
+        ...(options.onLog ? { log: options.onLog } : {}),
+      });
+      if (installed) {
+        resolvedCommand = resolveBinary(server.command);
+      }
+    }
+    if (resolvedCommand === null) {
+      return null; // no server installed (and not auto-installable) → inert
+    }
     const rootUri = pathToFileURL(workdir).href;
-    const started = LspClient.start({
+    return LspClient.start({
       // Spawn the RESOLVED absolute path so the spawn doesn't depend on the
       // child's own PATH search (robust across shells / test workers).
       command: resolvedCommand,
@@ -157,8 +193,6 @@ export function createLspSession(options: CreateLspSessionOptions): LspSession {
       requestTimeoutMs: config.serverStartTimeoutMs,
       env: { ...process.env },
     }).catch(() => null); // start failure → inert (never throws into the loop)
-    clients.set(server.serverKey, started);
-    return started;
   }
 
   return {

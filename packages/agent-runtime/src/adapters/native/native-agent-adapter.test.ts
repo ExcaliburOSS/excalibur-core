@@ -471,6 +471,8 @@ describe('NativeAgentAdapter — LSP per-edit diagnostics', () => {
         diagnosticsTimeoutMs: 5000,
         diagnosticsSettleMs: 400,
         serverStartTimeoutMs: 20000,
+        autoInstall: false,
+        autoInstallTimeoutMs: 180000,
         servers: { typescript: { command: process.execPath, args: ['-e', FAKE_LSP_SERVER] } },
       },
     };

@@ -1,8 +1,29 @@
 #!/usr/bin/env sh
-# Auto-format staged files with Prettier so CI's `format:check` never fails on a
-# missed `pnpm format`. Dependency-free (no husky/lint-staged): activated by the
-# root `prepare` script which sets `core.hooksPath` to this directory on install.
-staged=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx|js|mjs|cjs|json|md|ya?ml)$' || true)
+# Pre-commit gate (dependency-free; no husky/lint-staged). Activated by the root
+# `prepare` script which points core.hooksPath here. Operates ONLY on STAGED
+# files, so committing a selective subset never touches anyone else's WIP.
+#
+#   1. Prettier --write   → CI's `format:check` can never fail on a missed format.
+#   2. ESLint --fix       → auto-fix what's fixable; ABORT the commit on anything
+#                           that isn't, so a lint error can never reach CI.
+#
+# Do NOT bypass with `git commit --no-verify` — that is exactly how unformatted /
+# unlinted code slipped to CI before.
+set -e
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
 [ -z "$staged" ] && exit 0
-printf '%s\n' "$staged" | xargs pnpm exec prettier --write
-printf '%s\n' "$staged" | xargs git add
+
+# Prettier covers code + data/docs.
+fmt=$(printf '%s\n' "$staged" | grep -E '\.(ts|tsx|js|cjs|mjs|cts|mts|json|md|ya?ml)$' || true)
+if [ -n "$fmt" ]; then
+  printf '%s\n' "$fmt" | xargs pnpm exec prettier --write
+  printf '%s\n' "$fmt" | xargs git add
+fi
+
+# ESLint only lints JS/TS sources (matches the root `eslint .` gate).
+lint=$(printf '%s\n' "$staged" | grep -E '\.(ts|tsx|js|cjs|mjs|cts|mts)$' || true)
+if [ -n "$lint" ]; then
+  printf '%s\n' "$lint" | xargs pnpm exec eslint --fix --no-warn-ignored
+  printf '%s\n' "$lint" | xargs git add
+fi

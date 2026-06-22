@@ -330,6 +330,8 @@ describe('executeLocalRun', () => {
         diagnosticsTimeoutMs: 4000,
         diagnosticsSettleMs: 200,
         serverStartTimeoutMs: 8000,
+        autoInstall: false,
+        autoInstallTimeoutMs: 180000,
         servers: { typescript: { command: process.execPath, args: ['-e', FAKE_LSP] } },
       },
     };
