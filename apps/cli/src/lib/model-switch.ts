@@ -24,17 +24,20 @@ export interface SwitchableProvider {
 const RESERVED = new Set(['default', 'cheap']);
 
 /**
- * Lists the named providers a user can switch to from a providers.yaml section:
- * excludes the `default`/`cheap` role pointers and the `mock` test double, and
- * marks the one currently active. Order is preserved (catalog/onboarding order).
+ * Lists the named providers a user can switch the MAIN model to, from a
+ * providers.yaml section: excludes the `default`/`cheap` role pointers, the
+ * `mock` test double, and the entry the `cheap` pointer targets (the deliberately
+ * reasoning-off `-fast` sidecar — picking it as the main model would silently
+ * degrade the primary). Marks the one currently active. Order is preserved.
  */
 export function listSwitchableProviders(
   section: Record<string, unknown>,
   current: string,
+  cheapTarget?: string,
 ): SwitchableProvider[] {
   const out: SwitchableProvider[] = [];
   for (const [name, value] of Object.entries(section)) {
-    if (RESERVED.has(name) || value === null || typeof value !== 'object') {
+    if (RESERVED.has(name) || name === cheapTarget || value === null || typeof value !== 'object') {
       continue;
     }
     const cfg = value as { type?: string; model?: string; capabilities?: ProviderCapabilities };

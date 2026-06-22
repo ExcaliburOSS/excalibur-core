@@ -84,6 +84,20 @@ describe('PROVIDER_CATALOG integrity', () => {
     }
   });
 
+  it('every reasoning-capable provider keeps its fast role non-reasoning (P1.14)', () => {
+    // The fast model feeds the `cheap` role (ghost-text/compaction/intent) and
+    // must stay low-latency: either it carries a reasoning-off fastExtraBody knob,
+    // or its fastLowLatency note documents the fast model as inherently non-reasoning.
+    for (const entry of PROVIDER_CATALOG) {
+      if (entry.capabilities?.reasoning !== true || entry.pair === undefined) {
+        continue;
+      }
+      const hasKnob = entry.pair.fastExtraBody !== undefined;
+      const documentedNonReasoning = /non-reasoning/i.test(entry.pair.fastLowLatency);
+      expect(hasKnob || documentedNonReasoning, `${entry.key} fast role reasoning-off`).toBe(true);
+    }
+  });
+
   it('declared capabilities are well-formed booleans (P1.14)', () => {
     for (const entry of PROVIDER_CATALOG) {
       if (entry.capabilities === undefined) continue;

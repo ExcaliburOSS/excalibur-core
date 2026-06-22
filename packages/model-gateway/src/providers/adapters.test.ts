@@ -268,6 +268,20 @@ describe('OpenAICompatibleAdapter', () => {
     expect('reasoning_effort' in body).toBe(false);
   });
 
+  it('suppresses reasoning_effort when the provider declares reasoning:false (P1.14)', async () => {
+    const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);
+    const adapter = new OpenAICompatibleAdapter({
+      name: 'non-reasoner',
+      cfg: openaiCfg({ capabilities: { reasoning: false } }),
+      transport,
+      hooks,
+    });
+    await adapter.chat({ ...input, reasoningEffort: 'high' });
+    const body = JSON.parse(transport.requests[0]?.request.body ?? '{}');
+    // A non-reasoning backend would 400 on reasoning_effort — it must be omitted.
+    expect('reasoning_effort' in body).toBe(false);
+  });
+
   it('maps message images to the OpenAI multimodal content array (vision, P1.14)', async () => {
     const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);
     const adapter = new OpenAICompatibleAdapter({ name: 'q', cfg: openaiCfg(), transport, hooks });

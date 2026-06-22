@@ -30,6 +30,13 @@ describe('listSwitchableProviders', () => {
   it('returns an empty list when only reserved pointers + mock exist', () => {
     expect(listSwitchableProviders({ default: 'mock', mock: { type: 'mock' } }, 'mock')).toEqual([]);
   });
+
+  it('excludes the cheap-pointer target (the reasoning-off -fast sidecar)', () => {
+    // Passing the cheap target hides kimi-fast so it can't be picked as the main model.
+    const list = listSwitchableProviders(section, 'kimi', 'kimi-fast');
+    expect(list.map((p) => p.name)).toEqual(['kimi', 'groq']);
+    expect(list.some((p) => p.name === 'kimi-fast')).toBe(false);
+  });
 });
 
 describe('capabilityHint / providerHint', () => {

@@ -148,8 +148,10 @@ export class OpenAICompatibleAdapter extends BaseHttpProvider {
     }
     // Reasoning effort (P1.14): the OpenAI-compatible knob for reasoning models.
     // An explicit request value wins over a provider's reasoning-off `extraBody`
-    // because `payload` is merged OVER `extra` below.
-    if (input.reasoningEffort !== undefined) {
+    // because `payload` is merged OVER `extra` below. Suppressed when the provider
+    // DECLARES `capabilities.reasoning: false` — a non-reasoning backend 400s on
+    // `reasoning_effort`, so an advisory false guards against that misconfig.
+    if (input.reasoningEffort !== undefined && this.cfg.capabilities?.reasoning !== false) {
       payload['reasoning_effort'] = input.reasoningEffort;
     }
     if (stream) {

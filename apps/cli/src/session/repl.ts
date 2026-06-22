@@ -1524,9 +1524,10 @@ async function handleModelsCommand(deps: CliDeps, runtime: SessionRuntime): Prom
     return;
   }
   const section = ctx.providers.providers as Record<string, unknown>;
-  const providers = listSwitchableProviders(section, ctx.providerName);
-  if (providers.length === 0) {
-    deps.ui.info('No switchable providers are configured.');
+  const cheapTarget = typeof section['cheap'] === 'string' ? (section['cheap'] as string) : undefined;
+  const providers = listSwitchableProviders(section, ctx.providerName, cheapTarget);
+  if (providers.filter((p) => !p.current).length === 0) {
+    deps.ui.info('Only one model provider is configured — add more with `excalibur models setup`.');
     return;
   }
   const choices = providers.map((p) => ({
@@ -1547,7 +1548,19 @@ async function handleModelsCommand(deps: CliDeps, runtime: SessionRuntime): Prom
   }
   // Persist the new default; the next turn re-reads the gateway and uses it.
   section['default'] = chosen.name;
+  // Repoint the fast/`cheap` lane (ghost-text, intent, compaction) to the chosen
+  // provider's paired sibling if it exists, else drop it so cheap roles fall back
+  // to the new default — never leave the fast lane silently on the old provider.
+  const fastSibling = `${chosen.name}-fast`;
+  if (section[fastSibling] !== null && typeof section[fastSibling] === 'object') {
+    section['cheap'] = fastSibling;
+  } else if (section['cheap'] !== undefined) {
+    delete section['cheap'];
+  }
   writeProvidersFile(runtime.repoRoot, ctx.providers);
+  // Refresh the session's cached model so the status line, transcript attribution
+  // and compaction window track the switch (inference already re-reads per turn).
+  runtime.model = chosen.name;
   deps.ui.success(
     `Active model → ${chosen.name}${chosen.model !== undefined ? ` (${chosen.model})` : ''}`,
   );

@@ -293,8 +293,12 @@ export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
     capabilities: { reasoning: true, vision: true, tools: true },
     pair: {
       good: 'grok-4',
-      fast: 'grok-4-fast',
-      fastLowLatency: 'grok-4-fast is the low-latency variant for ghost-text/compaction',
+      // xAI selects reasoning by MODEL ID, not a body param: grok-4-fast ships as
+      // distinct -reasoning / -non-reasoning ids. The fast role must be the
+      // non-reasoning id, else ghost-text/compaction incur reasoning latency/cost.
+      fast: 'grok-4-fast-non-reasoning',
+      fastLowLatency:
+        'grok-4-fast-non-reasoning is xAI’s dedicated non-reasoning fast id (reasoning is off by model id, not a knob)',
     },
   },
   {
@@ -304,7 +308,10 @@ export const PROVIDER_CATALOG: readonly ProviderCatalogEntry[] = [
     type: 'openai-compatible',
     baseUrl: 'https://api.cerebras.ai/v1',
     apiKeyEnv: 'CEREBRAS_API_KEY',
-    capabilities: { reasoning: true, tools: true },
+    // qwen-3-coder-480b is the non-thinking agentic-coding variant — tools yes,
+    // reasoning no. (Cerebras hosts separate thinking models if reasoning routing
+    // is wanted; pin one as `good` then.)
+    capabilities: { tools: true },
     pair: {
       good: 'qwen-3-coder-480b',
       fast: 'llama-3.3-70b',
