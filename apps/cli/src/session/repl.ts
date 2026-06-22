@@ -46,6 +46,8 @@ import { resolveRun, runScrubber } from '../lib/replay-scrubber';
 import { buildSessionLog, formatSessionLog } from '../lib/session-log';
 import { buildStartupContext } from '../lib/startup-context';
 import { setAutoApprove } from '../lib/config-file';
+import { writeProvidersFile } from '../lib/provider-setup';
+import { listSwitchableProviders, providerHint } from '../lib/model-switch';
 import { LOG_SENTINEL, REWIND_SENTINEL } from '../ui';
 import { CLI_VERSION } from '../program';
 import { renderWelcome, type WelcomeContext } from './welcome';
@@ -519,6 +521,11 @@ export async function runInteractiveSession(
           }
           if (input.name === 'threads') {
             handleThreadsCommand(deps, runtime);
+            printStatusLine(deps, runtime);
+            continue;
+          }
+          if (input.name === 'models') {
+            await handleModelsCommand(deps, runtime);
             printStatusLine(deps, runtime);
             continue;
           }
@@ -1504,6 +1511,48 @@ async function runShellPassthrough(
   }
 }
 
+/**
+ * `/models` — interactive in-shell picker (P1.14): switch the active model
+ * provider mid-session. Reuses `Ui.select` (arrow-key on a TTY, numbered
+ * fallback otherwise). The chosen provider is written as `default` in
+ * providers.yaml, so the NEXT turn (which re-reads the gateway) uses it.
+ */
+async function handleModelsCommand(deps: CliDeps, runtime: SessionRuntime): Promise<void> {
+  const ctx = loadGatewayContext(runtime.repoRoot);
+  if (!ctx.configured || ctx.providersPath === null) {
+    deps.ui.info('No model providers configured yet — run `excalibur models setup` to add one.');
+    return;
+  }
+  const section = ctx.providers.providers as Record<string, unknown>;
+  const providers = listSwitchableProviders(section, ctx.providerName);
+  if (providers.length === 0) {
+    deps.ui.info('No switchable providers are configured.');
+    return;
+  }
+  const choices = providers.map((p) => ({
+    label: p.current ? `${p.name} (current)` : p.name,
+    hint: providerHint(p),
+  }));
+  const defaultIndex = Math.max(
+    0,
+    providers.findIndex((p) => p.current),
+  );
+  const picked = await deps.ui.select('Select the active model provider', choices, {
+    defaultIndex,
+  });
+  const chosen = providers[picked];
+  if (chosen === undefined || chosen.current) {
+    deps.ui.info(`Active model unchanged (${ctx.providerName}).`);
+    return;
+  }
+  // Persist the new default; the next turn re-reads the gateway and uses it.
+  section['default'] = chosen.name;
+  writeProvidersFile(runtime.repoRoot, ctx.providers);
+  deps.ui.success(
+    `Active model → ${chosen.name}${chosen.model !== undefined ? ` (${chosen.model})` : ''}`,
+  );
+}
+
 /** Handles a built-in slash command; returns `'exit'` to leave the loop. */
 function handleSlashCommand(
   deps: CliDeps,
@@ -1528,6 +1577,7 @@ function handleSlashCommand(
       deps.ui.write(deps.t('repl.help-compact'));
       deps.ui.write(deps.t('repl.help-remember'));
       deps.ui.write(deps.t('repl.help-model'));
+      deps.ui.write('  /models    switch the active model provider (interactive picker)');
       deps.ui.write(deps.t('repl.help-clear'));
       deps.ui.write(deps.t('repl.help-exit'));
       deps.ui.write('');
