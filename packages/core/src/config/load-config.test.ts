@@ -8,17 +8,29 @@ import { EXCALIBUR_DIR, loadExcaliburConfig } from './load-config';
 describe('loadExcaliburConfig', () => {
   let repoRoot: string;
   let homeDir: string;
+  let savedXdg: string | undefined;
 
   beforeEach(() => {
     repoRoot = makeTempDir();
     // A clean temp home keeps the user-global layer (P1.11b) hermetic — no real
     // ~/.config/excalibur/config.yaml can leak into these assertions.
     homeDir = makeTempDir();
+    // The global-config path honours `XDG_CONFIG_HOME` ahead of `<homeDir>/.config`.
+    // CI runners set that variable, which would shadow our temp home and make
+    // these assertions environment-dependent — clear it so `homeDir` is the sole
+    // source of truth, and restore it afterwards.
+    savedXdg = process.env['XDG_CONFIG_HOME'];
+    delete process.env['XDG_CONFIG_HOME'];
   });
 
   afterEach(() => {
     removeDir(repoRoot);
     removeDir(homeDir);
+    if (savedXdg === undefined) {
+      delete process.env['XDG_CONFIG_HOME'];
+    } else {
+      process.env['XDG_CONFIG_HOME'] = savedXdg;
+    }
   });
 
   /** Load with the global layer pointed at the (empty) temp home. */
