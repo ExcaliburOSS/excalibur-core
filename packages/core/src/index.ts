@@ -102,6 +102,7 @@ export {
   SWARM_MAX_TOTAL_AGENTS,
   type ConcurrencyInput,
 } from './swarm/concurrency';
+export { topologicalWaves, type DependencyNode } from './swarm/toposort';
 
 // Runs
 export { RunManager, type CreateRunInput, type ModelCallLine } from './runs/run-manager';

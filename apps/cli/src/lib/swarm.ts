@@ -35,23 +35,57 @@ import type { LanesViewHandle } from '@excalibur/tui/ink';
  * non-parseable / single-unit task falls back to one lane (just runs the task).
  */
 
-/** One decomposed unit: an independent subtask the swarm runs as its own lane. */
+/** One decomposed unit: a subtask the swarm runs as its own lane. */
 export interface SwarmSubtask {
   id: string;
   title: string;
   instruction: string;
+  /**
+   * Ids of OTHER subtasks this one depends on (AO3b). Empty/absent = independent
+   * (wave 0). Carried into the staged executor's topological levelization so a
+   * dependent lane runs only after its predecessors' merged result.
+   */
+  dependsOn?: ReadonlyArray<string>;
 }
 
-/** Extracts the first JSON object from model output (fence-tolerant). */
-function parseFirstJsonObject(content: string): Record<string, unknown> | null {
-  const match = content.match(/\{[\s\S]*\}/);
-  if (match === null) return null;
-  try {
-    const value = JSON.parse(match[0]) as unknown;
-    return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
-  } catch {
-    return null;
+/**
+ * Extracts the first balanced JSON object from model output (fence-tolerant).
+ * Scans for the first `{` then matches braces (string/escape aware) to its close
+ * — far more robust than a greedy `/\{[\s\S]*\}/`, which over-captures trailing
+ * prose/fences and fails to parse. Shared by {@link decomposeTask} and the lane
+ * grader.
+ */
+export function parseFirstJsonObject(content: string): Record<string, unknown> | null {
+  const start = content.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < content.length; i += 1) {
+    const ch = content[i]!;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          const value = JSON.parse(content.slice(start, i + 1)) as unknown;
+          return typeof value === 'object' && value !== null
+            ? (value as Record<string, unknown>)
+            : null;
+        } catch {
+          return null;
+        }
+      }
+    }
   }
+  return null;
 }
 
 /**
