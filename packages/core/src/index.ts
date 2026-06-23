@@ -96,6 +96,12 @@ export {
   type SwarmLaneRunner,
   type SwarmResult,
 } from './swarm/run-swarm';
+export {
+  capTotalAgents,
+  chooseConcurrency,
+  SWARM_MAX_TOTAL_AGENTS,
+  type ConcurrencyInput,
+} from './swarm/concurrency';
 
 // Runs
 export { RunManager, type CreateRunInput, type ModelCallLine } from './runs/run-manager';

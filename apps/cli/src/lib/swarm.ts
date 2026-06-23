@@ -1,8 +1,12 @@
+import { cpus } from 'node:os';
 import { NativeAgentAdapter } from '@excalibur/agent-runtime';
 import {
   applyPatch,
+  capTotalAgents,
+  chooseConcurrency,
   planAgentAllocation,
   runSwarm,
+  SWARM_MAX_TOTAL_AGENTS,
   type Subtask,
   type SwarmLaneGrader,
   type SwarmLaneProgress,
@@ -313,13 +317,24 @@ export async function runSwarmFlow(
     });
   }
 
+  // Fail-closed total-agent backstop: the auto path never fans out beyond
+  // SWARM_MAX_TOTAL_AGENTS; a power-user `--max-agents N` opts into its own
+  // (possibly higher) ceiling. A runaway decomposition can never DoS the box.
+  const totalCap = capTotalAgents(options.maxAgents ?? SWARM_MAX_TOTAL_AGENTS, options.maxAgents);
   const allocation = planAgentAllocation({
     taskType: 'feature',
     sensitive: false,
     subtasks: asAllocationSubtasks(subtasks),
-    ...(options.maxAgents !== undefined ? { maxAgents: options.maxAgents } : {}),
+    maxAgents: totalCap,
   });
   const lanes = subtasks.slice(0, allocation.agentCount);
+  // How many lanes run AT ONCE — sized from CPU headroom (and, later, budget).
+  // Previously unset, so the pool defaulted to ALL lanes firing simultaneously.
+  const concurrency = chooseConcurrency({
+    laneCount: lanes.length,
+    cpuCount: cpus().length,
+    ...(options.maxAgents !== undefined ? { hardCap: options.maxAgents } : {}),
+  });
 
   deps.ui.write();
   deps.ui.heading(deps.t('swarm.heading', { reason: allocation.reason }));
@@ -377,17 +392,33 @@ export async function runSwarmFlow(
         : gradeOn
           ? 2
           : undefined;
-    result = await executeSwarm(deps, repoRoot, lanes, {
-      gateway: ctx.gateway,
-      config: ctx.config,
-      autonomyAutoApprove: true, // a parallel batch can't prompt per-lane
-      ...(maxAttempts !== undefined ? { maxAttempts } : {}),
-      ...(gradeOn
-        ? { grade: makeLaneGrader(ctx.gateway, { provider: ctx.providerName, ...signalOpt }) }
-        : {}),
-      ...signalOpt,
-      ...(inkLanes !== null ? { onLane: (p: SwarmLaneProgress): void => inkLanes?.update(p) } : {}),
-    });
+    // NOTE: executeSwarm takes context (4th) and options (5th) as SEPARATE args.
+    // Previously everything was merged into the 4th object, so options defaulted
+    // to {} and maxConcurrency/maxAttempts/grade/onLane/signal were SILENTLY
+    // DROPPED (the spreads bypassed TS excess-property checks) — the live lanes
+    // panel never animated, --grade/--retries no-opped, and ESC could not cancel
+    // a swarm. Pass them in the OPTIONS arg where executeSwarm actually reads them.
+    result = await executeSwarm(
+      deps,
+      repoRoot,
+      lanes,
+      {
+        gateway: ctx.gateway,
+        config: ctx.config,
+        autonomyAutoApprove: true, // a parallel batch can't prompt per-lane
+      },
+      {
+        maxConcurrency: concurrency,
+        ...(maxAttempts !== undefined ? { maxAttempts } : {}),
+        ...(gradeOn
+          ? { grade: makeLaneGrader(ctx.gateway, { provider: ctx.providerName, ...signalOpt }) }
+          : {}),
+        ...signalOpt,
+        ...(inkLanes !== null
+          ? { onLane: (p: SwarmLaneProgress): void => inkLanes?.update(p) }
+          : {}),
+      },
+    );
 
     // The SWARM LANES panel: concurrent sub-rails branching off the swarm node
     // and converging on a fan-in merge node — the visual payoff of the allocator.
