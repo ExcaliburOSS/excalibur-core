@@ -9,6 +9,7 @@ import { dashboardHtml } from './dashboard';
 import { dashboardAppHtml } from './dashboard-app';
 import {
   buildBoard,
+  buildOrchestrations,
   buildWorkItemDetail,
   buildPlans,
   buildPlanDetail,
@@ -127,6 +128,10 @@ function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
   }
   if (path === '/api/insights') {
     return { status: 200, body: collectInsights(repoRoot) };
+  }
+  if (path === '/api/orchestrations') {
+    // AO4e: parallel orchestrations (parent swarm run + its lane child runs).
+    return { status: 200, body: { orchestrations: buildOrchestrations(repoRoot) } };
   }
   if (path === '/api/board') {
     // The task-first kanban home (D1) — work items projected onto the 5 lanes.

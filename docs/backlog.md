@@ -88,7 +88,8 @@ read-only `--share`) · **publishable extension SDK** (`@excalibur-oss/extension
 - **AO4b** ✅ DONE (79078a7) Verified fan-in: `config.orchestration.verifyMerge` runs the configured test on the merged tree before keeping it; a red run reverse-applies (reverts) the merge. Verified vs Kimi (keep + revert branches).
 - **AO4c** Budget binds across parallelism (M): shared `BudgetLedger` on the `model_call` cost stream; stop dispatching new lanes on cap; same `BudgetExceededError`/`policy_decision` contract; per-lane slice + partial-result settlement. ← NEXT
 - **AO4d** ✅ DONE (3214c17) Conflict-as-heal: `mergeOneLane` 3-way merges a texturally-conflicting lane (fixed `--recount`/`--3way` + index-staging) before reporting a conflict; genuine same-line conflicts still reported.
-- **AO4e** Live multi-lane view in dashboard + TTY + node-level cancel + work-item linkage per child run (now unblocked — AO4a done). ← remaining (larger, dashboard).
+- **AO4e-1** ✅ DONE: `GET /api/orchestrations` projection (parent swarm run + its lane child runs grouped by `parentRunId`) in serve + `buildOrchestrations` + `OrchestrationSummary` contract. Unit-tested.
+- **AO4e-2** remaining: the dashboard Svelte UI consuming `/api/orchestrations` + live SSE (push-on-change) + node-level cancel + work-item linkage per child run.
 - **AO4f-1** ✅ DONE: proportional Verification-Mesh over the merged swarm diff in the verified fan-in (`verifyMerge`); a surviving HIGH reverts the merge. Verified vs Kimi (4-lens review ran before apply).
 - **AO4f-2** remaining: the SEQUENTIAL auto-build sub-path (`dispatchAutoBuild` → `dispatchAgentTurn`) still lacks the mesh/claim-ledger; thread a "verify-after" through the shell turn.
 

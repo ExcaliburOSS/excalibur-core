@@ -17,6 +17,7 @@ import {
   type DashboardBoardLane,
   type DashboardLane,
   type DiscoverySummary,
+  type OrchestrationSummary,
   type PlanDetail,
   type PlanSummary,
   type RunSummary,
@@ -154,6 +155,60 @@ function runSummary(run: LocalRun, manager: RunManager): RunSummary {
     outputTokens: calls.length > 0 ? sum((c) => c.outputTokens) : null,
     workItemId: run.record.workItemId ?? null,
   };
+}
+
+/**
+ * Projects the run store into parallel ORCHESTRATIONS (AO4e) for
+ * `GET /api/orchestrations`: every run that is the PARENT of ≥1 child lane
+ * (a run carrying `parentRunId`) becomes a summary with its lanes nested.
+ * Newest first. This is what lets the dashboard see the swarm/parallel work
+ * that AO4a now persists as parent + child runs.
+ */
+export function buildOrchestrations(repoRoot: string): OrchestrationSummary[] {
+  const manager = new RunManager(repoRoot);
+  const runs = manager.listRuns();
+  const byId = new Map(runs.map((r) => [r.record.id, r]));
+  // Group children by their parent id.
+  const childrenByParent = new Map<string, LocalRun[]>();
+  for (const run of runs) {
+    const parent = run.record.parentRunId;
+    if (typeof parent === 'string' && parent.length > 0) {
+      const list = childrenByParent.get(parent) ?? [];
+      list.push(run);
+      childrenByParent.set(parent, list);
+    }
+  }
+  const laneCost = (run: LocalRun): number | null => {
+    const calls = manager.readModelCalls(run.record.id);
+    return calls.some((c) => c.costCents != null)
+      ? calls.reduce((acc, c) => acc + (c.costCents ?? 0), 0)
+      : null;
+  };
+  const summaries: OrchestrationSummary[] = [];
+  for (const [parentId, children] of childrenByParent) {
+    const parent = byId.get(parentId);
+    // A parent run record is normal, but tolerate an orphaned group (parent
+    // record missing) by synthesizing from the children.
+    const lanes = [...children]
+      .sort((a, b) => a.record.startedAt.localeCompare(b.record.startedAt))
+      .map((c) => ({
+        runId: c.record.id,
+        title: c.record.title,
+        status: c.record.status,
+        costCents: laneCost(c),
+      }));
+    summaries.push({
+      parentRunId: parentId,
+      title: parent?.record.title ?? `orchestration ${parentId}`,
+      status: parent?.record.status ?? 'running',
+      startedAt: parent?.record.startedAt ?? children[0]?.record.startedAt ?? parentId,
+      completedAt: parent?.record.completedAt ?? null,
+      workItemId: parent?.record.workItemId ?? null,
+      laneCount: lanes.length,
+      lanes,
+    });
+  }
+  return summaries.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }
 
 /** Builds the kanban board DTO for `GET /api/board`. */

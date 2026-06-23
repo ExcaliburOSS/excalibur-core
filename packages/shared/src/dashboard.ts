@@ -97,6 +97,30 @@ export interface RunSummary {
   workItemId: string | null;
 }
 
+/** One lane (child run) of a parallel orchestration (AO4e). */
+export interface OrchestrationLaneDto {
+  runId: string;
+  title: string;
+  status: string;
+  costCents: number | null;
+}
+
+/**
+ * A parallel orchestration (AO4e): a parent swarm run plus its per-lane child
+ * runs, projected from the run store by `parentRunId`. Powers a live multi-lane
+ * view of the parallel work the dashboard was previously blind to.
+ */
+export interface OrchestrationSummary {
+  parentRunId: string;
+  title: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  workItemId: string | null;
+  laneCount: number;
+  lanes: OrchestrationLaneDto[];
+}
+
 /** An external link off a work item (PR / commit / doc). */
 export interface WorkItemLinkDto {
   type: 'pull_request' | 'commit' | 'document' | 'url' | 'issue' | 'other';

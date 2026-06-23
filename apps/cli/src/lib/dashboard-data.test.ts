@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { RunManager } from '@excalibur/core';
 import { createEvent } from '@excalibur/shared';
 import { LocalWorkItemProvider } from '@excalibur/work-items';
-import { buildBoard, buildWorkItemDetail } from './dashboard-data';
+import { buildBoard, buildOrchestrations, buildWorkItemDetail } from './dashboard-data';
 import { makeTempDir, removeDir } from '../test-utils';
 
 describe('dashboard-data (store → DTO mappers)', () => {
@@ -13,6 +13,47 @@ describe('dashboard-data (store → DTO mappers)', () => {
   });
   afterEach(() => {
     removeDir(repoRoot);
+  });
+
+  it('groups parent + child runs into a parallel orchestration (AO4e)', () => {
+    const manager = new RunManager(repoRoot);
+    const parent = manager.createRun({
+      title: 'swarm: 2 lanes',
+      autonomyLevel: 3,
+      workflow: 'swarm',
+    });
+    manager.updateRecord(parent.id, { status: 'completed' });
+    const a = manager.createRun({
+      title: 'lane A',
+      autonomyLevel: 3,
+      workflow: 'swarm-lane',
+      parentRunId: parent.id,
+    });
+    manager.updateRecord(a.id, { status: 'completed' });
+    const b = manager.createRun({
+      title: 'lane B',
+      autonomyLevel: 3,
+      workflow: 'swarm-lane',
+      parentRunId: parent.id,
+    });
+    manager.updateRecord(b.id, { status: 'failed' });
+    // An unrelated standalone run must NOT appear as an orchestration.
+    manager.createRun({ title: 'solo', autonomyLevel: 1, workflow: 'fast-fix' });
+
+    const orchestrations = buildOrchestrations(repoRoot);
+    expect(orchestrations).toHaveLength(1);
+    const o = orchestrations[0]!;
+    expect(o.parentRunId).toBe(parent.id);
+    expect(o.title).toBe('swarm: 2 lanes');
+    expect(o.laneCount).toBe(2);
+    expect(o.lanes.map((l) => l.title)).toEqual(['lane A', 'lane B']);
+    expect(o.lanes.map((l) => l.status)).toEqual(['completed', 'failed']);
+  });
+
+  it('returns no orchestrations when there is no parallel work', () => {
+    const manager = new RunManager(repoRoot);
+    manager.createRun({ title: 'plain', autonomyLevel: 1, workflow: 'fast-fix' });
+    expect(buildOrchestrations(repoRoot)).toEqual([]);
   });
 
   it('projects work items onto the five lanes with a run-count badge', () => {
