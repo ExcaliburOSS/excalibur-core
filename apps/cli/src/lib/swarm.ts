@@ -7,9 +7,11 @@ import {
   capTotalAgents,
   chooseConcurrency,
   planAgentAllocation,
+  planVerificationMesh,
   RunManager,
   runSwarm,
   runSwarmStaged,
+  runVerificationMesh,
   SWARM_MAX_TOTAL_AGENTS,
   topologicalWaves,
   type Subtask,
@@ -491,6 +493,46 @@ export interface SwarmFlowOptions {
 }
 
 /**
+ * AO4f — a proportional adversarial Verification-Mesh pass over the MERGED swarm
+ * diff, so the parallel auto-build gets the same evidence-linked review the
+ * formal `excalibur run` does. `planVerificationMesh` sizes the jury to the
+ * change (docs → none); a surviving HIGH issue → blocked=true. Best-effort: a
+ * flaky/erroring mesh NEVER blocks the merge.
+ */
+async function runMergeMesh(deps: CliDeps, ctx: SwarmFlowContext, diff: string): Promise<boolean> {
+  try {
+    const fileCount = (diff.match(/^diff --git /gm) ?? []).length || 1;
+    const plan = planVerificationMesh({
+      taskType: 'feature',
+      sensitive: false,
+      affectedUnits: fileCount,
+      autonomyLevel: ctx.config.autonomy?.default ?? 3,
+      hasTests: typeof ctx.config.commands?.test === 'string',
+      ...(ctx.config.verification?.mesh !== undefined
+        ? { mode: ctx.config.verification.mesh }
+        : {}),
+    });
+    if (plan.lenses.length === 0) {
+      return false; // proportional: nothing warranted
+    }
+    deps.ui.info(deps.t('swarm.mesh-running', { lenses: plan.lenses.length }));
+    const result = await runVerificationMesh({
+      diff,
+      lenses: plan.lenses,
+      gateway: ctx.gateway,
+      provider: ctx.providerName,
+    });
+    for (const issue of result.issues) {
+      const where = issue.file !== undefined ? `${issue.file} — ` : '';
+      deps.ui.write(`  [${issue.severity.toUpperCase()}] ${where}${issue.problem}`);
+    }
+    return result.blocked;
+  } catch {
+    return false; // best-effort — a flaky jury never blocks the merge
+  }
+}
+
+/**
  * The full end-to-end swarm flow shared by `excalibur swarm` AND the in-shell
  * `/swarm` command: decompose → size (allocator) → confirm → run REAL parallel
  * agents with a LIVE per-lane panel (flicker-free, TTY-gated) → fan-in → render
@@ -722,23 +764,33 @@ export async function runSwarmFlow(
   // can break IN COMBINATION; a red run REVERTS the merge instead of shipping a
   // broken integration. The deterministic worktree merge + ground-truth gate is
   // the differentiator CC/OpenCode structurally lack.
-  const verify =
-    ctx.config.orchestration?.verifyMerge === true
-      ? runConfiguredCommandCheck(repoRoot, ctx.config.commands?.test, options.signal)
-      : undefined;
-  if (verify !== undefined) {
-    deps.ui.info(deps.t('swarm.verifying'));
-    const verdict = await verify();
-    if (!verdict.passed) {
+  if (ctx.config.orchestration?.verifyMerge === true) {
+    const revertMerge = (): void => {
       try {
         applyPatch(repoRoot, result.mergedDiff, { reverse: true });
       } catch {
         /* best-effort revert — keep going to report the failure */
       }
-      deps.ui.error(deps.t('swarm.verifyFailed', { detail: verdict.detail }));
+    };
+    // 1. Ground truth: the configured test command on the merged tree.
+    const verify = runConfiguredCommandCheck(repoRoot, ctx.config.commands?.test, options.signal);
+    if (verify !== undefined) {
+      deps.ui.info(deps.t('swarm.verifying'));
+      const verdict = await verify();
+      if (!verdict.passed) {
+        revertMerge();
+        deps.ui.error(deps.t('swarm.verifyFailed', { detail: verdict.detail }));
+        return;
+      }
+      deps.ui.success(deps.t('swarm.verified', { detail: verdict.detail }));
+    }
+    // 2. AO4f: a proportional adversarial Verification-Mesh over the merged diff.
+    //    A surviving HIGH issue blocks the merge (revert), same as a red test.
+    if (await runMergeMesh(deps, ctx, result.mergedDiff)) {
+      revertMerge();
+      deps.ui.error(deps.t('swarm.mesh-blocked'));
       return;
     }
-    deps.ui.success(deps.t('swarm.verified', { detail: verdict.detail }));
   }
   deps.ui.success(deps.t('swarm.applied'));
 }
