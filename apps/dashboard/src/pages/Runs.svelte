@@ -7,6 +7,7 @@
   let runs = $state<RunRecord[]>([]);
   let error = $state<string | null>(null);
   let loading = $state(true);
+  let filter = $state('');
 
   onMount(async () => {
     try {
@@ -17,6 +18,17 @@
     } finally {
       loading = false;
     }
+  });
+
+  const filtered = $derived.by(() => {
+    const q = filter.trim().toLowerCase();
+    if (q.length === 0) return runs;
+    return runs.filter((r) =>
+      [r.title, r.id, r.status, r.workflow, r.model ?? '']
+        .join(' ')
+        .toLowerCase()
+        .includes(q),
+    );
   });
 
   const when = (iso: string): string => {
@@ -37,7 +49,12 @@
   const statusGlyph = (s: string): string => STATUS_GLYPH[s] ?? '•';
 </script>
 
-<h1>{t('runs.title')} <span class="faint">({runs.length})</span></h1>
+<header class="bar">
+  <h1>{t('runs.title')} <span class="faint">({filtered.length})</span></h1>
+  {#if runs.length > 0}
+    <input class="filter" type="search" placeholder={t('runs.filter')} bind:value={filter} />
+  {/if}
+</header>
 
 {#if loading}
   <div class="state muted">{t('common.loading')}</div>
@@ -57,7 +74,7 @@
       </tr>
     </thead>
     <tbody>
-      {#each runs as run (run.id)}
+      {#each filtered as run (run.id)}
         <tr>
           <td><a class="mono" href={`#/runs/${run.id}`}>{run.title || run.id}</a></td>
           <td>
@@ -76,9 +93,28 @@
 {/if}
 
 <style>
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+  }
   h1 {
     font-size: 22px;
-    margin-bottom: 18px;
+  }
+  .filter {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    padding: 6px 12px;
+    font: inherit;
+    min-width: 240px;
+  }
+  .filter:focus {
+    outline: none;
+    border-color: var(--accent);
   }
   .state {
     padding: 48px 0;

@@ -8,6 +8,7 @@ import type {
   BoardResponse,
   DashboardLane,
   DiscoverySummary,
+  InsightsReportDto,
   PlanDetail,
   PlanSummary,
   RunRecord,
@@ -106,7 +107,7 @@ export const fetchWorkItem = (key: string): Promise<WorkItemDetail> =>
 export const fetchRuns = (): Promise<{ runs: RunRecord[] }> => get('/api/runs');
 
 /** Aggregate insights for the analytics view (D4). */
-export const fetchInsights = (): Promise<Record<string, unknown>> => get('/api/insights');
+export const fetchInsights = (): Promise<InsightsReportDto> => get('/api/insights');
 
 /** Saved plans (D3). */
 export const fetchPlans = (): Promise<{ plans: PlanSummary[] }> => get('/api/plans');

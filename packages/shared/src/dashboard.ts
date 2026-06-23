@@ -171,6 +171,44 @@ export interface DiscoverySummary {
   completedAt: string | null;
 }
 
+/** A per-key cost/usage bucket (by model or by workflow) — mirrors core insights. */
+export interface CountCostDto {
+  key: string;
+  runs: number;
+  costCents: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+/** A per-day cost/run bucket for the time-series chart. */
+export interface DayBucketDto {
+  day: string;
+  runs: number;
+  costCents: number;
+}
+
+/**
+ * Aggregate insights for the analytics view (D4). Structurally mirrors core's
+ * `InsightsReport` (what `GET /api/insights` returns) so the client can type it
+ * without importing the server package.
+ */
+export interface InsightsReportDto {
+  totalRuns: number;
+  byStatus: Record<string, number>;
+  completionRate: number;
+  totalCostCents: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalModelCalls: number;
+  totalFilesChanged: number;
+  totalApprovals: number;
+  totalVerificationsBlocked: number;
+  avgCostCentsPerRun: number;
+  byModel: CountCostDto[];
+  byWorkflow: CountCostDto[];
+  byDay: DayBucketDto[];
+}
+
 /**
  * The dashboard's route map — task-first. The client is a hash-routed SPA, so
  * these are the canonical in-app paths; the API paths they read are alongside.
