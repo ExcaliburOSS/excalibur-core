@@ -66,6 +66,11 @@
         "command": "excalibur.openTerminal",
         "title": "Open Excalibur Terminal",
         "category": "Excalibur"
+      },
+      {
+        "command": "excalibur.openSessionView",
+        "title": "Open Session View",
+        "category": "Excalibur"
       }
     ],
     "keybindings": [

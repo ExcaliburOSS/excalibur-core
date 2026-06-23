@@ -7,6 +7,7 @@ import {
   type SessionUpdate,
 } from './acp-client';
 import { buildPrompt, type EditorContext } from './context-ref';
+import { sessionViewHtml, toViewMessage } from './session-view';
 
 /**
  * Excalibur VS Code / Cursor / Windsurf extension (P1.5).
@@ -30,6 +31,34 @@ interface ActiveRun {
 
 let output: vscode.OutputChannel | undefined;
 let active: ActiveRun | null = null;
+/** The optional webview session panel (P1.5b); null until the user opens it. */
+let sessionPanel: vscode.WebviewPanel | undefined;
+
+/** Random nonce for the webview CSP `script-src 'nonce-…'`. */
+function nonce(): string {
+  let s = '';
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  for (let i = 0; i < 24; i += 1) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
+/** Opens (or reveals) the webview session view. */
+function openSessionView(): void {
+  if (sessionPanel !== undefined) {
+    sessionPanel.reveal(vscode.ViewColumn.Beside);
+    return;
+  }
+  sessionPanel = vscode.window.createWebviewPanel(
+    'excaliburSession',
+    'Excalibur Session',
+    vscode.ViewColumn.Beside,
+    { enableScripts: true, retainContextWhenHidden: true },
+  );
+  sessionPanel.webview.html = sessionViewHtml(nonce());
+  sessionPanel.onDidDispose(() => {
+    sessionPanel = undefined;
+  });
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   output = vscode.window.createOutputChannel(OUTPUT_NAME);
@@ -45,6 +74,7 @@ export function activate(context: vscode.ExtensionContext): void {
   register('excalibur.reviewSelection', () => reviewSelectionCommand());
   register('excalibur.cancel', () => cancelCommand());
   register('excalibur.openTerminal', () => openTerminalCommand());
+  register('excalibur.openSessionView', () => openSessionView());
 }
 
 export function deactivate(): void {
@@ -223,7 +253,14 @@ async function startRun(prompt: string): Promise<void> {
   const transport = stdioTransport(child, channel);
   const run: ActiveRun = { client: undefined as never, child, sessionId: null, cancelled: false };
   const client = new AcpClient(transport, {
-    onUpdate: (_sessionId, update) => renderUpdate(channel, update),
+    onUpdate: (_sessionId, update) => {
+      renderUpdate(channel, update);
+      // Mirror into the webview session view when it is open (P1.5b).
+      if (sessionPanel !== undefined) {
+        const message = toViewMessage(update);
+        if (message !== null) void sessionPanel.webview.postMessage(message);
+      }
+    },
     onPermission: (request) => askPermission(request, cfg.get<string>('autoApprove', 'ask')),
     onLog: (message) => channel.appendLine(`· ${message}`),
   });
