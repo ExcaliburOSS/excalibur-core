@@ -91,7 +91,7 @@ read-only `--share`) · **publishable extension SDK** (`@excalibur-oss/extension
 - **AO4e-1** ✅ DONE: `GET /api/orchestrations` projection (parent swarm run + its lane child runs grouped by `parentRunId`) in serve + `buildOrchestrations` + `OrchestrationSummary` contract. Unit-tested.
 - **AO4e-2** remaining: the dashboard Svelte UI consuming `/api/orchestrations` + live SSE (push-on-change) + node-level cancel + work-item linkage per child run.
 - **AO4f-1** ✅ DONE: proportional Verification-Mesh over the merged swarm diff in the verified fan-in (`verifyMerge`); a surviving HIGH reverts the merge. Verified vs Kimi (4-lens review ran before apply).
-- **AO4f-2** remaining: the SEQUENTIAL auto-build sub-path (`dispatchAutoBuild` → `dispatchAgentTurn`) still lacks the mesh/claim-ledger; thread a "verify-after" through the shell turn.
+- **AO4f-2** ✅ DONE: the SEQUENTIAL auto-build sub-path now runs the same proportional mesh as a best-effort POST-review (surfaces HIGH findings; no revert — the turn already applied). Shared `runProportionalMesh` helper (`lib/verify-mesh.ts`) used by both sub-paths (DRY).
 
 **AO6 — orchestration VISUALIZATIONS overhaul (#190):** review every surface
 (TTY Ink LanesView/swarm panel, threads/fleet `/bg`+`/threads`, declarative-workflow

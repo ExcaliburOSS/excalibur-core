@@ -814,6 +814,9 @@ export const ES: Catalog = {
     'Auto-orquestando: {count} flujos de trabajo independientes → un swarm en paralelo.',
   'repl.auto-build-sequential':
     'Auto-orquestando: un solo flujo de trabajo → una ejecución enfocada.',
+  'repl.auto-build-review': 'Revisión adversarial del resultado ({lenses} lente(s))…',
+  'repl.auto-build-review-high':
+    'Sobrevivió un problema de severidad alta — revisa los cambios antes de fiarte de ellos.',
   // investigación profunda (F7)
   'research.network-off':
     'La red está desactivada (permissions.network.mode = off). Actívala para investigar en la web.',

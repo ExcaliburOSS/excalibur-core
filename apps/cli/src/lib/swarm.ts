@@ -7,11 +7,9 @@ import {
   capTotalAgents,
   chooseConcurrency,
   planAgentAllocation,
-  planVerificationMesh,
   RunManager,
   runSwarm,
   runSwarmStaged,
-  runVerificationMesh,
   SWARM_MAX_TOTAL_AGENTS,
   topologicalWaves,
   type Subtask,
@@ -33,6 +31,7 @@ import type { AutonomyLevel, ExcaliburConfig, ExcaliburEvent } from '@excalibur/
 import type { CliDeps } from '../deps';
 import { loadInkUi } from '../ink/load';
 import { runConfiguredCommandCheck } from './verify-command';
+import { runProportionalMesh } from './verify-mesh';
 import type { LanesViewHandle } from '@excalibur/tui/ink';
 
 /**
@@ -500,36 +499,19 @@ export interface SwarmFlowOptions {
  * flaky/erroring mesh NEVER blocks the merge.
  */
 async function runMergeMesh(deps: CliDeps, ctx: SwarmFlowContext, diff: string): Promise<boolean> {
-  try {
-    const fileCount = (diff.match(/^diff --git /gm) ?? []).length || 1;
-    const plan = planVerificationMesh({
-      taskType: 'feature',
-      sensitive: false,
-      affectedUnits: fileCount,
-      autonomyLevel: ctx.config.autonomy?.default ?? 3,
-      hasTests: typeof ctx.config.commands?.test === 'string',
-      ...(ctx.config.verification?.mesh !== undefined
-        ? { mode: ctx.config.verification.mesh }
-        : {}),
-    });
-    if (plan.lenses.length === 0) {
-      return false; // proportional: nothing warranted
-    }
-    deps.ui.info(deps.t('swarm.mesh-running', { lenses: plan.lenses.length }));
-    const result = await runVerificationMesh({
-      diff,
-      lenses: plan.lenses,
-      gateway: ctx.gateway,
-      provider: ctx.providerName,
-    });
-    for (const issue of result.issues) {
-      const where = issue.file !== undefined ? `${issue.file} — ` : '';
-      deps.ui.write(`  [${issue.severity.toUpperCase()}] ${where}${issue.problem}`);
-    }
-    return result.blocked;
-  } catch {
-    return false; // best-effort — a flaky jury never blocks the merge
+  const out = await runProportionalMesh(
+    { gateway: ctx.gateway, providerName: ctx.providerName, config: ctx.config },
+    diff,
+  );
+  if (out === null) {
+    return false; // nothing warranted / best-effort skip
   }
+  deps.ui.info(deps.t('swarm.mesh-running', { lenses: out.lenses }));
+  for (const issue of out.result.issues) {
+    const where = issue.file !== undefined ? `${issue.file} — ` : '';
+    deps.ui.write(`  [${issue.severity.toUpperCase()}] ${where}${issue.problem}`);
+  }
+  return out.result.blocked;
 }
 
 /**

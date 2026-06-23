@@ -49,6 +49,7 @@ import {
 import { runDiscoveryFlow } from '../commands/discovery';
 import { chooseBuildShape, decomposeTask, runSwarmFlow } from '../lib/swarm';
 import { runConfiguredCommandCheck } from '../lib/verify-command';
+import { runProportionalMesh } from '../lib/verify-mesh';
 import { runResearchFlow } from '../lib/research';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
 import { buildSessionLog, formatSessionLog } from '../lib/session-log';
@@ -1204,6 +1205,36 @@ async function dispatchAutoBuild(
   }
   deps.ui.info(deps.t('repl.auto-build-sequential'));
   await dispatchAgentTurn(deps, runtime, text, signal, seed);
+
+  // AO4f-2 — give the SEQUENTIAL auto-build the same adversarial review the swarm
+  // path gets (AO4f-1). The turn already applied as it went (no merge gate to
+  // revert), so this is a proportional, best-effort post-review that SURFACES
+  // high-severity findings rather than reverting. Opt-in via verifyMerge; never
+  // on the mock; never blocks.
+  if (runtime.config.orchestration?.verifyMerge === true && runtime.model !== 'mock') {
+    try {
+      const gateway = loadGatewayContext(runtime.repoRoot);
+      const diff = getLocalDiff(runtime.repoRoot);
+      if (diff.trim().length > 0) {
+        const out = await runProportionalMesh(
+          { gateway: gateway.gateway, providerName: gateway.providerName, config: runtime.config },
+          diff,
+        );
+        if (out !== null) {
+          deps.ui.info(deps.t('repl.auto-build-review', { lenses: out.lenses }));
+          for (const issue of out.result.issues) {
+            const where = issue.file !== undefined ? `${issue.file} — ` : '';
+            deps.ui.write(`  [${issue.severity.toUpperCase()}] ${where}${issue.problem}`);
+          }
+          if (out.result.blocked) {
+            deps.ui.warn(deps.t('repl.auto-build-review-high'));
+          }
+        }
+      }
+    } catch {
+      /* best-effort post-review — never fail the build on a flaky jury */
+    }
+  }
 }
 
 /**

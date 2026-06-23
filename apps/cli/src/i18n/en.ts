@@ -787,6 +787,9 @@ export const EN: Catalog = {
   'repl.auto-build-parallel':
     'Auto-orchestrating: {count} independent workstreams → a parallel swarm.',
   'repl.auto-build-sequential': 'Auto-orchestrating: a single workstream → one focused run.',
+  'repl.auto-build-review': 'Adversarial review of the result ({lenses} lens(es))…',
+  'repl.auto-build-review-high':
+    'A high-severity issue survived review — inspect the changes before relying on them.',
   // deep research (F7)
   'research.network-off':
     'Network is disabled (permissions.network.mode = off). Enable it to research the web.',
