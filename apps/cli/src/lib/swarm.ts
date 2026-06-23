@@ -5,6 +5,7 @@ import {
   capTotalAgents,
   chooseConcurrency,
   planAgentAllocation,
+  RunManager,
   runSwarm,
   runSwarmStaged,
   SWARM_MAX_TOTAL_AGENTS,
@@ -24,7 +25,7 @@ import {
   type LaneModel,
 } from '@excalibur/tui';
 import type { GatewayChatInput, ModelGateway } from '@excalibur/model-gateway';
-import type { ExcaliburConfig, ExcaliburEvent } from '@excalibur/shared';
+import type { AutonomyLevel, ExcaliburConfig, ExcaliburEvent } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
 import { loadInkUi } from '../ink/load';
 import type { LanesViewHandle } from '@excalibur/tui/ink';
@@ -254,11 +255,19 @@ function lanePrompt(instruction: string, feedback: string | undefined): string {
  * Runs the decomposed subtasks as a real swarm: each lane drives the real
  * {@link NativeAgentAdapter} in its isolated worktree against the gateway.
  */
-export function executeSwarm(
+export async function executeSwarm(
   deps: CliDeps,
   repoRoot: string,
   subtasks: ReadonlyArray<SwarmSubtask>,
-  context: { gateway: ModelGateway; config: ExcaliburConfig; autonomyAutoApprove: boolean },
+  context: {
+    gateway: ModelGateway;
+    config: ExcaliburConfig;
+    autonomyAutoApprove: boolean;
+    /** Provider name recorded on the persisted runs (AO4a). */
+    providerName?: string;
+    /** Work item to link every child lane run to (AO4e). */
+    workItemId?: string | null;
+  },
   options: {
     maxConcurrency?: number;
     maxAttempts?: number;
@@ -278,6 +287,52 @@ export function executeSwarm(
     ...(options.onLane !== undefined ? { onLane: options.onLane } : {}),
     ...(options.grade !== undefined ? { grade: options.grade } : {}),
   };
+
+  // AO4a — SWARM-AS-RUN: persist parallel work as first-class runs so the shipped
+  // observability plane (SSE, replay/fork, dashboard, audit, work-item linkage)
+  // sees it. One PARENT run + one CHILD run per lane (linked by parentRunId), with
+  // the lane's real events streamed to its child run. Lanes ride EXISTING event
+  // types (the events.ts enum is frozen for Enterprise ingestion). Best-effort: a
+  // run-store fault never breaks the swarm.
+  const runManager = new RunManager(repoRoot);
+  const level = (context.config.autonomy?.default ?? 3) as AutonomyLevel;
+  const workItemId = context.workItemId ?? null;
+  let parentId: string | null = null;
+  try {
+    const parent = runManager.createRun({
+      title: `swarm: ${subtasks.length} lane${subtasks.length === 1 ? '' : 's'}`,
+      autonomyLevel: level,
+      workflow: 'swarm',
+      model: context.providerName ?? null,
+      ...(workItemId !== null ? { workItemId } : {}),
+    });
+    parentId = parent.id;
+    runManager.updateRecord(parentId, { status: 'running' });
+  } catch {
+    parentId = null;
+  }
+  const childByLane = new Map<string, string>();
+  const childRunFor = (laneId: string): string | null => {
+    const existing = childByLane.get(laneId);
+    if (existing !== undefined) return existing;
+    if (parentId === null) return null;
+    try {
+      const child = runManager.createRun({
+        title: byId.get(laneId)?.title ?? laneId,
+        autonomyLevel: level,
+        workflow: 'swarm-lane',
+        model: context.providerName ?? null,
+        parentRunId: parentId,
+        ...(workItemId !== null ? { workItemId } : {}),
+      });
+      runManager.updateRecord(child.id, { status: 'running' });
+      childByLane.set(laneId, child.id);
+      return child.id;
+    } catch {
+      return null;
+    }
+  };
+
   const runLane = async ({
     lane,
     worktreePath,
@@ -287,6 +342,7 @@ export function executeSwarm(
     worktreePath: string;
     feedback?: string;
   }): Promise<SwarmLaneSummary> => {
+    const childId = childRunFor(lane.id);
     const adapter = new NativeAgentAdapter();
     let costCents: number | null = null;
     let toolCalls = 0;
@@ -296,7 +352,7 @@ export function executeSwarm(
     // re-dispatch a transient failure (runSwarm only retries on a throw).
     let lastError: string | null = null;
     for await (const event of adapter.run({
-      runId: `swarm_${lane.id}`,
+      runId: childId ?? `swarm_${lane.id}`,
       sessionId: `swarm_${lane.id}`,
       workdir: worktreePath,
       prompt: lanePrompt(byId.get(lane.id)?.instruction ?? lane.instruction, feedback),
@@ -307,6 +363,15 @@ export function executeSwarm(
       ...(options.signal !== undefined ? { signal: options.signal } : {}),
     } as Parameters<NativeAgentAdapter['run']>[0])) {
       const e = event as ExcaliburEvent;
+      // PERSIST every lane event to its child run (best-effort) so SSE/replay/
+      // dashboard/audit see the parallel work in real time.
+      if (childId !== null) {
+        try {
+          runManager.appendEvent(childId, e);
+        } catch {
+          /* a run-store write fault must never break the lane */
+        }
+      }
       if (e.type === 'tool_call') toolCalls += 1;
       if (e.type === 'error') {
         const msg = (e.payload as Record<string, unknown>)['message'];
@@ -326,18 +391,47 @@ export function executeSwarm(
   };
 
   // STAGED (a real dependency graph) vs FLAT (a single parallel wave).
-  if (options.waves !== undefined && options.waves.length > 1) {
-    const waveLanes = options.waves.map((w) =>
-      w.map((s) => ({ id: s.id, instruction: s.instruction })),
-    );
-    return runSwarmStaged(repoRoot, waveLanes, runLane, swarmOptions);
+  const result =
+    options.waves !== undefined && options.waves.length > 1
+      ? await runSwarmStaged(
+          repoRoot,
+          options.waves.map((w) => w.map((s) => ({ id: s.id, instruction: s.instruction }))),
+          runLane,
+          swarmOptions,
+        )
+      : await runSwarm(
+          repoRoot,
+          subtasks.map((s) => ({ id: s.id, instruction: s.instruction })),
+          runLane,
+          swarmOptions,
+        );
+
+  // Finalize the persisted runs from the outcome (best-effort).
+  const finishedAt = new Date().toISOString();
+  for (const laneResult of result.lanes) {
+    const childId = childByLane.get(laneResult.id);
+    if (childId === undefined) continue;
+    try {
+      runManager.updateRecord(childId, {
+        status: laneResult.failed ? 'failed' : 'completed',
+        completedAt: finishedAt,
+      });
+    } catch {
+      /* best-effort */
+    }
   }
-  return runSwarm(
-    repoRoot,
-    subtasks.map((s) => ({ id: s.id, instruction: s.instruction })),
-    runLane,
-    swarmOptions,
-  );
+  if (parentId !== null) {
+    try {
+      const anyOk = result.lanes.some((l) => !l.failed);
+      runManager.updateRecord(parentId, {
+        status: result.lanes.length === 0 || anyOk ? 'completed' : 'failed',
+        completedAt: finishedAt,
+      });
+    } catch {
+      /* best-effort */
+    }
+  }
+  return result;
 }
 
 /** Context a swarm flow needs (already resolved by the command / the REPL session). */
@@ -501,6 +595,7 @@ export async function runSwarmFlow(
         gateway: ctx.gateway,
         config: ctx.config,
         autonomyAutoApprove: true, // a parallel batch can't prompt per-lane
+        providerName: ctx.providerName,
       },
       {
         maxConcurrency: concurrency,

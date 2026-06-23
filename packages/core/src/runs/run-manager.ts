@@ -31,6 +31,8 @@ export interface CreateRunInput {
   executionStyle?: ExecutionStyle | null;
   /** The work item this run executes against (links the run to the kanban). */
   workItemId?: string | null;
+  /** The parent run when this is a child lane of a parallel orchestration (AO4a). */
+  parentRunId?: string | null;
 }
 
 /** One `model-calls.jsonl` line (Build Contract §6). */
@@ -81,6 +83,9 @@ export class RunManager {
       completedAt: null,
       ...(input.workItemId !== undefined && input.workItemId !== null
         ? { workItemId: input.workItemId }
+        : {}),
+      ...(input.parentRunId !== undefined && input.parentRunId !== null
+        ? { parentRunId: input.parentRunId }
         : {}),
     };
 

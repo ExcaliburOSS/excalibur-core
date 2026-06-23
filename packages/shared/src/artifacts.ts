@@ -45,6 +45,13 @@ export const runRecordSchema = z.object({
    * Optional + nullable — ad-hoc runs omit it (back-compatible).
    */
   workItemId: z.string().nullable().optional(),
+  /**
+   * The PARENT run when this run is a child lane of a parallel orchestration
+   * (AO4a swarm-as-run): a swarm fans out into a parent run plus one child run
+   * per lane, so the dashboard/SSE/replay/audit can see and group parallel work.
+   * Optional + nullable — ordinary (non-parallel) runs omit it (back-compatible).
+   */
+  parentRunId: z.string().nullable().optional(),
 });
 export type RunRecord = z.infer<typeof runRecordSchema>;
 
