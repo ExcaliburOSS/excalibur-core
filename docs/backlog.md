@@ -39,16 +39,20 @@ read-only `--share`) · **publishable extension SDK** (`@excalibur-oss/extension
   → chat|plan|swarm|bg|research|goal, multilingual, no keywords) and swarm
   self-sizing (`decomposeTask` + `planAgentAllocation`, `apps/cli/src/lib/swarm.ts`;
   `--max-agents` is only an optional ceiling).
-- **AO1 — auto-execute under autonomy** [Core][auto]: in `apps/cli/src/session/repl.ts`
-  the heavy routes (swarm/bg/goal/research) are still `confirm()`-OFFERED — only
-  `plan` auto-runs under `runtime.approvals.auto`. Make them auto-execute under
-  auto / high autonomy with a non-blocking "auto-routed to swarm (N agents)"
-  notice; keep the confirm only at low/non-auto levels.
-- **AO2 — planner→parallelizer fusion** [Core][auto]: the planner and the
-  parallelizer are decoupled today. Build an execution planner so an approved
-  plan's dependency graph DERIVES the shape — independent steps → auto-sized
-  swarm, dependent chain → sequential, long task → background thread — all linked
-  to the work-item. Verify vs real Kimi; plan-first (sizeable arch change).
+- **AO1 — auto-execute under autonomy** ✅ DONE (83abf09): under
+  `runtime.approvals.auto` the heavy routes (goal/bg/swarm/research) auto-execute
+  with a non-blocking "auto-routed" notice (an `acceptRoute` helper in
+  `apps/cli/src/session/repl.ts`); below auto they still OFFER.
+- **AO2 — planner→parallelizer fusion** ✅ DONE (83abf09): under auto a build
+  (plan- OR swarm-classified) goes through `dispatchAutoBuild` → `decomposeTask`
+  - the pure `chooseBuildShape({isRepo,subtaskCount})` → ≥2 independent
+    workstreams → parallel auto-sized swarm (merge+apply), else one sequential run.
+    `runSwarmFlow` takes pre-decomposed `subtasks`. Verified real vs Groq.
+- **AO3 — mixed dependency-graph executor** [Core][auto] — PENDING refinement:
+  today AO is FLAT (independent→swarm | else→sequential) and fires only under
+  `approvals.auto`. Build a true staged DAG (phase A sequential → B+C parallel →
+  D), auto-background long builds, and consider making auto-orchestration the
+  default posture (auto-approve default) rather than gated on auto. Plan-first.
 
 ---
 

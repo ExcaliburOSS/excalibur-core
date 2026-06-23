@@ -22,6 +22,13 @@ primary way to use it. You don't memorize flags; you talk to it:
   the right workflow, autonomy and safety rules, then streams the agent's plan,
   tool calls, edits, tests and diff in a live rail you can watch and interrupt
   (`Esc` cancels the running step).
+- **Auto-orchestration — you never pick the shape.** A multilingual intent router
+  reads each turn and Excalibur chooses _and dimensions_ the execution itself:
+  parallelizable work fans out into an auto-sized **swarm** of agents (isolated
+  worktrees, merged back), long work goes to the **background**, research runs the
+  cited pipeline. Under autonomy it just does it (a one-line notice, no prompt);
+  otherwise it offers. `swarm`/`bg`/`threads` exist as power-user commands but you
+  never have to reach for them.
 - **Slash commands when you want them.** `/models` to pick a provider/model,
   `/agent` to switch persona, `/bg` and `/threads` to run and juggle work in the
   background, `/plan`, `/share`, `/help` — discoverable, single-key where it

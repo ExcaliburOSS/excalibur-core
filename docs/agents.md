@@ -57,7 +57,9 @@ agents:
 
 ## Swarm
 
-Run several agents in parallel and pick the best result. `excalibur swarm` (or `/swarm` in the interactive shell) fans a task out across isolated **git worktrees** — each agent works on its own copy of the tree — then fans the results back in. Add `--grade` to score the candidates with a rubric and surface the winner. See [workflows.md](workflows.md).
+Run several agents in parallel and pick the best result. `excalibur swarm` (or `/swarm` in the interactive shell) fans a task out across isolated **git worktrees** — each agent works on its own copy of the tree — then fans the results back in. A model decomposes the task into independent subtasks and an allocator **sizes the swarm automatically** (you don't pick the agent count; `--max-agents` is only an optional ceiling). Add `--grade` to score the candidates with a rubric and surface the winner. See [workflows.md](workflows.md).
+
+**You rarely invoke this yourself.** In the interactive shell the intent router decides when work is parallelizable and Excalibur **auto-orchestrates** it: under autonomy a build is decomposed and, when it has ≥2 independent workstreams, executed as an auto-sized swarm (merged + applied) with no command and no prompt — otherwise as a single focused run. The `swarm`/`bg`/`threads` commands remain as explicit escape hatches.
 
 ## Agent roles
 
