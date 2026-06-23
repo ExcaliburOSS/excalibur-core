@@ -186,6 +186,7 @@ runners and compliance. Everything stays local unless you explicitly connect
 - [Getting started](docs/getting-started.md)
 - [Configuration (`.excalibur/`)](docs/configuration.md)
 - [Autonomy levels](docs/autonomy-levels.md)
+- [Work items & kanban](docs/work-items.md)
 - [Web dashboard](docs/dashboard.md)
 - [Workflows](docs/workflows.md) · [Methodologies](docs/methodologies.md)
 - [Model providers](docs/providers.md) · [Agents](docs/agents.md)
