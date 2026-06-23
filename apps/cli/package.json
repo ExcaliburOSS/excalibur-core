@@ -57,7 +57,7 @@
     "@excalibur/declarative-schemas": "workspace:*",
     "@excalibur/enterprise-sync": "workspace:*",
     "@excalibur/extension-runtime": "workspace:*",
-    "@excalibur/extension-sdk": "workspace:*",
+    "@excalibur-oss/extension-sdk": "workspace:*",
     "@excalibur/model-gateway": "workspace:*",
     "@excalibur/shared": "workspace:*",
     "@excalibur/tui": "workspace:*",

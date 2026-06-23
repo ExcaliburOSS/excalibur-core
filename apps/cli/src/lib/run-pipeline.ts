@@ -1,5 +1,5 @@
 import { NativeAgentAdapter } from '@excalibur/agent-runtime';
-import { activateExtensions } from '@excalibur/extension-sdk';
+import { activateExtensions } from '@excalibur-oss/extension-sdk';
 import { LocalWorkItemProvider } from '@excalibur/work-items';
 import {
   RunManager,
@@ -315,7 +315,13 @@ export async function runTask(
   // Activate loaded extensions and harvest the agent tools they contribute, so
   // the native loop advertises + executes them (extensions-spec.md §5). A
   // failing extension is reported, never fatal.
-  const activation = await activateExtensions(registry);
+  // The SDK ships self-contained, so its `.d.ts` carries its OWN inlined copy of
+  // `ExtensionRegistry` — structurally identical to the one `createExtensionHost`
+  // returns, but a distinct declaration, so TS needs the bridge. Same runtime
+  // object; the SDK's `activateExtensions` was built to operate on exactly it.
+  const activation = await activateExtensions(
+    registry as unknown as Parameters<typeof activateExtensions>[0],
+  );
   for (const warning of activation.warnings) {
     deps.ui.warn(warning);
   }

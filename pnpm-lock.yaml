@@ -41,6 +41,9 @@ importers:
 
   apps/cli:
     devDependencies:
+      '@excalibur-oss/extension-sdk':
+        specifier: workspace:*
+        version: link:../../packages/extension-sdk
       '@excalibur/agent-runtime':
         specifier: workspace:*
         version: link:../../packages/agent-runtime
@@ -65,9 +68,6 @@ importers:
       '@excalibur/extension-runtime':
         specifier: workspace:*
         version: link:../../packages/extension-runtime
-      '@excalibur/extension-sdk':
-        specifier: workspace:*
-        version: link:../../packages/extension-sdk
       '@excalibur/model-gateway':
         specifier: workspace:*
         version: link:../../packages/model-gateway
@@ -376,6 +376,10 @@ importers:
 
   packages/extension-sdk:
     dependencies:
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
       '@excalibur/agent-runtime':
         specifier: workspace:*
         version: link:../agent-runtime
@@ -394,10 +398,6 @@ importers:
       '@excalibur/workflow-schema':
         specifier: workspace:*
         version: link:../workflow-schema
-      zod:
-        specifier: ^3.24.0
-        version: 3.25.76
-    devDependencies:
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(postcss@8.5.15)(tsx@4.22.4)(typescript@5.9.3)(yaml@2.9.0)

@@ -2,10 +2,10 @@ import type { AgentRole, ExcaliburConfig } from '@excalibur/shared';
 import type { ToolSpec } from '@excalibur/model-gateway';
 
 /**
- * Extension tool contract — the STRUCTURAL mirror of `@excalibur/extension-sdk`'s
+ * Extension tool contract — the STRUCTURAL mirror of `@excalibur-oss/extension-sdk`'s
  * `AgentTool`/`ToolContext`/`ToolResult` (extensions-spec.md §5).
  *
- * `agent-runtime` must NOT import `@excalibur/extension-sdk` (it sits BELOW the
+ * `agent-runtime` must NOT import `@excalibur-oss/extension-sdk` (it sits BELOW the
  * SDK in the dependency graph — CONTRACT §3). So the native loop executes
  * extension-contributed tools through this locally-defined, structurally-equal
  * interface: a host that depends on both packages (the CLI) hands the SDK's

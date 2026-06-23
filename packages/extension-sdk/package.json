@@ -1,9 +1,23 @@
 {
-  "name": "@excalibur/extension-sdk",
+  "name": "@excalibur-oss/extension-sdk",
   "version": "1.2.0",
-  "private": true,
   "description": "TypeScript SDK for building Excalibur programmatic extensions: defineExtension, ExtensionContext and the contribution interfaces",
   "license": "Apache-2.0",
+  "author": "ExcaliburOSS",
+  "homepage": "https://github.com/ExcaliburOSS/excalibur-core/tree/main/packages/extension-sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ExcaliburOSS/excalibur-core.git",
+    "directory": "packages/extension-sdk"
+  },
+  "keywords": [
+    "excalibur",
+    "extension",
+    "sdk",
+    "agent",
+    "plugin"
+  ],
+  "type": "commonjs",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -15,25 +29,34 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts --sourcemap --clean",
-    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "build": "tsup",
+    "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
     "@excalibur/agent-runtime": "workspace:*",
     "@excalibur/extension-runtime": "workspace:*",
     "@excalibur/model-gateway": "workspace:*",
     "@excalibur/shared": "workspace:*",
     "@excalibur/work-items": "workspace:*",
     "@excalibur/workflow-schema": "workspace:*",
-    "zod": "^3.24.0"
-  },
-  "devDependencies": {
     "tsup": "^8.3.5",
     "typescript": "^5.8.3",
     "vitest": "^3.0.5"

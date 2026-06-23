@@ -299,7 +299,7 @@ function programmaticTemplate(type: ProgrammaticScaffoldType, name: string): Pro
       return {
         contributesKey: 'workItemProviders',
         capabilities: ['work_items.read', 'work_items.comment'],
-        indexTs: `import { defineExtension, type WorkItemProvider } from '@excalibur/extension-sdk';
+        indexTs: `import { defineExtension, type WorkItemProvider } from '@excalibur-oss/extension-sdk';
 
 class ${className}Provider implements Partial<WorkItemProvider> {
   readonly type = 'github_issues' as const;
@@ -321,7 +321,7 @@ export default defineExtension({
       return {
         contributesKey: 'communicationProviders',
         capabilities: ['communication.post'],
-        indexTs: `import { defineExtension, type CommunicationProvider } from '@excalibur/extension-sdk';
+        indexTs: `import { defineExtension, type CommunicationProvider } from '@excalibur-oss/extension-sdk';
 
 class ${className}Provider implements Partial<CommunicationProvider> {
   readonly type = '${name}';
@@ -342,7 +342,7 @@ export default defineExtension({
       return {
         contributesKey: 'modelProviders',
         capabilities: ['models.chat'],
-        indexTs: `import { defineExtension, type ModelProviderAdapter } from '@excalibur/extension-sdk';
+        indexTs: `import { defineExtension, type ModelProviderAdapter } from '@excalibur-oss/extension-sdk';
 
 class ${className}Adapter implements Partial<ModelProviderAdapter> {
   readonly name = '${name}';
@@ -363,7 +363,7 @@ export default defineExtension({
       return {
         contributesKey: 'agentAdapters',
         capabilities: ['tools.execute'],
-        indexTs: `import { defineExtension, type AgentAdapter } from '@excalibur/extension-sdk';
+        indexTs: `import { defineExtension, type AgentAdapter } from '@excalibur-oss/extension-sdk';
 
 class ${className}Adapter implements Partial<AgentAdapter> {
   readonly id = '${name}';
@@ -386,7 +386,7 @@ export default defineExtension({
       return {
         contributesKey: 'tools',
         capabilities: ['tools.execute'],
-        indexTs: `import { defineExtension, type AgentTool, type ToolContext, type ToolResult } from '@excalibur/extension-sdk';
+        indexTs: `import { defineExtension, type AgentTool, type ToolContext, type ToolResult } from '@excalibur-oss/extension-sdk';
 
 const ${className.charAt(0).toLowerCase() + className.slice(1)}Tool: AgentTool = {
   name: '${name}',
@@ -439,7 +439,7 @@ permissions:
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@excalibur/extension-sdk": "^0.1.0"
+    "@excalibur-oss/extension-sdk": "^1.2.0"
   },
   "devDependencies": {
     "typescript": "~5.8.0"
