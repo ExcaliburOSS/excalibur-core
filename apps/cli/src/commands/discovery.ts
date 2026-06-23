@@ -1,5 +1,7 @@
+import { execFile } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { isCommandOnPath } from '@excalibur/agent-runtime';
 import { DiscoveryManager } from '@excalibur/core';
 import {
   discoveryInputTypeSchema,
@@ -7,7 +9,7 @@ import {
   type DiscoveryRecord,
 } from '@excalibur/shared';
 import { DISCOVERY_QUESTION_PACKS } from '@excalibur/workflow-schema';
-import { LocalWorkItemProvider } from '@excalibur/work-items';
+import { GitHubCliProvider, LocalWorkItemProvider, type GhRunner } from '@excalibur/work-items';
 import type { Command } from 'commander';
 import pc from 'picocolors';
 import { CliUsageError } from '../errors';
@@ -140,14 +142,11 @@ export function registerDiscoveryCommand(program: Command, deps: CliDeps): void 
     .option('--from-file <path>', 'read the input from a file (customer feedback by default)')
     .option('--from-linear <id>', 'start from a Linear issue (available in M4)')
     .option('--from-jira <id>', 'start from a Jira issue (available in M4)')
-    .option('--from-github-issue <id>', 'start from a GitHub issue (available in M4)')
+    .option('--from-github-issue <id>', 'start from a GitHub issue (via the `gh` CLI)')
     .option('-y, --yes', 'skip the questions (recorded as unanswered)')
     .action(async (inputWords: string[], options: DiscoveryOptions) => {
-      if (
-        options.fromLinear !== undefined ||
-        options.fromJira !== undefined ||
-        options.fromGithubIssue !== undefined
-      ) {
+      // Linear/Jira intake needs API creds → still gated (P2.16 cred work).
+      if (options.fromLinear !== undefined || options.fromJira !== undefined) {
         deps.ui.warn(deps.t('discovery.workItemSourcesM4'));
         return;
       }
@@ -168,6 +167,41 @@ export function registerDiscoveryCommand(program: Command, deps: CliDeps): void 
 
       let input = inputWords.join(' ').trim();
       let title: string | undefined;
+
+      // GitHub issue intake (P2.16) — via the already-authenticated `gh` CLI, so
+      // OSS users get real remote intake with zero token handling by Excalibur.
+      if (options.fromGithubIssue !== undefined) {
+        if (!isCommandOnPath('gh', deps.env)) {
+          throw new CliUsageError(
+            'GitHub issue intake needs the `gh` CLI on PATH (authenticated via `gh auth login`).',
+          );
+        }
+        const ghRunner: GhRunner = (args) =>
+          new Promise((resolve, reject) => {
+            execFile('gh', args, { maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) =>
+              error ? reject(new Error((stderr || error.message).trim())) : resolve(stdout),
+            );
+          });
+        let issue;
+        try {
+          issue = await new GitHubCliProvider(ghRunner).getWorkItem({
+            integrationId: 'github',
+            externalIdOrKey: options.fromGithubIssue,
+          });
+        } catch (error) {
+          throw new CliUsageError(
+            `could not read GitHub issue '${options.fromGithubIssue}': ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+        title = issue.title;
+        input = `${issue.title}\n\n${issue.description ?? ''}`.trim();
+        if (options.type === undefined) {
+          inputType = 'work_item';
+        }
+      }
+
       if (options.fromFile !== undefined) {
         const filePath = join(deps.cwd(), options.fromFile);
         if (!existsSync(filePath)) {
