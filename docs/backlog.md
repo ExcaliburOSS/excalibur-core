@@ -19,9 +19,32 @@
 F1–F8 external access (web_fetch/search/extract/crawl, opt-in local browser, hosted
 readers, native cited research, anti-injection + provenance) · MCP OAuth/DCR +
 Ed25519-signed registry · background/fleet (`/bg` + `/threads`) · onboarding
-overhaul · **npm publish 1.2.0** (`@excalibur-oss/excalibur`, `latest`).
+overhaul · **npm publish 1.2.0** (`@excalibur-oss/excalibur`, `latest`) ·
+**OSS task-first dashboard D0–D5** (`excalibur serve`: kanban board + live
+checklist + drag/start/cancel/approve + plans/discovery + insights charts + SSE +
+read-only `--share`) · **publishable extension SDK** (`@excalibur-oss/extension-sdk`).
 
 ---
+
+## DW — Web & docs refresh (cross-cutting; we shipped a LOT that's undocumented)
+
+> Added 2026-06-23: a big body of work landed (the whole dashboard epic, the
+> external-access stack, MCP, the IDE extension, custom agents, the publishable
+> extension SDK, more providers, etc.) and neither the commercial site nor the
+> docs reflect it. Two tracked tasks:
+
+- **DW1 (task #184) — Marketing site (getexcalibur.dev) full refresh** [marketing,
+  `~/excalibur` apps/marketing Nuxt]. Update every page + subpage to the shipped
+  reality (dashboard, F1–F8, MCP, IDE ext, custom agents, extension SDK, LSP,
+  providers, …); kill stale "M1/mock/coming-soon" claims + outdated screenshots;
+  fold in the pending site Phases 2–5.
+- **DW2 (task #185) — Docs full review + update** [Core, `docs/`]. NEW docs (the
+  web dashboard + its `/api` + `--write`/`--share`, an extension-authoring guide,
+  a work-items/kanban guide) + UPDATE existing (getting-started, providers,
+  security, autonomy-levels, CONTRACT, ROADMAP). **Reframe the README around the
+  M-SHELL** — the interactive shell (welcome screen + REPL + `/` commands) is the
+  PRIMARY experience, not a flat command list. Reconcile backlog/ROADMAP with the
+  live task list; kill dead links + drifted command examples; en (+es where bilingual).
 
 ## P0 — Foundational, autonomous, unblock adoption
 
