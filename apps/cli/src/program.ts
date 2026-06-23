@@ -21,6 +21,7 @@ import { registerResearchCommand } from './commands/research';
 import { registerSearchCommand } from './commands/search';
 import { registerWebCommand } from './commands/web';
 import { registerServeCommand } from './commands/serve';
+import { registerShareCommand } from './commands/share';
 import { registerAcpCommand } from './commands/acp';
 import { registerWorkItemsCommand } from './commands/work-items';
 import { registerAgentsCommand } from './commands/agents';
@@ -99,6 +100,7 @@ export function buildProgram(overrides: Partial<CliDeps> = {}): Command {
   registerLogsCommand(program, deps);
   registerInsightsCommand(program, deps);
   registerServeCommand(program, deps);
+  registerShareCommand(program, deps);
   registerAcpCommand(program, deps);
   registerWorkItemsCommand(program, deps);
   registerAgentsCommand(program, deps);
