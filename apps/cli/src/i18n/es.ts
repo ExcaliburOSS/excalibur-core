@@ -473,6 +473,10 @@ export const ES: Catalog = {
   'swarm.staged-heading':
     'Enjambre: {count} subtareas en {waves} olas de dependencias (cada ola parte del resultado fusionado de la anterior).',
   'swarm.wave': 'ola {n}',
+  'swarm.verifying': 'Verificando el resultado fusionado contra los tests configurados…',
+  'swarm.verified': 'Fan-in verificado: {detail}.',
+  'swarm.verifyFailed':
+    'Fan-in verificado FALLÓ: {detail}. Los cambios fusionados se REVIRTIERON, no se conservaron — los carriles estaban bien por separado pero rompen al combinarse.',
   'swarm.singleUnit':
     'Solo una unidad independiente: esto se ejecuta como un único agente (sin paralelismo real).',
   'swarm.confirmRun': '¿Ejecutar {count} agente(s) en paralelo?',

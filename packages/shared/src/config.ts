@@ -144,6 +144,13 @@ const approvalsSectionSchema = z.object({
 const orchestrationSectionSchema = z.object({
   /** Hard iteration cap for the autonomous goal loop (`/goal`). Default 6. */
   goalMaxIterations: z.number().int().positive().max(50).optional(),
+  /**
+   * Verified fan-in (AO4b): after a swarm merges its lanes, run the configured
+   * test command on the merged tree BEFORE keeping it — a red run reverts the
+   * merge instead of shipping it. Opt-in (default off) since it depends on the
+   * repo's tests being green + runnable; teams with a reliable suite enable it.
+   */
+  verifyMerge: z.boolean().optional(),
 });
 
 const contextSectionSchema = z.object({

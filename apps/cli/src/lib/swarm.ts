@@ -28,6 +28,7 @@ import type { GatewayChatInput, ModelGateway } from '@excalibur/model-gateway';
 import type { AutonomyLevel, ExcaliburConfig, ExcaliburEvent } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
 import { loadInkUi } from '../ink/load';
+import { runConfiguredCommandCheck } from './verify-command';
 import type { LanesViewHandle } from '@excalibur/tui/ink';
 
 /**
@@ -681,12 +682,36 @@ export async function runSwarmFlow(
   }
   try {
     applyPatch(repoRoot, result.mergedDiff);
-    deps.ui.success(deps.t('swarm.applied'));
   } catch (error) {
     deps.ui.error(
       deps.t('swarm.applyFailed', {
         error: error instanceof Error ? error.message : String(error),
       }),
     );
+    return;
   }
+  // AO4b — VERIFIED FAN-IN: run the configured test command on the MERGED tree
+  // (opt-in via config.orchestration.verifyMerge). Two individually-green lanes
+  // can break IN COMBINATION; a red run REVERTS the merge instead of shipping a
+  // broken integration. The deterministic worktree merge + ground-truth gate is
+  // the differentiator CC/OpenCode structurally lack.
+  const verify =
+    ctx.config.orchestration?.verifyMerge === true
+      ? runConfiguredCommandCheck(repoRoot, ctx.config.commands?.test, options.signal)
+      : undefined;
+  if (verify !== undefined) {
+    deps.ui.info(deps.t('swarm.verifying'));
+    const verdict = await verify();
+    if (!verdict.passed) {
+      try {
+        applyPatch(repoRoot, result.mergedDiff, { reverse: true });
+      } catch {
+        /* best-effort revert — keep going to report the failure */
+      }
+      deps.ui.error(deps.t('swarm.verifyFailed', { detail: verdict.detail }));
+      return;
+    }
+    deps.ui.success(deps.t('swarm.verified', { detail: verdict.detail }));
+  }
+  deps.ui.success(deps.t('swarm.applied'));
 }

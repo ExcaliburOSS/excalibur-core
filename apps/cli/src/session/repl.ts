@@ -44,6 +44,7 @@ import {
 } from '../lib/context';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { chooseBuildShape, decomposeTask, runSwarmFlow } from '../lib/swarm';
+import { runConfiguredCommandCheck } from '../lib/verify-command';
 import { runResearchFlow } from '../lib/research';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
 import { buildSessionLog, formatSessionLog } from '../lib/session-log';
@@ -1350,35 +1351,11 @@ export function goalMaxIterations(config: ExcaliburConfig): number {
 
 /**
  * A deterministic "tests green" check for the goal loop, built from the repo's
- * configured test command. Runs it with NO shell (split on whitespace), the
- * loop's abort signal, and a hard timeout; exit 0 → authoritative DONE. Returns
- * undefined when no test command is configured (model judge only).
+ * configured test command. Delegates to the shared {@link runConfiguredCommandCheck}
+ * so the goal-loop done-gate (AO3d) and the swarm's verified fan-in (AO4b) share
+ * one runner. Kept as a named export for callers/tests.
  */
-export function runConfiguredTestsCheck(
-  repoRoot: string,
-  testCommand: string | undefined,
-  signal: AbortSignal | undefined,
-): (() => Promise<{ passed: boolean; detail: string }>) | undefined {
-  const command = testCommand?.trim();
-  if (command === undefined || command.length === 0) {
-    return undefined;
-  }
-  const [bin, ...args] = command.split(/\s+/);
-  return async () => {
-    try {
-      await execFileAsync(bin ?? '', args, {
-        cwd: repoRoot,
-        ...(signal !== undefined ? { signal } : {}),
-        timeout: 300_000,
-        maxBuffer: 16 * 1024 * 1024,
-      });
-      return { passed: true, detail: `\`${command}\` passed` };
-    } catch (error) {
-      const first = (error instanceof Error ? error.message : String(error)).split('\n')[0] ?? '';
-      return { passed: false, detail: `\`${command}\` failed: ${first.slice(0, 140)}` };
-    }
-  };
-}
+export const runConfiguredTestsCheck = runConfiguredCommandCheck;
 
 /**
  * Runs the autonomous goal loop for an objective and reports + records the
