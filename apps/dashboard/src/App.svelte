@@ -5,6 +5,7 @@
   import WorkItem from './pages/WorkItem.svelte';
   import Runs from './pages/Runs.svelte';
   import Insights from './pages/Insights.svelte';
+  import Orchestrations from './pages/Orchestrations.svelte';
   import Plans from './pages/Plans.svelte';
 
   const router = createRouter();
@@ -12,6 +13,7 @@
   const NAV: { href: string; key: string; match: string[] }[] = [
     { href: '#/', key: 'nav.board', match: ['board', 'workItem'] },
     { href: '#/runs', key: 'nav.runs', match: ['runs', 'run'] },
+    { href: '#/orchestrations', key: 'nav.orchestrations', match: ['orchestrations'] },
     { href: '#/insights', key: 'nav.insights', match: ['insights'] },
     { href: '#/plans', key: 'nav.plans', match: ['plans'] },
   ];
@@ -43,6 +45,8 @@
       <Runs />
     {:else if router.current.name === 'insights'}
       <Insights />
+    {:else if router.current.name === 'orchestrations'}
+      <Orchestrations />
     {:else if router.current.name === 'plans'}
       <Plans />
     {:else}

@@ -89,7 +89,8 @@ read-only `--share`) · **publishable extension SDK** (`@excalibur-oss/extension
 - **AO4c** Budget binds across parallelism (M): shared `BudgetLedger` on the `model_call` cost stream; stop dispatching new lanes on cap; same `BudgetExceededError`/`policy_decision` contract; per-lane slice + partial-result settlement. ← NEXT
 - **AO4d** ✅ DONE (3214c17) Conflict-as-heal: `mergeOneLane` 3-way merges a texturally-conflicting lane (fixed `--recount`/`--3way` + index-staging) before reporting a conflict; genuine same-line conflicts still reported.
 - **AO4e-1** ✅ DONE: `GET /api/orchestrations` projection (parent swarm run + its lane child runs grouped by `parentRunId`) in serve + `buildOrchestrations` + `OrchestrationSummary` contract. Unit-tested.
-- **AO4e-2** remaining: the dashboard Svelte UI consuming `/api/orchestrations` + live SSE (push-on-change) + node-level cancel + work-item linkage per child run.
+- **AO4e-2** ✅ DONE: dashboard **Orchestrations** page (Svelte) consuming `/api/orchestrations` — parent swarm runs with their per-lane child runs (status + cost, lanes link to the run), nav entry + i18n (en/es), 3s poll for liveness. Verified end-to-end vs Kimi (swarm → serve → curl → page data).
+- **AO4e-3** remaining (polish): swap the 3s poll for SSE push-on-change; node-level cancel buttons; work-item linkage per child run (needs a work-item-driven swarm entry).
 - **AO4f-1** ✅ DONE: proportional Verification-Mesh over the merged swarm diff in the verified fan-in (`verifyMerge`); a surviving HIGH reverts the merge. Verified vs Kimi (4-lens review ran before apply).
 - **AO4f-2** ✅ DONE: the SEQUENTIAL auto-build sub-path now runs the same proportional mesh as a best-effort POST-review (surfaces HIGH findings; no revert — the turn already applied). Shared `runProportionalMesh` helper (`lib/verify-mesh.ts`) used by both sub-paths (DRY).
 

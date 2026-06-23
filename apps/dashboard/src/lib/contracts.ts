@@ -17,6 +17,8 @@ export type {
   DayBucketDto,
   DiscoverySummary,
   InsightsReportDto,
+  OrchestrationLaneDto,
+  OrchestrationSummary,
   PlanDetail,
   PlanRefDto,
   PlanSummary,

@@ -12,8 +12,13 @@ type Catalog = Record<string, string>;
 const EN: Catalog = {
   'nav.board': 'Board',
   'nav.runs': 'Runs',
+  'nav.orchestrations': 'Orchestrations',
   'nav.insights': 'Insights',
   'nav.plans': 'Plans',
+  'orch.title': 'Orchestrations',
+  'orch.subtitle': 'Parallel swarm runs and their per-lane agents.',
+  'orch.none': 'No parallel orchestrations yet — they appear when a build fans out to a swarm.',
+  'orch.lanes': '{n} lanes',
   'app.tagline': 'task-first agent control',
   'board.empty': 'No work items yet. Create one with `excalibur work-items create`.',
   'board.runs': '{n} runs',
@@ -92,8 +97,14 @@ const EN: Catalog = {
 const ES: Catalog = {
   'nav.board': 'Tablero',
   'nav.runs': 'Ejecuciones',
+  'nav.orchestrations': 'Orquestaciones',
   'nav.insights': 'Métricas',
   'nav.plans': 'Planes',
+  'orch.title': 'Orquestaciones',
+  'orch.subtitle': 'Ejecuciones de swarm en paralelo y sus agentes por carril.',
+  'orch.none':
+    'Aún no hay orquestaciones paralelas — aparecen cuando un build se abre en un swarm.',
+  'orch.lanes': '{n} carriles',
   'app.tagline': 'control de agentes centrado en tareas',
   'board.empty': 'Aún no hay tareas. Crea una con `excalibur work-items create`.',
   'board.runs': '{n} ejecuciones',

@@ -9,6 +9,7 @@ import type {
   DashboardLane,
   DiscoverySummary,
   InsightsReportDto,
+  OrchestrationSummary,
   PlanDetail,
   PlanSummary,
   RunRecord,
@@ -108,6 +109,10 @@ export const fetchRuns = (): Promise<{ runs: RunRecord[] }> => get('/api/runs');
 
 /** Aggregate insights for the analytics view (D4). */
 export const fetchInsights = (): Promise<InsightsReportDto> => get('/api/insights');
+
+/** Parallel orchestrations — parent swarm runs + their lane children (AO4e). */
+export const fetchOrchestrations = (): Promise<{ orchestrations: OrchestrationSummary[] }> =>
+  get('/api/orchestrations');
 
 /** Saved plans (D3). */
 export const fetchPlans = (): Promise<{ plans: PlanSummary[] }> => get('/api/plans');
