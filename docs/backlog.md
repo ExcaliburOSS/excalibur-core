@@ -75,7 +75,7 @@ read-only `--share`) · **publishable extension SDK** (`@excalibur-oss/extension
 > - ground-truth test gate let us VERIFY combined parallel output before apply and
 >   pick best-of-N by real test exit codes — which neither structurally can.
 
-**AO3 — staged DAG executor + proactive posture (#187):**
+**AO3 — staged DAG executor + proactive posture (#187) ✅ DONE** (6f038fb AO3a · 9afab81 AO3b · cccdcf7 AO3c · d8168e4 AO3d-1 · 2b6e303 AO3d-2):
 
 - **AO3a** runaway controller + `chooseConcurrency` governor (PURE, S) — **MUST LAND FIRST**; today `runSwarmFlow` never sets `maxConcurrency` so all lanes fire at once. Global agent + concurrency caps fail-closed.
 - **AO3b** `dependsOn` carried end-to-end on `SwarmSubtask` + pure Kahn toposort→waves (cycle→single lane); let `decomposeTask` EMIT deps; harden `parseFirstJsonObject` (balanced-brace).
@@ -84,12 +84,22 @@ read-only `--share`) · **publishable extension SDK** (`@excalibur-oss/extension
 
 **AO4 — make orchestration TRUSTWORTHY + OBSERVABLE (the real world-class bar) (#188):**
 
-- **AO4a** **Swarm-as-run** (KEYSTONE, L): persist parallel work as first-class runs — parent `runId` + per-lane CHILD runs via `RunManager`, optional+nullable `parentRunId` on `runRecordSchema`, real events; do NOT add a `swarm` member to the frozen `events.ts` enum. Lights up SSE/replay/fork/dashboard/audit for parallel work.
-- **AO4b** Verified fan-in (M): run configured tests/typecheck on the MERGED tree + proportional mesh BEFORE apply (reuse `runConfiguredTestsCheck`); a red gate blocks auto-apply.
-- **AO4c** Budget binds across parallelism (M): shared `BudgetLedger` on the `model_call` cost stream; stop dispatching new lanes on cap; same `BudgetExceededError`/`policy_decision` contract; per-lane slice + partial-result settlement.
-- **AO4d** Conflict-as-heal (M): wire the built-but-uncalled `applyPatch({threeway:true})` into `mergeLaneDiffs`; escalate to lane rebase-and-re-dispatch; persist a dropped lane's diff as recoverable.
-- **AO4e** Live multi-lane view in dashboard + TTY + node-level cancel + work-item linkage per child run (blocked on AO4a).
+- **AO4a** ✅ DONE (fe0275c) **Swarm-as-run** (KEYSTONE): parent `swarm` run + per-lane CHILD `swarm-lane` runs via `RunManager`, optional+nullable `parentRunId` on `runRecordSchema`, real events streamed to each child; frozen `events.ts` enum untouched. Verified vs Kimi.
+- **AO4b** ✅ DONE (79078a7) Verified fan-in: `config.orchestration.verifyMerge` runs the configured test on the merged tree before keeping it; a red run reverse-applies (reverts) the merge. Verified vs Kimi (keep + revert branches).
+- **AO4c** Budget binds across parallelism (M): shared `BudgetLedger` on the `model_call` cost stream; stop dispatching new lanes on cap; same `BudgetExceededError`/`policy_decision` contract; per-lane slice + partial-result settlement. ← NEXT
+- **AO4d** ✅ DONE (3214c17) Conflict-as-heal: `mergeOneLane` 3-way merges a texturally-conflicting lane (fixed `--recount`/`--3way` + index-staging) before reporting a conflict; genuine same-line conflicts still reported.
+- **AO4e** Live multi-lane view in dashboard + TTY + node-level cancel + work-item linkage per child run (now unblocked — AO4a done).
 - **AO4f** Wire Verification Mesh + Claim Ledger into the AO2 auto-build (default) path (today only `excalibur run` gets them); make the "reproduce" lens run real tests.
+
+**AO6 — orchestration VISUALIZATIONS overhaul (#190):** review every surface
+(TTY Ink LanesView/swarm panel, threads/fleet `/bg`+`/threads`, declarative-workflow
+rail, goal-loop, dashboard run/board/insights + the AO4e live `/api/orchestrations`
+view) and deliver a PROPOSAL (TTY+dashboard mockups, interaction model: watch the
+staged DAG fill wave-by-wave, per-node drill/cancel/redirect, live cost/budget burn,
+conflict/heal + verified-fan-in gate, best-of-N tournaments) that is genuinely
+usable AND spectacular AND interactive where it adds value (on-brand cyberpunk/editorial),
+then build it keeping the `reduceRail` contract + single-key TUI rule. Propose →
+user sign-off → build. Depends on AO3+AO4 telemetry.
 
 **AO5 — frontier (extends the lead; none required for world-class) (#189):**
 

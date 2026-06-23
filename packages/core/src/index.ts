@@ -232,6 +232,7 @@ export {
   BudgetExceededError,
   type ExecuteLocalRunInput,
 } from './engine/execute-local-run';
+export { BudgetLedger, budgetCapCentsFromUsd } from './engine/budget-ledger';
 export {
   RunController,
   type RunHandle,

@@ -2,6 +2,8 @@ import { cpus } from 'node:os';
 import { NativeAgentAdapter } from '@excalibur/agent-runtime';
 import {
   applyPatch,
+  BudgetLedger,
+  budgetCapCentsFromUsd,
   capTotalAgents,
   chooseConcurrency,
   planAgentAllocation,
@@ -334,6 +336,14 @@ export async function executeSwarm(
     }
   };
 
+  // AO4c — the hard budget cap must BIND across the fan-out. ExecuteLocalRun's cap
+  // only governs a single sequential loop, so a shared ledger over the lanes'
+  // cost stops DISPATCHING new lanes once the cap is hit (worst-case overshoot:
+  // the lanes already in flight, bounded by maxConcurrency). Cap from
+  // budget.maxRunUsd; null = uncapped.
+  const ledger = new BudgetLedger(budgetCapCentsFromUsd(context.config.budget?.maxRunUsd));
+  let budgetNotified = false;
+
   const runLane = async ({
     lane,
     worktreePath,
@@ -343,6 +353,20 @@ export async function executeSwarm(
     worktreePath: string;
     feedback?: string;
   }): Promise<SwarmLaneSummary> => {
+    // Budget gate: once the shared cap is hit, do NOT start another lane (no
+    // model spend) — the already-merged lanes are the partial result.
+    if (ledger.exceeded()) {
+      if (!budgetNotified) {
+        budgetNotified = true;
+        deps.ui.warn(
+          deps.t('swarm.budget-stopped', {
+            spent: (ledger.spent / 100).toFixed(2),
+            cap: ((ledger.cap ?? 0) / 100).toFixed(2),
+          }),
+        );
+      }
+      return { costCents: 0, toolCalls: 0 };
+    }
     const childId = childRunFor(lane.id);
     const adapter = new NativeAgentAdapter();
     let costCents: number | null = null;
@@ -383,6 +407,9 @@ export async function executeSwarm(
         if (typeof total === 'number') costCents = total;
       }
     }
+    // Account this lane's spend so later lanes (and waves) see the running total
+    // and stop once the cap is hit.
+    ledger.add(costCents);
     // The turn ended in an error AND accomplished nothing (no tool calls) →
     // treat as a (likely transient) lane failure so the retry loop fires.
     if (lastError !== null && toolCalls === 0) {

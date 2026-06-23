@@ -477,6 +477,8 @@ export const ES: Catalog = {
   'swarm.verified': 'Fan-in verificado: {detail}.',
   'swarm.verifyFailed':
     'Fan-in verificado FALLÓ: {detail}. Los cambios fusionados se REVIRTIERON, no se conservaron — los carriles estaban bien por separado pero rompen al combinarse.',
+  'swarm.budget-stopped':
+    'Tope de presupuesto alcanzado (${spent} de ${cap}) — no lanzo más carriles. Los carriles ya terminados son el resultado parcial.',
   'swarm.singleUnit':
     'Solo una unidad independiente: esto se ejecuta como un único agente (sin paralelismo real).',
   'swarm.confirmRun': '¿Ejecutar {count} agente(s) en paralelo?',
