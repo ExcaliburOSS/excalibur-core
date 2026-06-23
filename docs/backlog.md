@@ -26,6 +26,32 @@ read-only `--share`) · **publishable extension SDK** (`@excalibur-oss/extension
 
 ---
 
+## AO — Auto-orchestration (FIRM directive, top priority) — task #186
+
+> **Directive (user, 2026-06-23, emphatic):** the user will NEVER type
+> `swarm`/`bg`/`threads`/`goal`/`research`. Those are **execution shapes
+> Excalibur chooses and dimensions itself** from the plan + task — the slash
+> commands survive only as a power-user escape hatch, never the default path.
+> This is the [[feedback-proactive-intelligent]] core directive applied to
+> parallelism.
+
+- **Already automatic:** intent detection (`intent-router.ts` `classifyTurnIntent`
+  → chat|plan|swarm|bg|research|goal, multilingual, no keywords) and swarm
+  self-sizing (`decomposeTask` + `planAgentAllocation`, `apps/cli/src/lib/swarm.ts`;
+  `--max-agents` is only an optional ceiling).
+- **AO1 — auto-execute under autonomy** [Core][auto]: in `apps/cli/src/session/repl.ts`
+  the heavy routes (swarm/bg/goal/research) are still `confirm()`-OFFERED — only
+  `plan` auto-runs under `runtime.approvals.auto`. Make them auto-execute under
+  auto / high autonomy with a non-blocking "auto-routed to swarm (N agents)"
+  notice; keep the confirm only at low/non-auto levels.
+- **AO2 — planner→parallelizer fusion** [Core][auto]: the planner and the
+  parallelizer are decoupled today. Build an execution planner so an approved
+  plan's dependency graph DERIVES the shape — independent steps → auto-sized
+  swarm, dependent chain → sequential, long task → background thread — all linked
+  to the work-item. Verify vs real Kimi; plan-first (sizeable arch change).
+
+---
+
 ## DW — Web & docs refresh (cross-cutting; we shipped a LOT that's undocumented)
 
 > Added 2026-06-23: a big body of work landed (the whole dashboard epic, the
