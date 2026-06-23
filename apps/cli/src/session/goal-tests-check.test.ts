@@ -1,18 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { isTestyGoal, runConfiguredTestsCheck } from './repl';
+import { goalMaxIterations, runConfiguredTestsCheck } from './repl';
 
-describe('isTestyGoal', () => {
-  it('matches test/build/lint goals (en + es)', () => {
-    expect(isTestyGoal('keep going until the tests pass')).toBe(true);
-    expect(isTestyGoal('fix the build')).toBe(true);
-    expect(isTestyGoal('make it typecheck')).toBe(true);
-    expect(isTestyGoal('no pares hasta que pasen los tests')).toBe(true);
-    expect(isTestyGoal('hasta que esté verde')).toBe(true);
+describe('goalMaxIterations (config-driven, no hard-coded const)', () => {
+  it('defaults to 6 when unconfigured', () => {
+    expect(goalMaxIterations({} as never)).toBe(6);
   });
-
-  it('does not match unrelated goals', () => {
-    expect(isTestyGoal('add a pagination feature to the logs view')).toBe(false);
-    expect(isTestyGoal('explain the auth flow')).toBe(false);
+  it('honors orchestration.goalMaxIterations from config', () => {
+    expect(goalMaxIterations({ orchestration: { goalMaxIterations: 12 } } as never)).toBe(12);
   });
 });
 

@@ -137,6 +137,15 @@ const approvalsSectionSchema = z.object({
   auto: z.boolean().optional(),
 });
 
+/**
+ * Orchestration tuning (AO). Auto-orchestration sizes/decides shapes itself; this
+ * only caps the autonomous loops so a runaway can never burn unbounded.
+ */
+const orchestrationSectionSchema = z.object({
+  /** Hard iteration cap for the autonomous goal loop (`/goal`). Default 6. */
+  goalMaxIterations: z.number().int().positive().max(50).optional(),
+});
+
 const contextSectionSchema = z.object({
   include: z.array(z.string()).optional(),
   exclude: z.array(z.string()).optional(),
@@ -642,6 +651,8 @@ const baseExcaliburConfigSchema = z.object({
   /** Network transport (corporate proxy + custom CA); see networkTransportSchema. */
   network: networkTransportSchema.optional(),
   approvals: approvalsSectionSchema.optional(),
+  /** Orchestration tuning (AO) — e.g. the autonomous goal-loop iteration cap. */
+  orchestration: orchestrationSectionSchema.optional(),
   context: contextSectionSchema.optional(),
   integrations: z.record(z.record(z.string())).optional(),
   agents: agentsSectionSchema.optional(),

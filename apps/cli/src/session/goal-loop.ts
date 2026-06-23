@@ -52,10 +52,13 @@ export interface GoalLoopOptions {
    * Optional objective acceptance check run after each agent turn (e.g. "the
    * project's tests pass"). When supplied it is AUTHORITATIVE: a `passed` result
    * ends the loop as `done` immediately — no model judge is consulted — and a
-   * failing result's `detail` drives the next iteration's reviewer feedback. When
-   * omitted, the loop falls back to the model-judge path unchanged.
+   * failing result's `detail` drives the next iteration's reviewer feedback. It
+   * receives whether the iteration MUTATED the tree, so a check can opt out
+   * (return `undefined`) when nothing changed — a green test run is only a
+   * meaningful "done" signal once the agent actually edited code. When the check
+   * is omitted, or returns `undefined`, the loop uses the model-judge path.
    */
-  deterministicCheck?: () => Promise<DeterministicCheckResult>;
+  deterministicCheck?: (ctx: { mutated: boolean }) => Promise<DeterministicCheckResult | undefined>;
   /** Progress callback after each iteration's verdict. */
   onIteration?: (iteration: number, verdict: GoalVerdict) => void;
 }
@@ -167,7 +170,7 @@ export async function runGoalLoop(
     let deterministic: DeterministicCheckResult | undefined;
     if (options.deterministicCheck !== undefined) {
       try {
-        deterministic = await options.deterministicCheck();
+        deterministic = await options.deterministicCheck({ mutated: result.mutated });
       } catch {
         return {
           status: 'evaluator-failed',
@@ -177,7 +180,7 @@ export async function runGoalLoop(
           lastReason,
         };
       }
-      if (deterministic.passed) {
+      if (deterministic?.passed === true) {
         lastReason = deterministic.detail;
         const verdict: GoalVerdict = { done: true, reason: deterministic.detail };
         options.onIteration?.(iteration, verdict);

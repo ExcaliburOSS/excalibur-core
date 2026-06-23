@@ -631,7 +631,7 @@ export async function runInteractiveSession(
       let asGoal = false;
       if (intent === 'goal') {
         asGoal = await acceptRoute('repl.goal-offer', 'repl.route-goal-auto', {
-          max: GOAL_MAX_ITERATIONS,
+          max: goalMaxIterations(runtime.config),
         });
       }
       if (
@@ -1339,16 +1339,13 @@ async function handlePlanCommand(
   }
 }
 
-/** Hard iteration cap for `/goal` (anti-runaway; overridable later via config). */
-const GOAL_MAX_ITERATIONS = 6;
+/** Default hard iteration cap for `/goal` (anti-runaway). Config-overridable. */
+const DEFAULT_GOAL_MAX_ITERATIONS = 6;
 
-/** Goals where a green test/build/lint run is an authoritative "done" signal. */
-const TEST_GOAL_RE =
-  /\b(tests?|build|compiles?|compil\w*|lint|type-?check|typecheck|tipos?|pasan?|pasen|verde|green|ci)\b/i;
-
-/** Whether an objective is about tests/build/lint (→ gate done on a real run). */
-export function isTestyGoal(objective: string): boolean {
-  return TEST_GOAL_RE.test(objective);
+/** The goal-loop iteration cap, from config (`orchestration.goalMaxIterations`)
+ * or the default — never a hard-coded constant. */
+export function goalMaxIterations(config: ExcaliburConfig): number {
+  return config.orchestration?.goalMaxIterations ?? DEFAULT_GOAL_MAX_ITERATIONS;
 }
 
 /**
@@ -1397,16 +1394,24 @@ async function executeGoalLoop(
   signal: AbortSignal,
 ): Promise<void> {
   const cheap = loadGatewayContext(runtime.repoRoot).cheapProviderName ?? undefined;
-  // For test/build/lint goals, gate "done" on the real test command (a green run
-  // is authoritative); the cheap-model judge handles everything else.
-  const deterministicCheck = isTestyGoal(objective)
-    ? runConfiguredTestsCheck(runtime.repoRoot, runtime.config.commands?.test, signal)
+  const maxIterations = goalMaxIterations(runtime.config);
+  // Ground-truth "done" gate: whenever a test command is configured, a green run
+  // is authoritative — but ONLY for an iteration that actually mutated the tree
+  // (a green run after a no-op iteration proves nothing). No per-language keyword
+  // matching: the gate is armed by config + real changes, multilingual by design.
+  const testRunner = runConfiguredTestsCheck(
+    runtime.repoRoot,
+    runtime.config.commands?.test,
+    signal,
+  );
+  const deterministicCheck = testRunner
+    ? async ({ mutated }: { mutated: boolean }) => (mutated ? testRunner() : undefined)
     : undefined;
   if (deterministicCheck !== undefined) {
     deps.ui.info(deps.t('repl.goal-done-gate', { test: runtime.config.commands?.test ?? '' }));
   }
   const result = await runGoalLoop(agentTurnDeps(deps, runtime, signal), objective, {
-    maxIterations: GOAL_MAX_ITERATIONS,
+    maxIterations,
     signal,
     seed,
     ...(cheap !== undefined ? { evaluatorProvider: cheap } : {}),
@@ -1415,7 +1420,7 @@ async function executeGoalLoop(
       deps.ui.info(
         deps.t('repl.goal-iteration', {
           n,
-          max: GOAL_MAX_ITERATIONS,
+          max: maxIterations,
           status: verdict.done ? deps.t('repl.goal-done') : deps.t('repl.goal-continue'),
           reason: verdict.reason,
         }),
