@@ -5,6 +5,7 @@ import {
   RunManager,
   classifyTaskIntent,
   createExtensionHost,
+  extensionPolicyFromConfig,
   estimateRun,
   executeLocalRun,
   planAgentAllocation,
@@ -309,7 +310,9 @@ export async function runTask(
   });
   const intent: TaskIntent = classifyTaskIntent(task, analysis, config);
 
-  const registry = await createExtensionHost(repoRoot);
+  // Enforce the project's extension policy (P2.18): a blocked extension's code
+  // never runs in the agent loop.
+  const registry = await createExtensionHost(repoRoot, extensionPolicyFromConfig(config));
   const catalog = workflowCatalog(registry);
 
   // Activate loaded extensions and harvest the agent tools they contribute, so

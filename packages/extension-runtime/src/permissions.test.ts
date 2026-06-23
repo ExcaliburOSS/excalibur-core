@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ExtensionManifest } from './manifest';
-import { validatePermissions } from './permissions';
+import { validatePermissions, enforcePermissions, checkVersionLock } from './permissions';
 
 function programmaticManifest(overrides: Partial<ExtensionManifest> = {}): ExtensionManifest {
   return {
@@ -110,5 +110,57 @@ describe('validatePermissions', () => {
     );
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain('process execution');
+  });
+});
+
+describe('enforcePermissions (P2.18 hard-block)', () => {
+  it('allows a well-scoped manifest', () => {
+    expect(
+      enforcePermissions(
+        programmaticManifest({
+          capabilities: ['work_items.read'],
+          permissions: { network: { allowedHosts: ['api.linear.app'] } },
+        }),
+        { enforce: true },
+      ),
+    ).toEqual([]);
+  });
+
+  it('blocks a denied capability and one not on the allowlist', () => {
+    const denied = enforcePermissions(programmaticManifest({ capabilities: ['secrets.read'] }), {
+      enforce: true,
+      deniedCapabilities: ['secrets.read'],
+    });
+    expect(denied.some((v) => v.includes('denied'))).toBe(true);
+
+    const notAllowed = enforcePermissions(
+      programmaticManifest({ capabilities: ['work_items.read'] }),
+      { enforce: true, allowedCapabilities: ['process.run'] },
+    );
+    expect(notAllowed.some((v) => v.includes('not in the project'))).toBe(true);
+  });
+
+  it('blocks wildcard network, write-outside-.excalibur and wildcard exec', () => {
+    const v = enforcePermissions(
+      programmaticManifest({
+        permissions: {
+          network: { allowedHosts: ['*'] },
+          filesystem: { write: ['/etc/passwd'] },
+          process: { allowedCommands: ['*'] },
+        },
+      }),
+      { enforce: true },
+    );
+    expect(v).toHaveLength(3);
+  });
+});
+
+describe('checkVersionLock', () => {
+  it('flags a version drift and passes a matching/absent lock', () => {
+    const m = programmaticManifest({ id: 'pinme', version: '1.2.0' });
+    expect(checkVersionLock(m, { pinme: '1.1.0' })).toMatch(/does not match/);
+    expect(checkVersionLock(m, { pinme: '1.2.0' })).toBeNull();
+    expect(checkVersionLock(m, undefined)).toBeNull();
+    expect(checkVersionLock(m, { other: '9.9.9' })).toBeNull();
   });
 });

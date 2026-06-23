@@ -17,6 +17,7 @@ export {
 export {
   collectExtensionMcpServers,
   createExtensionHost,
+  extensionPolicyFromConfig,
   withExtensionMcpServers,
   workflowCatalog,
   type WorkflowCatalogEntry,

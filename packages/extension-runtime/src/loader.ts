@@ -11,7 +11,12 @@ import { isExcaliburError, WorkflowValidationError } from '@excalibur/shared';
 import { type ProgrammaticContributionKind } from './contributions';
 import { loadExtensionsFile, type ExtensionsFileConfig } from './extensions-file';
 import { loadManifest, type ExtensionContributions, type ExtensionManifest } from './manifest';
-import { validatePermissions } from './permissions';
+import {
+  validatePermissions,
+  enforcePermissions,
+  checkVersionLock,
+  type ExtensionPolicy,
+} from './permissions';
 import { ExtensionRegistry, type BuiltInExtensionPack, type LoadedExtension } from './registry';
 
 /**
@@ -37,6 +42,14 @@ import { ExtensionRegistry, type BuiltInExtensionPack, type LoadedExtension } fr
 export interface LoadExtensionsInput {
   repoRoot: string;
   builtIns: ReadonlyArray<BuiltInExtensionPack>;
+  /**
+   * Project extension policy (M5 enforcement). When `enforce` is on, a local /
+   * third-party extension that violates the policy (denied/over-broad
+   * capabilities, write outside .excalibur, version-lock drift, …) is BLOCKED —
+   * its entrypoint is never required, so its code never runs. Built-ins are
+   * first-party and exempt. Omitted → warn-only (back-compat).
+   */
+  policy?: ExtensionPolicy;
 }
 
 /** Synthetic extension id grouping loose project declarative files. */
@@ -135,7 +148,14 @@ export async function loadExtensions(input: LoadExtensionsInput): Promise<Extens
 
   loadBuiltIns(registry, input.builtIns, disabled);
   loadProjectDeclaratives(registry, input.repoRoot, excaliburDir, extensionsFile, disabled);
-  loadLocalExtensions(registry, input.repoRoot, excaliburDir, extensionsFile, disabled);
+  loadLocalExtensions(
+    registry,
+    input.repoRoot,
+    excaliburDir,
+    extensionsFile,
+    disabled,
+    input.policy,
+  );
 
   return registry;
 }
@@ -275,6 +295,7 @@ function loadLocalExtensions(
   excaliburDir: string,
   extensionsFile: ExtensionsFileConfig,
   disabled: ReadonlySet<string>,
+  policy: ExtensionPolicy | undefined,
 ): void {
   const dirs: string[] = [];
   const seen = new Set<string>();
@@ -309,7 +330,7 @@ function loadLocalExtensions(
   }
 
   for (const dir of dirs) {
-    loadLocalExtension(registry, dir, disabled);
+    loadLocalExtension(registry, dir, disabled, policy);
   }
 }
 
@@ -317,6 +338,7 @@ function loadLocalExtension(
   registry: ExtensionRegistry,
   dir: string,
   disabled: ReadonlySet<string>,
+  policy: ExtensionPolicy | undefined,
 ): void {
   const manifestPath = join(dir, MANIFEST_FILE_NAME);
   let manifest: ExtensionManifest;
@@ -335,6 +357,23 @@ function loadLocalExtension(
 
   if (disabled.has(manifest.id)) {
     return;
+  }
+
+  // Policy enforcement (M5) — refuse a violating extension BEFORE requiring its
+  // entrypoint, so a blocked extension's code is never executed. Built-ins are
+  // exempt (first-party); this only gates local/third-party extensions.
+  if (policy?.enforce === true) {
+    const lockViolation = checkVersionLock(manifest, policy.locks);
+    const reasons = [
+      ...enforcePermissions(manifest, policy),
+      ...(lockViolation ? [lockViolation] : []),
+    ];
+    if (reasons.length > 0) {
+      const reason = `blocked by extension policy: ${reasons.join('; ')}`;
+      registry.addExtension({ manifest, source: 'local', dir, status: 'blocked', error: reason });
+      registry.contributions.addWarning(`Extension '${manifest.id}' ${reason}.`);
+      return; // do NOT require the entrypoint or register any contributions
+    }
   }
 
   // A `kind: declarative` manifest ships no code — it is project-level

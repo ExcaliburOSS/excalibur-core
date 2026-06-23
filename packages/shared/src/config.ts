@@ -600,6 +600,23 @@ const budgetSectionSchema = z
   })
   .optional();
 
+/**
+ * Extension governance (P2.18 / M5). `enforce` flips manifest validation from
+ * warn-only to HARD-BLOCK: a local/third-party extension that declares a denied
+ * or over-broad capability, writes outside `.excalibur/`, or drifts from its
+ * locked version is refused — its code never runs. Built-ins are exempt.
+ */
+const extensionsSectionSchema = z
+  .object({
+    enforce: z.boolean().optional(),
+    allowedCapabilities: z.array(z.string()).optional(),
+    deniedCapabilities: z.array(z.string()).optional(),
+    /** Pin extension id → exact version; a mismatch is blocked under `enforce`. */
+    locks: z.record(z.string()).optional(),
+  })
+  .optional();
+export type ExtensionsConfig = z.infer<typeof extensionsSectionSchema>;
+
 const baseExcaliburConfigSchema = z.object({
   version: z.number().int().optional(),
   /** Spoken UI locale for generated chrome/prose (`en`|`es`); auto-detected when absent. */
@@ -641,7 +658,20 @@ const baseExcaliburConfigSchema = z.object({
   research: researchSectionSchema.optional(),
   web: webConfigSchema.optional(),
   instructions: z.object({ sources: z.array(instructionSourceRefSchema).optional() }).optional(),
-  skills: z.object({ sources: z.array(skillSourceRefSchema).optional() }).optional(),
+  /** Extension governance (P2.18): warn-only by default; `enforce` hard-blocks. */
+  extensions: extensionsSectionSchema,
+  skills: z
+    .object({
+      sources: z.array(skillSourceRefSchema).optional(),
+      /**
+       * Skill disclosure policy (P2.18). `'approved'` withholds a skill's BODY
+       * from the model unless its name is in `approved` — the skill is still
+       * listed, but loading it returns a needs-approval notice. Default `'open'`.
+       */
+      approval: z.enum(['open', 'approved']).optional(),
+      approved: z.array(z.string()).optional(),
+    })
+    .optional(),
 });
 
 /**

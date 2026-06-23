@@ -118,6 +118,13 @@ export interface ToolExecutionContext {
    * lazily by name. Absent/empty → the tool reports no skills are available.
    */
   skills?: ReadonlyArray<SkillEntry>;
+  /**
+   * Skill-disclosure policy (P2.18). `'approved'` withholds a skill's BODY
+   * unless its name is in `approvedSkills` — the skill stays listed, but loading
+   * it returns a needs-approval notice. Absent → `'open'` (load any skill).
+   */
+  skillApproval?: 'open' | 'approved';
+  approvedSkills?: ReadonlyArray<string>;
 }
 
 export interface ToolResult {
@@ -1444,6 +1451,15 @@ function execSkill(args: Record<string, unknown>, ctx: ToolExecutionContext): To
   if (match === undefined) {
     const names = skills.map((s) => s.name).join(', ');
     return fail(`unknown skill "${requested}". Available: ${names}.`);
+  }
+  // Skill approval (P2.18): in 'approved' mode, withhold the body of any skill
+  // not on the approved list — it stays discoverable, but its instructions are
+  // gated so untrusted third-party skills can't inject themselves into context.
+  if (ctx.skillApproval === 'approved' && !(ctx.approvedSkills ?? []).includes(match.name)) {
+    return ok(
+      `Skill "${match.name}" requires approval before its instructions can load. ` +
+        `Add it to \`skills.approved\` in .excalibur/config.yaml to enable it.`,
+    );
   }
   let body: string;
   try {

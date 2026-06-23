@@ -339,6 +339,14 @@ export class NativeAgentAdapter implements AgentAdapter {
       permissions,
       // The skill index (empty → the `skill` tool reports none available).
       ...(skillIndex.length > 0 ? { skills: skillIndex } : {}),
+      // Skill-disclosure policy (P2.18): in 'approved' mode the `skill` tool
+      // withholds the body of any skill not on the approved list.
+      ...(input.config.skills?.approval !== undefined
+        ? { skillApproval: input.config.skills.approval }
+        : {}),
+      ...(input.config.skills?.approved !== undefined
+        ? { approvedSkills: input.config.skills.approved }
+        : {}),
       // Thread the run's abort signal so ESC/abort SIGKILLs an in-flight
       // command/test/git process instead of waiting for it to finish.
       ...(input.signal !== undefined ? { signal: input.signal } : {}),

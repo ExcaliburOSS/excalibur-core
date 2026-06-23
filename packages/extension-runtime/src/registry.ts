@@ -12,7 +12,7 @@ export type LoadedExtension = {
   manifest: ExtensionManifest;
   source: ContributionSource;
   dir: string | null;
-  status: 'loaded' | 'error';
+  status: 'loaded' | 'error' | 'blocked';
   error?: string;
   /**
    * For local programmatic extensions: the value exported by the compiled

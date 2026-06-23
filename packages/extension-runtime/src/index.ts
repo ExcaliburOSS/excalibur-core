@@ -53,4 +53,9 @@ export { ExtensionRegistry, type BuiltInExtensionPack, type LoadedExtension } fr
 
 export { PROJECT_EXTENSION_ID, loadExtensions, type LoadExtensionsInput } from './loader';
 
-export { validatePermissions } from './permissions';
+export {
+  validatePermissions,
+  enforcePermissions,
+  checkVersionLock,
+  type ExtensionPolicy,
+} from './permissions';

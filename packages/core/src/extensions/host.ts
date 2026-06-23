@@ -1,7 +1,31 @@
 import { BUILT_IN_EXTENSIONS } from '@excalibur/built-in-extensions';
-import { loadExtensions, type ExtensionRegistry } from '@excalibur/extension-runtime';
+import {
+  loadExtensions,
+  type ExtensionPolicy,
+  type ExtensionRegistry,
+} from '@excalibur/extension-runtime';
 import type { ExcaliburConfig, McpServerConfig } from '@excalibur/shared';
 import type { WorkflowDefinition } from '@excalibur/workflow-schema';
+
+/**
+ * Derives the extension-load policy (P2.18) from `config.extensions`. Returns
+ * undefined (warn-only) when no `enforce` is set, so behavior is unchanged
+ * unless the project opts in.
+ */
+export function extensionPolicyFromConfig(config: ExcaliburConfig): ExtensionPolicy | undefined {
+  const ext = config.extensions;
+  if (ext === undefined || ext.enforce !== true) {
+    return undefined;
+  }
+  return {
+    enforce: true,
+    ...(ext.allowedCapabilities !== undefined
+      ? { allowedCapabilities: ext.allowedCapabilities }
+      : {}),
+    ...(ext.deniedCapabilities !== undefined ? { deniedCapabilities: ext.deniedCapabilities } : {}),
+    ...(ext.locks !== undefined ? { locks: ext.locks } : {}),
+  };
+}
 
 /**
  * Creates the extension host for a repository (Build Contract §4.6):
@@ -10,8 +34,15 @@ import type { WorkflowDefinition } from '@excalibur/workflow-schema';
  * zero special-casing. The workflow/methodology catalog used by
  * `selectWorkflow`, init and the CLI must come from `registry.contributions`.
  */
-export function createExtensionHost(repoRoot: string): Promise<ExtensionRegistry> {
-  return loadExtensions({ repoRoot, builtIns: BUILT_IN_EXTENSIONS });
+export function createExtensionHost(
+  repoRoot: string,
+  policy?: ExtensionPolicy,
+): Promise<ExtensionRegistry> {
+  return loadExtensions({
+    repoRoot,
+    builtIns: BUILT_IN_EXTENSIONS,
+    ...(policy !== undefined ? { policy } : {}),
+  });
 }
 
 /** Catalog entry shape consumed by `selectWorkflow` (Build Contract §4.6). */

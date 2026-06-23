@@ -104,6 +104,82 @@ export function validatePermissions(manifest: ExtensionManifest): string[] {
   return warnings;
 }
 
+/**
+ * Project policy that turns the soft warnings above into HARD blocks (M5
+ * enforcement). Sourced from `config.extensions`. Default (no policy / enforce
+ * off) preserves the warn-only behavior.
+ */
+export interface ExtensionPolicy {
+  /** When true, a manifest with any violation is REFUSED (code never runs). */
+  enforce: boolean;
+  /** If set, ONLY these capabilities are allowed (allowlist). */
+  allowedCapabilities?: ReadonlyArray<string>;
+  /** Capabilities that are always refused (denylist; wins over the allowlist). */
+  deniedCapabilities?: ReadonlyArray<string>;
+  /** Pin extensions to exact versions by id; a drift is a violation. */
+  locks?: Readonly<Record<string, string>>;
+}
+
+/**
+ * Hard policy violations for a manifest (empty = allowed). These are the
+ * security-relevant subset of {@link validatePermissions} promoted to blocking,
+ * PLUS the capability allow/deny lists. The loader calls this BEFORE requiring a
+ * programmatic extension's entrypoint, so a blocked extension's code never runs.
+ */
+export function enforcePermissions(manifest: ExtensionManifest, policy: ExtensionPolicy): string[] {
+  const violations: string[] = [];
+  const capabilities = manifest.capabilities ?? [];
+
+  for (const cap of capabilities) {
+    if (policy.deniedCapabilities?.includes(cap)) {
+      violations.push(`capability '${cap}' is denied by the project extension policy`);
+    } else if (
+      policy.allowedCapabilities !== undefined &&
+      !policy.allowedCapabilities.includes(cap)
+    ) {
+      violations.push(`capability '${cap}' is not in the project's allowed-capabilities list`);
+    }
+  }
+
+  const permissions = manifest.permissions;
+  if (permissions !== undefined) {
+    for (const host of permissions.network?.allowedHosts ?? []) {
+      if (host === '*' || host.includes('*')) {
+        violations.push(`wildcard network access ('${host}') is not allowed`);
+      }
+    }
+    for (const pattern of permissions.filesystem?.write ?? []) {
+      if (!isScopedToExcaliburDir(pattern)) {
+        violations.push(`filesystem write outside .excalibur/ ('${pattern}') is not allowed`);
+      }
+    }
+    for (const pattern of permissions.filesystem?.read ?? []) {
+      if (isHighRiskReadPattern(pattern)) {
+        violations.push(`high-risk filesystem read ('${pattern}') is not allowed`);
+      }
+    }
+    for (const command of permissions.process?.allowedCommands ?? []) {
+      if (command === '*' || command.includes('*')) {
+        violations.push(`wildcard process execution ('${command}') is not allowed`);
+      }
+    }
+  }
+
+  return violations;
+}
+
+/** Returns a lock-violation reason if the manifest's version drifts from the lock, else null. */
+export function checkVersionLock(
+  manifest: ExtensionManifest,
+  locks: Readonly<Record<string, string>> | undefined,
+): string | null {
+  const pinned = locks?.[manifest.id];
+  if (pinned !== undefined && pinned !== manifest.version) {
+    return `version ${manifest.version} does not match the locked version ${pinned}`;
+  }
+  return null;
+}
+
 function isScopedToExcaliburDir(pattern: string): boolean {
   const normalized = pattern.replace(/^\.\//, '');
   return normalized === '.excalibur' || normalized.startsWith('.excalibur/');

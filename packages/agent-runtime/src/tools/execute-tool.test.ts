@@ -378,6 +378,27 @@ describe('executeNativeTool — skill (P1.8b)', () => {
     expect(result.ok).toBe(true);
     expect(result.result).toMatch(/no skills/i);
   });
+
+  it("withholds an unapproved skill's body under approval mode (P2.18)", async () => {
+    const { ctxWith } = withSkill(
+      '---\nname: deploy\ndescription: Deploys the app\n---\nSECRET STEP.',
+    );
+    const gated = { ...ctxWith, skillApproval: 'approved' as const, approvedSkills: [] };
+    const result = await executeNativeTool('skill', { name: 'deploy' }, gated);
+    expect(result.ok).toBe(true); // listed, not an error…
+    expect(result.result).toMatch(/requires approval/i);
+    expect(result.result).not.toContain('SECRET STEP'); // …but the body is withheld
+  });
+
+  it('loads an approved skill body under approval mode', async () => {
+    const { ctxWith } = withSkill(
+      '---\nname: deploy\ndescription: Deploys the app\n---\nApproved step.',
+    );
+    const gated = { ...ctxWith, skillApproval: 'approved' as const, approvedSkills: ['deploy'] };
+    const result = await executeNativeTool('skill', { name: 'deploy' }, gated);
+    expect(result.ok).toBe(true);
+    expect(result.result).toContain('Approved step.');
+  });
 });
 
 describe('executeNativeTool — write_file', () => {
