@@ -4,7 +4,9 @@ import {
   buildStatusLineModel,
   buildTurnSummary,
   changeGlyph,
-  classifyTurnIntent,
+  classifyTurnDecision,
+  decidePosture,
+  riskOfShape,
   compactSession,
   compactSessionAsync,
   createExtensionHost,
@@ -25,6 +27,8 @@ import {
   type AsyncSummarizer,
   type IntentModel,
   type LocalSession,
+  type RoutePosture,
+  type TurnDecision,
   type TurnIntent,
 } from '@excalibur/core';
 import { analyzeRepository } from '@excalibur/context-engine';
@@ -598,10 +602,10 @@ export async function runInteractiveSession(
       // mock, non-interactive, read-only level, or EXCALIBUR_ROUTER=off →
       // `chat` (a plain model-first turn). swarm/bg/goal are OFFERED; plan
       // carries its own gate (skipped under auto = zero-prompts).
-      const intent: TurnIntent =
+      const decision: TurnDecision =
         classifyIntent === undefined
-          ? 'chat'
-          : await classifyTurnIntent(
+          ? { intent: 'chat', confidence: 'high' }
+          : await classifyTurnDecision(
               text,
               {
                 interactive: deps.ui.isInteractive(),
@@ -610,23 +614,35 @@ export async function runInteractiveSession(
               },
               classifyIntent,
             );
+      const intent = decision.intent;
 
-      // The heavier routes (goal/bg/swarm/research/plan) are EXECUTION SHAPES
-      // Excalibur picks itself — never commands the user types. Under auto
-      // (zero-prompts / high autonomy) it AUTO-ROUTES: no question, just a
-      // non-blocking notice, exactly like `plan` already did. Otherwise it OFFERS
-      // (decline → a plain turn). `acceptRoute` encodes that one rule.
-      const auto = runtime.approvals.auto;
+      // AO3d-2 — PROACTIVE 3-WAY POSTURE: the heavy routes (goal/bg/swarm/research/
+      // plan) are EXECUTION SHAPES Excalibur picks itself, never commands the user
+      // types. `decidePosture` derives act / narrate-and-act / ask from the
+      // classifier's CONFIDENCE + the shape's RISK + the autonomy level — so safe,
+      // confident routes just run, high-impact ones announce-while-running under
+      // full autonomy, and only the unsure or irreversible ones ask. No flag.
+      const posture = (i: TurnIntent): RoutePosture =>
+        decidePosture({
+          risk: riskOfShape(i),
+          confidence: decision.confidence,
+          level: runtime.autonomyLevel,
+          autoApprove: runtime.approvals.auto,
+        });
       const acceptRoute = async (
         offerKey: string,
         autoNoticeKey: string,
         vars?: Record<string, string | number>,
       ): Promise<boolean> => {
-        if (auto) {
-          deps.ui.info(deps.t(autoNoticeKey, vars));
-          return true;
+        const p = posture(intent);
+        if (p === 'ask') {
+          return deps.ui.confirm(deps.t(offerKey, vars), { defaultYes: true });
         }
-        return deps.ui.confirm(deps.t(offerKey, vars), { defaultYes: true });
+        deps.ui.info(deps.t(autoNoticeKey, vars));
+        if (p === 'narrate') {
+          deps.ui.info(deps.t('repl.route-narrate-hint'));
+        }
+        return true;
       };
 
       let asGoal = false;
@@ -653,6 +669,9 @@ export async function runInteractiveSession(
         !asSwarm &&
         intent === 'research' &&
         (await acceptRoute('repl.route-research-offer', 'repl.route-research-auto'));
+      // A plan ACTS (auto-orchestrate) unless the posture says ask → the
+      // deliberate plan → approve → execute gate.
+      const planActs = intent === 'plan' && posture('plan') !== 'ask';
 
       const ctrl = beginTurn();
       try {
@@ -662,17 +681,15 @@ export async function runInteractiveSession(
           // F7: the native multi-agent research pipeline (search → fetch →
           // verify → cited synthesis).
           await runResearchFlow(deps, text, {});
-        } else if (auto && (asSwarm || intent === 'plan')) {
-          // AO2 — under auto, a build (plan- OR swarm-classified) is AUTO-ORCHESTRATED:
-          // Excalibur decomposes it and DERIVES the shape (≥2 independent
-          // workstreams → a parallel auto-sized swarm, else one focused run). No
-          // gate, no command — the planner and the parallelizer fused.
+        } else if (asSwarm || planActs) {
+          // AO2/AO3d-2 — an ACCEPTED build (swarm-intent accepted, or a plan the
+          // posture runs) is AUTO-ORCHESTRATED: decompose → DERIVE the shape
+          // (≥2 independent workstreams → an auto-sized parallel swarm, else one
+          // focused run). The user already decided at the posture gate — no
+          // further prompts; the planner and parallelizer are fused.
           await dispatchAutoBuild(deps, runtime, text, ctrl.signal, seed);
-        } else if (asSwarm) {
-          // Non-auto, user accepted the offer → the full interactive swarm flow.
-          await handleSwarmCommand(deps, runtime, text, ctrl.signal);
         } else if (intent === 'plan') {
-          // Non-auto plan → the deliberate plan → approve → execute gate.
+          // Plan, posture ASK → the deliberate plan → approve → execute gate.
           await dispatchPlan(deps, runtime, text, ctrl.signal, seed);
         } else {
           // chat · research-declined → a direct model-first turn (the model still

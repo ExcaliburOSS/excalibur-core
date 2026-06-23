@@ -804,6 +804,7 @@ export const ES: Catalog = {
     'Auto-enrutado: lo ejecuto en segundo plano para que puedas seguir trabajando.',
   'repl.route-swarm-auto': 'Auto-enrutado: lo reparto en un swarm de agentes en paralelo.',
   'repl.route-research-auto': 'Auto-enrutado: investigación web profunda con fuentes citadas.',
+  'repl.route-narrate-hint': '  (alto impacto — lo ejecuto ya; pulsa Esc para parar.)',
   'repl.auto-build-parallel':
     'Auto-orquestando: {count} flujos de trabajo independientes → un swarm en paralelo.',
   'repl.auto-build-sequential':

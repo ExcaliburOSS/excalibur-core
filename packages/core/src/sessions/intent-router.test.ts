@@ -4,8 +4,12 @@ import {
   buildIntentPrompt,
   buildStatusLineModel,
   classifyTurnIntent,
+  decidePosture,
   parseStructuralInput,
+  parseTurnConfidence,
+  parseTurnDecision,
   parseTurnIntent,
+  riskOfShape,
   type IntentContext,
 } from './intent-router';
 
@@ -54,6 +58,62 @@ describe('parseTurnIntent', () => {
     expect(parseTurnIntent('Category: bg')).toBe('bg');
     expect(parseTurnIntent('je ne sais pas')).toBe('chat');
     expect(parseTurnIntent('')).toBe('chat');
+  });
+});
+
+describe('parseTurnConfidence / parseTurnDecision (AO3d-2)', () => {
+  it('extracts the confidence word; unknown → medium', () => {
+    expect(parseTurnConfidence('swarm high')).toBe('high');
+    expect(parseTurnConfidence('chat low')).toBe('low');
+    expect(parseTurnConfidence('plan')).toBe('medium');
+  });
+  it('parses category + confidence together', () => {
+    expect(parseTurnDecision('swarm high')).toEqual({ intent: 'swarm', confidence: 'high' });
+    expect(parseTurnDecision('research medium')).toEqual({
+      intent: 'research',
+      confidence: 'medium',
+    });
+    expect(parseTurnDecision('nonsense')).toEqual({ intent: 'chat', confidence: 'medium' });
+  });
+});
+
+describe('riskOfShape (AO3d-2, pure)', () => {
+  it('scores reversibility/impact per shape', () => {
+    expect(riskOfShape('chat')).toBe('low');
+    expect(riskOfShape('research')).toBe('low');
+    expect(riskOfShape('plan')).toBe('medium');
+    expect(riskOfShape('swarm')).toBe('medium');
+    expect(riskOfShape('bg')).toBe('medium');
+    expect(riskOfShape('goal')).toBe('high');
+  });
+});
+
+describe('decidePosture (AO3d-2, proactive 3-way, pure)', () => {
+  it('low confidence always asks (never silently guesses a heavy route)', () => {
+    expect(decidePosture({ risk: 'low', confidence: 'low', level: 4, autoApprove: true })).toBe(
+      'ask',
+    );
+  });
+  it('acts on low/medium-risk shapes at high autonomy without a flag', () => {
+    expect(decidePosture({ risk: 'low', confidence: 'high', level: 3, autoApprove: false })).toBe(
+      'act',
+    );
+    expect(
+      decidePosture({ risk: 'medium', confidence: 'high', level: 3, autoApprove: false }),
+    ).toBe('act');
+  });
+  it('asks for a medium-risk shape at a low autonomy level', () => {
+    expect(
+      decidePosture({ risk: 'medium', confidence: 'high', level: 2, autoApprove: false }),
+    ).toBe('ask');
+  });
+  it('high-risk asks unless full autonomy is granted, then narrates while acting', () => {
+    expect(decidePosture({ risk: 'high', confidence: 'high', level: 4, autoApprove: false })).toBe(
+      'ask',
+    );
+    expect(decidePosture({ risk: 'high', confidence: 'high', level: 4, autoApprove: true })).toBe(
+      'narrate',
+    );
   });
 });
 

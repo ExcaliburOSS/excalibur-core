@@ -111,6 +111,111 @@ export function parseTurnIntent(modelOutput: string): TurnIntent {
 }
 
 /**
+ * The classifier's confidence in its category — AO3d-2. Drives the proactive
+ * posture: a LOW-confidence read never silently runs a heavy route, it asks.
+ */
+export type TurnConfidence = 'high' | 'medium' | 'low';
+const TURN_CONFIDENCES: readonly TurnConfidence[] = ['high', 'medium', 'low'];
+
+/** A classified turn: the chosen shape + how confident the classifier is. */
+export interface TurnDecision {
+  intent: TurnIntent;
+  confidence: TurnConfidence;
+}
+
+/** Builds the classifier prompt that asks for the category AND a confidence word. */
+export function buildDecisionPrompt(text: string): string {
+  return [
+    'You are an intent classifier for a coding-agent CLI. Read the user request in ANY language',
+    'and choose the SINGLE best category AND your confidence in that choice:',
+    '- chat: a question, explanation, or one small direct change the agent can just do.',
+    '- plan: a multi-step build/change worth planning first.',
+    '- swarm: many independent, parallelizable subtasks.',
+    '- bg: a long-running task to run in the background.',
+    '- research: needs external/current information from the web, or deep investigation.',
+    '- goal: an explicit "keep iterating until it works/passes/done" objective.',
+    'Answer with EXACTLY two words: the category then the confidence (high, medium, or low).',
+    'Example: "swarm high" or "chat low".',
+    '',
+    `Request: ${text}`,
+  ].join('\n');
+}
+
+/** Extracts the confidence word from a model answer; unrecognized → `medium`. */
+export function parseTurnConfidence(modelOutput: string): TurnConfidence {
+  const tokens = modelOutput.toLowerCase().match(/[a-z]+/g) ?? [];
+  const found = tokens.find((t) => (TURN_CONFIDENCES as readonly string[]).includes(t));
+  return (found as TurnConfidence | undefined) ?? 'medium';
+}
+
+/** Parses a model answer into a full {@link TurnDecision} (intent + confidence). */
+export function parseTurnDecision(modelOutput: string): TurnDecision {
+  return { intent: parseTurnIntent(modelOutput), confidence: parseTurnConfidence(modelOutput) };
+}
+
+/**
+ * Classifies a turn into a {@link TurnDecision} (intent + confidence) via the
+ * injected LLM. Same gating as {@link classifyTurnIntent}: gated to a confident
+ * `chat` when there is no real model, off a TTY, at a read-only level, on empty
+ * text, or on any classifier error.
+ */
+export async function classifyTurnDecision(
+  text: string,
+  ctx: IntentContext,
+  classify: IntentModel,
+  signal?: AbortSignal,
+): Promise<TurnDecision> {
+  if (ctx.mock || !ctx.interactive || ctx.level < 2 || text.trim().length === 0) {
+    return { intent: 'chat', confidence: 'high' };
+  }
+  try {
+    return parseTurnDecision(await classify(buildDecisionPrompt(text), signal));
+  } catch {
+    return { intent: 'chat', confidence: 'high' };
+  }
+}
+
+/** Reversibility/impact of an execution shape (AO3d-2) — pure. Research/chat are
+ * read-ish (low); a build/swarm/bg mutates but is git-isolated + revertible
+ * (medium); an open-ended goal loop iterates autonomously (high). */
+export type ShapeRisk = 'low' | 'medium' | 'high';
+export function riskOfShape(intent: TurnIntent): ShapeRisk {
+  switch (intent) {
+    case 'chat':
+    case 'research':
+      return 'low';
+    case 'plan':
+    case 'swarm':
+    case 'bg':
+      return 'medium';
+    case 'goal':
+      return 'high';
+  }
+}
+
+/** What the shell should DO with a routed turn (AO3d-2) — pure, no I/O. */
+export type RoutePosture = 'act' | 'narrate' | 'ask';
+
+/**
+ * The proactive 3-way posture (AO3d-2), derived from confidence + shape risk +
+ * autonomy — NOT a binary flag. Excalibur acts on safe/likely routes, narrates
+ * while acting on high-impact ones under full autonomy, and asks when it is
+ * unsure or the route is high-impact and autonomy isn't granted. A low-confidence
+ * read NEVER silently runs a heavy route.
+ */
+export function decidePosture(input: {
+  risk: ShapeRisk;
+  confidence: TurnConfidence;
+  level: number;
+  autoApprove: boolean;
+}): RoutePosture {
+  if (input.confidence === 'low') return 'ask';
+  if (input.risk === 'high') return input.autoApprove ? 'narrate' : 'ask';
+  if (input.risk === 'medium') return input.autoApprove || input.level >= 3 ? 'act' : 'ask';
+  return input.autoApprove || input.level >= 2 ? 'act' : 'ask';
+}
+
+/**
  * Classifies a natural-language turn via the injected LLM (multi-language). Gated
  * to `chat` (a plain model-first turn — the safe default) when there is no real
  * model, off a TTY, at a read-only level, or on any classifier error/timeout, so
