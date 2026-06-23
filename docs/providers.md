@@ -44,6 +44,30 @@ providers:
 
 Provider types: `openai-compatible`, `anthropic`, `ollama`, `vllm`, `custom`, `mock`. OpenRouter is `openai-compatible` with `baseUrl: https://openrouter.ai/api/v1`. The `default` and `cheap` keys are **role pointers** (each names a configured provider, not a provider itself): `default` is the main model, `cheap` the fast/low-cost one used for latency-sensitive roles (ghost-text, context compaction). Per-provider knobs like `extraBody`, `timeoutMs`, `maxRetries`, `apiVersion` and `organization` are also supported.
 
+### Azure OpenAI
+
+Azure OpenAI speaks the OpenAI wire format but routes by **deployment** and
+authenticates with an `api-key` header. Configure it as an `openai-compatible`
+provider with an `azure` block — `baseUrl` is the resource root and the `model`
+is your **deployment** name:
+
+```yaml
+providers:
+  azure:
+    type: openai-compatible
+    baseUrl: https://<your-resource>.openai.azure.com
+    apiKeyEnv: AZURE_OPENAI_API_KEY
+    model: my-gpt4o-deployment # the Azure deployment name
+    azure:
+      apiVersion: '2024-02-01'
+```
+
+Excalibur then calls `…/openai/deployments/<model>/chat/completions?api-version=…`
+with the `api-key` header. (Google Gemini works today via Google's
+OpenAI-compatible endpoint as a plain `openai-compatible` provider with its
+`baseUrl`. Amazon Bedrock and Anthropic-on-Vertex need cloud-native signing/auth
+and are tracked separately.)
+
 ```bash
 excalibur models list      # shows configured providers, the active one, and per-provider status
 excalibur models test      # sends a tiny request to confirm the provider works

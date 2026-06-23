@@ -163,7 +163,7 @@ permissions:
 ## 5. Programmatic SDK
 
 ```ts
-import { defineExtension } from '@excalibur/extension-sdk';
+import { defineExtension } from '@excalibur-oss/extension-sdk';
 
 export default defineExtension({
   id: 'linear',

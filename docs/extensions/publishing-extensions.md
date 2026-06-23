@@ -69,7 +69,7 @@ nothing consumes it yet — but you can make it future-proof:
   published files;
 - make the compiled entrypoint CommonJS-compatible (the loader `require()`s
   it) with the `defineExtension(...)` result as the default export;
-- pin `@excalibur/extension-sdk` as a regular dependency and follow semver:
+- pin `@excalibur-oss/extension-sdk` as a regular dependency and follow semver:
   the contribution interfaces are stable, and breaking manifest changes will
   be versioned;
 - declare accurate `permissions` — when enforcement lands (M5) and the npm

@@ -47,7 +47,11 @@ unit tests:
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { ContributionRegistry, HookRegistry, registerExtension } from '@excalibur/extension-sdk';
+import {
+  ContributionRegistry,
+  HookRegistry,
+  registerExtension,
+} from '@excalibur-oss/extension-sdk';
 import extension from '../src/index';
 
 describe('register', () => {

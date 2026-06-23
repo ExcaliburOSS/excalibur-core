@@ -4,7 +4,7 @@ A communication provider posts Excalibur output — run summaries, discovery
 results, daily reports — to chat platforms (Slack, Microsoft Teams, Discord)
 and reads thread replies back. It is a **programmatic** extension
 implementing the `CommunicationProvider` interface owned by
-`@excalibur/extension-sdk`.
+`@excalibur-oss/extension-sdk`.
 
 ## The interface
 
@@ -16,7 +16,7 @@ import type {
   GetThreadRepliesInput, // { channelId, threadId }
   PostMessageResult, // { externalMessageId, threadId?, url? }
   ThreadReply, // { externalMessageId, body, authorName?, createdAt? }
-} from '@excalibur/extension-sdk';
+} from '@excalibur-oss/extension-sdk';
 
 export class SlackProvider implements CommunicationProvider {
   readonly type = 'slack'; // stable provider type id
@@ -49,7 +49,7 @@ Guidelines:
 ## Register it
 
 ```ts
-import { defineExtension } from '@excalibur/extension-sdk';
+import { defineExtension } from '@excalibur-oss/extension-sdk';
 import { SlackProvider } from './provider';
 
 export default defineExtension({

@@ -174,7 +174,7 @@ Per `docs/spec/extensions-spec.md` §3, §7, §8 and §6 (hooks). Pins:
 - `class HookRegistry` with `on/emit` per spec §6; emit awaits handlers sequentially, isolates handler errors (collects, never throws).
 - `validatePermissions(manifest): string[]` (warnings; enforcement comes in M5).
 
-### 4.6d `@excalibur/extension-sdk`
+### 4.6d `@excalibur-oss/extension-sdk`
 
 Per spec doc §5. Pins: `defineExtension(def: { id; name; version; description?; register(ctx: ExtensionContext): void | Promise<void> }): ExcaliburExtension`; `ExtensionContext` with the 12 registries + `logger` (`{ info/warn/error(msg: string): void }`) + `config: Record<string, unknown>`; registries are thin typed wrappers over `ContributionRegistry.register` (e.g. `ctx.workItems.registerProvider(p: WorkItemProvider)`, `ctx.models.registerProvider(p: ModelProviderAdapter)`, `ctx.agents.registerAdapter(a: AgentAdapter)`, `ctx.tools.registerTool(t: AgentTool)` …). New interfaces owned here: `CommunicationProvider` (+ PostMessageInput/PostThreadReplyInput/PostMessageResult/ThreadReply), `AgentTool`/`ToolContext`/`ToolResult`, `ContextSource`/`ContextSearchInput`/`ContextLoadInput`/`ContextDocument`, `PolicyEvaluator`/`PolicyContext`/`PolicyDecision` (reuse policyDecisionSchema from shared for the decision value), `ReportGenerator`, `Exporter`. Reused interfaces: `WorkItemProvider` (@excalibur/work-items), `ModelProviderAdapter` (@excalibur/model-gateway), `AgentAdapter` (@excalibur/agent-runtime).
 

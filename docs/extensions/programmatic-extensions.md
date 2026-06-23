@@ -1,7 +1,7 @@
 # Programmatic Extensions
 
 Programmatic extensions are TypeScript packages built with
-`@excalibur/extension-sdk`. Use them when declarative files are not enough:
+`@excalibur-oss/extension-sdk`. Use them when declarative files are not enough:
 external APIs, authentication, runtime behavior, agent tools, model
 providers, agent adapters, complex policy, custom context, exporters.
 
@@ -10,7 +10,7 @@ providers, agent adapters, complex policy, custom context, exporters.
 ```text
 my-extension/
   excalibur.extension.yaml   # kind: programmatic (or mixed), entrypoint: dist/index.js
-  package.json               # depends on @excalibur/extension-sdk
+  package.json               # depends on @excalibur-oss/extension-sdk
   tsconfig.json              # compiles src/ → dist/ (CommonJS-compatible)
   src/index.ts               # export default defineExtension({ ... })
   dist/index.js              # the compiled entrypoint the loader require()s
@@ -23,7 +23,7 @@ export (a CommonJS `module.exports` works too).
 ## `defineExtension`
 
 ```ts
-import { defineExtension } from '@excalibur/extension-sdk';
+import { defineExtension } from '@excalibur-oss/extension-sdk';
 
 export default defineExtension({
   id: 'linear', // must match the manifest id

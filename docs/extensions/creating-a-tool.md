@@ -2,7 +2,7 @@
 
 Tools extend what agents can _do_: query an internal database, fetch a ticket,
 call an internal service. A tool is a **programmatic** contribution
-implementing the `AgentTool` interface from `@excalibur/extension-sdk`; once
+implementing the `AgentTool` interface from `@excalibur-oss/extension-sdk`; once
 registered it sits alongside the native tools of `@excalibur/agent-runtime`
 (`read_file`, `write_file`, `list_files`, `search_code`, `run_command`,
 `git_diff`, `apply_patch`, `create_branch`, `run_tests`).
@@ -10,7 +10,7 @@ registered it sits alongside the native tools of `@excalibur/agent-runtime`
 ## The interface
 
 ```ts
-import type { AgentTool, ToolContext, ToolResult } from '@excalibur/extension-sdk';
+import type { AgentTool, ToolContext, ToolResult } from '@excalibur-oss/extension-sdk';
 
 export const fetchTicketTool: AgentTool = {
   name: 'fetch_ticket', // unique tool name
@@ -51,7 +51,7 @@ schema is the natural companion to `inputSchema`.
 ## Register it
 
 ```ts
-import { defineExtension } from '@excalibur/extension-sdk';
+import { defineExtension } from '@excalibur-oss/extension-sdk';
 import { fetchTicketTool } from './fetch-ticket';
 
 export default defineExtension({

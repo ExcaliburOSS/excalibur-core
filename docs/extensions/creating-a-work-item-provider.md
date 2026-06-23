@@ -51,7 +51,7 @@ the rest of Excalibur consumes. Throw `ProviderError` (from
 
 ```ts
 // src/index.ts
-import { defineExtension } from '@excalibur/extension-sdk';
+import { defineExtension } from '@excalibur-oss/extension-sdk';
 import { LinearWorkItemProvider } from './provider';
 
 export default defineExtension({

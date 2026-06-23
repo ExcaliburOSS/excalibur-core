@@ -76,7 +76,7 @@ models:
 Programmatic extensions can register additional adapters and tools:
 
 ```ts
-import { defineExtension, type AgentAdapter } from '@excalibur/extension-sdk';
+import { defineExtension, type AgentAdapter } from '@excalibur-oss/extension-sdk';
 
 export default defineExtension({
   id: 'my-agent',

@@ -13,7 +13,7 @@ There are two kinds of extensions:
    `artifact_template`, `policy_preset`, `model_routing`, `report_template`,
    `role_definition`, `command_mapping`.
 2. **Programmatic extensions** — TypeScript code built with
-   `@excalibur/extension-sdk`. For external APIs, auth, runtime behavior.
+   `@excalibur-oss/extension-sdk`. For external APIs, auth, runtime behavior.
    Ten contribution kinds: `work_item_provider`, `communication_provider`,
    `model_provider`, `agent_adapter`, `tool`, `context_source`, `exporter`,
    `policy_evaluator`, `vcs_provider`, `enterprise_sync_provider`.
@@ -27,7 +27,7 @@ entrypoint in one extension.
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `@excalibur/declarative-schemas` | zod schemas for the 10 declarative types, a discriminated union on `type`, and the YAML/Markdown parsers (`parseDeclarativeYaml`, `parseDeclarativeMarkdown`).                                                                       |
 | `@excalibur/extension-runtime`   | The manifest schema/loader/validator, `ExtensionRegistry` + `ContributionRegistry`, the extension loader (`loadExtensions`), `HookRegistry`, and permission validation.                                                              |
-| `@excalibur/extension-sdk`       | `defineExtension`, `ExtensionContext` with its 11 typed registries + hooks/logger/config, and the contribution interfaces (`CommunicationProvider`, `AgentTool`, `ContextSource`, `PolicyEvaluator`, `ReportGenerator`, `Exporter`). |
+| `@excalibur-oss/extension-sdk`   | `defineExtension`, `ExtensionContext` with its 11 typed registries + hooks/logger/config, and the contribution interfaces (`CommunicationProvider`, `AgentTool`, `ContextSource`, `PolicyEvaluator`, `ReportGenerator`, `Exporter`). |
 | `@excalibur/built-in-extensions` | The default catalogs (14 workflows, 14 methodologies, Discovery packs, prompts, the `standard-safe` policy, report templates, command mappings) packaged as seven built-in extension packs.                                          |
 
 Built-ins use the same extension mechanisms as everything else: they flow

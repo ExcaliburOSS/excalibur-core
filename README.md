@@ -2,84 +2,107 @@
 
 **Local-first AI-assisted and agentic software development, from your terminal.**
 
-Excalibur Core is an open-source developer toolkit that brings structured, safe, configurable AI workflows to any repository. It is CLI-first, works entirely on your machine, produces auditable artifacts for everything it does, and never modifies a file without your approval.
+Excalibur Core is an open-source developer toolkit that brings structured, safe,
+configurable AI workflows to any repository. It runs as an **interactive shell**
+on your machine, executes real agentic work with the models you bring, produces
+auditable artifacts for everything it does, and never modifies a file without
+your approval.
 
 ```bash
-excalibur init
-excalibur run "Fix duplicated escrow release on webhook retry"
-excalibur run "Implement contract renewal reminders" --careful
-excalibur discovery "Should we add multi-party contract approval?"
+npm install -g @excalibur-oss/excalibur   # or: npx @excalibur-oss/excalibur
+excalibur                                  # launch the interactive shell
 ```
 
-> **Status — M1 (mock loop).** This milestone ships the complete local experience — init, workflows, methodologies, patches, runs, Discovery, reports, extensions, instruction discovery — with a **deterministic mock model provider only**. No real model calls, no real file modification and no real command execution happen inside runs (commands are simulated and clearly marked `simulated: true`). Real providers and agents arrive in M2/M3. Every output of the mock provider is labeled as such.
+## The shell is the product
+
+Run `excalibur` with no arguments and you drop into the **Excalibur shell** — the
+primary way to use it. You don't memorize flags; you talk to it:
+
+- **Just describe the work.** Type a task in plain language and Excalibur infers
+  the right workflow, autonomy and safety rules, then streams the agent's plan,
+  tool calls, edits, tests and diff in a live rail you can watch and interrupt
+  (`Esc` cancels the running step).
+- **Slash commands when you want them.** `/models` to pick a provider/model,
+  `/agent` to switch persona, `/bg` and `/threads` to run and juggle work in the
+  background, `/plan`, `/share`, `/help` — discoverable, single-key where it
+  counts.
+- **Ghost-text suggestions** and context-aware placeholders guide the next move;
+  it reads your memory, last activity and active plan and _offers_ — it never
+  makes you type arcane incantations.
+- **Conversational intent.** Ask a question, request a patch, kick off a full
+  agentic run, or start a Discovery — the shell routes intent to the right mode
+  (multilingual: English + Spanish out of the box).
+
+Prefer one-shot/CI use? Every capability is also a direct subcommand
+(`excalibur run "…"`, `excalibur ask "…"`, `excalibur review --diff`, …) — same
+engine, no shell required.
 
 ## Why Excalibur
 
-- **Autonomy is a dial, not a switch.** Five explicit autonomy levels, from "review only" to "full agentic workflow", configurable per command, path and task type.
-- **Workflows, not vibes.** Every agentic task runs a declared workflow with phases, approvals and artifacts — 14 built-in workflows and 14 methodologies out of the box.
-- **Safe by default.** The `standard-safe` preset blocks secrets and sensitive paths, asks before any mutation, never pushes, and redacts secrets from prompts and logs.
-- **Local and auditable.** Runs, patches, interactions, discovery sessions and reports live under `.excalibur/` in your repository as plain files (JSON, JSONL, Markdown, YAML).
-- **Starts with what you already have.** Instruction & Skill Discovery (ISD) finds your existing `CLAUDE.md`, `AGENTS.md`, Cursor rules, Copilot instructions and `SKILL.md` files and uses them safely — never rewriting or copying them without consent.
-- **Extensible from day one.** YAML/Markdown defines how your team works; the TypeScript SDK connects Excalibur to the outside world.
+- **Autonomy is a dial, not a switch.** Five explicit autonomy levels, from
+  "review only" to "full agentic workflow", configurable per command, path and
+  task type.
+- **Workflows, not vibes.** Every agentic task runs a declared workflow with
+  phases, approvals and artifacts — built-in workflows and methodologies out of
+  the box, all overridable in YAML.
+- **Safe by default.** The `standard-safe` preset blocks secrets and sensitive
+  paths, asks before any mutation, never pushes, and redacts secrets from prompts
+  and logs. An adversarial Verification Mesh can block a run that fails its own
+  claims.
+- **Local and auditable.** Runs, patches, interactions, discovery sessions and
+  reports live under `.excalibur/` as plain files (JSON, JSONL, Markdown, YAML).
+- **Connected when you want it.** Native, governed `web_fetch` / `web_search`
+  (free, no key by default), an opt-in local browser, cited research, and
+  first-class MCP servers (OAuth + a signed registry) — all behind an audited
+  network policy.
+- **Starts with what you already have.** Instruction & Skill Discovery finds your
+  existing `CLAUDE.md`, `AGENTS.md`, Cursor rules, Copilot instructions and
+  `SKILL.md` files and uses them safely — never rewriting them without consent.
+- **Bring your own model.** OpenAI-compatible providers (incl. Azure OpenAI),
+  Anthropic, Ollama and more; pick good+fast pairs with one key. Keys live in an
+  env file, never in the repo.
 
-## Install / build from source
+## Install
 
-Requirements: Node ≥ 22, pnpm 9.
+```bash
+# Published binary (zero runtime deps):
+npm install -g @excalibur-oss/excalibur
+excalibur
+
+# …or run without installing:
+npx @excalibur-oss/excalibur
+```
+
+From source (Node ≥ 22, pnpm 9):
 
 ```bash
 git clone https://github.com/ExcaliburOSS/excalibur-core.git
-cd excalibur-core
-pnpm install
-pnpm -r build
-
-# run the CLI
-node apps/cli/dist/main.js --help
-# or link it
-cd apps/cli && npm link && excalibur --help
+cd excalibur-core && pnpm install && pnpm -r build
+node apps/cli/dist/main.js            # or: cd apps/cli && npm link && excalibur
 ```
 
-## Quickstart
-
-Point Excalibur at a repository once:
+## Point it at a repo
 
 ```bash
 cd your-repo
-excalibur init                  # detects your stack, commands and existing AI instructions
+excalibur init       # detects your stack, commands and existing AI instructions
+excalibur            # then just start working in the shell
 ```
 
-Then just describe the work and let an agent build it. Excalibur infers the right workflow and safety rules, creates an isolated branch/worktree, makes the change, runs your tests, and hands back a diff and summary to review — nothing is pushed and nothing merges without you:
+In the shell (or as one-shot subcommands):
 
-```bash
-excalibur run "Add idempotency to the escrow webhook handler"
-```
-
-Watch it work, then inspect everything as plain local files:
-
-```bash
-excalibur status                # the run, its phases and cost
-excalibur logs                  # the full event log of the latest run
-```
-
-Match the rigor to the task — Excalibur infers it, or you can steer:
-
-```bash
-excalibur run "Migrate billing to the new ledger" --careful       # plan → your approval → implement → tests → review
-excalibur run "Explore options for contract versioning" --explore # alternative approaches, compared side by side
-```
-
-Not sure it should be built yet? **Start before the code:**
-
-```bash
-excalibur discovery "Add AI contract renewal reminders"           # clarifies scope; can recommend *not* building
-```
-
-Prefer to keep your hands on the keyboard? The same engine does lighter, non-agentic help too — `excalibur ask` answers questions about the repo, `excalibur patch` proposes a diff for you to apply, `excalibur review --diff` reviews your uncommitted changes.
-
-> **M1:** every command runs on a deterministic mock model, and the agent's file edits, test runs and commands are simulated (and labelled as such). What's real today is the full workflow, the phase/event stream, the local artifacts and the safety rules — real model and agent execution land in M2/M3.
+- **Build it:** describe a change → plan → isolated branch/worktree → edits →
+  your tests → a diff + summary to review. Nothing is pushed or merged without you.
+- **Steer the rigor:** `--careful` (plan → approval → implement → test → review)
+  or `--explore` (compare alternative approaches).
+- **Start before the code:** Discovery clarifies scope and can recommend _not_
+  building yet, scoring readiness for an agent.
+- **Lighter help:** ask questions about the repo, propose a diff to apply, or
+  review your uncommitted changes — non-agentic, same engine.
 
 ## Autonomy levels
 
-| Level | Name                  | What the AI may do                              | Typical command                 |
+| Level | Name                  | What the AI may do                              | Example                         |
 | ----- | --------------------- | ----------------------------------------------- | ------------------------------- |
 | 0     | Review                | Read and review; never changes code             | `excalibur review --diff`       |
 | 1     | Assist                | Explain, answer, suggest                        | `excalibur ask "..."`           |
@@ -87,78 +110,101 @@ Prefer to keep your hands on the keyboard? The same engine does lighter, non-age
 | 3     | Implement in Branch   | Work in an isolated branch/worktree             | `excalibur run "..."`           |
 | 4     | Full Agentic Workflow | Multi-phase workflow with tools, tests, outputs | `excalibur run "..." --careful` |
 
-Levels can be set per command, per path (`autonomy.paths`), per task type and per workflow. See [docs/autonomy-levels.md](docs/autonomy-levels.md).
+Levels can be set per command, per path (`autonomy.paths`), per task type and per
+workflow. See [docs/autonomy-levels.md](docs/autonomy-levels.md).
+
+## The web dashboard
+
+`excalibur serve` exposes a local, token-gated **task-first dashboard**: a kanban
+board of work items where you drill into a work item to see its runs, the active
+run's live checklist, patches, PRs, plans and discovery — plus an insights view
+(cost/token charts) and a runs explorer. `--write` makes it interactive
+(drag-to-move lanes, start/cancel/approve runs from the browser); `--share` mints
+a read-only token. It ships embedded in the CLI — one process, no extra setup.
+See [docs/dashboard.md](docs/dashboard.md).
 
 ## The `.excalibur/` directory
 
-`excalibur init` generates a **minimal**, human-readable, Git-versionable configuration — and everything works with defaults even without it:
+`excalibur init` generates a **minimal**, human-readable, Git-versionable
+configuration — and everything works with defaults even without it:
 
 ```text
 .excalibur/
-  config.yaml          # project, commands, safety preset, defaults
-  instructions/        # project instructions prepended to every prompt
-  extensions.yaml      # extension enablement
-  models/providers.yaml# model providers (env var NAMES only, never keys)
-  workflows/           # optional: override/add workflows (YAML)
-  methodologies/       # optional: override/add methodologies (YAML)
-  policies/            # optional: policy presets
-  runs/                # local run artifacts (run.json, events.jsonl, diff.patch, ...)
-  patches/             # patch proposals
-  interactions/        # ask/explain/review artifacts
-  discovery/           # discovery sessions
-  reports/             # daily / weekly-plan markdown reports
+  config.yaml           # project, commands, safety preset, defaults
+  instructions/         # project instructions prepended to every prompt
+  extensions.yaml       # extension enablement
+  models/providers.yaml # model providers (env var NAMES only, never keys)
+  workflows/  methodologies/  policies/   # optional overrides/additions
+  work-items/           # the native kanban work items (WI-<n>.json)
+  runs/  patches/  interactions/  discovery/  plans/  reports/  shares/
 ```
 
-`excalibur init --team` adds shared team standards; `excalibur init --full` exports every built-in catalog for inspection. See [docs/configuration.md](docs/configuration.md).
+`excalibur init --team` adds shared team standards; `--full` exports every
+built-in catalog. See [docs/configuration.md](docs/configuration.md).
 
 ## Extensions
 
-Excalibur is an extensible runtime with one core principle:
+> **YAML/Markdown defines how the team works. SDK code connects Excalibur to the
+> outside world.**
 
-> **YAML/Markdown defines how the team works. SDK code connects Excalibur to the outside world.**
-
-- **Declarative extensions** (no code): methodologies, workflows, question packs, prompt/artifact templates, policy presets, model routing, report templates, roles, command mappings. Safe, portable, reviewable in Git.
-- **Programmatic extensions** (TypeScript SDK): work item providers, communication providers, model providers, agent adapters, tools, context sources, exporters, policy evaluators. Powerful, permissioned.
+- **Declarative extensions** (no code): methodologies, workflows, question packs,
+  prompt/artifact templates, policy presets, model routing, reports, roles,
+  command mappings — safe, portable, reviewable in Git.
+- **Programmatic extensions** (TypeScript SDK on npm): work-item providers,
+  communication providers, model providers, agent adapters, tools, context
+  sources, exporters, policy evaluators — powerful, permissioned, and enforceable
+  (`extensions.enforce` hard-blocks an extension that over-reaches).
 
 ```bash
-excalibur extensions list
-excalibur extensions create methodology spike-driven
-excalibur extensions validate
-excalibur methodologies list        # your methodology appears next to the built-ins
+npm install @excalibur-oss/extension-sdk
+excalibur extensions init my-extension --type tool
 ```
 
-The built-in catalogs ship as extension packs through the same mechanism — project files override built-ins with zero special-casing. See [docs/extensions/overview.md](docs/extensions/overview.md) and the examples in [`examples/extensions/`](examples/extensions/).
+The built-in catalogs ship as extension packs through the same mechanism. See
+[docs/extensions/overview.md](docs/extensions/overview.md) and the
+[authoring guide](docs/extensions/authoring.md).
+
+## IDE extension
+
+A VS Code / Cursor / Windsurf extension (`apps/vscode`) bridges the editor to
+`excalibur acp` over the Agent Client Protocol: run tasks, ask about a selection,
+review, and watch the agent stream into a webview session view — with native
+approval modals.
 
 ## Relationship to Excalibur Enterprise
 
-Excalibur Core is the open-source, local-first foundation. **Excalibur Enterprise** builds on the exact same schemas, event format, workflow definitions and artifacts, and adds the organizational control plane: web workbench, SSO/RBAC, team management, audit logs, cost and model governance, GitHub/GitLab Apps, hybrid runners and compliance.
-
-Everything stays local unless you explicitly connect: `excalibur login` / `excalibur sync` are optional, transparent and experimental. See [docs/enterprise-sync.md](docs/enterprise-sync.md).
+Excalibur Core is the open-source, local-first foundation. **Excalibur
+Enterprise** builds on the exact same schemas, event format, workflows and
+artifacts, and adds the organizational control plane: web workbench, SSO/RBAC,
+team management, audit logs, cost/model governance, GitHub/GitLab Apps, hybrid
+runners and compliance. Everything stays local unless you explicitly connect
+(`excalibur login` / `excalibur sync` are optional + transparent). See
+[docs/enterprise-sync.md](docs/enterprise-sync.md).
 
 ## Documentation
 
 - [Getting started](docs/getting-started.md)
 - [Configuration (`.excalibur/`)](docs/configuration.md)
 - [Autonomy levels](docs/autonomy-levels.md)
-- [Workflows](docs/workflows.md)
-- [Methodologies](docs/methodologies.md)
-- [Model providers](docs/providers.md)
-- [Agents](docs/agents.md)
+- [Web dashboard](docs/dashboard.md)
+- [Workflows](docs/workflows.md) · [Methodologies](docs/methodologies.md)
+- [Model providers](docs/providers.md) · [Agents](docs/agents.md)
 - [Security defaults](docs/security.md)
-- [Enterprise sync](docs/enterprise-sync.md)
-- [CMUX integration](docs/cmux.md)
-- [Extensions](docs/extensions/overview.md)
+- [Extensions](docs/extensions/overview.md) · [Authoring guide](docs/extensions/authoring.md)
+- [Enterprise sync](docs/enterprise-sync.md) · [CMUX integration](docs/cmux.md)
 
 ## Development
 
 ```bash
-pnpm install
-pnpm -r build
-pnpm -r test
-pnpm -r lint
+pnpm install && pnpm -r build && pnpm -r test && pnpm lint
 ```
 
-The repo is a pnpm/TypeScript monorepo: `packages/` holds the engine (`core`, `workflow-schema`, `model-gateway`, `agent-runtime`, `context-engine`, `extension-runtime`, `extension-sdk`, `built-in-extensions`, `declarative-schemas`, `work-items`, `enterprise-sync`, `shared`) and `apps/cli` the `excalibur` binary.
+A pnpm/TypeScript monorepo: `packages/` holds the engine (`core`,
+`workflow-schema`, `model-gateway`, `agent-runtime`, `context-engine`,
+`extension-runtime`, `extension-sdk`, `built-in-extensions`,
+`declarative-schemas`, `work-items`, `enterprise-sync`, `tui`, `shared`),
+`apps/cli` the `excalibur` binary, `apps/dashboard` the embedded web UI, and
+`apps/vscode` the IDE extension.
 
 ## License
 
