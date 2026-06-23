@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
 import { join } from 'node:path';
@@ -91,6 +92,19 @@ function tokenOf(req: IncomingMessage, url: URL): string | null {
   }
   return url.searchParams.get('token');
 }
+
+/** Constant-time token comparison (no timing side-channel on the secret). */
+function tokenMatches(presented: string | null, secret: string | undefined): boolean {
+  if (presented === null || secret === undefined) {
+    return false;
+  }
+  const a = Buffer.from(presented);
+  const b = Buffer.from(secret);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** Cap on simultaneously-open SSE streams (anti-resource-exhaustion). */
+const MAX_OPEN_STREAMS = 64;
 
 type RouteResult = Json | Html | 'sse' | 'sse-board' | null;
 
@@ -406,10 +420,14 @@ async function handleWrite(
       try {
         send(200, moveWorkItemLane(options.repoRoot, key, lane));
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         if (error instanceof InvalidLaneError) {
-          send(400, { error: error.message });
-        } else {
+          send(400, { error: message });
+        } else if (/not found/i.test(message)) {
           send(404, { error: `work item ${key} not found` });
+        } else {
+          // A corrupt/unreadable work-item file is a server error, not a 404.
+          send(500, { error: message });
         }
       }
       return;
@@ -442,11 +460,25 @@ async function handleWrite(
 /** Builds the token-gated Excalibur HTTP/SSE server (read-only, or +write surface). */
 export function createExcaliburServer(options: ServeOptions): Server {
   const pollMs = options.pollMs ?? 500;
+  let openStreams = 0; // bounded so a client can't exhaust fds via SSE
+  /** Run an SSE handler under the open-stream cap; 503 when exceeded. */
+  const withStreamCap = (res: ServerResponse, run: () => void): void => {
+    if (openStreams >= MAX_OPEN_STREAMS) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'too many open streams' }));
+      return;
+    }
+    openStreams += 1;
+    res.on('close', () => {
+      openStreams -= 1;
+    });
+    run();
+  };
   return createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const presented = tokenOf(req, url);
-    const isPrimary = presented === options.token;
-    const isShare = options.shareToken !== undefined && presented === options.shareToken;
+    const isPrimary = tokenMatches(presented, options.token);
+    const isShare = !isPrimary && tokenMatches(presented, options.shareToken);
     if (!isPrimary && !isShare) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'unauthorized — pass ?token= or Authorization: Bearer' }));
@@ -494,11 +526,11 @@ export function createExcaliburServer(options: ServeOptions): Server {
         res.end(JSON.stringify({ error: 'invalid run id' }));
         return;
       }
-      streamRun(options.repoRoot, id, res, pollMs);
+      withStreamCap(res, () => streamRun(options.repoRoot, id, res, pollMs));
       return;
     }
     if (result === 'sse-board') {
-      streamBoard(options.repoRoot, res, pollMs);
+      withStreamCap(res, () => streamBoard(options.repoRoot, res, pollMs));
       return;
     }
     if ('html' in result) {

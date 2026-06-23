@@ -43,6 +43,11 @@
     const d = new Date(iso);
     return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
   };
+
+  // Recommendation is a wide enum (build_now, refine_first, …) — humanize the
+  // snake_case for display rather than enumerate every value in the catalog.
+  const humanize = (s: string): string =>
+    s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 </script>
 
 <h1>{t('plans.title')}</h1>
@@ -64,7 +69,7 @@
               <button class="row" onclick={() => toggle(plan.id)}>
                 <span class="caret">{openId === plan.id ? '▾' : '▸'}</span>
                 <span class="ttl">{plan.task}</span>
-                <span class="st st-{plan.status}">{plan.status}</span>
+                <span class="st st-{plan.status}">{t('plan.status.' + plan.status)}</span>
                 <span class="faint when">{when(plan.created)}</span>
               </button>
               {#if openId === plan.id}
@@ -86,10 +91,10 @@
             <li class="dcard">
               <div class="drow">
                 <span class="ttl">{d.title}</span>
-                <span class="st st-{d.status}">{d.status}</span>
+                <span class="st st-{d.status}">{t('discovery.status.' + d.status)}</span>
               </div>
               <div class="dmeta faint">
-                {#if d.recommendation}<span class="rec">{d.recommendation}</span>{/if}
+                {#if d.recommendation}<span class="rec">{humanize(d.recommendation)}</span>{/if}
                 {#if d.recommendedAutonomyLevel !== null}
                   <span>{t('plans.readiness', { level: d.recommendedAutonomyLevel })}</span>
                 {/if}

@@ -159,6 +159,53 @@ describe('dashboard-data (store → DTO mappers)', () => {
     expect(card?.checklist.filter((c) => c.status === 'completed')).toHaveLength(1);
   });
 
+  it('surfaces the NEWEST active run on the board when several are in flight', () => {
+    const provider = new LocalWorkItemProvider(repoRoot);
+    const item = provider.createWorkItem({ title: 'Re-run', status: 'in_progress' });
+    const manager = new RunManager(repoRoot);
+
+    const older = manager.createRun({
+      title: 'older',
+      autonomyLevel: 3,
+      workflow: 'agent-work',
+      executionStyle: 'careful',
+      workItemId: item.key,
+    });
+    manager.updateRecord(older.id, { status: 'running', startedAt: '2026-01-01T00:00:00.000Z' });
+    manager.appendEvent(
+      older.id,
+      createEvent({
+        runId: older.id,
+        type: 'task_update',
+        payload: { tasks: [{ id: 'o', text: 'old run task', status: 'in_progress' }] },
+      }),
+    );
+
+    const newer = manager.createRun({
+      title: 'newer',
+      autonomyLevel: 3,
+      workflow: 'agent-work',
+      executionStyle: 'careful',
+      workItemId: item.key,
+    });
+    manager.updateRecord(newer.id, { status: 'running', startedAt: '2026-02-01T00:00:00.000Z' });
+    manager.appendEvent(
+      newer.id,
+      createEvent({
+        runId: newer.id,
+        type: 'task_update',
+        payload: { tasks: [{ id: 'n', text: 'new run task', status: 'in_progress' }] },
+      }),
+    );
+
+    const card = buildBoard(repoRoot)
+      .lanes.find((l) => l.lane === 'in_progress')
+      ?.items.find((i) => i.key === item.key);
+    // The board must reflect the most recent run, not whatever listRuns yields first.
+    expect(card?.activeRunId).toBe(newer.id);
+    expect(card?.checklist.map((c) => c.text)).toEqual(['new run task']);
+  });
+
   it('shows no checklist when the run is finished (not active)', () => {
     const provider = new LocalWorkItemProvider(repoRoot);
     const item = provider.createWorkItem({ title: 'Done work', status: 'done' });

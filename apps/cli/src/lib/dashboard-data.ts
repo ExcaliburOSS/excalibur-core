@@ -162,7 +162,9 @@ export function buildBoard(repoRoot: string): BoardResponse {
   const manager = new RunManager(repoRoot);
   // Read every run ONCE and bucket by work item, instead of re-scanning all runs
   // per card (`runsForWorkItem` calls `listRuns()` each time → O(items×runs) on
-  // every 4s board poll). `listRuns()` is newest-first, so each bucket is too.
+  // every 4s board poll). `listRuns()` is NOT guaranteed newest-first (it sorts
+  // by id ascending = oldest-first), so each bucket is sorted newest-first below
+  // to match `runsForWorkItem` — the active-run pick depends on that order.
   const runsByItem = new Map<string, LocalRun[]>();
   for (const run of manager.listRuns()) {
     const wid = run.record.workItemId;
@@ -170,6 +172,9 @@ export function buildBoard(repoRoot: string): BoardResponse {
     const bucket = runsByItem.get(wid);
     if (bucket === undefined) runsByItem.set(wid, [run]);
     else bucket.push(run);
+  }
+  for (const bucket of runsByItem.values()) {
+    bucket.sort((a, b) => b.record.startedAt.localeCompare(a.record.startedAt)); // newest first
   }
   const lanes: DashboardBoardLane[] = provider.board().map((column) => ({
     lane: column.lane,

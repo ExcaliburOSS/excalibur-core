@@ -24,6 +24,7 @@
   let inFlight = false; // guards against overlapping/clobbering polls
   let timer: ReturnType<typeof setInterval> | null = null;
   let es: EventSource | null = null;
+  let reconnect: ReturnType<typeof setTimeout> | null = null;
 
   /** Refresh the board; quiet (no spinner) on the auto-poll path. */
   async function load(quiet = false): Promise<void> {
@@ -62,13 +63,24 @@
         /* ignore a malformed frame */
       }
     });
+    stream.onopen = () => stopPoll(); // SSE is back → drop the temporary poll
     stream.onerror = () => {
-      // SSE dropped — fall back to a periodic poll until reconnected.
+      // SSE dropped — poll meanwhile AND try to re-attach so the board returns
+      // to push updates without a manual refresh.
       stream.close();
       es = null;
       startPoll();
+      scheduleReconnect();
     };
     es = stream;
+  }
+
+  function scheduleReconnect(): void {
+    if (reconnect !== null || !live) return;
+    reconnect = setTimeout(() => {
+      reconnect = null;
+      if (live && es === null) connect();
+    }, 5000);
   }
 
   function startPoll(): void {
@@ -93,6 +105,10 @@
       es?.close();
       es = null;
       stopPoll();
+      if (reconnect !== null) {
+        clearTimeout(reconnect);
+        reconnect = null;
+      }
     }
   }
 
@@ -106,9 +122,17 @@
   onDestroy(() => {
     stopPoll();
     es?.close();
+    if (reconnect !== null) clearTimeout(reconnect);
   });
 
   const laneLabel = (lane: string): string => t(`lane.${lane}`);
+
+  /** Keyboard-accessible alternative to drag: move a card to the adjacent lane. */
+  function moveAdjacent(item: WorkItemSummary, dir: -1 | 1): void {
+    const idx = LANES.indexOf(item.lane);
+    const target = LANES[idx + dir];
+    if (target !== undefined) void moveTo(item.key, target);
+  }
 
   /** Optimistically move a card to a lane, then persist; revert (reload) on failure. */
   async function moveTo(key: string, lane: DashboardLane): Promise<void> {
@@ -150,7 +174,9 @@
       copied = true;
       setTimeout(() => (copied = false), 1500);
     } catch {
-      /* clipboard blocked — ignore */
+      // Clipboard blocked (no permission / insecure context) — surface the URL
+      // so the user can copy it by hand instead of failing silently.
+      staleError = `${t('board.copyFailed')} ${window.location.href}`;
     }
   }
 
@@ -186,7 +212,13 @@
     {/if}
   </div>
   <div class="right">
-    <button class="toggle" class:on={live} onclick={() => goLive(!live)} title="Live updates">
+    <button
+      class="toggle"
+      class:on={live}
+      onclick={() => goLive(!live)}
+      title={t('board.liveUpdates')}
+      aria-pressed={live}
+    >
       <span class="dot" class:pulse={live}></span>
       {live ? t('board.live') : t('board.paused')}
     </button>
@@ -295,6 +327,31 @@
                   </span>
                 {/if}
                 <span class="grow"></span>
+                {#if writable}
+                  <!-- Keyboard-accessible alternative to drag-and-drop. -->
+                  <button
+                    class="move"
+                    disabled={LANES.indexOf(item.lane) === 0}
+                    title={t('board.moveLeft')}
+                    aria-label={t('board.moveLeft')}
+                    onclick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      moveAdjacent(item, -1);
+                    }}>◀</button
+                  >
+                  <button
+                    class="move"
+                    disabled={LANES.indexOf(item.lane) === LANES.length - 1}
+                    title={t('board.moveRight')}
+                    aria-label={t('board.moveRight')}
+                    onclick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      moveAdjacent(item, 1);
+                    }}>▶</button
+                  >
+                {/if}
                 {#if item.assignee}<span class="who faint">@{item.assignee}</span>{/if}
                 {#if item.runCount > 0}
                   <span class="runs faint">{t('board.runs', { n: item.runCount })}</span>
@@ -482,6 +539,23 @@
   }
   .start:hover {
     background: var(--accent-dim);
+  }
+  .move {
+    font-size: 10px;
+    line-height: 1;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 2px 5px;
+  }
+  .move:hover:not(:disabled) {
+    color: var(--text);
+    border-color: var(--line-strong);
+  }
+  .move:disabled {
+    opacity: 0.3;
+    cursor: default;
   }
   .top {
     display: flex;
