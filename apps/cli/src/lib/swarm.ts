@@ -110,6 +110,20 @@ export function asAllocationSubtasks(subtasks: ReadonlyArray<SwarmSubtask>): Sub
   return subtasks.map((s) => ({ id: s.id, title: s.title }));
 }
 
+/**
+ * AO2 auto-orchestration shape decision (pure). A build is parallelized into a
+ * swarm only when it lives in a git repo — lanes need isolated worktrees to
+ * merge — AND the task decomposed into ≥2 INDEPENDENT subtasks. Otherwise it
+ * runs as a single focused sequential run. Excalibur makes this call itself; the
+ * user never picks or sizes the shape.
+ */
+export function chooseBuildShape(input: {
+  isRepo: boolean;
+  subtaskCount: number;
+}): 'swarm' | 'sequential' {
+  return input.isRepo && input.subtaskCount >= 2 ? 'swarm' : 'sequential';
+}
+
 /** A lane's execution summary (events folded into counts). */
 export interface SwarmLaneSummary {
   costCents: number | null;
@@ -250,6 +264,11 @@ export interface SwarmFlowContext {
 
 export interface SwarmFlowOptions {
   maxAgents?: number;
+  /** Pre-decomposed subtasks. When provided the flow SKIPS its own decomposition
+   * and uses these directly — so an auto-orchestrator that already decided the
+   * task is parallelizable does not pay for (or risk diverging on) a second
+   * decomposition. Omitted → the flow decomposes `task` itself. */
+  subtasks?: ReadonlyArray<SwarmSubtask>;
   /** Apply the merged diff without prompting. */
   apply?: boolean;
   /** Skip prompts and accept safe defaults. */
@@ -280,12 +299,19 @@ export async function runSwarmFlow(
 ): Promise<void> {
   const signalOpt = options.signal !== undefined ? { signal: options.signal } : {};
 
-  deps.ui.info(deps.t('swarm.decomposing'));
-  const subtasks = await decomposeTask(ctx.gateway, task, {
-    provider: ctx.providerName,
-    ...(options.maxAgents !== undefined ? { maxSubtasks: options.maxAgents } : {}),
-    ...signalOpt,
-  });
+  // Use caller-supplied subtasks when the orchestrator already decomposed (AO2);
+  // otherwise decompose here (the `excalibur swarm` / `/swarm` entry points).
+  let subtasks: ReadonlyArray<SwarmSubtask>;
+  if (options.subtasks !== undefined && options.subtasks.length > 0) {
+    subtasks = options.subtasks;
+  } else {
+    deps.ui.info(deps.t('swarm.decomposing'));
+    subtasks = await decomposeTask(ctx.gateway, task, {
+      provider: ctx.providerName,
+      ...(options.maxAgents !== undefined ? { maxSubtasks: options.maxAgents } : {}),
+      ...signalOpt,
+    });
+  }
 
   const allocation = planAgentAllocation({
     taskType: 'feature',

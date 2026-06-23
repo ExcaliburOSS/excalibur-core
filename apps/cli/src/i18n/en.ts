@@ -764,6 +764,16 @@ export const EN: Catalog = {
     'This looks parallelizable — fan it out to a swarm of real agents (/swarm)?',
   'repl.route-research-offer':
     'This looks like a research question — run deep web research with cited sources?',
+  // Auto-routing notices (shown under autonomy instead of the offer above — the
+  // shape is chosen and executed automatically; the user never types a command).
+  'repl.route-goal-auto':
+    'Auto-routing: pursuing this as a goal across turns until an evaluator says it is done (max {max}).',
+  'repl.route-bg-auto': 'Auto-routing: running this in the background so you can keep working.',
+  'repl.route-swarm-auto': 'Auto-routing: fanning this out to a swarm of parallel agents.',
+  'repl.route-research-auto': 'Auto-routing: running deep web research with cited sources.',
+  'repl.auto-build-parallel':
+    'Auto-orchestrating: {count} independent workstreams → a parallel swarm.',
+  'repl.auto-build-sequential': 'Auto-orchestrating: a single workstream → one focused run.',
   // deep research (F7)
   'research.network-off':
     'Network is disabled (permissions.network.mode = off). Enable it to research the web.',

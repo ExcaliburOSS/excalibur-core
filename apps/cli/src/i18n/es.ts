@@ -789,6 +789,18 @@ export const ES: Catalog = {
     'Esto parece paralelizable — ¿lo reparto en un swarm de agentes reales (/swarm)?',
   'repl.route-research-offer':
     'Esto parece una pregunta de investigación — ¿hago investigación web profunda con fuentes citadas?',
+  // Avisos de auto-enrutado (se muestran bajo autonomía en lugar del offer de
+  // arriba — la forma se elige y ejecuta sola; el usuario nunca teclea un comando).
+  'repl.route-goal-auto':
+    'Auto-enrutado: lo persigo como objetivo a lo largo de los turnos hasta que un evaluador diga que está hecho (máx {max}).',
+  'repl.route-bg-auto':
+    'Auto-enrutado: lo ejecuto en segundo plano para que puedas seguir trabajando.',
+  'repl.route-swarm-auto': 'Auto-enrutado: lo reparto en un swarm de agentes en paralelo.',
+  'repl.route-research-auto': 'Auto-enrutado: investigación web profunda con fuentes citadas.',
+  'repl.auto-build-parallel':
+    'Auto-orquestando: {count} flujos de trabajo independientes → un swarm en paralelo.',
+  'repl.auto-build-sequential':
+    'Auto-orquestando: un solo flujo de trabajo → una ejecución enfocada.',
   // investigación profunda (F7)
   'research.network-off':
     'La red está desactivada (permissions.network.mode = off). Actívala para investigar en la web.',

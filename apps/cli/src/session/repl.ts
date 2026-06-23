@@ -43,7 +43,7 @@ import {
   safetyLine,
 } from '../lib/context';
 import { runDiscoveryFlow } from '../commands/discovery';
-import { runSwarmFlow } from '../lib/swarm';
+import { chooseBuildShape, decomposeTask, runSwarmFlow } from '../lib/swarm';
 import { runResearchFlow } from '../lib/research';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
 import { buildSessionLog, formatSessionLog } from '../lib/session-log';
@@ -610,45 +610,72 @@ export async function runInteractiveSession(
               classifyIntent,
             );
 
-      // Offer the heavier routes BEFORE claiming the turn (decline → direct turn).
+      // The heavier routes (goal/bg/swarm/research/plan) are EXECUTION SHAPES
+      // Excalibur picks itself — never commands the user types. Under auto
+      // (zero-prompts / high autonomy) it AUTO-ROUTES: no question, just a
+      // non-blocking notice, exactly like `plan` already did. Otherwise it OFFERS
+      // (decline → a plain turn). `acceptRoute` encodes that one rule.
+      const auto = runtime.approvals.auto;
+      const acceptRoute = async (
+        offerKey: string,
+        autoNoticeKey: string,
+        vars?: Record<string, string | number>,
+      ): Promise<boolean> => {
+        if (auto) {
+          deps.ui.info(deps.t(autoNoticeKey, vars));
+          return true;
+        }
+        return deps.ui.confirm(deps.t(offerKey, vars), { defaultYes: true });
+      };
+
       let asGoal = false;
       if (intent === 'goal') {
-        asGoal = await deps.ui.confirm(deps.t('repl.goal-offer', { max: GOAL_MAX_ITERATIONS }), {
-          defaultYes: true,
+        asGoal = await acceptRoute('repl.goal-offer', 'repl.route-goal-auto', {
+          max: GOAL_MAX_ITERATIONS,
         });
       }
-      if (!asGoal && intent === 'bg') {
-        if (await deps.ui.confirm(deps.t('repl.route-bg-offer'), { defaultYes: true })) {
-          handleBgCommand(deps, runtime, text, bgControllers);
-          printStatusLine(deps, runtime);
-          continue;
-        }
+      if (
+        !asGoal &&
+        intent === 'bg' &&
+        (await acceptRoute('repl.route-bg-offer', 'repl.route-bg-auto'))
+      ) {
+        handleBgCommand(deps, runtime, text, bgControllers);
+        printStatusLine(deps, runtime);
+        continue;
       }
       const asSwarm =
         !asGoal &&
         intent === 'swarm' &&
-        (await deps.ui.confirm(deps.t('repl.route-swarm-offer'), { defaultYes: true }));
+        (await acceptRoute('repl.route-swarm-offer', 'repl.route-swarm-auto'));
       const asResearch =
         !asGoal &&
         !asSwarm &&
         intent === 'research' &&
-        (await deps.ui.confirm(deps.t('repl.route-research-offer'), { defaultYes: true }));
+        (await acceptRoute('repl.route-research-offer', 'repl.route-research-auto'));
 
       const ctrl = beginTurn();
       try {
         if (asGoal) {
           await executeGoalLoop(deps, runtime, text, seed, ctrl.signal);
-        } else if (asSwarm) {
-          await handleSwarmCommand(deps, runtime, text, ctrl.signal);
         } else if (asResearch) {
           // F7: the native multi-agent research pipeline (search → fetch →
           // verify → cited synthesis).
           await runResearchFlow(deps, text, {});
-        } else if (intent === 'plan' && !runtime.approvals.auto) {
+        } else if (auto && (asSwarm || intent === 'plan')) {
+          // AO2 — under auto, a build (plan- OR swarm-classified) is AUTO-ORCHESTRATED:
+          // Excalibur decomposes it and DERIVES the shape (≥2 independent
+          // workstreams → a parallel auto-sized swarm, else one focused run). No
+          // gate, no command — the planner and the parallelizer fused.
+          await dispatchAutoBuild(deps, runtime, text, ctrl.signal, seed);
+        } else if (asSwarm) {
+          // Non-auto, user accepted the offer → the full interactive swarm flow.
+          await handleSwarmCommand(deps, runtime, text, ctrl.signal);
+        } else if (intent === 'plan') {
+          // Non-auto plan → the deliberate plan → approve → execute gate.
           await dispatchPlan(deps, runtime, text, ctrl.signal, seed);
         } else {
-          // chat · research-declined · plan-under-auto → a direct model-first
-          // turn (the model still has web_search/web_fetch/research tools).
+          // chat · research-declined → a direct model-first turn (the model still
+          // has web_search/web_fetch/research tools).
           await dispatchAgentTurn(deps, runtime, text, ctrl.signal, seed);
         }
       } catch (error) {
@@ -1111,6 +1138,54 @@ async function dispatchPlan(
   if (plan.execution !== null) {
     await recordAssistantTurn(deps, runtime, plan.execution);
   }
+}
+
+/**
+ * AO2 — the auto-orchestrator. Under autonomy a build is executed WITHOUT the
+ * user choosing or sizing the shape: Excalibur decomposes the task and DERIVES
+ * it. ≥2 INDEPENDENT workstreams (and a git repo, needed for isolated worktrees)
+ * → a parallel, auto-sized swarm that merges + applies; otherwise a single
+ * focused run. This is where the planner and the parallelizer are fused — one
+ * decision, no command. Any probe failure falls back to the sequential run (the
+ * directive is to always do the work, never dead-end).
+ */
+async function dispatchAutoBuild(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  text: string,
+  signal: AbortSignal,
+  seed: ChatMessage[],
+): Promise<void> {
+  const isRepo = getGitInfo(runtime.repoRoot).isRepo;
+  if (isRepo) {
+    try {
+      const gateway = loadGatewayContext(runtime.repoRoot);
+      requireConfiguredModel(gateway, deps.t); // a swarm of mock agents is pointless
+      const subtasks = await decomposeTask(gateway.gateway, text, {
+        provider: gateway.providerName,
+        signal,
+      });
+      if (chooseBuildShape({ isRepo, subtaskCount: subtasks.length }) === 'swarm') {
+        deps.ui.info(deps.t('repl.auto-build-parallel', { count: subtasks.length }));
+        await runSwarmFlow(
+          deps,
+          runtime.repoRoot,
+          text,
+          {
+            gateway: gateway.gateway,
+            providerName: gateway.providerName,
+            config: runtime.config,
+          },
+          { subtasks, yes: true, signal },
+        );
+        return;
+      }
+    } catch (error) {
+      deps.ui.warn(error instanceof Error ? error.message : String(error));
+    }
+  }
+  deps.ui.info(deps.t('repl.auto-build-sequential'));
+  await dispatchAgentTurn(deps, runtime, text, signal, seed);
 }
 
 /**
