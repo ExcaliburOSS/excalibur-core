@@ -47,7 +47,9 @@ read-only `--share`) · **publishable extension SDK** (`@excalibur-oss/extension
   (plan- OR swarm-classified) goes through `dispatchAutoBuild` → `decomposeTask`
   - the pure `chooseBuildShape({isRepo,subtaskCount})` → ≥2 independent
     workstreams → parallel auto-sized swarm (merge+apply), else one sequential run.
-    `runSwarmFlow` takes pre-decomposed `subtasks`. Verified real vs Groq.
+    `runSwarmFlow` takes pre-decomposed `subtasks`. Verified real vs **Kimi**
+    (`kimi-k2.7-code`): a 2-file task decomposed into 2 independent lanes, ran 2
+    worktree agents, merged + applied.
 - **AO3 — mixed dependency-graph executor** [Core][auto] — PENDING refinement:
   today AO is FLAT (independent→swarm | else→sequential) and fires only under
   `approvals.auto`. Build a true staged DAG (phase A sequential → B+C parallel →
