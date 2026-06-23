@@ -44,20 +44,20 @@ phases: # at least one
     output: summary.md
 ```
 
-## Phase types (what the M1 engine does)
+## Phase types (what the engine does)
 
-| `type`                  | Behavior                                                                                                                                                |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `assistant_interaction` | Chat turn via the model gateway; writes the phase `output` artifact.                                                                                    |
-| `agent_output`          | Model-generated artifact (plan, summary, review notes) → `output` file.                                                                                 |
-| `agent_review`          | Review pass over the work so far → `output` (e.g. `review.md`).                                                                                         |
-| `agent_work`            | Delegates to the agent adapter and streams its events; collects the generated diff.                                                                     |
-| `patch_generation`      | Produces a unified diff → `diff.patch` + `patch_generated` event.                                                                                       |
-| `command_group`         | Runs the phase `commands` (or the configured project commands with `commandsFromConfig: true`). M1 simulates execution: events carry `simulated: true`. |
-| `human_approval`        | Emits `approval_requested` and waits for confirmation; a denied **required** approval cancels the run.                                                  |
-| `apply_patch`           | Confirms, then applies the patch (M1: `patch_applied { simulated: true }`).                                                                             |
-| `pull_request`          | Drafts `pr-summary.md`.                                                                                                                                 |
-| `discovery_questions`   | Runs the guided Discovery question pack (Discovery workflow only).                                                                                      |
+| `type`                  | Behavior                                                                                                                                                                                                              |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `assistant_interaction` | Chat turn via the model gateway; writes the phase `output` artifact.                                                                                                                                                  |
+| `agent_output`          | Model-generated artifact (plan, summary, review notes) → `output` file.                                                                                                                                               |
+| `agent_review`          | Review pass over the work so far → `output` (e.g. `review.md`).                                                                                                                                                       |
+| `agent_work`            | Delegates to the agent adapter and streams its events; collects the generated diff.                                                                                                                                   |
+| `patch_generation`      | Produces a unified diff → `diff.patch` + `patch_generated` event.                                                                                                                                                     |
+| `command_group`         | Runs the phase `commands` (or the configured project commands with `commandsFromConfig: true`) as **real** processes, gated by the Permission Engine, emitting `command_started`/`command_completed` + `test_result`. |
+| `human_approval`        | Emits `approval_requested` and waits for confirmation; a denied **required** approval cancels the run.                                                                                                                |
+| `apply_patch`           | Confirms, then **applies the patch** to the working tree and emits `patch_applied`.                                                                                                                                   |
+| `pull_request`          | Drafts `pr-summary.md`.                                                                                                                                                                                               |
+| `discovery_questions`   | Runs the guided Discovery question pack (Discovery workflow only).                                                                                                                                                    |
 
 ## Phase fields
 

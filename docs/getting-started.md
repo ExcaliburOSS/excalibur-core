@@ -1,8 +1,8 @@
 # Getting started
 
-Excalibur Core works in minutes, without choosing methodologies, workflows or policies first. This guide walks through the first session in a real repository.
+Excalibur Core works in minutes, without choosing methodologies, workflows or policies first. The primary way to use it is the **interactive shell** — run `excalibur` with no arguments and just describe the work; every capability is also a one-shot subcommand. This guide walks through the first session in a real repository.
 
-> **Models & safety.** Excalibur drives **real models** out of the box once you point it at one — `anthropic`, `openai-compatible` (incl. vLLM, OpenRouter and custom OpenAI-style endpoints) and `ollama`, with streaming, real token/cost accounting and secret redaction (see [providers.md](providers.md)). With no provider configured it falls back to a built-in deterministic **mock** so you can try every command offline with no API key — its output is always prefixed `> Mock provider`, so it's never mistaken for a real answer. Real runs **do** edit files and run commands — but never without your approval and the Permission Engine's safety floor (see [security.md](security.md)).
+> **Models & safety.** Excalibur drives **real models** — `anthropic`, `openai-compatible` (incl. Azure OpenAI, vLLM, OpenRouter and custom OpenAI-style endpoints) and `ollama`, with streaming, real token/cost accounting and secret redaction (see [providers.md](providers.md)). Onboarding always wires up a real provider (or free local Ollama), so an interactive user never runs against a fake. A built-in deterministic **mock** exists only as a CI test double and the explicit non-interactive offline hatch — its output is always prefixed `> Mock provider`, so it's never mistaken for a real answer. Real runs **do** edit files and run commands — but never without your approval and the Permission Engine's safety floor (see [security.md](security.md)).
 
 ## 1. Build the CLI
 

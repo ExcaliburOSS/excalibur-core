@@ -104,14 +104,17 @@ excalibur extensions validate
 excalibur extensions doctor
 ```
 
-## Honest M1 status
+## Current status
 
 The loader loads and validates your provider today, and `MockWorkItemProvider`
-(in `@excalibur/work-items`) shows the expected behavior and is ideal for
-tests. But the M1 mock loop does not call work-item APIs during runs —
-webhook/comment-driven flows (`@excalibur refine` on a ticket, etc.) activate
-with the work-items milestone (M4). Build and test the provider now; it
-starts being exercised then.
+(in `@excalibur/work-items`) shows the expected behavior and is ideal for tests.
+Work items themselves are **live**: the native local store (`WI-<n>.json`), the
+`work-items` CLI and the dashboard kanban all ship, and runs link to a work item
+(`work-items run <key>`). The piece still landing (P2.16) is the **remote**
+provider path — your extension's provider calling Linear/Jira APIs and
+webhook/comment-driven flows (`@excalibur refine` on a ticket). Build and test
+the provider now against the stable interface; it starts being exercised by the
+run loop when remote intake lands.
 
 See [testing-extensions.md](./testing-extensions.md) for testing patterns and
 [security-model.md](./security-model.md) for credential rules.

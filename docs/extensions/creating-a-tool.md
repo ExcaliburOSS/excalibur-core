@@ -100,11 +100,13 @@ cd .excalibur/extensions/fetch-ticket && npm install && npm run build
 excalibur extensions validate
 ```
 
-## Honest M1 status
+## Execution in the agent loop
 
-Registered tools load and validate today, but M1 runs do not execute
-extension tools (M1 runs never execute real commands at all — events are
-simulated). Tool execution inside runs activates when real agent execution
-lands (M3). Implement and unit-test `execute()` now — calling it directly in
-vitest with a hand-built `ToolContext` works today (see
-[testing-extensions.md](./testing-extensions.md)).
+Registered tools are **callable by the model inside real agentic runs today**:
+the native agent adapter exposes your extension's tools alongside the built-in
+ones, the model can invoke them, and your `execute()` runs with the
+`ToolContext` (logger, config, working directory) the host provides. Read-only
+tools are also available to read-only roles. You can still unit-test `execute()`
+directly in vitest with a hand-built `ToolContext` (see
+[testing-extensions.md](./testing-extensions.md)) — that is the fastest inner
+loop — but the same tool now also runs end-to-end in a `run`.

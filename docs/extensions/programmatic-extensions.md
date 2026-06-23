@@ -98,7 +98,7 @@ The well-known hook names (`EXCALIBUR_HOOKS`):
 failures**: a throwing handler never breaks the emitting run; errors are
 collected on the registry (`errors()`).
 
-## Loading semantics (M1)
+## Loading semantics
 
 - The loader reads your manifest, `require()`s the compiled entrypoint and
   checks it exports a `defineExtension` result. Failures (missing entrypoint,
@@ -108,11 +108,18 @@ collected on the registry (`errors()`).
 - Programmatic contribution names listed in the manifest's `contributes`
   (e.g. `agentAdapters: [acme-agent]`) are registered in the contribution
   registry pointing at your extension.
-- Honest M1 status: providers/adapters/tools are loaded and validated, but
-  the mock loop does not call external systems yet. Real work-item and model
-  providers activate in M2–M4, external agent execution in M3, tool execution
-  inside runs after M1. Write the real implementation now — the interfaces
-  are stable — and keep honest error messages for paths that cannot run yet.
+- Contributions are **live**: extension **tools** are callable by the model in
+  real agentic runs, **model providers** and **agent adapters** drive real runs,
+  and **context sources / reports / policies** are consulted by the engine. Real
+  streaming model calls, real file mutation and real command execution all ship
+  today. Remote **work-item** and **communication** providers (Linear/Jira,
+  Slack/Teams) are the integrations still landing — write to the stable
+  interfaces now and keep honest error messages only for paths a given
+  deployment hasn't wired up.
+- When `config.extensions.enforce` is on, a local/third-party extension whose
+  manifest over-reaches (wildcard network, writes outside `.excalibur/`, denied
+  capability, lock drift) is **blocked before its entrypoint is `require()`d** —
+  so declare the minimum permissions you actually need.
 
 ## Testing and security
 

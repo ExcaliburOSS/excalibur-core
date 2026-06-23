@@ -72,9 +72,11 @@ nothing consumes it yet — but you can make it future-proof:
 - pin `@excalibur-oss/extension-sdk` as a regular dependency and follow semver:
   the contribution interfaces are stable, and breaking manifest changes will
   be versioned;
-- declare accurate `permissions` — when enforcement lands (M5) and the npm
-  registry flow lands (M8), undeclared access will be denied, and
-  well-declared extensions will pass review without changes.
+- declare accurate, minimal `permissions` — permission enforcement ships
+  today (`extensions.enforce` with capability allow/deny and version locks), so
+  a project that turns it on will **deny** an extension whose manifest
+  over-reaches; well-declared extensions keep loading without changes (and will
+  pass review when the npm registry flow lands in M8).
 
 When M8 lands, `excalibur extensions install <name>` from npm plus
 enterprise-managed distribution (org/team/repo enablement, version

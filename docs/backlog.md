@@ -123,9 +123,10 @@ agents list|show|init` + `run --agent <name>`. The allowlist only NARROWS the
 --from-github-issue`, today stubs) [Core][cred] — M4. _(real `pr-create` already shipped — drives `gh pr create`.)_
 17. **M4c Slack/Teams + scheduled agile jobs** (BullMQ daily/weekly; today manual triggers)
     [Ent][cred] — M4c.
-18. **M5 extension permission enforcement** (WARN-only → hard-block), **version locks**,
-    **enterprise-managed extensions**, **central skill approval**, **instruction-source
-    audit** [Core/Ent] — M5 (Core parts [auto]).
+18. **M5 extension permission enforcement** ✅ DONE (P2.18, Core): `extensions.enforce`
+    hard-block + capability allow/deny, **version locks** ✅, **central skill approval** ✅
+    (`skills.approval`). PENDING: **enterprise-managed extensions** + **instruction-source
+    audit** [Ent].
 19. **Public session sharing** (`/share`→link; manual/auto/disabled) [Core][cred] — OC-P2.
     Needs a hosting decision.
 20. **Cloud-enterprise model auth** (Bedrock/Azure/Vertex) [Core][auto] — OC-P2.

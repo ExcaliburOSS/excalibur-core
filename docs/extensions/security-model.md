@@ -23,9 +23,11 @@ content:
 ## Programmatic extensions are code running with your privileges
 
 A local programmatic extension's compiled entrypoint is loaded with
-`require()` **in-process**. In M1 there is no sandbox: it can do anything
-your user account can do, at load time. Treat installing a programmatic
-extension exactly like adding an npm dependency:
+`require()` **in-process**: there is no OS-level sandbox, so an extension whose
+entrypoint Excalibur runs can do anything your user account can do at load time.
+Permission **enforcement** (below) hard-blocks an over-reaching extension
+_before_ its entrypoint is required — but once an extension is allowed to load,
+treat installing it exactly like adding an npm dependency:
 
 - Read the source (or build from source you trust) before
   `excalibur extensions install`.
@@ -57,15 +59,14 @@ permissions:
     env: [LINEAR_API_KEY]
 ```
 
-### M1: validation and warnings (honest status)
+### Validation (always on) and enforcement (opt-in, ships today)
 
-In M1, permissions are **declared and validated, not enforced**.
-`validatePermissions` (run automatically by the loader and by
-`excalibur extensions validate` / `doctor`) warns about:
+**Validation** always runs. `validatePermissions` (invoked automatically by the
+loader and by `excalibur extensions validate` / `doctor`) warns about:
 
 - wildcard network hosts (`*` anywhere in a host);
 - filesystem **write** patterns outside `.excalibur/` (broad write access is
-  high-risk and will require approval once enforcement lands);
+  high-risk);
 - wildcard `process.allowedCommands`;
 - `secrets.env` entries that do not look like environment variable names
   (UPPER*SNAKE_CASE) — a guard against secret \_values* leaking into
@@ -76,9 +77,24 @@ In M1, permissions are **declared and validated, not enforced**.
 - programmatic extensions declaring `capabilities` without any backing
   `permissions`.
 
-Strict enforcement arrives with the Enterprise permission engine in M5.
-Declaring accurate permissions today means your extension keeps working when
-undeclared access starts being denied.
+**Enforcement** turns those warnings into a hard block. Set it in
+`.excalibur/config.yaml`:
+
+```yaml
+extensions:
+  enforce: true # refuse a violating extension — its code never runs
+  allowedCapabilities: [work_items.read, work_items.comment]
+  deniedCapabilities: [secrets.read]
+  locks: { acme-agent: 1.2.0 } # pin exact versions; a drift is blocked
+```
+
+Under `enforce`, a local/third-party extension that requests wildcard network,
+writes outside `.excalibur/`, reads high-risk paths, uses a denied or
+non-allowed capability, or drifts from its version lock is **blocked before its
+entrypoint is `require()`d** — so its code never executes. First-party built-ins
+are exempt. Declaring accurate, minimal permissions means your extension keeps
+loading when a project turns enforcement on. Excalibur Enterprise adds the same
+controls centrally (org/team/repo policy, hosted secrets, audit logs).
 
 ## Secrets
 
@@ -114,6 +130,8 @@ be disabled by id too (e.g. `core-prompts`).
 ## OSS vs Enterprise
 
 OSS Excalibur is local-first: local declarative + local programmatic +
-built-ins, validation, scaffolding. Excalibur Enterprise (M5+) adds central
-management: org/team/repo enablement, enforced permissions, hosted secrets,
-version pinning and audit logs.
+built-ins, validation, **opt-in permission enforcement** (`extensions.enforce`
+with capability allow/deny and version locks) and scaffolding. Excalibur
+Enterprise adds the same controls **centrally**: org/team/repo enablement,
+org-managed enforced permissions, hosted secrets, fleet-wide version pinning
+and audit logs.

@@ -157,7 +157,7 @@ built-in catalog. See [docs/configuration.md](docs/configuration.md).
 
 ```bash
 npm install @excalibur-oss/extension-sdk
-excalibur extensions init my-extension --type tool
+excalibur extensions create tool my-extension
 ```
 
 The built-in catalogs ship as extension packs through the same mechanism. See

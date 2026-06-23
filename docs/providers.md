@@ -12,7 +12,7 @@ The friendly way:
 excalibur models setup
 ```
 
-Pick a provider from the catalog — **Kimi K2 (Moonshot)** (recommended), **MiniMax**, **GLM (Zhipu / Z.ai)**, Anthropic, OpenAI, Google Gemini, DeepSeek, OpenRouter — plus free local **Ollama** (auto-detected when installed), a keyless **self-hosted** endpoint (vLLM/TGI/your own Qwen gateway), or "configure later". For a hosted provider you simply **paste your API key** (masked); Excalibur saves it to a global secrets store (`~/.config/excalibur/secrets.env`, mode `0600`) and loads it on every launch. `providers.yaml` records only the **name of the environment variable** that holds the key — never the value — so the committed config stays secret-free. Pasting one key auto-configures a curated good + fast model pair (`default` + `cheap`).
+Pick a provider from the catalog — **Kimi K2 (Moonshot)** (recommended), **MiniMax**, **GLM (Zhipu / Z.ai)**, Anthropic, OpenAI, Google Gemini, DeepSeek, OpenRouter, plus fast inference hosts **Groq**, **xAI (Grok)**, **Cerebras**, **Together** and **Fireworks** — plus free local **Ollama** (auto-detected when installed), a keyless **self-hosted** endpoint (vLLM/TGI/your own Qwen gateway), or "configure later". For a hosted provider you simply **paste your API key** (masked); Excalibur saves it to a global secrets store (`~/.config/excalibur/secrets.env`, mode `0600`) and loads it on every launch. `providers.yaml` records only the **name of the environment variable** that holds the key — never the value — so the committed config stays secret-free. Pasting one key auto-configures a curated good + fast model pair (`default` + `cheap`).
 
 The resulting file (OSS spec §14 format):
 
@@ -42,7 +42,7 @@ providers:
     type: mock
 ```
 
-Provider types: `openai-compatible`, `anthropic`, `ollama`, `vllm`, `custom`, `mock`. OpenRouter is `openai-compatible` with `baseUrl: https://openrouter.ai/api/v1`. The `default` and `cheap` keys are **role pointers** (each names a configured provider, not a provider itself): `default` is the main model, `cheap` the fast/low-cost one used for latency-sensitive roles (ghost-text, context compaction). Per-provider knobs like `extraBody`, `timeoutMs`, `maxRetries`, `apiVersion` and `organization` are also supported.
+Provider types: `openai-compatible`, `anthropic`, `ollama`, `vllm`, `custom`, `mock`. `vllm` and `custom` are convenience **aliases** of `openai-compatible` (same wire format) — use whichever reads clearer in your config. OpenRouter, Groq, xAI, Cerebras, Together and Fireworks are all `openai-compatible` with their own `baseUrl` (e.g. OpenRouter `https://openrouter.ai/api/v1`, Groq `https://api.groq.com/openai/v1`). The `default` and `cheap` keys are **role pointers** (each names a configured provider, not a provider itself): `default` is the main model, `cheap` the fast/low-cost one used for latency-sensitive roles (ghost-text, context compaction). Per-provider knobs like `extraBody`, `timeoutMs`, `maxRetries`, `apiVersion` and `organization` are also supported.
 
 ### Azure OpenAI
 

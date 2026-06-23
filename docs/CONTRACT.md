@@ -172,7 +172,7 @@ Per `docs/spec/extensions-spec.md` §3, §7, §8 and §6 (hooks). Pins:
 - `class ExtensionRegistry { extensions(): LoadedExtension[]; contributions: ContributionRegistry; hooks: HookRegistry }` where `LoadedExtension = { manifest: ExtensionManifest; source; dir: string | null; status: 'loaded'|'error'; error?: string }`.
 - `loadExtensions(input: { repoRoot: string; builtIns: ReadonlyArray<BuiltInExtensionPack> }): Promise<ExtensionRegistry>` — order: built-ins → project declarative files (scan `.excalibur/{methodologies,workflows,question-packs,prompts,artifacts,policies,models,reports,roles,command-mappings}` + `extensions.yaml` `declarative:` list) → local programmatic (`extensions.yaml` `local:` dirs and `.excalibur/extensions/*` with a manifest; `require(entrypoint)` of compiled JS only, errors recorded not thrown) → respects `enabled`/`disabled`.
 - `class HookRegistry` with `on/emit` per spec §6; emit awaits handlers sequentially, isolates handler errors (collects, never throws).
-- `validatePermissions(manifest): string[]` (warnings; enforcement comes in M5).
+- `validatePermissions(manifest): string[]` (warnings). _(M1 pin, since superseded: enforcement now ships in Core — `enforcePermissions(manifest, policy)` + `config.extensions.enforce` hard-block the load when set; P2.18.)_
 
 ### 4.6d `@excalibur-oss/extension-sdk`
 

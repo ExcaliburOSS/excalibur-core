@@ -92,15 +92,17 @@ Real external ticket↔code integration. Sub-phases: **M4** GitHub · **M4b** Li
   only today).
 * **Blocks:** needs GitHub App credentials, Linear/Jira API keys, Slack app.
 
-### M5 — Governance / SSO 🔴 PENDING (Enterprise-heavy)
+### M5 — Governance / SSO 🟡 PARTIAL (Core governance done; SSO + Enterprise pending)
 
-- **SSO** (beyond M1 API-key auth).
-- **Extension** permission **enforcement** — today `validatePermissions()` is
-  WARN-ONLY by design (`packages/extension-runtime/src/permissions.ts`); strict
-  hard-block lands here. _(NB: the **agent** runtime already hard-blocks via
-  `PermissionEngine` — that is separate from extension-manifest enforcement.)_
-- Extension **version locks**; enterprise-managed extensions; central skill approval;
-  per-run instruction-source audit + precedence enforcement.
+- **Extension permission enforcement** ✅ (Core, P2.18) — `config.extensions.enforce`
+  turns `validatePermissions()` warnings into a hard block _before_ the entrypoint
+  loads, with capability allow/deny lists. **Version locks** ✅ and **central skill
+  approval** ✅ (`config.skills.approval`) shipped alongside.
+  _(NB: the **agent** runtime already hard-blocks via `PermissionEngine` — separate
+  from this extension-manifest enforcement.)_
+- 🔴 PENDING: **SSO** (beyond API-key auth); **enterprise-managed** (org/team)
+  extensions; per-run instruction-source audit + precedence enforcement — all
+  Enterprise-side.
 
 ### M6 — Deploy / scale 🔴 PENDING (Enterprise + infra)
 
@@ -158,23 +160,28 @@ OpenCode. **Nearly all shipped.**
 > proxy/CA, programmable serve + ACP, IDE extension, M4 (GitHub App/Linear/Jira/Slack),
 > and the Enterprise milestones (M3-Ent, M5 SSO, M6 runners, M7 sync/CMUX, M8 GA).
 
-## Current state (2026-06-19) and what remains
+## Current state (2026-06-23) and what remains
 
 **Done:** M1 ✅ · M2 ✅ · M3 ✅ (Core) · the entire P0/P1/P2 competitive track ✅
-(except background/fleet). The Core product is real, hardened, ~1788 unit tests
-green, `verify:real` 31/31 vs real Kimi.
+including background/fleet (`/bg`, `/threads`, swarm). Also shipped in Core:
+the external-access stack (web_fetch/web_search/MCP, 1.2.0), the IDE extension,
+self-contained custom agents, the in-shell model picker + 5 new providers,
+**extension permission enforcement + version locks + skill approval** (M5
+governance for OSS), the OSS dashboard epic (D0–D5, `excalibur serve`), the
+native work-item store + kanban, and the published `@excalibur-oss/excalibur`
+and `@excalibur-oss/extension-sdk` packages on npm. The Core product is real,
+hardened, ~1800 unit tests green, `verify:real` green vs real Kimi.
 
 **Remaining, by what blocks it:**
 
-- **Needs your credentials / a go-decision:** M4 (GitHub App, Linear/Jira, Slack),
-  M8 (npm auth + publish go-ahead).
+- **Needs your credentials / a go-decision:** M4 (GitHub App, Linear/Jira remote
+  intake, Slack/Teams), cloud-enterprise model auth (Bedrock/Vertex), the VS Code
+  Marketplace publish, and the hosted public-share decision. (Azure OpenAI already
+  ships; npm publish is done.)
 - **Enterprise + infra (the `~/excalibur` repo):** M3-Enterprise (server-side real
-  agents+sandbox), M5 (SSO + policy/permission enforcement), M6 (hybrid/self-hosted
-  runners), M7 (IDE ext + sync maturation).
-- **Autonomous + verifiable now:** background/fleet sessions (P2); plus a known
-  documentation-debt task — the user-facing M1 docs (`getting-started.md`,
-  `providers.md`, `CONTRACT.md`, `security.md`, `autonomy-levels.md`) still describe
-  the all-mock M1 behavior and must be updated to reflect the shipped M2/M3 reality.
+  agents+sandbox), M5 **SSO** (extension enforcement already ships in Core),
+  M6 (hybrid/self-hosted runners), M7 (sync maturation + CMUX), the Manager web
+  (E1–E10).
 
 > **Process fix:** the master plan must always live here (`docs/ROADMAP.md`), in git —
 > never only in an ephemeral plan-mode scratch file.

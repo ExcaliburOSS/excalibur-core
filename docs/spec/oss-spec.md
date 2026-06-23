@@ -1,5 +1,15 @@
 # Excalibur Core — Open-Source Technical Specification
 
+> **Historical design spec.** This document defined the OSS architecture and
+> drove Excalibur Core through milestones **M1–M3, which are now shipped**. The
+> _interface and schema pins_ here remain binding, but the milestone-gated
+> _behavioral_ notes ("M1 uses the mock provider", "real providers arrive in
+> M2", "commands are simulated") describe the original phasing, not today's
+> behavior — real model calls, real file mutation, real command execution,
+> extension tool execution and opt-in permission enforcement all ship now. For
+> the current shipped status see [docs/ROADMAP.md](../ROADMAP.md); for the
+> binding contract see [docs/CONTRACT.md](../CONTRACT.md).
+
 Excalibur Core is a separate repository from Excalibur Enterprise, but tightly connected to it through shared schemas, workflow definitions, event formats, agent runtime interfaces, model provider adapters and configuration conventions.
 
 The purpose of Excalibur Core is to become the open-source, local-first developer toolkit for AI-assisted and agentic software development.

@@ -61,7 +61,7 @@ registers at runtime via the SDK:
 | `enterpriseSyncProviders` | `enterprise_sync_provider` (same)                                                   |
 
 `communicationHandlers` is also accepted for forward compatibility but has no
-contribution kind in M1.
+active contribution kind yet (Slack/Teams handlers are still landing).
 
 ## Example: declarative pack
 
@@ -138,11 +138,12 @@ permissions:
     env: [LINEAR_API_KEY]
 ```
 
-M1 validates declarations and emits warnings (wildcard hosts/commands,
-writes outside `.excalibur/`, unknown categories, declarative extensions
-declaring permissions, capabilities without permissions, suspicious
-`secrets.env` names). Enforcement lands in M5. Details in
-[security-model.md](./security-model.md).
+Validation always runs and emits warnings (wildcard hosts/commands, writes
+outside `.excalibur/`, unknown categories, declarative extensions declaring
+permissions, capabilities without permissions, suspicious `secrets.env` names).
+Setting `extensions.enforce: true` in `config.yaml` turns those into a hard
+block before the entrypoint loads — with capability allow/deny lists and exact
+version locks. Details in [security-model.md](./security-model.md).
 
 ## Validation
 

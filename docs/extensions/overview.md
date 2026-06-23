@@ -65,22 +65,26 @@ Conflict rules:
   `excalibur extensions list` and `excalibur extensions doctor`.
 
 `.excalibur/extensions.yaml` controls enablement: `disabled:` ids are
-skipped entirely (in M1 every discovered extension is enabled unless
-disabled; the `enabled:` list is advisory).
+skipped entirely (every discovered extension is enabled unless disabled; the
+`enabled:` list is advisory).
 
-## What works in M1 (today) vs later
+## What works today vs still landing
 
-| Capability                                                         | Status                                        |
-| ------------------------------------------------------------------ | --------------------------------------------- |
-| All 10 declarative types, loose files and packs                    | Works today                                   |
-| Manifest validation (`excalibur extensions validate`)              | Works today                                   |
-| Local programmatic extensions with a **compiled** entrypoint       | Works today (loaded and validated; see below) |
-| Contribution override rules, warnings, hooks registry              | Works today                                   |
-| Permission **validation** + warnings                               | Works today                                   |
-| Permission **enforcement**                                         | M5 (Enterprise policy engine)                 |
-| Real work-item/communication/model providers calling external APIs | M2–M4                                         |
-| External agent execution (custom command agents)                   | M3                                            |
-| Installing extensions from npm                                     | M8 (npm ecosystem milestone)                  |
+| Capability                                                        | Status                               |
+| ----------------------------------------------------------------- | ------------------------------------ |
+| All declarative types, loose files and packs                      | Works today                          |
+| Manifest validation (`excalibur extensions validate`)             | Works today                          |
+| Local programmatic extensions with a **compiled** entrypoint      | Works today (loaded, validated, run) |
+| Contribution override rules, warnings, hooks registry             | Works today                          |
+| Permission **validation** + warnings                              | Works today                          |
+| Permission **enforcement** (`extensions.enforce` + version locks) | Works today (opt-in)                 |
+| Extension **tools** callable by the model in agentic runs         | Works today                          |
+| Real **model providers** / **agent adapters** driving runs        | Works today                          |
+| Real file mutation + real command/test execution                  | Works today                          |
+| Remote **work-item** providers (Linear/Jira) over their APIs      | Landing (P2.16)                      |
+| **Communication** providers posting to Slack/Teams                | Landing (P2.17)                      |
+| Installing extensions from **npm**                                | Planned (M8 ecosystem milestone)     |
+| **Enterprise-managed** (org/team) extensions                      | Excalibur Enterprise                 |
 
 ## Where to go next
 

@@ -102,10 +102,10 @@ cd .excalibur/extensions/slack && npm install && npm run build
 excalibur extensions validate
 ```
 
-## Honest M1 status
+## Current status
 
-The interface is stable and your provider loads and validates today, but the
-M1 mock loop never posts to chat platforms — communication flows (Slack-first
-discovery, run notifications) activate in a later milestone alongside the
-hosted webhook surface. Implement and unit-test now; wire-up comes with that
-milestone.
+The interface is stable and your provider loads and validates today, but
+Excalibur does not yet post to chat platforms inside runs — communication flows
+(Slack-first discovery, run notifications) land with the Slack/Teams milestone
+(P2.17) alongside the hosted webhook surface. Implement and unit-test against the
+stable interface now; the run loop starts driving it when that milestone ships.

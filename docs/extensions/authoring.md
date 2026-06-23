@@ -3,7 +3,7 @@
 A programmatic extension is a small TypeScript package that default-exports an
 extension built with **[`@excalibur-oss/extension-sdk`](https://www.npmjs.com/package/@excalibur-oss/extension-sdk)**
 (published on npm, self-contained — its only runtime dependency is `zod`).
-Excalibur loads it, calls `activate(ctx)`, and your contributions register
+Excalibur loads it, calls `register(ctx)`, and your contributions register
 against the typed registries on `ctx`.
 
 This page is the quick start; see [programmatic-extensions.md](programmatic-extensions.md)
@@ -15,8 +15,10 @@ for the full reference, the per-kind guides (e.g. [creating-a-tool.md](creating-
 ## Scaffold
 
 ```bash
-excalibur extensions init my-extension --type tool
-# types: tool · work-item-provider · model-provider · agent-adapter · communication-provider
+excalibur extensions create tool my-extension
+# types: methodology · workflow · question-pack · prompt-template · artifact-template ·
+#        policy-preset · model-routing · report-template · role-definition · command-mapping ·
+#        work-item-provider · communication-provider · model-provider · agent-adapter · tool
 ```
 
 This writes a typed starter that already imports `@excalibur-oss/extension-sdk`
@@ -28,28 +30,35 @@ and pins it as a dependency — `npm install` and it resolves.
 import { defineExtension } from '@excalibur-oss/extension-sdk';
 
 export default defineExtension({
-  name: 'my-extension',
+  id: 'my-extension', // required: stable id
+  name: 'My Extension',
   version: '0.1.0',
-  activate(ctx) {
-    ctx.tools.register({
+  register(ctx) {
+    ctx.tools.registerTool({
       name: 'greet',
       description: 'Greet a name',
-      parameters: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
-      readOnly: true, // a read-only tool never mutates the repo
-      async execute(args) {
-        return { ok: true, content: `Hello, ${String(args.name)}` };
+      inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+      async execute(input, context) {
+        const name = (input as { name?: unknown }).name;
+        if (typeof name !== 'string') {
+          return { success: false, output: '', error: 'name is required' };
+        }
+        context.logger.info(`greeting ${name}`);
+        return { success: true, output: `Hello, ${name}` };
       },
     });
-    ctx.logger.info('my-extension activated');
   },
 });
 ```
 
-`ctx` exposes one registry per contribution kind: `ctx.tools`, `ctx.workflows`,
-`ctx.methodologies`, `ctx.workItemProviders`, `ctx.modelProviders`,
-`ctx.agentAdapters`, `ctx.communicationProviders`, `ctx.contextSources`,
-`ctx.policies`, `ctx.reports`, `ctx.exporters`. All contribution interfaces are
-exported as types from the package.
+`ctx` exposes one registry per contribution kind: `ctx.methodologies`,
+`ctx.workflows`, `ctx.workItems`, `ctx.communication`, `ctx.models`,
+`ctx.agents`, `ctx.tools`, `ctx.contextSources`, `ctx.policies`, `ctx.reports`,
+`ctx.exporters` — plus `ctx.hooks` (lifecycle events), `ctx.logger` and
+`ctx.config`. Each registry exposes a typed `register*` method
+(`ctx.tools.registerTool`, `ctx.models.registerProvider`,
+`ctx.agents.registerAdapter`, `ctx.workItems.registerProvider`, …) and all
+contribution interfaces are exported as types from the package.
 
 ## Manifest, capabilities & permissions
 

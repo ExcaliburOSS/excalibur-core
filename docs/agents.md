@@ -71,6 +71,44 @@ models:
     reviewer: qwen
 ```
 
+## Custom agents (personas)
+
+A **custom agent** is a self-contained persona you define in a single Markdown
+file under `.excalibur/agents/<name>.md` — no code, Git-versionable. YAML
+frontmatter sets the knobs and the body is the system persona:
+
+```markdown
+---
+role: security
+model: kimi # a provider key from providers.yaml (optional)
+provider: kimi # alias for model routing (optional)
+temperature: 0.1
+tools: [read_file, search_code, lsp] # allowlist — NARROWS the role's tool floor
+permissions:
+  deniedCommands: ['git push', 'rm *'] # deny wins over allow
+---
+
+You are a meticulous security reviewer. Prefer the smallest safe change,
+never weaken authn/z, and always explain the threat you are mitigating.
+```
+
+Manage and run them:
+
+```bash
+excalibur agents init reviewer     # scaffold .excalibur/agents/reviewer.md
+excalibur agents list              # all discovered personas
+excalibur agents show reviewer     # resolved config + persona body
+excalibur run "harden the webhook" --agent reviewer
+```
+
+In the interactive shell, `/agent` lists the personas and switches the active
+one for subsequent turns. The `tools` allowlist can only **narrow** what the
+agent's `role` already permits (it never grants more), and
+`permissions.deniedCommands` are subtracted last — deny always wins — so a
+persona is a safe, shareable way to specialize behavior without widening
+authority. See [autonomy-levels.md](autonomy-levels.md) and
+[security.md](security.md).
+
 ## Extending
 
 Programmatic extensions can register additional adapters and tools:

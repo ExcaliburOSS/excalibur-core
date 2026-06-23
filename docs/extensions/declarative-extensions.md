@@ -97,10 +97,10 @@ rules: # at least one
 ```yaml
 id: default-routing
 type: model_routing
-default: mock # all fields optional
-byRole: { planner: mock }
-byPath: { 'src/billing/**': careful-model }
-byWorkflow: { security-review: careful-model }
+default: kimi # all fields optional; each value is a provider key from providers.yaml
+byRole: { planner: kimi, implementer: minimax }
+byPath: { 'src/billing/**': local-secure }
+byWorkflow: { security-review: local-secure }
 ```
 
 ### `report_template`
