@@ -93,6 +93,12 @@ function chatCompletionsUrl(baseUrl: string): string {
   return `${trimmed}/v1/chat/completions`;
 }
 
+/** Azure OpenAI routes by DEPLOYMENT (the model name) + an api-version query. */
+function azureChatUrl(baseUrl: string, deployment: string, apiVersion: string): string {
+  const trimmed = baseUrl.replace(/\/+$/, '');
+  return `${trimmed}/openai/deployments/${encodeURIComponent(deployment)}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;
+}
+
 export class OpenAICompatibleAdapter extends BaseHttpProvider {
   private readonly url: string;
 
@@ -108,15 +114,30 @@ export class OpenAICompatibleAdapter extends BaseHttpProvider {
         { provider: options.name, type: options.cfg.type },
       );
     }
-    this.url = chatCompletionsUrl(this.cfg.baseUrl);
+    // Azure routes by deployment (the per-request model), so its URL is built
+    // per call in `urlFor`; the non-Azure URL is fixed and precomputed here.
+    this.url = this.cfg.azure === undefined ? chatCompletionsUrl(this.cfg.baseUrl) : '';
+  }
+
+  /** The endpoint for a given model — Azure's deployment URL, else the fixed URL. */
+  private urlFor(model: string): string {
+    if (this.cfg.azure !== undefined) {
+      return azureChatUrl(this.cfg.baseUrl as string, model, this.cfg.azure.apiVersion);
+    }
+    return this.url;
   }
 
   private headers(): Record<string, string> {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
-    // Send the bearer token ONLY when there is a key — a keyless self-hosted
-    // endpoint gets no auth header (some reject an empty `Bearer `).
     if (this.apiKey !== null) {
-      headers.authorization = `Bearer ${this.apiKey}`;
+      // Azure OpenAI authenticates with the `api-key` header; everyone else uses
+      // the OpenAI `Authorization: Bearer` scheme. A keyless self-hosted endpoint
+      // gets no auth header (some reject an empty `Bearer `).
+      if (this.cfg.azure !== undefined) {
+        headers['api-key'] = this.apiKey;
+      } else {
+        headers.authorization = `Bearer ${this.apiKey}`;
+      }
     }
     if (this.cfg.organization !== undefined && this.cfg.organization.length > 0) {
       headers['openai-organization'] = this.cfg.organization;
@@ -167,7 +188,7 @@ export class OpenAICompatibleAdapter extends BaseHttpProvider {
 
   protected buildChatRequest(input: ChatInput, model: string): TransportRequest {
     return {
-      url: this.url,
+      url: this.urlFor(model),
       method: 'POST',
       headers: this.headers(),
       body: this.body(input, model, false),
@@ -176,7 +197,7 @@ export class OpenAICompatibleAdapter extends BaseHttpProvider {
 
   protected buildStreamRequest(input: ChatInput, model: string): TransportRequest {
     return {
-      url: this.url,
+      url: this.urlFor(model),
       method: 'POST',
       headers: this.headers(),
       body: this.body(input, model, true),

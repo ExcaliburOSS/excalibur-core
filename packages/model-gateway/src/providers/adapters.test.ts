@@ -178,6 +178,28 @@ describe('OpenAICompatibleAdapter', () => {
     expect(transport.requests[0]?.request.url).toBe('https://api.example.test/v1/chat/completions');
   });
 
+  it('routes Azure OpenAI by deployment URL + api-key header (P2.20)', async () => {
+    const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);
+    const adapter = new OpenAICompatibleAdapter({
+      name: 'azure',
+      cfg: openaiCfg({
+        baseUrl: 'https://my-res.openai.azure.com',
+        azure: { apiVersion: '2024-02-01' },
+      }),
+      transport,
+      hooks,
+    });
+    await adapter.chat(input);
+    const sent = transport.requests[0]?.request;
+    // The model name is the Azure deployment; the api-version is a query param.
+    expect(sent?.url).toBe(
+      'https://my-res.openai.azure.com/openai/deployments/test-openai-model/chat/completions?api-version=2024-02-01',
+    );
+    // Azure uses the `api-key` header, NOT Authorization: Bearer.
+    expect(sent?.headers['api-key']).toContain('sk-proj-');
+    expect(sent?.headers['authorization']).toBeUndefined();
+  });
+
   it('appends /v1 when baseUrl omits it and sets the bearer + org headers', async () => {
     const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);
     const adapter = new OpenAICompatibleAdapter({

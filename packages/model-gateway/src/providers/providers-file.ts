@@ -49,6 +49,14 @@ export const providerConfigSchema = z.object({
     .optional(),
   /** Anthropic `anthropic-version` header override (e.g. `2023-06-01`). */
   apiVersion: z.string().min(1).optional(),
+  /**
+   * Azure OpenAI (P2.20). When set, the openai-compatible adapter routes via the
+   * Azure deployment URL (`{baseUrl}/openai/deployments/{model}/chat/completions
+   * ?api-version=...`) and authenticates with the `api-key` header instead of
+   * `Authorization: Bearer`. `baseUrl` is the resource root
+   * (`https://<resource>.openai.azure.com`); the model name IS the deployment.
+   */
+  azure: z.object({ apiVersion: z.string().min(1) }).optional(),
   /** OpenAI-compatible `openai-organization` header value. */
   organization: z.string().min(1).optional(),
   /**
