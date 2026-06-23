@@ -4,6 +4,8 @@ import {
   addWorktree,
   applyPatch,
   checkPatchApplies,
+  commitAll,
+  diffRefs,
   excludePathFromGit,
   getLocalDiff,
   getGitInfo,
@@ -157,6 +159,112 @@ function emitLane(
   }
 }
 
+/** A lane's worktree, assigned during setup. */
+interface LaneSetup {
+  lane: SwarmLane;
+  index: number;
+  worktreePath: string;
+  branch: string;
+}
+
+/** The result of running one lane (before its diff is captured). */
+interface LaneRun<T> {
+  failed: boolean;
+  error?: string;
+  result?: T;
+  attempts: number;
+  grade?: SwarmGrade;
+}
+
+/**
+ * Runs ONE lane's agent work in its worktree with the retry/grade loop: on a
+ * THROW (transient error) or a grader FAIL it resets the worktree to `baseRef`
+ * and re-dispatches with feedback, up to `maxAttempts`. Shared by the flat
+ * {@link runSwarm} and the staged {@link runSwarmStaged} executors so both have
+ * identical lane semantics. `baseRef` is the ref the lane's worktree was created
+ * at (HEAD for flat; the prior wave's merged commit for a staged dependent wave).
+ */
+async function runOneLane<T>(
+  setup: LaneSetup,
+  runner: SwarmLaneRunner<T>,
+  options: RunSwarmOptions<T>,
+  baseRef: string,
+): Promise<LaneRun<T>> {
+  const maxAttempts = Math.max(1, options.maxAttempts ?? 1);
+  let lastError = '';
+  let feedback: string | undefined;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    // Before a RE-DISPATCH, restore the lane's worktree to pristine base so a
+    // prior attempt's edits never contaminate this attempt's diff.
+    if (attempt > 1) {
+      resetWorktree(setup.worktreePath, baseRef);
+    }
+    emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'started' });
+    try {
+      const result = await runner({
+        lane: setup.lane,
+        worktreePath: setup.worktreePath,
+        branch: setup.branch,
+        index: setup.index,
+        attempt,
+        ...(feedback !== undefined ? { feedback } : {}),
+      });
+      // GRADE (when set): score this attempt's diff; a fail re-dispatches with
+      // feedback (revise loop) until it passes or attempts exhaust.
+      if (options.grade !== undefined) {
+        stageAll(setup.worktreePath);
+        const diff = getLocalDiff(setup.worktreePath);
+        const grade = await options.grade({ lane: setup.lane, diff, result, attempt });
+        if (!grade.pass) {
+          lastError = grade.feedback ?? 'did not meet the rubric';
+          feedback = grade.feedback;
+          if (attempt < maxAttempts) {
+            continue; // revise
+          }
+          emitLane(options.onLane, {
+            index: setup.index,
+            id: setup.lane.id,
+            phase: 'settled',
+            failed: true,
+          });
+          return { failed: true, error: `rubric not met: ${lastError}`, attempts: attempt, grade };
+        }
+        emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled' });
+        return { failed: false, result, attempts: attempt, grade };
+      }
+      emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled' });
+      return { failed: false, result, attempts: attempt };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      feedback = undefined; // a thrown attempt yields no grader feedback
+      // Re-dispatch on a non-final attempt.
+    }
+  }
+  emitLane(options.onLane, {
+    index: setup.index,
+    id: setup.lane.id,
+    phase: 'settled',
+    failed: true,
+  });
+  return { failed: true, error: lastError, attempts: maxAttempts };
+}
+
+/** Stages a lane's worktree and captures its diff into a {@link SwarmLaneResult}. */
+function captureLane<T>(setup: LaneSetup, run: LaneRun<T>): SwarmLaneResult<T> {
+  stageAll(setup.worktreePath);
+  return {
+    id: setup.lane.id,
+    index: setup.index,
+    branch: setup.branch,
+    diff: getLocalDiff(setup.worktreePath),
+    failed: run.failed,
+    ...(run.error !== undefined ? { error: run.error } : {}),
+    ...(run.result !== undefined ? { result: run.result } : {}),
+    ...(run.attempts !== undefined ? { attempts: run.attempts } : {}),
+    ...(run.grade !== undefined ? { grade: run.grade } : {}),
+  };
+}
+
 /** Runs an array of thunks with a bounded concurrency pool, preserving order. */
 async function pool<R>(thunks: ReadonlyArray<() => Promise<R>>, limit: number): Promise<R[]> {
   const results = new Array<R>(thunks.length);
@@ -216,97 +324,13 @@ export async function runSwarm<T>(
 
   try {
     // 2. RUN (parallel — the slow agent work, bounded by maxConcurrency).
-    const maxAttempts = Math.max(1, options.maxAttempts ?? 1);
-    type LaneRun = {
-      failed: boolean;
-      error?: string;
-      result?: T;
-      attempts: number;
-      grade?: SwarmGrade;
-    };
     const runResults = await pool(
-      setups.map((setup) => async (): Promise<LaneRun> => {
-        let lastError = '';
-        let feedback: string | undefined;
-        for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-          // Before a RE-DISPATCH, restore the lane's worktree to pristine base so
-          // a prior attempt's edits never contaminate this attempt's diff.
-          if (attempt > 1) {
-            resetWorktree(setup.worktreePath, baseRef);
-          }
-          emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'started' });
-          try {
-            const result = await runner({
-              lane: setup.lane,
-              worktreePath: setup.worktreePath,
-              branch: setup.branch,
-              index: setup.index,
-              attempt,
-              ...(feedback !== undefined ? { feedback } : {}),
-            });
-            // GRADE (when a grader is set): score this attempt's diff; a fail
-            // re-dispatches with feedback (revise loop) until it passes/exhausts.
-            if (options.grade !== undefined) {
-              stageAll(setup.worktreePath);
-              const diff = getLocalDiff(setup.worktreePath);
-              const grade = await options.grade({ lane: setup.lane, diff, result, attempt });
-              if (!grade.pass) {
-                lastError = grade.feedback ?? 'did not meet the rubric';
-                feedback = grade.feedback;
-                if (attempt < maxAttempts) {
-                  continue; // revise
-                }
-                emitLane(options.onLane, {
-                  index: setup.index,
-                  id: setup.lane.id,
-                  phase: 'settled',
-                  failed: true,
-                });
-                return {
-                  failed: true,
-                  error: `rubric not met: ${lastError}`,
-                  attempts: attempt,
-                  grade,
-                };
-              }
-              emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled' });
-              return { failed: false, result, attempts: attempt, grade };
-            }
-            emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled' });
-            return { failed: false, result, attempts: attempt };
-          } catch (error) {
-            lastError = error instanceof Error ? error.message : String(error);
-            feedback = undefined; // a thrown attempt yields no grader feedback
-            // Re-dispatch on a non-final attempt.
-          }
-        }
-        emitLane(options.onLane, {
-          index: setup.index,
-          id: setup.lane.id,
-          phase: 'settled',
-          failed: true,
-        });
-        return { failed: true, error: lastError, attempts: maxAttempts };
-      }),
+      setups.map((setup) => () => runOneLane(setup, runner, options, baseRef)),
       options.maxConcurrency ?? setups.length,
     );
 
     // 3. CAPTURE each lane's diff (stage first so NEW files are included).
-    const laneResults: SwarmLaneResult<T>[] = setups.map((setup, i) => {
-      const run = runResults[i]!;
-      stageAll(setup.worktreePath);
-      return {
-        id: setup.lane.id,
-        index: setup.index,
-        branch: setup.branch,
-        diff: getLocalDiff(setup.worktreePath),
-        failed: run.failed,
-        ...(run.error !== undefined ? { error: run.error } : {}),
-        ...(run.result !== undefined ? { result: run.result } : {}),
-        ...(run.attempts !== undefined ? { attempts: run.attempts } : {}),
-        ...(run.grade !== undefined ? { grade: run.grade } : {}),
-      };
-    });
+    const laneResults = setups.map((setup, i) => captureLane(setup, runResults[i]!));
 
     // 4. FAN-IN: replay the lane diffs onto a merge worktree; report conflicts.
     const { mergedDiff, conflicts } = mergeLaneDiffs(repoRoot, baseRef, prefix, laneResults);
@@ -316,6 +340,110 @@ export async function runSwarm<T>(
     for (const setup of setups) {
       removeWorktree(repoRoot, setup.worktreePath, { force: true });
     }
+  }
+}
+
+/**
+ * STAGED fan-out / fan-in (AO3c) — the real A→{B,C}→D dependency graph. Runs the
+ * dependency WAVES in order: each wave's lanes execute in parallel (bounded)
+ * against a base that already contains the MERGED result of every prior wave, so
+ * a dependent lane SEES its predecessors' work. After each wave its lane diffs
+ * are merged onto an accumulating merge worktree, which is COMMITTED so the next
+ * wave can base on it. The final `mergedDiff` is the whole accumulation vs the
+ * original base. Lane semantics (retry/grade/onLane/teardown) are identical to
+ * the flat {@link runSwarm}; this just sequences waves and rebases between them.
+ *
+ * `waves` is the topological levelization (see `topologicalWaves`): `waves[0]`
+ * are the independent lanes, `waves[1]` depend only on `waves[0]`, etc. A flat
+ * task is simply a single wave — callers fall back to {@link runSwarm} for that.
+ */
+export async function runSwarmStaged<T>(
+  repoRoot: string,
+  waves: ReadonlyArray<ReadonlyArray<SwarmLane>>,
+  runner: SwarmLaneRunner<T>,
+  options: RunSwarmOptions<T> = {},
+): Promise<SwarmResult<T>> {
+  if (!getGitInfo(repoRoot).isRepo) {
+    throw new Error(
+      'Swarm fan-out needs a git repository (each lane runs in an isolated worktree).',
+    );
+  }
+  if (!hasCommits(repoRoot)) {
+    throw new Error('Swarm fan-out needs at least one commit to base each worktree on.');
+  }
+  const nonEmptyWaves = waves.filter((w) => w.length > 0);
+  if (nonEmptyWaves.length === 0) {
+    return { lanes: [], mergedDiff: '', conflicts: [] };
+  }
+  const baseRef = revParse(repoRoot, options.baseRef ?? 'HEAD') ?? 'HEAD';
+  const prefix = options.idPrefix ?? 'swarm';
+  excludePathFromGit(repoRoot, '.excalibur/worktrees/');
+
+  // The accumulating merge worktree persists across ALL waves; each wave is
+  // committed onto it so the next wave can base on the merged result.
+  const mergePath = join(repoRoot, EXCALIBUR_DIR, 'worktrees', `${prefix}-merge`);
+  addWorktree(repoRoot, mergePath, { branch: `excalibur/${prefix}-merge`, baseRef });
+
+  const allLaneResults: SwarmLaneResult<T>[] = [];
+  const conflicts: SwarmConflict[] = [];
+  let currentBaseRef = baseRef;
+  let globalIndex = 0;
+
+  try {
+    for (const wave of nonEmptyWaves) {
+      // 1. SETUP this wave's lane worktrees at the predecessors-merged base.
+      const setups: LaneSetup[] = wave.map((lane) => {
+        const index = globalIndex++;
+        const worktreePath = join(
+          repoRoot,
+          EXCALIBUR_DIR,
+          'worktrees',
+          `${prefix}-${index}-${lane.id}`,
+        );
+        const branch = `excalibur/${prefix}-${index}-${lane.id}`;
+        addWorktree(repoRoot, worktreePath, { branch, baseRef: currentBaseRef });
+        return { lane, index, worktreePath, branch };
+      });
+      try {
+        // 2. RUN this wave (parallel, bounded), basing retries on the wave base.
+        const runResults = await pool(
+          setups.map((setup) => () => runOneLane(setup, runner, options, currentBaseRef)),
+          options.maxConcurrency ?? setups.length,
+        );
+        const laneResults = setups.map((setup, i) => captureLane(setup, runResults[i]!));
+        allLaneResults.push(...laneResults);
+
+        // 3. MERGE this wave onto the accumulating worktree (at currentBaseRef).
+        for (const lane of laneResults) {
+          if (lane.failed || lane.diff.trim().length === 0) {
+            continue;
+          }
+          const check = checkPatchApplies(mergePath, lane.diff);
+          if (!check.applies) {
+            conflicts.push({ id: lane.id, reason: check.reason ?? 'did not apply onto the merge' });
+            continue;
+          }
+          applyPatch(mergePath, lane.diff);
+        }
+
+        // 4. COMMIT the wave so the NEXT wave bases on predecessors' merged work.
+        //    (A no-op commit when the wave changed nothing leaves HEAD as-is.)
+        stageAll(mergePath);
+        commitAll(mergePath, `excalibur swarm wave: ${wave.map((l) => l.id).join(', ')}`);
+        currentBaseRef = revParse(mergePath, 'HEAD') ?? currentBaseRef;
+      } finally {
+        // 5. TEARDOWN this wave's lane worktrees (wave-scoped — free disk early).
+        for (const setup of setups) {
+          removeWorktree(repoRoot, setup.worktreePath, { force: true });
+        }
+      }
+    }
+
+    // FINAL: the whole accumulation vs the original base (every wave committed).
+    const mergedDiff = diffRefs(mergePath, baseRef, 'HEAD');
+    return { lanes: allLaneResults, mergedDiff, conflicts };
+  } finally {
+    removeWorktree(repoRoot, mergePath, { force: true });
   }
 }
 

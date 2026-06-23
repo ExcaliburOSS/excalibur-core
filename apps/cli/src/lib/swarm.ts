@@ -6,7 +6,9 @@ import {
   chooseConcurrency,
   planAgentAllocation,
   runSwarm,
+  runSwarmStaged,
   SWARM_MAX_TOTAL_AGENTS,
+  topologicalWaves,
   type Subtask,
   type SwarmLaneGrader,
   type SwarmLaneProgress,
@@ -89,10 +91,12 @@ export function parseFirstJsonObject(content: string): Record<string, unknown> |
 }
 
 /**
- * Asks the model to split `task` into up to `maxSubtasks` INDEPENDENT subtasks
- * (no two touching the same files), each a self-contained implementer
- * instruction. Falls back to a single lane (the whole task) when the model
- * returns nothing usable or only one unit.
+ * Asks the model to split `task` into up to `maxSubtasks` subtasks for parallel
+ * agents in isolated worktrees. It PREFERS independent subtasks (different files)
+ * but may express genuine ordering with `dependsOn` (1-based indices of
+ * prerequisites) — the staged executor (AO3c) runs those in later waves on top of
+ * their predecessors' merged result. Falls back to a single lane (the whole
+ * task) when the model returns nothing usable.
  */
 export async function decomposeTask(
   chat: { chat(input: GatewayChatInput): Promise<{ content: string }> },
@@ -101,11 +105,14 @@ export async function decomposeTask(
 ): Promise<SwarmSubtask[]> {
   const max = options.maxSubtasks ?? 4;
   const system =
-    'You split a coding task into INDEPENDENT subtasks that can be implemented in PARALLEL by ' +
-    'separate agents — no two subtasks may touch the same files. Return ONLY a JSON object: ' +
-    `{"subtasks":[{"title": string, "instruction": string}]}, at most ${max} entries. Each ` +
-    '`instruction` is a complete, self-contained implementer prompt. If the task is small or not ' +
-    'safely parallelizable, return a SINGLE subtask (the whole task). No prose, no code fences.';
+    'You split a coding task into subtasks for parallel agents, each in an isolated git worktree. ' +
+    'PREFER independent subtasks (touching different files) so they run in parallel. When a subtask ' +
+    'genuinely needs another done FIRST, list its prerequisites in "dependsOn" as the 1-based indices ' +
+    'of the earlier subtasks it depends on (a dependent subtask runs in a LATER wave, on top of its ' +
+    "predecessors' merged result). Return ONLY a JSON object: " +
+    `{"subtasks":[{"title": string, "instruction": string, "dependsOn"?: number[]}]}, at most ${max} ` +
+    'entries. Each "instruction" is a complete, self-contained implementer prompt. If the task is ' +
+    'small or not safely decomposable, return a SINGLE subtask (the whole task). No prose, no code fences.';
   let parsed: Record<string, unknown> | null = null;
   try {
     const out = await chat.chat({
@@ -133,7 +140,21 @@ export async function decomposeTask(
         typeof e['title'] === 'string' && e['title'].trim().length > 0
           ? e['title'].trim()
           : `subtask ${index + 1}`;
-      return { id: `t${index + 1}`, title, instruction };
+      // dependsOn arrives as 1-based indices into this array; map to `t<n>` ids,
+      // dropping out-of-range and self references. topologicalWaves later ignores
+      // any id that falls outside the (post-slice) set, so this is safe.
+      const dependsOn = Array.isArray(e['dependsOn'])
+        ? (e['dependsOn'] as unknown[])
+            .map((d) => (typeof d === 'number' ? Math.floor(d) : Number.NaN))
+            .filter((n) => Number.isInteger(n) && n >= 1 && n !== index + 1)
+            .map((n) => `t${n}`)
+        : [];
+      return {
+        id: `t${index + 1}`,
+        title,
+        instruction,
+        ...(dependsOn.length > 0 ? { dependsOn } : {}),
+      };
     })
     .filter((s): s is SwarmSubtask => s !== null)
     .slice(0, max);
@@ -143,9 +164,14 @@ export async function decomposeTask(
     : [{ id: 't1', title: task.slice(0, 60), instruction: task }];
 }
 
-/** Maps decomposed subtasks to the allocator's `Subtask[]` (all independent). */
+/** Maps decomposed subtasks to the allocator's `Subtask[]`, carrying dependsOn
+ * so the allocator counts only the wave-0 (independent) lanes. */
 export function asAllocationSubtasks(subtasks: ReadonlyArray<SwarmSubtask>): Subtask[] {
-  return subtasks.map((s) => ({ id: s.id, title: s.title }));
+  return subtasks.map((s) => ({
+    id: s.id,
+    title: s.title,
+    ...(s.dependsOn !== undefined && s.dependsOn.length > 0 ? { dependsOn: s.dependsOn } : {}),
+  }));
 }
 
 /**
@@ -239,6 +265,10 @@ export function executeSwarm(
     signal?: AbortSignal;
     onLane?: (progress: SwarmLaneProgress) => void;
     grade?: SwarmLaneGrader<SwarmLaneSummary>;
+    /** When present (and >1 wave), run the STAGED executor (AO3c) over these
+     * dependency waves instead of a flat fan-out — a dependent wave sees its
+     * predecessors' merged result. Each wave is the SwarmSubtasks for that level. */
+    waves?: ReadonlyArray<ReadonlyArray<SwarmSubtask>>;
   } = {},
 ): Promise<SwarmResult<SwarmLaneSummary>> {
   const byId = new Map(subtasks.map((s) => [s.id, s]));
@@ -248,47 +278,64 @@ export function executeSwarm(
     ...(options.onLane !== undefined ? { onLane: options.onLane } : {}),
     ...(options.grade !== undefined ? { grade: options.grade } : {}),
   };
+  const runLane = async ({
+    lane,
+    worktreePath,
+    feedback,
+  }: {
+    lane: { id: string; instruction: string };
+    worktreePath: string;
+    feedback?: string;
+  }): Promise<SwarmLaneSummary> => {
+    const adapter = new NativeAgentAdapter();
+    let costCents: number | null = null;
+    let toolCalls = 0;
+    // The native adapter SWALLOWS provider/network errors into a non-throwing
+    // `error` event and finishes cleanly. Track it so a lane that errored
+    // without doing any work THROWS — which is what lets `--retries` actually
+    // re-dispatch a transient failure (runSwarm only retries on a throw).
+    let lastError: string | null = null;
+    for await (const event of adapter.run({
+      runId: `swarm_${lane.id}`,
+      sessionId: `swarm_${lane.id}`,
+      workdir: worktreePath,
+      prompt: lanePrompt(byId.get(lane.id)?.instruction ?? lane.instruction, feedback),
+      role: 'implementer',
+      config: context.config,
+      gateway: context.gateway,
+      confirm: () => Promise.resolve(context.autonomyAutoApprove),
+      ...(options.signal !== undefined ? { signal: options.signal } : {}),
+    } as Parameters<NativeAgentAdapter['run']>[0])) {
+      const e = event as ExcaliburEvent;
+      if (e.type === 'tool_call') toolCalls += 1;
+      if (e.type === 'error') {
+        const msg = (e.payload as Record<string, unknown>)['message'];
+        lastError = typeof msg === 'string' ? msg : 'agent error';
+      }
+      if (e.type === 'assistant_message') {
+        const total = (e.payload as Record<string, unknown>)['totalCostCents'];
+        if (typeof total === 'number') costCents = total;
+      }
+    }
+    // The turn ended in an error AND accomplished nothing (no tool calls) →
+    // treat as a (likely transient) lane failure so the retry loop fires.
+    if (lastError !== null && toolCalls === 0) {
+      throw new Error(lastError);
+    }
+    return { costCents, toolCalls };
+  };
+
+  // STAGED (a real dependency graph) vs FLAT (a single parallel wave).
+  if (options.waves !== undefined && options.waves.length > 1) {
+    const waveLanes = options.waves.map((w) =>
+      w.map((s) => ({ id: s.id, instruction: s.instruction })),
+    );
+    return runSwarmStaged(repoRoot, waveLanes, runLane, swarmOptions);
+  }
   return runSwarm(
     repoRoot,
     subtasks.map((s) => ({ id: s.id, instruction: s.instruction })),
-    async ({ lane, worktreePath, feedback }): Promise<SwarmLaneSummary> => {
-      const adapter = new NativeAgentAdapter();
-      let costCents: number | null = null;
-      let toolCalls = 0;
-      // The native adapter SWALLOWS provider/network errors into a non-throwing
-      // `error` event and finishes cleanly. Track it so a lane that errored
-      // without doing any work THROWS — which is what lets `--retries` actually
-      // re-dispatch a transient failure (runSwarm only retries on a throw).
-      let lastError: string | null = null;
-      for await (const event of adapter.run({
-        runId: `swarm_${lane.id}`,
-        sessionId: `swarm_${lane.id}`,
-        workdir: worktreePath,
-        prompt: lanePrompt(byId.get(lane.id)?.instruction ?? lane.instruction, feedback),
-        role: 'implementer',
-        config: context.config,
-        gateway: context.gateway,
-        confirm: () => Promise.resolve(context.autonomyAutoApprove),
-        ...(options.signal !== undefined ? { signal: options.signal } : {}),
-      } as Parameters<NativeAgentAdapter['run']>[0])) {
-        const e = event as ExcaliburEvent;
-        if (e.type === 'tool_call') toolCalls += 1;
-        if (e.type === 'error') {
-          const msg = (e.payload as Record<string, unknown>)['message'];
-          lastError = typeof msg === 'string' ? msg : 'agent error';
-        }
-        if (e.type === 'assistant_message') {
-          const total = (e.payload as Record<string, unknown>)['totalCostCents'];
-          if (typeof total === 'number') costCents = total;
-        }
-      }
-      // The turn ended in an error AND accomplished nothing (no tool calls) →
-      // treat as a (likely transient) lane failure so the retry loop fires.
-      if (lastError !== null && toolCalls === 0) {
-        throw new Error(lastError);
-      }
-      return { costCents, toolCalls };
-    },
+    runLane,
     swarmOptions,
   );
 }
@@ -355,26 +402,40 @@ export async function runSwarmFlow(
   // SWARM_MAX_TOTAL_AGENTS; a power-user `--max-agents N` opts into its own
   // (possibly higher) ceiling. A runaway decomposition can never DoS the box.
   const totalCap = capTotalAgents(options.maxAgents ?? SWARM_MAX_TOTAL_AGENTS, options.maxAgents);
-  const allocation = planAgentAllocation({
-    taskType: 'feature',
-    sensitive: false,
-    subtasks: asAllocationSubtasks(subtasks),
-    maxAgents: totalCap,
-  });
-  const lanes = subtasks.slice(0, allocation.agentCount);
-  // How many lanes run AT ONCE — sized from CPU headroom (and, later, budget).
-  // Previously unset, so the pool defaulted to ALL lanes firing simultaneously.
+  const lanes = subtasks.slice(0, totalCap);
+  // Levelize into dependency WAVES (AO3c): a real graph (≥2 waves) runs STAGED —
+  // each wave rebased on its predecessors' merged result; otherwise a single flat
+  // parallel wave. A cycle (null) falls back to flat.
+  const waves = topologicalWaves(lanes);
+  const staged = waves !== null && waves.length > 1;
+  // How many lanes run AT ONCE — sized from the WIDEST wave's CPU headroom.
+  // (Previously maxConcurrency was unset, so the pool fired ALL lanes at once.)
+  const widestWave = staged ? Math.max(...waves.map((w) => w.length)) : lanes.length;
   const concurrency = chooseConcurrency({
-    laneCount: lanes.length,
+    laneCount: widestWave,
     cpuCount: cpus().length,
     ...(options.maxAgents !== undefined ? { hardCap: options.maxAgents } : {}),
   });
 
   deps.ui.write();
-  deps.ui.heading(deps.t('swarm.heading', { reason: allocation.reason }));
-  lanes.forEach((subtask, index) => {
-    deps.ui.write(`  ${index + 1}. ${subtask.title}`);
-  });
+  if (staged) {
+    deps.ui.heading(deps.t('swarm.staged-heading', { count: lanes.length, waves: waves.length }));
+    waves.forEach((wave, w) => {
+      deps.ui.write(`  ${deps.t('swarm.wave', { n: w + 1 })}`);
+      wave.forEach((s) => deps.ui.write(`    • ${s.title}`));
+    });
+  } else {
+    const allocation = planAgentAllocation({
+      taskType: 'feature',
+      sensitive: false,
+      subtasks: asAllocationSubtasks(lanes),
+      maxAgents: totalCap,
+    });
+    deps.ui.heading(deps.t('swarm.heading', { reason: allocation.reason }));
+    lanes.forEach((subtask, index) => {
+      deps.ui.write(`  ${index + 1}. ${subtask.title}`);
+    });
+  }
   deps.ui.write();
   if (lanes.length === 1) {
     deps.ui.info(deps.t('swarm.singleUnit'));
@@ -443,6 +504,7 @@ export async function runSwarmFlow(
       },
       {
         maxConcurrency: concurrency,
+        ...(staged ? { waves } : {}),
         ...(maxAttempts !== undefined ? { maxAttempts } : {}),
         ...(gradeOn
           ? { grade: makeLaneGrader(ctx.gateway, { provider: ctx.providerName, ...signalOpt }) }

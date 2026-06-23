@@ -3,7 +3,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { makeTempDir, removeDir } from '../test-utils';
-import { runSwarm, type SwarmLane } from './run-swarm';
+import { runSwarm, runSwarmStaged, type SwarmLane } from './run-swarm';
+import { existsSync } from 'node:fs';
 
 function git(repo: string, ...args: string[]): void {
   execFileSync('git', args, { cwd: repo, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -270,6 +271,74 @@ describe('runSwarm', () => {
       );
     } finally {
       removeDir(empty);
+    }
+  });
+});
+
+describe('runSwarmStaged (AO3c staged dependency-graph executor)', () => {
+  it('rebases a dependent wave on the MERGED result of its predecessor', async () => {
+    const repo = initRepo();
+    try {
+      // Wave 0 creates shared.ts; wave 1 must SEE it (proving the rebase) and
+      // derives derived.ts from its contents.
+      const result = await runSwarmStaged(
+        repo,
+        [[lane('base')], [lane('extend')]],
+        ({ lane: l, worktreePath }) => {
+          if (l.id === 'base') {
+            writeFileSync(join(worktreePath, 'shared.ts'), 'export const base = 1;\n', 'utf8');
+            return Promise.resolve(null);
+          }
+          // The dependent lane reads the predecessor's merged file from its base.
+          const seen = existsSync(join(worktreePath, 'shared.ts'))
+            ? readFileSync(join(worktreePath, 'shared.ts'), 'utf8').trim()
+            : 'MISSING';
+          writeFileSync(join(worktreePath, 'derived.ts'), `// saw: ${seen}\n`, 'utf8');
+          return Promise.resolve(null);
+        },
+      );
+      expect(result.conflicts).toEqual([]);
+      expect(result.lanes.map((l) => l.id)).toEqual(['base', 'extend']);
+      // The dependent lane SAW the predecessor's merged content (not MISSING).
+      expect(result.mergedDiff).toContain('saw: export const base = 1;');
+      expect(result.mergedDiff).toContain('shared.ts');
+      expect(result.mergedDiff).toContain('derived.ts');
+      // Working tree untouched.
+      expect(readFileSync(join(repo, 'app.ts'), 'utf8')).toBe('export const VERSION = 1;\n');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('runs independent lanes within a single wave in parallel (flat-equivalent)', async () => {
+    const repo = initRepo();
+    try {
+      const result = await runSwarmStaged(
+        repo,
+        [[lane('a'), lane('b')]],
+        ({ lane: l, worktreePath }) => {
+          writeFileSync(join(worktreePath, `${l.id}.ts`), `// ${l.id}\n`, 'utf8');
+          return Promise.resolve(null);
+        },
+      );
+      expect(result.conflicts).toEqual([]);
+      expect(result.mergedDiff).toContain('a.ts');
+      expect(result.mergedDiff).toContain('b.ts');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('returns empty for no waves and requires a git repo with commits', async () => {
+    const repo = initRepo();
+    try {
+      expect(await runSwarmStaged(repo, [], () => Promise.resolve(null))).toEqual({
+        lanes: [],
+        mergedDiff: '',
+        conflicts: [],
+      });
+    } finally {
+      removeDir(repo);
     }
   });
 });

@@ -453,6 +453,9 @@ export const EN: Catalog = {
   'swarm.needsGitRepo': 'Swarm needs a git repository — each agent runs in an isolated worktree.',
   'swarm.decomposing': 'Decomposing the task into independent subtasks…',
   'swarm.heading': 'Swarm: {reason}',
+  'swarm.staged-heading':
+    'Swarm: {count} subtasks across {waves} dependency waves (each wave builds on the prior wave’s merged result).',
+  'swarm.wave': 'wave {n}',
   'swarm.singleUnit': 'Only one independent unit — this runs as a single agent (no real fan-out).',
   'swarm.confirmRun': 'Run {count} agent(s) in parallel?',
   'swarm.cancelled': 'Swarm cancelled.',

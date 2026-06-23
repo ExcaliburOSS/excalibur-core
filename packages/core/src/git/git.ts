@@ -173,6 +173,20 @@ export function hasCommits(repoRoot: string): boolean {
 }
 
 /**
+ * The diff between two commits/refs (`git diff <from> <to>`) as a unified patch.
+ * Used by the staged swarm executor to compute the FULL accumulated diff of a
+ * merge worktree (whose waves are each committed) against the original base.
+ * Returns an empty string on no diff or any failure (best-effort).
+ */
+export function diffRefs(repoRoot: string, fromRef: string, toRef: string): string {
+  const out = tryGit(repoRoot, ['diff', fromRef, toRef]);
+  if (out === null || out.length === 0) {
+    return '';
+  }
+  return `${out}\n`;
+}
+
+/**
  * Stages everything (`git add -A`) WITHOUT committing, so a subsequent
  * `git diff HEAD` ({@link getLocalDiff}) includes newly-created files (which an
  * unstaged `git diff` omits). Best-effort: returns whether staging succeeded.
