@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { fetchBoard, fetchHealth, moveWorkItem, startRun, ApiError } from '../lib/api';
+  import { fetchBoard, fetchHealth, moveWorkItem, startRun, authToken, ApiError } from '../lib/api';
   import {
     LANES,
     LANE_COLORS,
@@ -20,8 +20,10 @@
   let writable = $state(false); // interactive actions enabled (serve --write)
   let dragKey = $state<string | null>(null);
   let dropLane = $state<DashboardLane | null>(null);
+  let copied = $state(false);
   let inFlight = false; // guards against overlapping/clobbering polls
   let timer: ReturnType<typeof setInterval> | null = null;
+  let es: EventSource | null = null;
 
   /** Refresh the board; quiet (no spinner) on the auto-poll path. */
   async function load(quiet = false): Promise<void> {
@@ -44,18 +46,66 @@
     }
   }
 
+  /** Live board via SSE — the server pushes a new snapshot only when it changes. */
+  function connect(): void {
+    if (es !== null || typeof EventSource === 'undefined') return;
+    const stream = new EventSource(`/api/board/stream?token=${encodeURIComponent(authToken())}`);
+    stream.addEventListener('board', (ev) => {
+      // Don't clobber an in-progress drag/optimistic move with a server snapshot.
+      if (dragKey !== null || inFlight) return;
+      try {
+        board = JSON.parse((ev as MessageEvent).data) as BoardResponse;
+        loading = false;
+        error = null;
+        staleError = null;
+      } catch {
+        /* ignore a malformed frame */
+      }
+    });
+    stream.onerror = () => {
+      // SSE dropped — fall back to a periodic poll until reconnected.
+      stream.close();
+      es = null;
+      startPoll();
+    };
+    es = stream;
+  }
+
+  function startPoll(): void {
+    if (timer !== null) return;
+    timer = setInterval(() => {
+      if (live && !dragKey && document.visibilityState === 'visible') void load(true);
+    }, 4000);
+  }
+  function stopPoll(): void {
+    if (timer !== null) {
+      clearInterval(timer);
+      timer = null;
+    }
+  }
+
+  function goLive(on: boolean): void {
+    live = on;
+    if (on) {
+      void load(true);
+      connect();
+    } else {
+      es?.close();
+      es = null;
+      stopPoll();
+    }
+  }
+
   onMount(() => {
     void load();
     fetchHealth()
       .then((h) => (writable = h.write))
       .catch(() => (writable = false));
-    // Poll while "Live" (D5 will swap this for an SSE board stream).
-    timer = setInterval(() => {
-      if (live && !dragKey && document.visibilityState === 'visible') void load(true);
-    }, 4000);
+    connect(); // SSE primary; startPoll() is the fallback on error
   });
   onDestroy(() => {
-    if (timer !== null) clearInterval(timer);
+    stopPoll();
+    es?.close();
   });
 
   const laneLabel = (lane: string): string => t(`lane.${lane}`);
@@ -94,6 +144,16 @@
     if (key.length > 0) void moveTo(key, lane);
   }
 
+  async function copyLink(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      copied = true;
+      setTimeout(() => (copied = false), 1500);
+    } catch {
+      /* clipboard blocked — ignore */
+    }
+  }
+
   async function onStartRun(e: MouseEvent, item: WorkItemSummary): Promise<void> {
     e.preventDefault();
     e.stopPropagation();
@@ -126,11 +186,12 @@
     {/if}
   </div>
   <div class="right">
-    <button class="toggle" class:on={live} onclick={() => (live = !live)} title="Auto-refresh">
+    <button class="toggle" class:on={live} onclick={() => goLive(!live)} title="Live updates">
       <span class="dot" class:pulse={live}></span>
       {live ? t('board.live') : t('board.paused')}
     </button>
     <button class="refresh" onclick={() => load()}>{t('board.refresh')}</button>
+    <button class="refresh" onclick={copyLink}>{copied ? t('board.copied') : t('board.share')}</button>
   </div>
 </header>
 

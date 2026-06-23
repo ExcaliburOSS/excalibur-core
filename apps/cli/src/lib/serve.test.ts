@@ -326,6 +326,74 @@ describe('excalibur serve — interactive write surface (D2)', () => {
   });
 });
 
+describe('excalibur serve — live board SSE + read-only share token (D5)', () => {
+  let repoRoot: string;
+  let server: Server;
+  let base: string;
+  const SHARE = 'share-token-xyz';
+
+  beforeAll(async () => {
+    repoRoot = makeTempDir();
+    new LocalWorkItemProvider(repoRoot).createWorkItem({ title: 'On the board', status: 'todo' });
+    const write = {
+      startRun: () => Promise.resolve({ runId: 'run_20260101_000000' }),
+      cancel: () => true,
+      approve: () => true,
+    };
+    server = createExcaliburServer({
+      repoRoot,
+      token: TOKEN,
+      pollMs: 50,
+      write,
+      shareToken: SHARE,
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+  afterAll(() => {
+    server.close();
+    removeDir(repoRoot);
+  });
+
+  it('streams the board over SSE (initial snapshot frame)', async () => {
+    const res = await fetch(`${base}/api/board/stream?token=${TOKEN}`);
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+    const reader = res.body!.getReader();
+    const { value } = await reader.read();
+    const text = new TextDecoder().decode(value);
+    expect(text).toContain('event: board');
+    expect(text).toContain('"lanes"');
+    await reader.cancel();
+  });
+
+  it('share token: reads work, /health shows write:false, mutations are 403', async () => {
+    // GET with the share token succeeds.
+    const board = await fetch(`${base}/api/board?token=${SHARE}`);
+    expect(board.status).toBe(200);
+    // Even though --write is on, a share-token viewer sees write:false…
+    const health = (await (await fetch(`${base}/health?token=${SHARE}`)).json()) as {
+      write: boolean;
+    };
+    expect(health.write).toBe(false);
+    // …and any mutation is refused.
+    const move = await fetch(`${base}/api/work-items/WI-1/move?token=${SHARE}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lane: 'done' }),
+    });
+    expect(move.status).toBe(403);
+    // The PRIMARY token still sees write:true.
+    const primary = (await (await fetch(`${base}/health?token=${TOKEN}`)).json()) as {
+      write: boolean;
+    };
+    expect(primary.write).toBe(true);
+  });
+
+  it('rejects an unknown token (401)', async () => {
+    expect((await fetch(`${base}/api/board?token=nope`)).status).toBe(401);
+  });
+});
+
 describe('excalibur serve — plans & discovery (D3)', () => {
   let repoRoot: string;
   let server: Server;

@@ -60,6 +60,13 @@ export interface ServeOptions {
   pollMs?: number;
   /** When set, enables the POST write surface (start/cancel/approve runs). */
   write?: ServeWriteHandler;
+  /**
+   * Optional READ-ONLY share token (D5). A request authenticated with it can GET
+   * everything but is ALWAYS refused the write surface (403), even when `write`
+   * is enabled — so a shared link can never mutate. `excalibur serve --share`
+   * mints one and prints a shareable URL.
+   */
+  shareToken?: string;
 }
 
 interface Json {
@@ -85,8 +92,10 @@ function tokenOf(req: IncomingMessage, url: URL): string | null {
   return url.searchParams.get('token');
 }
 
-/** Routes a request to a payload, an HTML page, or 'sse' for the stream route. */
-function route(repoRoot: string, url: URL, writable: boolean): Json | Html | 'sse' | null {
+type RouteResult = Json | Html | 'sse' | 'sse-board' | null;
+
+/** Routes a request to a payload, an HTML page, or an SSE sentinel. */
+function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
   const manager = new RunManager(repoRoot);
   const path = url.pathname.replace(/\/+$/, '') || '/';
 
@@ -108,6 +117,9 @@ function route(repoRoot: string, url: URL, writable: boolean): Json | Html | 'ss
   if (path === '/api/board') {
     // The task-first kanban home (D1) — work items projected onto the 5 lanes.
     return { status: 200, body: buildBoard(repoRoot) };
+  }
+  if (path === '/api/board/stream') {
+    return 'sse-board'; // D5: push board snapshots on change (drops the client poll)
   }
   if (path === '/api/plans') {
     return { status: 200, body: { plans: buildPlans(repoRoot) } }; // D3
@@ -271,6 +283,40 @@ function streamRun(repoRoot: string, id: string, res: ServerResponse, pollMs: nu
   res.on('close', () => clearInterval(timer));
 }
 
+/**
+ * Streams the kanban board as SSE (D5): emit the current snapshot immediately,
+ * then re-evaluate on an interval and push only when it CHANGED (hash compare) —
+ * server-side polling so the browser drops its own poll. A periodic comment line
+ * keeps the connection alive through proxies.
+ */
+function streamBoard(repoRoot: string, res: ServerResponse, pollMs: number): void {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  let last = '';
+  let beats = 0;
+  const tick = (): void => {
+    let snapshot: string;
+    try {
+      snapshot = JSON.stringify(buildBoard(repoRoot));
+    } catch {
+      return; // a transient read error — try again next tick
+    }
+    if (snapshot !== last) {
+      last = snapshot;
+      res.write(`event: board\ndata: ${snapshot}\n\n`);
+    } else if ((beats += 1) % 10 === 0) {
+      res.write(': keep-alive\n\n'); // comment frame, ignored by EventSource
+    }
+  };
+  tick();
+  const timer = setInterval(tick, Math.max(250, pollMs));
+  timer.unref?.();
+  res.on('close', () => clearInterval(timer));
+}
+
 /** Reads a JSON request body (capped at 1 MiB); `{}` for an empty body. */
 function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
@@ -398,13 +444,22 @@ export function createExcaliburServer(options: ServeOptions): Server {
   const pollMs = options.pollMs ?? 500;
   return createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
-    if (tokenOf(req, url) !== options.token) {
+    const presented = tokenOf(req, url);
+    const isPrimary = presented === options.token;
+    const isShare = options.shareToken !== undefined && presented === options.shareToken;
+    if (!isPrimary && !isShare) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'unauthorized — pass ?token= or Authorization: Bearer' }));
       return;
     }
     // Mutations go through the POST write surface (start/cancel/approve runs).
+    // The read-only SHARE token can never mutate — refuse before doing any work.
     if (req.method === 'POST') {
+      if (isShare) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'read-only share link — mutations are disabled' }));
+        return;
+      }
       void handleWrite(options, req, res, url);
       return;
     }
@@ -415,9 +470,10 @@ export function createExcaliburServer(options: ServeOptions): Server {
       void handleWorkItem(options.repoRoot, decodeURIComponent(wiMatch[1] as string), res);
       return;
     }
-    let result: Json | Html | 'sse' | null;
+    let result: RouteResult;
     try {
-      result = route(options.repoRoot, url, options.write !== undefined);
+      // A share-token viewer must see write:false so the UI hides its actions.
+      result = route(options.repoRoot, url, options.write !== undefined && !isShare);
     } catch (error) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
@@ -439,6 +495,10 @@ export function createExcaliburServer(options: ServeOptions): Server {
         return;
       }
       streamRun(options.repoRoot, id, res, pollMs);
+      return;
+    }
+    if (result === 'sse-board') {
+      streamBoard(options.repoRoot, res, pollMs);
       return;
     }
     if ('html' in result) {
