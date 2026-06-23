@@ -182,21 +182,27 @@ backend. Tasks #153–#167, plus the foundational **Epic W** (#169–#174) below
   (task-first nav: Board/Runs/Insights/Plans + work-item drill-down), the serve
   endpoints `GET /api/board` + `GET /api/work-items/:key`, and the embed pipeline.
   Verified e2e vs a real `excalibur serve`. Everything else in Epic A builds on this.
-- **D1 (P1) Task/work-item board (the HOME)** — kanban columns by work-item status
-  (Backlog / Todo / In-progress / Review / Done); cards are work-items (local
-  `.excalibur/work-items/*.json`) + the live `update_tasks` checklist of the active
-  run feeding the in-progress card. (Read-only board already renders in D0; D1 =
-  full board polish + the live checklist.) The board is the landing view, not the
-  runs table.
-- **D2 (P1) Interactive board actions** — drag-to-change work-item status, approve
-  gates, start a run on a work-item, cancel runs — from the browser. **Blocked by
-  P0.3** (needs the programmable serve write API).
-- **D3 (P1) Work-item detail + Plan & Discovery** — work-item drill-down (its runs,
-  patches, PRs, checklist), plan-mode plans, Discovery readiness cards.
-- **D4 (P2) Secondary runs tab + cost/token charts** — filter/search/compare runs
-  (now a secondary view), historical time-series (ties P1.12 `stats`).
-- **D5 (P2) Live SSE + read-only share link** — consume `/stream` (drop the 4s poll);
-  optional read-only share token for a work-item or run.
+- **D1 (P1) Task/work-item board (the HOME) — ✅ DONE (2a031ad).** Kanban columns
+  by lane; cards show the active run's live `update_tasks` checklist (progress bar
+  - ✓/▸/○), an "active" pulse, auto-refresh. + adversarial review of D0+D1 (18
+    findings fixed, 40b9c0a).
+- **D2 (P1) Interactive board actions — ✅ DONE (2300b6a).** Drag-to-change lane,
+  start-run-on-card, cancel/approve runs from the browser — all behind
+  `excalibur serve --write` (GET /health reports `write`; POST /api/work-items/:key/move
+  - workItemId on POST /api/runs).
+- **D3 (P1) Plan & Discovery — ✅ DONE (de518d4).** Plans list (expand to read the
+  markdown body) + Discovery readiness cards, via new core `listPlans`/`readPlan`
+  - `GET /api/plans`, `/api/plans/:id`, `/api/discovery`.
+- **D4 (P2) Runs explorer + cost/token charts — ✅ DONE (85fd97f).** Insights page
+  (stats + cost-by-day + by-model/workflow, inline SVG, no chart lib) + a live
+  filter on the runs explorer.
+- **D5 (P2) Live SSE + read-only share link — ✅ DONE (972ce7a).** `GET /api/board/stream`
+  pushes board snapshots on change (browser drops the poll); `serve --share` mints
+  a READ-ONLY token (GETs ok, all mutations 403, /health write:false) + prints the URL.
+  Copy-link button on the board.
+
+> **Epic A (OSS dashboard D0–D5) COMPLETE — 2026-06-23, all on `main`, CI green.**
+> Stack: Svelte 5 + Vite single-file SPA embedded in the CLI, served by `excalibur serve`.
 
 ### Epic B — Enterprise manager web, advanced screens (`apps/web`) [Ent]
 
