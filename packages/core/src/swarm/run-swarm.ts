@@ -413,17 +413,15 @@ export async function runSwarmStaged<T>(
         const laneResults = setups.map((setup, i) => captureLane(setup, runResults[i]!));
         allLaneResults.push(...laneResults);
 
-        // 3. MERGE this wave onto the accumulating worktree (at currentBaseRef).
+        // 3. MERGE this wave onto the accumulating worktree (at currentBaseRef),
+        //    3-way healing a texturally-conflicting lane before giving up (AO4d).
         for (const lane of laneResults) {
           if (lane.failed || lane.diff.trim().length === 0) {
             continue;
           }
-          const check = checkPatchApplies(mergePath, lane.diff);
-          if (!check.applies) {
-            conflicts.push({ id: lane.id, reason: check.reason ?? 'did not apply onto the merge' });
-            continue;
+          if (!mergeOneLane(mergePath, lane.diff)) {
+            conflicts.push({ id: lane.id, reason: 'did not apply onto the merge (even 3-way)' });
           }
-          applyPatch(mergePath, lane.diff);
         }
 
         // 4. COMMIT the wave so the NEXT wave bases on predecessors' merged work.
@@ -447,6 +445,32 @@ export async function runSwarmStaged<T>(
   }
 }
 
+/**
+ * Merges ONE lane's diff onto the merge worktree (AO4d conflict-as-heal). Tries a
+ * clean apply; on conflict retries with a 3-way merge — recovering a lane that
+ * only conflicts texturally (overlapping context on an existing file) instead of
+ * silently dropping its work. Returns false only when even the 3-way fails (a
+ * genuine same-line conflict). Empty diffs are a no-op success.
+ */
+function mergeOneLane(mergePath: string, diff: string): boolean {
+  if (diff.trim().length === 0) return true;
+  if (checkPatchApplies(mergePath, diff).applies) {
+    applyPatch(mergePath, diff);
+    // Stage so the index tracks the working tree — `git apply --3way` for a LATER
+    // lane requires the file to match the index, or it errors "does not match
+    // index" and the heal silently no-ops.
+    stageAll(mergePath);
+    return true;
+  }
+  try {
+    applyPatch(mergePath, diff, { threeway: true });
+    stageAll(mergePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Replays each non-empty lane diff onto a fresh merge worktree, in order. */
 function mergeLaneDiffs<T>(
   repoRoot: string,
@@ -463,12 +487,9 @@ function mergeLaneDiffs<T>(
         continue; // a failed lane (threw all attempts / never met the rubric) or
         // one that changed nothing contributes no work to the merge.
       }
-      const check = checkPatchApplies(mergePath, lane.diff);
-      if (!check.applies) {
-        conflicts.push({ id: lane.id, reason: check.reason ?? 'did not apply onto the merge' });
-        continue;
+      if (!mergeOneLane(mergePath, lane.diff)) {
+        conflicts.push({ id: lane.id, reason: 'did not apply onto the merge (even 3-way)' });
       }
-      applyPatch(mergePath, lane.diff);
     }
     // Stage so newly-created files appear in the merged `git diff HEAD`.
     stageAll(mergePath);

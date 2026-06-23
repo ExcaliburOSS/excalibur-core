@@ -396,9 +396,11 @@ export function applyPatch(
   // `--recount` tolerates wrong @@ line counts in model-generated diffs (see
   // checkPatchApplies); the context lines must still match, so it never applies
   // a wrong hunk. `gitApplyTry` also tolerates a missing a/ b/ prefix (-p1→-p0).
+  // With `--3way` we DROP `--recount`: the merge reconstructs from the recorded
+  // pre-image blob, and `--recount` suppresses the 3-way fallback, so combining
+  // them makes the heal silently no-op (AO4d).
   const reason = gitApplyTry(repoRoot, diff, [
-    '--recount',
-    ...(opts?.threeway === true ? ['--3way'] : []),
+    ...(opts?.threeway === true ? ['--3way'] : ['--recount']),
     ...(opts?.reverse === true ? ['-R'] : []),
   ]);
   if (reason !== null) {

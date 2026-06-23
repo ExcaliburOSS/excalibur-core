@@ -102,6 +102,39 @@ describe('runSwarm', () => {
     }
   });
 
+  it('3-way HEALS a lane that conflicts only texturally (different lines of one file)', async () => {
+    const repo = initRepo();
+    try {
+      // A small committed file so both lanes' diffs carry full context + the blob
+      // the 3-way merge needs. Lane "top" edits line 1, "bottom" edits line 3 —
+      // sequential apply makes the 2nd's context stale (a naive conflict), but the
+      // 3-way merge reconstructs both edits.
+      writeFileSync(join(repo, 'app.ts'), 'a\nb\nc\n', 'utf8');
+      git(repo, 'add', '-A');
+      git(repo, 'commit', '--no-gpg-sign', '-m', 'three');
+      const result = await runSwarm(
+        repo,
+        [lane('top'), lane('bottom')],
+        ({ lane: l, worktreePath }) => {
+          const p = join(worktreePath, 'app.ts');
+          const cur = readFileSync(p, 'utf8');
+          writeFileSync(
+            p,
+            l.id === 'top' ? cur.replace('a\n', 'A\n') : cur.replace('c\n', 'C\n'),
+            'utf8',
+          );
+          return Promise.resolve(null);
+        },
+      );
+      // Without 3-way the second lane would land in `conflicts`; AO4d heals it.
+      expect(result.conflicts).toEqual([]);
+      expect(result.mergedDiff).toContain('+A');
+      expect(result.mergedDiff).toContain('+C');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
   it('captures a failing lane without aborting the swarm', async () => {
     const repo = initRepo();
     try {
