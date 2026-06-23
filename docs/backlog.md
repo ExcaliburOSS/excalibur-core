@@ -50,11 +50,52 @@ read-only `--share`) · **publishable extension SDK** (`@excalibur-oss/extension
     `runSwarmFlow` takes pre-decomposed `subtasks`. Verified real vs **Kimi**
     (`kimi-k2.7-code`): a 2-file task decomposed into 2 independent lanes, ran 2
     worktree agents, merged + applied.
-- **AO3 — mixed dependency-graph executor** [Core][auto] — PENDING refinement:
-  today AO is FLAT (independent→swarm | else→sequential) and fires only under
-  `approvals.auto`. Build a true staged DAG (phase A sequential → B+C parallel →
-  D), auto-background long builds, and consider making auto-orchestration the
-  default posture (auto-approve default) rather than gated on auto. Plan-first.
+
+### AO roadmap to BEAT Claude Code + OpenCode (from the 27-agent design workflow, 2026-06-23)
+
+> **World-class orchestration** = the tool reads intent, picks the execution shape
+>
+> - scale itself, runs it as a dependency-aware, git-isolated, cost-bounded graph
+>   whose every merge is **verified against ground truth (tests/typecheck + mesh)**
+>   before it touches the tree, fully observable/steerable per node, proactive by
+>   confidence not by a flag, with the graph/budget/gates living OUTSIDE the model
+>   context (repeatable, auditable, crash-resumable).
+>
+> **Verdict:** AO3 is NECESSARY but NOT SUFFICIENT. Two disqualifying gaps survive
+> it → AO4 is the real bar: (1) the swarm persists NOTHING (`swarm.ts` hardcodes
+> `runId: swarm_${lane.id}`, no `RunManager`) so SSE/replay/dashboard/audit/work-item
+> are BLIND to all parallel work; (2) the merged tree is never validated
+> (`mergeLaneDiffs` returns it unverified, conflicting lanes silently dropped); plus
+> `--budget` is bypassed by the swarm path (false safety). **Workflows like CC?** NO
+> author-defined deterministic multi-agent script exists (YAML workflows are
+> single-agent-per-phase sequential — `phase.agents`/`parallelism` are parsed but
+> IGNORED; swarm is LLM-derived not author-scripted) → AO5 adds the manifest layer.
+> **We beat CC/OpenCode** on the axis that matters: deterministic git-worktree merge
+>
+> - ground-truth test gate let us VERIFY combined parallel output before apply and
+>   pick best-of-N by real test exit codes — which neither structurally can.
+
+**AO3 — staged DAG executor + proactive posture (#187):**
+
+- **AO3a** runaway controller + `chooseConcurrency` governor (PURE, S) — **MUST LAND FIRST**; today `runSwarmFlow` never sets `maxConcurrency` so all lanes fire at once. Global agent + concurrency caps fail-closed.
+- **AO3b** `dependsOn` carried end-to-end on `SwarmSubtask` + pure Kahn toposort→waves (cycle→single lane); let `decomposeTask` EMIT deps; harden `parseFirstJsonObject` (balanced-brace).
+- **AO3c** `runSwarmStaged` — rebase each wave on the prior wave's MERGED ref (the real A→{B,C}→D parity vs CC `pipeline()`); keep flat path as fallback. Forward compact `LaneSummary` to dependents.
+- **AO3d** confidence-graded 3-way posture (act / narrate-and-act / ask) WITHOUT a flag (classifier emits `{category,tier}`, pure `riskOfShape`); always-on degraded single-model classifier; one-line "why this shape"; KILL the bilingual `TEST_GOAL_RE` regex (FIRM no-regex violation) + make `GOAL_MAX_ITERATIONS` config-driven.
+
+**AO4 — make orchestration TRUSTWORTHY + OBSERVABLE (the real world-class bar) (#188):**
+
+- **AO4a** **Swarm-as-run** (KEYSTONE, L): persist parallel work as first-class runs — parent `runId` + per-lane CHILD runs via `RunManager`, optional+nullable `parentRunId` on `runRecordSchema`, real events; do NOT add a `swarm` member to the frozen `events.ts` enum. Lights up SSE/replay/fork/dashboard/audit for parallel work.
+- **AO4b** Verified fan-in (M): run configured tests/typecheck on the MERGED tree + proportional mesh BEFORE apply (reuse `runConfiguredTestsCheck`); a red gate blocks auto-apply.
+- **AO4c** Budget binds across parallelism (M): shared `BudgetLedger` on the `model_call` cost stream; stop dispatching new lanes on cap; same `BudgetExceededError`/`policy_decision` contract; per-lane slice + partial-result settlement.
+- **AO4d** Conflict-as-heal (M): wire the built-but-uncalled `applyPatch({threeway:true})` into `mergeLaneDiffs`; escalate to lane rebase-and-re-dispatch; persist a dropped lane's diff as recoverable.
+- **AO4e** Live multi-lane view in dashboard + TTY + node-level cancel + work-item linkage per child run (blocked on AO4a).
+- **AO4f** Wire Verification Mesh + Claim Ledger into the AO2 auto-build (default) path (today only `excalibur run` gets them); make the "reproduce" lens run real tests.
+
+**AO5 — frontier (extends the lead; none required for world-class) (#189):**
+
+- Speculative best-of-N `/explore` with **test-oracle** selection (wire dormant `EXPLORE_CANDIDATES`); dynamic re-planning/self-healing; verification gates as DAG EDGES; **author-scripted + persisted/resumable orchestration MANIFEST (CC Workflow-tool parity)**; at most ONE capped recursion level (depth 2, branch-namespacing blocker noted).
+
+**Top-5 build order:** AO4a swarm-as-run → AO3c staged executor (+AO3a/b first) → AO4b verified fan-in → AO3d confidence posture → AO4c budget-binds. Each verified vs **Kimi** (`~/.config/excalibur/moonshot.key`), adversarially reviewed, committed+pushed.
 
 ---
 
