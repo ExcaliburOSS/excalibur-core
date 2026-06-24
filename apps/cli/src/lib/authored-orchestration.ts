@@ -28,7 +28,13 @@ export interface AuthoredStep {
   title?: string;
   /** AO7-4 — JSON-schema contract for this step's output (validated + retried). */
   outputSchema?: JsonSchema;
+  /** AO7-2 — per-step attempt ceiling (loop-until-rubric). */
+  maxAttempts?: number;
+  /** AO7-2 — conditional execution vs deps: always | on_success | on_failure. */
+  when?: 'always' | 'on_success' | 'on_failure';
 }
+
+const WHEN_VALUES = ['always', 'on_success', 'on_failure'] as const;
 
 export interface AuthoredOrchestration {
   version?: 1;
@@ -118,6 +124,25 @@ export function compileAuthoredOrchestration(raw: unknown): {
       );
     }
     const outputSchema = e['outputSchema'] as JsonSchema | undefined;
+    // AO7-2 — per-step loop-until (maxAttempts) + conditional (when).
+    if (
+      e['maxAttempts'] !== undefined &&
+      (typeof e['maxAttempts'] !== 'number' ||
+        !Number.isInteger(e['maxAttempts']) ||
+        e['maxAttempts'] < 1)
+    ) {
+      throw new CliUsageError(`step "${id}" maxAttempts must be a positive integer`);
+    }
+    const maxAttempts = typeof e['maxAttempts'] === 'number' ? e['maxAttempts'] : undefined;
+    if (
+      e['when'] !== undefined &&
+      !WHEN_VALUES.includes(e['when'] as (typeof WHEN_VALUES)[number])
+    ) {
+      throw new CliUsageError(
+        `step "${id}" has an invalid "when" — use always | on_success | on_failure`,
+      );
+    }
+    const when = e['when'] as (typeof WHEN_VALUES)[number] | undefined;
     const title =
       typeof e['title'] === 'string' && e['title'].trim().length > 0
         ? e['title'].trim()
@@ -129,6 +154,8 @@ export function compileAuthoredOrchestration(raw: unknown): {
       ...(dependsOn.length > 0 ? { dependsOn } : {}),
       ...(role !== undefined ? { role } : {}),
       ...(outputSchema !== undefined ? { outputSchema } : {}),
+      ...(maxAttempts !== undefined ? { maxAttempts } : {}),
+      ...(when !== undefined ? { when } : {}),
     };
   });
 

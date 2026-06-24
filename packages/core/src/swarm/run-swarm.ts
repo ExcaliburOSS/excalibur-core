@@ -33,6 +33,14 @@ import {
 export interface SwarmLane {
   id: string;
   instruction: string;
+  /** AO7-2 — per-lane attempt ceiling (loop-until-rubric); overrides the global
+   * `maxAttempts`. A bigger budget for a hard step without raising it for all. */
+  maxAttempts?: number;
+  /** AO7-2 — this lane's dependency ids (for the `when` condition; staged only). */
+  dependsOn?: readonly string[];
+  /** AO7-2 — CONDITIONAL execution (staged): run `always` (default), only when all
+   * deps succeeded (`on_success`), or only when a dep failed/was skipped (`on_failure`). */
+  when?: 'always' | 'on_success' | 'on_failure';
 }
 
 /** Context handed to the lane runner: its isolated worktree + position. */
@@ -152,6 +160,30 @@ export interface SwarmLaneResult<T> {
   attempts?: number;
   /** The final grader verdict, when a grader ran. */
   grade?: SwarmGrade;
+  /** AO7-2 — the lane was SKIPPED (its `when` condition was not met); not run, no diff. */
+  skipped?: boolean;
+}
+
+/**
+ * AO7-2 — CONDITIONAL step gate (pure): whether a lane should run given its
+ * `when` and the results of lanes that finished before it. `always` (default)
+ * always runs; `on_success` runs only when every named dependency is present and
+ * succeeded (not failed, not skipped); `on_failure` runs only when some dependency
+ * failed or was skipped. A lane with no deps: `on_success` runs, `on_failure` does not.
+ */
+export function shouldRunLane(
+  lane: { dependsOn?: readonly string[]; when?: 'always' | 'on_success' | 'on_failure' },
+  priorResults: ReadonlyArray<{ id: string; failed: boolean; skipped?: boolean }>,
+): boolean {
+  const when = lane.when ?? 'always';
+  if (when === 'always') return true;
+  const ok = (r: { failed: boolean; skipped?: boolean }): boolean =>
+    !r.failed && r.skipped !== true;
+  const byId = new Map(priorResults.map((r) => [r.id, r]));
+  const deps = (lane.dependsOn ?? [])
+    .map((d) => byId.get(d))
+    .filter((r): r is NonNullable<typeof r> => r !== undefined);
+  return when === 'on_success' ? deps.every(ok) : deps.some((r) => !ok(r));
 }
 
 /** A lane whose diff did not apply cleanly onto the accumulating merge. */
@@ -271,7 +303,8 @@ async function runOneLane<T>(
   options: RunSwarmOptions<T>,
   baseRef: string,
 ): Promise<LaneRun<T>> {
-  const maxAttempts = Math.max(1, options.maxAttempts ?? 1);
+  // AO7-2 — a per-lane ceiling (loop-until-rubric) overrides the global default.
+  const maxAttempts = Math.max(1, setup.lane.maxAttempts ?? options.maxAttempts ?? 1);
   let lastError = '';
   let feedback: string | undefined;
   let exhaustedGrade: SwarmGrade | undefined;
@@ -518,8 +551,32 @@ export async function runSwarmStaged<T>(
       // The merge HEAD BEFORE this wave merges — the revert target for the AO5-6
       // gate (currentBaseRef tracks the merge worktree HEAD across waves).
       const preWaveRef = currentBaseRef;
+      // AO7-2 — CONDITIONAL steps: a lane whose `when` is not satisfied by its
+      // deps' results so far is SKIPPED (recorded as a non-failed, empty-diff
+      // result so dependents can see it; never set up or run). Default `always` →
+      // toRun === wave → behaviour is byte-identical to before (back-compat).
+      const toRun: SwarmLane[] = [];
+      for (const lane of wave) {
+        if (shouldRunLane(lane, allLaneResults)) {
+          toRun.push(lane);
+        } else {
+          allLaneResults.push({
+            id: lane.id,
+            index: globalIndex++,
+            branch: '',
+            diff: '',
+            failed: false,
+            skipped: true,
+          });
+          emitLane(options.onLane, { index: globalIndex - 1, id: lane.id, phase: 'settled' });
+        }
+      }
+      if (toRun.length === 0) {
+        waveIndex += 1;
+        continue;
+      }
       // 1. SETUP this wave's lane worktrees at the predecessors-merged base.
-      const setups: LaneSetup[] = wave.map((lane) => {
+      const setups: LaneSetup[] = toRun.map((lane) => {
         const index = globalIndex++;
         const worktreePath = join(
           repoRoot,

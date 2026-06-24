@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { makeTempDir, removeDir } from '../test-utils';
-import { runSwarm, runSwarmStaged, type SwarmLane } from './run-swarm';
+import { runSwarm, runSwarmStaged, shouldRunLane, type SwarmLane } from './run-swarm';
 import { existsSync } from 'node:fs';
 
 function git(repo: string, ...args: string[]): void {
@@ -23,6 +23,34 @@ function initRepo(): string {
 }
 
 const lane = (id: string, instruction = id): SwarmLane => ({ id, instruction });
+
+describe('shouldRunLane (AO7-2 conditional gate, pure)', () => {
+  const r = (id: string, failed: boolean, skipped = false) => ({ id, failed, skipped });
+  it('`always` (default) always runs', () => {
+    expect(shouldRunLane({}, [])).toBe(true);
+    expect(shouldRunLane({ when: 'always', dependsOn: ['a'] }, [r('a', true)])).toBe(true);
+  });
+  it('`on_success` runs only when every dep succeeded (not failed, not skipped)', () => {
+    expect(
+      shouldRunLane({ when: 'on_success', dependsOn: ['a', 'b'] }, [r('a', false), r('b', false)]),
+    ).toBe(true);
+    expect(
+      shouldRunLane({ when: 'on_success', dependsOn: ['a', 'b'] }, [r('a', false), r('b', true)]),
+    ).toBe(false);
+    expect(shouldRunLane({ when: 'on_success', dependsOn: ['a'] }, [r('a', false, true)])).toBe(
+      false,
+    );
+    expect(shouldRunLane({ when: 'on_success', dependsOn: [] }, [])).toBe(true); // vacuous
+  });
+  it('`on_failure` runs only when some dep failed or was skipped', () => {
+    expect(shouldRunLane({ when: 'on_failure', dependsOn: ['a'] }, [r('a', true)])).toBe(true);
+    expect(shouldRunLane({ when: 'on_failure', dependsOn: ['a'] }, [r('a', false, true)])).toBe(
+      true,
+    );
+    expect(shouldRunLane({ when: 'on_failure', dependsOn: ['a'] }, [r('a', false)])).toBe(false);
+    expect(shouldRunLane({ when: 'on_failure', dependsOn: [] }, [])).toBe(false);
+  });
+});
 
 describe('runSwarm', () => {
   it('fans out N lanes to isolated worktrees and fans in DISJOINT diffs cleanly', async () => {
@@ -243,6 +271,59 @@ describe('runSwarm', () => {
         { depth: 2 },
       );
       expect(result).toEqual({ lanes: [], mergedDiff: '', conflicts: [] });
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('AO7-2: a per-lane maxAttempts overrides the global default (loop-until)', async () => {
+    const repo = initRepo();
+    try {
+      const tries = new Map<string, number>();
+      const result = await runSwarm(
+        repo,
+        // lane A may retry up to 3×, lane B uses the default (1).
+        [{ id: 'a', instruction: 'a', maxAttempts: 3 }, lane('b')],
+        ({ lane: l, worktreePath }) => {
+          const n = (tries.get(l.id) ?? 0) + 1;
+          tries.set(l.id, n);
+          if (n < 3) return Promise.reject(new Error('flaky')); // fails attempts 1-2
+          writeFileSync(join(worktreePath, `${l.id}.ts`), '// ok\n', 'utf8');
+          return Promise.resolve(null);
+        },
+        { maxAttempts: 1 }, // global default = 1
+      );
+      expect(tries.get('a')).toBe(3); // A retried up to its per-lane ceiling
+      expect(tries.get('b')).toBe(1); // B honoured the global default
+      expect(result.lanes.find((l) => l.id === 'a')?.failed).toBe(false);
+      expect(result.lanes.find((l) => l.id === 'b')?.failed).toBe(true);
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('AO7-2: a conditional (`when:on_failure`) lane is SKIPPED when its dep succeeded', async () => {
+    const repo = initRepo();
+    try {
+      const ran: string[] = [];
+      const result = await runSwarmStaged(
+        repo,
+        [
+          [lane('build')],
+          [{ id: 'rescue', instruction: 'fix', dependsOn: ['build'], when: 'on_failure' }],
+        ],
+        ({ lane: l, worktreePath }) => {
+          ran.push(l.id);
+          writeFileSync(join(worktreePath, `${l.id}.ts`), '// x\n', 'utf8');
+          return Promise.resolve(null);
+        },
+      );
+      // build SUCCEEDED → the on_failure rescue lane never ran, recorded as skipped.
+      expect(ran).toEqual(['build']);
+      const rescue = result.lanes.find((l) => l.id === 'rescue');
+      expect(rescue?.skipped).toBe(true);
+      expect(rescue?.failed).toBe(false);
+      expect(result.mergedDiff).not.toContain('rescue.ts');
     } finally {
       removeDir(repo);
     }

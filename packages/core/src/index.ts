@@ -86,6 +86,7 @@ export { runVerificationMesh, type RunMeshInput } from './verification/verificat
 export {
   runSwarm,
   runSwarmStaged,
+  shouldRunLane,
   type RunSwarmOptions,
   type SwarmConflict,
   type SwarmGrade,

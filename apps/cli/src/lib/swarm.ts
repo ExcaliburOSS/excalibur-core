@@ -81,6 +81,10 @@ export interface SwarmSubtask {
    * data (CC's StructuredOutput, per-lane). Best for analysis/data lanes.
    */
   outputSchema?: JsonSchema;
+  /** AO7-2 — per-step attempt ceiling (loop-until-rubric), overrides the default. */
+  maxAttempts?: number;
+  /** AO7-2 — conditional execution vs this step's deps: always | on_success | on_failure. */
+  when?: 'always' | 'on_success' | 'on_failure';
 }
 
 /**
@@ -684,6 +688,15 @@ export async function executeSwarm(
   // run, then restored so a long-lived REPL never leaks a stale depth.
   const prevDepthEnv = process.env['EXCALIBUR_SWARM_DEPTH'];
   process.env['EXCALIBUR_SWARM_DEPTH'] = String(swarmDepth + 1);
+  // AO7-2 — carry per-step controls (maxAttempts loop-until + dependsOn/when
+  // conditional) onto the core SwarmLane; the staged executor honours `when`.
+  const toLane = (s: SwarmSubtask) => ({
+    id: s.id,
+    instruction: s.instruction,
+    ...(s.maxAttempts !== undefined ? { maxAttempts: s.maxAttempts } : {}),
+    ...(s.dependsOn !== undefined ? { dependsOn: s.dependsOn } : {}),
+    ...(s.when !== undefined ? { when: s.when } : {}),
+  });
   // STAGED (a real dependency graph) vs FLAT (a single parallel wave).
   let result: SwarmResult<SwarmLaneSummary>;
   try {
@@ -691,16 +704,11 @@ export async function executeSwarm(
       options.waves !== undefined && options.waves.length > 1
         ? await runSwarmStaged(
             repoRoot,
-            options.waves.map((w) => w.map((s) => ({ id: s.id, instruction: s.instruction }))),
+            options.waves.map((w) => w.map(toLane)),
             runLane,
             execOptions,
           )
-        : await runSwarm(
-            repoRoot,
-            subtasks.map((s) => ({ id: s.id, instruction: s.instruction })),
-            runLane,
-            execOptions,
-          );
+        : await runSwarm(repoRoot, subtasks.map(toLane), runLane, execOptions);
   } finally {
     if (prevDepthEnv === undefined) {
       delete process.env['EXCALIBUR_SWARM_DEPTH'];

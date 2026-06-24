@@ -109,6 +109,25 @@ describe('compileAuthoredOrchestration (AO5-4)', () => {
     expect(bad({ steps: [{ id: 'a', instruction: 'x', role: 'wizard' }] })).toThrow(/invalid role/);
   });
 
+  it('AO7-2: threads maxAttempts + when, and rejects invalid values', () => {
+    const { subtasks } = compileAuthoredOrchestration({
+      steps: [
+        { id: 'a', instruction: 'build' },
+        { id: 'b', instruction: 'rescue', dependsOn: ['a'], when: 'on_failure', maxAttempts: 3 },
+      ],
+    });
+    expect(subtasks[1]).toMatchObject({ when: 'on_failure', maxAttempts: 3 });
+    expect(bad({ steps: [{ id: 'a', instruction: 'x', maxAttempts: 0 }] })).toThrow(
+      /maxAttempts must be a positive integer/,
+    );
+    expect(bad({ steps: [{ id: 'a', instruction: 'x', maxAttempts: 1.5 }] })).toThrow(
+      /maxAttempts must be a positive integer/,
+    );
+    expect(bad({ steps: [{ id: 'a', instruction: 'x', when: 'sometimes' }] })).toThrow(
+      /invalid "when"/,
+    );
+  });
+
   it('AO7-4: threads an outputSchema onto the subtask, and rejects a non-mapping one', () => {
     const schema = { type: 'object', properties: { ok: { type: 'boolean' } } };
     const { subtasks } = compileAuthoredOrchestration({
