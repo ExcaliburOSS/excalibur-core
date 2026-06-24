@@ -166,10 +166,12 @@ const orchestrationSectionSchema = z.object({
    */
   selfHeal: z.boolean().optional(),
   /**
-   * AO8-2 — SUPERVISE background completions: when a `/bg` thread finishes, a fast
-   * model decides the next action ({done | continue | escalate}). At full autonomy
-   * a `continue` auto-dispatches a follow-up; otherwise it surfaces a one-line
-   * suggestion. Opt-in (default off); costs one cheap-model call per completion.
+   * AO8-2/8-4 — SUPERVISE background completions: when a `/bg` thread finishes, a
+   * fast model decides the next action ({done | continue | escalate}). PROACTIVE BY
+   * DEFAULT at full autonomy (undefined → on when approvals.auto); set `false` to
+   * DISABLE it even at full autonomy; set `true` to also enable it BELOW full
+   * autonomy (where it offers rather than auto-acts). Auto-spawned chains are bounded
+   * (anti-loop). Costs one cheap-model call per completion when active.
    */
   superviseBackground: z.boolean().optional(),
 });

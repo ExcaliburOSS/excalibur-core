@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { EXCALIBUR_DIR } from '../config/load-config';
 import type { ScheduledJob } from './schedule';
@@ -27,10 +27,13 @@ export class ScheduleStore {
     return raw.filter((j): j is ScheduledJob => isJob(j));
   }
 
-  /** Overwrites the whole job set (used by the daemon to persist advanced jobs). */
+  /** Overwrites the whole job set ATOMICALLY (temp-write + rename) so a concurrent
+   * daemon + `schedule add/remove` can never observe — or persist — a torn file. */
   replaceAll(jobs: ReadonlyArray<ScheduledJob>): void {
     mkdirSync(dirname(this.path), { recursive: true });
-    writeFileSync(this.path, JSON.stringify(jobs, null, 2), 'utf8');
+    const tmp = `${this.path}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(jobs, null, 2), 'utf8');
+    renameSync(tmp, this.path); // atomic on the same filesystem
   }
 
   /** Adds a job (returns the new full list). */
@@ -59,16 +62,26 @@ export class ScheduleStore {
 function isJob(v: unknown): v is ScheduledJob {
   if (typeof v !== 'object' || v === null) return false;
   const j = v as Record<string, unknown>;
-  const spec = j['spec'];
+  // Validate the spec union FULLY (incl. its numeric payload) so a malformed entry
+  // is dropped rather than yielding a NaN nextRun that silently never (or always) fires.
+  const spec = j['spec'] as { type?: unknown; everyMs?: unknown; minutesOfDay?: unknown } | null;
   const specOk =
     typeof spec === 'object' &&
     spec !== null &&
-    ((spec as { type?: unknown }).type === 'interval' ||
-      (spec as { type?: unknown }).type === 'dailyAt');
+    ((spec.type === 'interval' &&
+      typeof spec.everyMs === 'number' &&
+      Number.isFinite(spec.everyMs) &&
+      spec.everyMs > 0) ||
+      (spec.type === 'dailyAt' &&
+        typeof spec.minutesOfDay === 'number' &&
+        Number.isInteger(spec.minutesOfDay) &&
+        spec.minutesOfDay >= 0 &&
+        spec.minutesOfDay <= 1439));
   return (
     typeof j['id'] === 'string' &&
     typeof j['task'] === 'string' &&
     typeof j['nextRunMs'] === 'number' &&
+    Number.isFinite(j['nextRunMs']) &&
     typeof j['enabled'] === 'boolean' &&
     specOk
   );

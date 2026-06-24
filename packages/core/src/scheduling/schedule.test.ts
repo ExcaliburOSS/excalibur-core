@@ -80,10 +80,17 @@ describe('isDue / dueJobs / advanceJob', () => {
     expect(dueJobs(jobs, 1000).map((j) => j.id)).toEqual(['a']);
   });
 
-  it('advanceJob stamps lastRun + reschedules', () => {
+  it('advanceJob stamps lastRun + reschedules anchored on the slot (no drift)', () => {
     const advanced = advanceJob(job({ nextRunMs: 1000 }), 1000);
     expect(advanced.lastRunMs).toBe(1000);
-    expect(advanced.nextRunMs).toBe(2000); // 1000 + everyMs(1000)
+    expect(advanced.nextRunMs).toBe(2000); // 1000 + everyMs(1000), slot-anchored
+  });
+
+  it('advanceJob fires ONCE + realigns after a long downtime (no catch-up storm)', () => {
+    // slot=1000, every=1000; the daemon was down until 5500 (~4.5 slots missed).
+    const advanced = advanceJob(job({ nextRunMs: 1000 }), 5500);
+    expect(advanced.lastRunMs).toBe(5500);
+    expect(advanced.nextRunMs).toBe(6000); // first slot STRICTLY after now, aligned to the grid
   });
 });
 

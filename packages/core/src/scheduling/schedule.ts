@@ -88,8 +88,19 @@ export function dueJobs(jobs: ReadonlyArray<ScheduledJob>, nowMs: number): Sched
   return jobs.filter((j) => isDue(j, nowMs));
 }
 
-/** Advances a job after it fired at `nowMs`: stamps lastRun + computes the next fire. */
+/**
+ * Advances a job after it fired at `nowMs`: stamps lastRun + computes the next
+ * fire. An interval is anchored on its SCHEDULED slot (not `now`) so it never
+ * drifts forward by tick latency, and it jumps to the first slot strictly AFTER
+ * `now` — so a daemon that was down past several slots fires ONCE and realigns,
+ * never replaying every missed slot (no catch-up storm).
+ */
 export function advanceJob(job: ScheduledJob, nowMs: number): ScheduledJob {
+  if (job.spec.type === 'interval') {
+    const elapsed = nowMs - job.nextRunMs;
+    const steps = elapsed >= 0 ? Math.floor(elapsed / job.spec.everyMs) + 1 : 1;
+    return { ...job, lastRunMs: nowMs, nextRunMs: job.nextRunMs + steps * job.spec.everyMs };
+  }
   return { ...job, lastRunMs: nowMs, nextRunMs: nextRun(job.spec, nowMs) };
 }
 

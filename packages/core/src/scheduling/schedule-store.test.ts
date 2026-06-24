@@ -47,4 +47,15 @@ describe('ScheduleStore (AO8-3)', () => {
   it('returns [] for a missing / corrupt file (never throws on read)', () => {
     expect(new ScheduleStore(dir).list()).toEqual([]); // no file yet
   });
+
+  it('drops jobs with a malformed spec payload (NaN/out-of-range), keeps valid ones', () => {
+    const store = new ScheduleStore(dir);
+    // A hand-edited file: one good job + bad ones (NaN everyMs, out-of-range minute).
+    store.replaceAll([
+      job('good'),
+      { ...job('bad1'), spec: { type: 'interval', everyMs: Number.NaN } } as never,
+      { ...job('bad2'), spec: { type: 'dailyAt', minutesOfDay: 9999 } } as never,
+    ]);
+    expect(new ScheduleStore(dir).list().map((j) => j.id)).toEqual(['good']);
+  });
 });

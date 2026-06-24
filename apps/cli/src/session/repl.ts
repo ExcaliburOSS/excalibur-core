@@ -153,6 +153,9 @@ interface SessionRuntime {
   fleet: FleetState;
   /** Active self-contained custom agent for the session (`/agent <name>`); null = none (P1.7b). */
   activeAgent: CustomAgent | null;
+  /** AO8-4 — set on REPL teardown so a late background callback (chain / supervisor)
+   * never spawns a new thread into a closing session. */
+  shuttingDown: boolean;
 }
 
 /**
@@ -271,6 +274,7 @@ export async function runInteractiveSession(
     approvals: { auto: config.approvals?.auto === true },
     fleet: initialFleet(),
     activeAgent: null,
+    shuttingDown: false,
   };
 
   // Welcome banner (two-column frame + cyberpunk sword) + status line.
@@ -776,6 +780,9 @@ export async function runInteractiveSession(
       printStatusLine(deps, runtime);
     }
   } finally {
+    // AO8-4 — stop any late background callback (chain / supervisor) from spawning
+    // a NEW thread into the closing session, then cancel the in-flight ones.
+    runtime.shuttingDown = true;
     offSigint();
     offEscape();
     editor.close();
@@ -1585,10 +1592,20 @@ async function parseBgChain(
 }
 
 /**
- * AO8-2 — when a bg thread settles, an OPT-IN supervisor decides the next action.
- * At full autonomy a `continue` AUTO-dispatches a follow-up; otherwise it surfaces
- * a one-line suggestion. `escalate` always surfaces a note. Off unless
- * `orchestration.superviseBackground` is set; best-effort (never affects the session).
+ * AO8-4 — anti-loop bound on AUTO-spawned background follow-ups (explicit chains +
+ * supervisor continues combined). A supervisor whose follow-up itself re-supervises
+ * could otherwise chain forever; this caps the depth (mirrors the AO5-5 ≤1-depth
+ * swarm philosophy: bounded autonomous spawning, never a fork-bomb).
+ */
+const MAX_BG_CHAIN = 3;
+
+/**
+ * AO8-2/8-4 — when a bg thread settles with no explicit chain, a supervisor decides
+ * the next action. PROACTIVE BY DEFAULT at full autonomy (the user already opted
+ * into autonomy): it runs unless `orchestration.superviseBackground` is explicitly
+ * `false`; below full autonomy it runs ONLY when that flag is `true`, and then it
+ * OFFERS rather than auto-acts. A `continue` at full autonomy auto-dispatches the
+ * follow-up (bounded by {@link MAX_BG_CHAIN}); `escalate` surfaces a note. Best-effort.
  */
 function maybeSuperviseCompletion(
   deps: CliDeps,
@@ -1597,8 +1614,17 @@ function maybeSuperviseCompletion(
   outcome: 'done' | 'failed',
   error: string | undefined,
   controllers: Map<string, AbortController>,
+  chainDepth: number,
 ): void {
-  if (runtime.config.orchestration?.superviseBackground !== true) {
+  // Proactive gate: ON at full autonomy unless explicitly disabled; opt-in (offer)
+  // below. [[feedback-proactive-intelligent]] — don't make the user ask by command.
+  const flag = runtime.config.orchestration?.superviseBackground;
+  const enabled = flag === false ? false : runtime.approvals.auto || flag === true;
+  if (!enabled) {
+    return;
+  }
+  // Anti-loop: once the auto-spawned chain reaches the cap, stop reacting.
+  if (chainDepth >= MAX_BG_CHAIN) {
     return;
   }
   const model = buildCheapModel(deps, runtime);
@@ -1616,7 +1642,7 @@ function maybeSuperviseCompletion(
           decision.followUp.length > 56 ? `${decision.followUp.slice(0, 55)}…` : decision.followUp;
         if (runtime.approvals.auto) {
           deps.ui.info(deps.t('repl.bg-supervise-continue', { title: t }));
-          launchBgThread(deps, runtime, decision.followUp, controllers);
+          launchBgThread(deps, runtime, decision.followUp, controllers, undefined, chainDepth + 1);
         } else {
           deps.ui.info(deps.t('repl.bg-supervise-suggest', { title: t }));
         }
@@ -1630,9 +1656,10 @@ function maybeSuperviseCompletion(
 }
 
 /**
- * Spawns + runs ONE background thread. AO8-1: an optional `followUp` is stored on
- * the thread and AUTO-DISPATCHED when this thread completes successfully (a
- * single chain link — the follow-up itself carries none, so chains never recurse).
+ * Spawns + runs ONE background thread. AO8-1: an optional `followUp` is
+ * AUTO-DISPATCHED when this thread completes. AO8-4: `chainDepth` tracks how many
+ * auto-spawned links deep this thread is, so the explicit chain + supervisor
+ * continues are bounded by {@link MAX_BG_CHAIN} (never an unbounded background fork).
  */
 function launchBgThread(
   deps: CliDeps,
@@ -1640,7 +1667,12 @@ function launchBgThread(
   task: string,
   controllers: Map<string, AbortController>,
   followUp?: string,
+  chainDepth = 0,
 ): void {
+  // AO8-4 — never spawn into a closing session (a late chain/supervisor callback).
+  if (runtime.shuttingDown) {
+    return;
+  }
   // Build the turn deps NOW so a misconfigured model fails HERE (visibly) rather
   // than inside the detached promise where the rejection would be swallowed.
   const ctrl = new AbortController();
@@ -1666,15 +1698,20 @@ function launchBgThread(
       const pendingFollowUp = runtime.fleet.threads.find((t) => t.id === id)?.followUp;
       runtime.fleet = settleThread(runtime.fleet, id, 'done', deps.t('repl.bg-done', { title }));
       // AO8-1 — REACTION ON COMPLETION: the finished thread auto-dispatches its
-      // follow-up (no user command). One link only (the follow-up has no follow-up).
-      if (pendingFollowUp !== undefined && pendingFollowUp.length > 0) {
+      // explicit follow-up (no user command), bounded by MAX_BG_CHAIN (AO8-4).
+      if (
+        pendingFollowUp !== undefined &&
+        pendingFollowUp.length > 0 &&
+        chainDepth < MAX_BG_CHAIN
+      ) {
         const fuTitle =
           pendingFollowUp.length > 56 ? `${pendingFollowUp.slice(0, 55)}…` : pendingFollowUp;
         deps.ui.info(deps.t('repl.bg-followup', { title: fuTitle }));
-        launchBgThread(deps, runtime, pendingFollowUp, controllers);
-      } else {
-        // AO8-2 — no explicit chain → let the (opt-in) supervisor decide next.
-        maybeSuperviseCompletion(deps, runtime, task, 'done', undefined, controllers);
+        launchBgThread(deps, runtime, pendingFollowUp, controllers, undefined, chainDepth + 1);
+      } else if (pendingFollowUp === undefined || pendingFollowUp.length === 0) {
+        // AO8-2/8-4 — no explicit chain → the supervisor decides next (proactive
+        // at full autonomy), itself bounded by MAX_BG_CHAIN.
+        maybeSuperviseCompletion(deps, runtime, task, 'done', undefined, controllers, chainDepth);
       }
     })
     .catch((error: unknown) => {
@@ -1685,8 +1722,8 @@ function launchBgThread(
         'failed',
         deps.t('repl.bg-failed', { title, error: reason }),
       );
-      // AO8-2 — a FAILED bg task is exactly when the supervisor adds value.
-      maybeSuperviseCompletion(deps, runtime, task, 'failed', reason, controllers);
+      // AO8-2/8-4 — a FAILED bg task is exactly when the supervisor adds value.
+      maybeSuperviseCompletion(deps, runtime, task, 'failed', reason, controllers, chainDepth);
     })
     .finally(() => {
       controllers.delete(id);
