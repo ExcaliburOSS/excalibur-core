@@ -146,8 +146,14 @@ user sign-off → build. Depends on AO3+AO4 telemetry.
 >    finished orchestration stays `orchestrate --resume`, AO5-3.) Verified vs Kimi
 >    (control path over a real orchestration end-to-end) + deterministic gate
 >    tests. cli 501/501, tui 106/106.
-> 4. **Time-travel of an orchestration** in the UI — scrubber over the combined
->    parent+lanes event timeline, reusing `rewind`/`reduceRail`.
+> 4. **Time-travel of an orchestration** ✅ DONE (2026-06-24, `0683e7c`): a time
+>    SCRUBBER on the dashboard chronogram — drag from start→now and each lane's
+>    state + bar replays AS OF the scrubbed moment (pending→running→final);
+>    "Now" re-follows live. Pure `chronogram-time.ts` (`timeBounds`/`laneStateAt`/
+>    `laneBarAt`, unit-tested ×7) replays the ChronogramDto timestamps — no server
+>    round trip; SSE keeps streaming while the head is pinned. Lane-level
+>    time-travel stays the per-run rewind / run view. Verified vs Kimi (real
+>    orchestration's lane timestamps replay pending→running→done).
 > 5. **All reachable by NL/proactive/UI** — best-of-N + resume already are (AO5-NL);
 >    extend to pause/time-travel; commands stay escape hatches.
 >    Reuse: `reduceRail`, `diff-view`/`DiffView`, SSE (`/api/board/stream`), the
