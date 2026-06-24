@@ -154,11 +154,21 @@ user sign-off → build. Depends on AO3+AO4 telemetry.
 >    round trip; SSE keeps streaming while the head is pinned. Lane-level
 >    time-travel stays the per-run rewind / run view. Verified vs Kimi (real
 >    orchestration's lane timestamps replay pending→running→done).
-> 5. **All reachable by NL/proactive/UI** — best-of-N + resume already are (AO5-NL);
->    extend to pause/time-travel; commands stay escape hatches.
->    Reuse: `reduceRail`, `diff-view`/`DiffView`, SSE (`/api/board/stream`), the
->    rewind time-machine, `/api/orchestrations` (AO4e). Keep TTY byte-identical to
->    the dashboard via the reducer. Each piece verified vs Kimi.
+> 5. **All reachable by NL/proactive/UI** ✅ DONE (2026-06-24, `040998b`): the
+>    chronogram + pause/resume are no longer command-only. A new `orchestration`
+>    TurnIntent in the ONE LLM router (no regex, any language) routes "view/pause/
+>    resume the swarm/orchestration/chronogram/timeline" → the REPL renders the
+>    chronogram or toggles the pause flag; a `classifyOrchestrationAction`
+>    micro-classifier picks show|pause|resume. Proactive: after a swarm
+>    auto-dispatches, a hint that it's a viewable+pausable object. The
+>    `orchestration` command + dashboard buttons stay escape hatches. Verified vs
+>    Kimi (ES/EN phrases → `orchestration`; verb show/pause/resume across ES/EN/FR;
+>    parser unit-tested 24/24).
+>
+> **AO6 COMPLETE (2026-06-24) — all 5 pillars shipped + Kimi-verified.** Excalibur's
+> orchestration now matches CC's live inline-diff stream AND adds what CC/OpenCode
+> lack: a live wave/DAG chronogram (TTY+dashboard, one model), real mid-flight
+> pause/resume, UI time-travel scrubber, and full NL/proactive/UI reach.
 
 **AO5 — frontier (extends the lead; none required for world-class) (#189):**
 
