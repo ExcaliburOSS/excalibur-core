@@ -483,6 +483,10 @@ export const ES: Catalog = {
   'swarm.mesh-running': 'Revisión adversarial del resultado fusionado ({lenses} lente(s))…',
   'swarm.mesh-blocked':
     'La malla de verificación BLOQUEÓ el merge (sobrevivió un problema de severidad alta). Los cambios fusionados se REVIRTIERON.',
+  'swarm.healing':
+    'El carril {id} agotó sus intentos — un pase de auto-reparación con el contexto del fallo…',
+  'swarm.healed': 'El carril {id} se auto-reparó — se conserva su trabajo corregido.',
+  'swarm.heal-failed': 'El carril {id} no pudo auto-repararse — se deja como fallido.',
   'swarm.verify-wave': 'Verificando la onda {wave} (gate antes de que corran sus dependientes)…',
   'swarm.wave-verified': 'Onda {wave} verificada — sus dependientes continúan.',
   'swarm.wave-reverted':
@@ -654,6 +658,39 @@ export const ES: Catalog = {
     'Guardado. Excalibur llamará a {baseUrl} con el token bearer en {apiKeyEnv}.',
   'provider-setup.saved_self_hosted_keyless':
     'Guardado. Excalibur llamará a {baseUrl} sin autenticación (endpoint autoalojado sin clave).',
+  // Onboarding: detección de clave + cabeceras de grupo del selector. (El inglés
+  // es el de model-catalog.ts/los literales; aquí solo van las traducciones es.)
+  'provider-setup.detected_use': 'Detectada {envVar} en tu entorno — ¿configurar {label}?',
+  'provider-setup.group_recommended': 'Recomendados',
+  'provider-setup.group_subscription': 'Suscripción o API',
+  'provider-setup.group_api': 'Solo API',
+  'provider-setup.group_local': 'Local',
+  'provider-setup.group_detected': 'Detectados (clave en tu entorno)',
+  // Catálogo de proveedores — hints (los labels son nombres de marca, sin traducir).
+  'catalog.kimi.hint': 'clave de suscripción (Kimi Code) o API · kimi-k2.7-code',
+  'catalog.minimax.hint': 'suscripción (plan coding de MiniMax) o API · MiniMax-M2',
+  'catalog.glm.hint': 'suscripción GLM Coding Plan o API · GLM-4.6',
+  'catalog.anthropic.hint': 'suscripción Claude Pro/Max (vía Claude Code) o API · Opus + Haiku',
+  'catalog.openai.hint': 'suscripción ChatGPT (vía Codex) o API · gpt-5.5 + nano',
+  'catalog.gemini.hint':
+    'suscripción AI Pro/Ultra (vía Gemini/Antigravity CLI), API o capa gratuita · Flash',
+  'catalog.deepseek.hint': 'API · v4-pro + v4-flash',
+  'catalog.openrouter.hint': 'una clave, muchos modelos · API',
+  'catalog.groq.hint': 'capa gratuita · inferencia ultrarrápida · gpt-oss + Llama',
+  'catalog.xai.hint': 'API · grok-4 + grok-4-fast',
+  'catalog.cerebras.hint': 'capa gratuita · la inferencia más rápida (wafer-scale) · Qwen + Llama',
+  'catalog.together.hint': 'API · modelos abiertos (DeepSeek, Qwen, Llama)',
+  'catalog.fireworks.hint': 'API · serving rápido de modelos abiertos',
+  // Catálogo — disclaimers de suscripción (cli-passthrough).
+  'catalog.anthropic.disclaimer':
+    'Anthropic NO permite que herramientas de terceros usen credenciales Pro/Max en tu nombre. Excalibur solo ejecuta la propia CLI de Claude Code (que guarda tu login) y nunca almacena ni reenvía tu token — tu propia automatización, bajo tu responsabilidad.',
+  'catalog.openai.disclaimer':
+    'Usa tu suscripción de ChatGPT vía la CLI Codex de OpenAI (que guarda tu login). El uso de la suscripción se rige por los términos de OpenAI — bajo tu responsabilidad.',
+  'catalog.gemini.disclaimer':
+    'Google NO permite que herramientas de terceros usen tu suscripción; Excalibur solo ejecuta la CLI oficial de Google y nunca almacena tu token — bajo tu responsabilidad.',
+  // Validación de modelo en vivo.
+  'models.validate-stale':
+    'El modelo "{model}" ({name}) no estaba en la lista de modelos del proveedor — puede haberse renombrado o quedado obsoleto. Ejecuta `excalibur models setup` para elegir uno actual.',
 
   // run-pipeline
   'run-pipeline.discoveryPrompt': '¿Ejecutar Discovery primero?',

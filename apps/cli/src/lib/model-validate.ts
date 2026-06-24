@@ -58,7 +58,10 @@ async function listModels(
  * skips mock/ollama/keyless providers, and never throws.
  */
 export async function validateConfiguredModels(deps: CliDeps): Promise<void> {
-  let providers: Record<string, { type: string; baseUrl?: string; apiKeyEnv?: string; model?: string; apiVersion?: string }>;
+  let providers: Record<
+    string,
+    { type: string; baseUrl?: string; apiKeyEnv?: string; model?: string; apiVersion?: string }
+  >;
   try {
     providers = loadGatewayContext(deps.cwd()).providers.providers as typeof providers;
   } catch {
@@ -88,9 +91,14 @@ export async function validateConfiguredModels(deps: CliDeps): Promise<void> {
       cache.set(cacheKey, ids);
     }
     if (ids !== null && !ids.includes(model)) {
-      // i18n: kept literal until Phase 4 (en.ts is being edited concurrently).
+      // Spanish lives in es.ts; English falls back to this literal (the key is
+      // returned unchanged when missing from the catalog).
+      const k = 'models.validate-stale';
+      const translated = deps.t(k, { model, name });
       deps.ui.warn(
-        `Model "${model}" (${name}) wasn't in the provider's live model list — it may be renamed or deprecated. Run \`excalibur models setup\` to pick a current one.`,
+        translated === k
+          ? `Model "${model}" (${name}) wasn't in the provider's live model list — it may be renamed or deprecated. Run \`excalibur models setup\` to pick a current one.`
+          : translated,
       );
     }
   }

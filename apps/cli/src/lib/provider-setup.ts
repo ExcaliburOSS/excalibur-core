@@ -47,16 +47,34 @@ export function detectEnvProviders(env: NodeJS.ProcessEnv): DetectedProvider[] {
   return found;
 }
 
-/** Section header for a catalog entry in the grouped provider picker. */
-function catalogGroup(entry: ProviderCatalogEntry): string {
+/**
+ * Translate `key` with `vars`, falling back to the English `fallback` when the
+ * key isn't in the catalog (the translator returns the key itself when missing).
+ * Provider prose (catalog hints/disclaimers) keeps its English SOURCE in
+ * model-catalog.ts to avoid duplication/drift; Spanish lives in `es.ts` under
+ * `catalog.<key>.*` / `provider-setup.group_*`, and English users get the
+ * fallback. So only `es.ts` carries these translations.
+ */
+function tr(
+  deps: CliDeps,
+  key: string,
+  fallback: string,
+  vars?: Record<string, string | number>,
+): string {
+  const value = deps.t(key, vars);
+  return value === key ? fallback : value;
+}
+
+/** Section header (localized) for a catalog entry in the grouped provider picker. */
+function catalogGroup(deps: CliDeps, entry: ProviderCatalogEntry): string {
   const kind = entry.subscription?.kind;
   if (kind === 'subscription-key') {
-    return 'Recommended';
+    return tr(deps, 'provider-setup.group_recommended', 'Recommended');
   }
   if (kind === 'cli-passthrough') {
-    return 'Subscription or API';
+    return tr(deps, 'provider-setup.group_subscription', 'Subscription or API');
   }
-  return 'API only';
+  return tr(deps, 'provider-setup.group_api', 'API only');
 }
 
 /**
@@ -270,7 +288,7 @@ async function setupSubscription(
     });
   }
   if (sub.disclaimer !== undefined) {
-    deps.ui.warn(sub.disclaimer);
+    deps.ui.warn(tr(deps, `catalog.${entry.key}.disclaimer`, sub.disclaimer));
   }
   if (sub.cli !== undefined) {
     deps.ui.info(
@@ -333,9 +351,13 @@ export async function promptProviderSetup(
   const detected = detectEnvProviders(deps.env);
   if (detected.length === 1) {
     const d = detected[0] as DetectedProvider;
-    // i18n: kept literal until Phase 4 (en.ts is being edited concurrently).
     const use = await deps.ui.confirm(
-      `Detected ${d.envVar} in your environment — set up ${d.entry.label}?`,
+      tr(
+        deps,
+        'provider-setup.detected_use',
+        `Detected ${d.envVar} in your environment — set up ${d.entry.label}?`,
+        { envVar: d.envVar, label: d.entry.label },
+      ),
       { defaultYes: true },
     );
     if (use) {
@@ -368,11 +390,11 @@ export async function promptProviderSetup(
       case 'catalog':
         return {
           label: choice.entry.label,
-          hint: choice.entry.hint,
+          hint: tr(deps, `catalog.${choice.entry.key}.hint`, choice.entry.hint),
           group:
             showDetected && detectedKeys.has(choice.entry.key)
-              ? 'Detected (key in your environment)'
-              : catalogGroup(choice.entry),
+              ? tr(deps, 'provider-setup.group_detected', 'Detected (key in your environment)')
+              : catalogGroup(deps, choice.entry),
         };
       case 'ollama':
         return {
@@ -380,13 +402,13 @@ export async function promptProviderSetup(
           hint: ollamaDetected
             ? deps.t('provider-setup.hint_ollama_detected')
             : deps.t('provider-setup.hint_ollama_install'),
-          group: 'Local',
+          group: tr(deps, 'provider-setup.group_local', 'Local'),
         };
       case 'self-hosted':
         return {
           label: deps.t('provider-setup.opt_self_hosted'),
           hint: deps.t('provider-setup.hint_self_hosted'),
-          group: 'Local',
+          group: tr(deps, 'provider-setup.group_local', 'Local'),
         };
       case 'mock':
         return {
