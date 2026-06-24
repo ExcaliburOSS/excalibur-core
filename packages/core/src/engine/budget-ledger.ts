@@ -43,3 +43,23 @@ export class BudgetLedger {
 export function budgetCapCentsFromUsd(maxRunUsd: number | null | undefined): number | null {
   return typeof maxRunUsd === 'number' && maxRunUsd > 0 ? Math.round(maxRunUsd * 100) : null;
 }
+
+/**
+ * AO7-3 — budget-aware fan-out sizing (pure): how many parallel units (e.g.
+ * best-of-N candidates, or swarm lanes) a budget of `targetCents` affords at
+ * roughly `perUnitCents` each, clamped to [min, max]. A larger budget buys more
+ * diversity up to the ceiling; a tight budget floors at `min`. With no usable
+ * cost signal (`targetCents`/`perUnitCents` ≤ 0 or null) it returns `max` — so
+ * callers that only want budget-scaling should guard on a real budget first.
+ */
+export function candidatesForBudget(
+  targetCents: number | null | undefined,
+  perUnitCents: number,
+  bounds: { min: number; max: number },
+): number {
+  const { min, max } = bounds;
+  if (typeof targetCents !== 'number' || targetCents <= 0 || perUnitCents <= 0) {
+    return max;
+  }
+  return Math.max(min, Math.min(max, Math.floor(targetCents / perUnitCents)));
+}

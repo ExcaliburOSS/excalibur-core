@@ -1,6 +1,12 @@
 import { cpus } from 'node:os';
 import { NativeAgentAdapter } from '@excalibur/agent-runtime';
-import { applyPatch, chooseConcurrency, runSwarm } from '@excalibur/core';
+import {
+  applyPatch,
+  budgetCapCentsFromUsd,
+  candidatesForBudget,
+  chooseConcurrency,
+  runSwarm,
+} from '@excalibur/core';
 import type { GatewayChatInput, ModelGateway } from '@excalibur/model-gateway';
 import type { ExcaliburConfig, ExcaliburEvent } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
@@ -19,8 +25,12 @@ import { runConfiguredCommandCheck } from './verify-command';
  * gated (reuse of the AO4b verified-apply), reverting a red winner.
  */
 
-/** Fixed candidate count — kept small + deterministic (mirrors EXPLORE_CANDIDATES). */
+/** Default candidate count when there is no budget signal (kept small). */
 const EXPLORE_CANDIDATES = 3;
+/** AO7-3 — rough per-candidate model cost (cents) used to size best-of-N to a
+ * budget. A best-of-N candidate is a full task run; this matches the estimate
+ * heuristic's per-run priors (≈6¢) with headroom. Overridable per call. */
+const EXPLORE_CANDIDATE_COST_CENTS = 8;
 
 /** Distinct approach seeds so the N candidates diverge by STRATEGY, not by sampling. */
 const APPROACH_SEEDS = [
@@ -42,10 +52,12 @@ export interface ExploreFlowContext {
 }
 
 export interface ExploreFlowOptions {
-  /** Hard ceiling on candidates (default EXPLORE_CANDIDATES). */
+  /** Explicit candidate count (overrides budget-aware sizing). */
   candidates?: number;
   /** Apply the winner without prompting. */
   yes?: boolean;
+  /** AO7-3 — per-candidate cost estimate (cents) for budget-aware sizing (test seam). */
+  perCandidateCostCents?: number;
   signal?: AbortSignal;
 }
 
@@ -125,7 +137,22 @@ export async function runExploreFlow(
   ctx: ExploreFlowContext,
   options: ExploreFlowOptions = {},
 ): Promise<void> {
-  const n = Math.max(2, Math.min(options.candidates ?? EXPLORE_CANDIDATES, APPROACH_SEEDS.length));
+  // AO7-3 — budget-in-the-loop: an explicit count wins; otherwise, when a run
+  // budget is configured, SIZE the best-of-N to it (more budget → more diverse
+  // candidates, up to the seed ceiling; a tight budget floors at 2). No budget →
+  // the small default. This pre-sizes the fan-out instead of getting cut off
+  // mid-flight by the BudgetLedger.
+  const budgetCents = budgetCapCentsFromUsd(ctx.config.budget?.maxRunUsd);
+  const n =
+    options.candidates !== undefined
+      ? Math.max(2, Math.min(options.candidates, APPROACH_SEEDS.length))
+      : budgetCents !== null
+        ? candidatesForBudget(
+            budgetCents,
+            options.perCandidateCostCents ?? EXPLORE_CANDIDATE_COST_CENTS,
+            { min: 2, max: APPROACH_SEEDS.length },
+          )
+        : EXPLORE_CANDIDATES;
   const lanes = Array.from({ length: n }, (_, i) => ({
     id: `cand-${i + 1}`,
     instruction: `${task}\n\nAPPROACH ${i + 1}: ${APPROACH_SEEDS[i]}`,
