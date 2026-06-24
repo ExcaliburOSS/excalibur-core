@@ -104,6 +104,28 @@ usable AND spectacular AND interactive where it adds value (on-brand cyberpunk/e
 then build it keeping the `reduceRail` contract + single-key TUI rule. Propose →
 user sign-off → build. Depends on AO3+AO4 telemetry.
 
+> **AO6 scope agreed with the user (2026-06-24), pending sign-off — 5 pillars:**
+>
+> 1. **CC-parity live activity stream** — the gap the user flagged: today the rail
+>    streams activity LINES (`read/write/tool/$cmd/exit/tests/patch +N−M`) + a
+>    role "working/thinking" label, and highlighted diffs render in RunView /
+>    `changes` / `rewind` — but the per-file highlighted diff is NOT streamed
+>    INLINE right after each `file_write` (CC shows it inline). FIX: stream the
+>    inline (collapsible) highlighted diff per edit in the live rail + keep the
+>    thinking indicator. Reviewable history already exists (rewind/changes/dashboard).
+> 2. **Visual orchestration chronogram** — live wave/DAG timeline (dashboard+TTY,
+>    SSE): lanes as bars (state/cost/duration), merge node + tests/mesh gates,
+>    click→run/diff.
+> 3. **Pause/resume mid-flight** — real pause (stop dispatching; in-flight finish)
+>    - resume; today only cancel exists. (After-the-fact resume = AO5-3 ✅.)
+> 4. **Time-travel of an orchestration** in the UI — scrubber over the combined
+>    parent+lanes event timeline, reusing `rewind`/`reduceRail`.
+> 5. **All reachable by NL/proactive/UI** — best-of-N + resume already are (AO5-NL);
+>    extend to pause/time-travel; commands stay escape hatches.
+>    Reuse: `reduceRail`, `diff-view`/`DiffView`, SSE (`/api/board/stream`), the
+>    rewind time-machine, `/api/orchestrations` (AO4e). Keep TTY byte-identical to
+>    the dashboard via the reducer. Each piece verified vs Kimi.
+
 **AO5 — frontier (extends the lead; none required for world-class) (#189):**
 
 - **AO5-NL** ✅ DONE (directive: NL/proactive, NOT command-first): best-of-N is reachable by NATURAL LANGUAGE — `explore` is now a 7th intent in the LLM router ("try a few approaches and pick the best"), routed under the AO3d-2 posture (riskOfShape='high' → asks unless full autonomy). Resume is PROACTIVE — a swarm that leaves failed lanes OFFERS to retry just those (no command). The `/explore`·`excalibur explore`·`orchestrate` commands are now escape hatches only.
