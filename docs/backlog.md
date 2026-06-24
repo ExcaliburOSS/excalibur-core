@@ -182,6 +182,13 @@ user sign-off → build. Depends on AO3+AO4 telemetry.
 
 **Top-5 build order:** AO4a swarm-as-run → AO3c staged executor (+AO3a/b first) → AO4b verified fan-in → AO3d confidence posture → AO4c budget-binds. Each verified vs **Kimi** (`~/.config/excalibur/moonshot.key`), adversarially reviewed, committed+pushed.
 
+**AO7 — close the expressiveness/resume gap with Claude Code's Workflow tool (#201–#204).** From a head-to-head comparison (2026-06-24): we beat CC on verified git-worktree merges + ground-truth test gate, end-user observability (chronogram/time-travel/pause), and zero-command NL/auto reachability. CC's Workflow _tool_ is still ahead as an agent-facing **authoring harness** on four axes — these tasks close that gap (extends the lead; none required for "world-class", all opt-in / back-compat):
+
+- **AO7-1 (#201) Granular lane-level resume (journal/content-addressed):** today `orchestration.json` + `orchestrate --resume` re-dispatches incomplete lanes (coarse). Add content-addressed lane caching so an unchanged (instruction, deps, base) lane returns its prior result instantly on resume — CC's "longest-unchanged-prefix" granularity, at the lane level.
+- **AO7-2 (#202) More expressive authored spec:** the authored YAML is a static DAG (steps + deps). Add opt-in control flow — `loop-until` / best-of-N / conditional steps (and/or a JS-authored variant) — so authors can express CC-style `loop-until-dry`, tournaments, budget loops, not just a fixed DAG.
+- **AO7-3 (#203) Budget-in-the-loop:** scale swarm depth/lane-count dynamically to a token/cost target (mirrors CC's `budget.remaining()` loops), beyond the current hard `BudgetLedger` stop.
+- **AO7-4 (#204) Schema-forced structured lane output:** lane results are free text today; add an opt-in JSON-schema contract per lane (validated, retried on mismatch) so fan-in can consume structured data, like CC's `StructuredOutput`.
+
 ---
 
 ## DW — Web & docs refresh (cross-cutting; we shipped a LOT that's undocumented)
