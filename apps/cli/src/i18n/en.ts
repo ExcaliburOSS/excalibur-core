@@ -494,6 +494,7 @@ export const EN: Catalog = {
   'orchestrate.nothingToDo': 'Nothing to resume — every lane already completed.',
   'orchestrate.rerunning': 'Re-running {n} lane(s) from {runId}…',
   'orchestrate.resuming': 'Resuming {n} incomplete lane(s) from {runId}…',
+  'orchestrate.runningSpec': 'Running authored orchestration: {n} step(s) from {path}…',
   'orchestration.none': 'No orchestration found. Run a swarm or /explore first.',
   'orchestration.notFound': 'No orchestration found for run {id}.',
   'orchestration.heading': 'Orchestration {id} · {task} · {status}',

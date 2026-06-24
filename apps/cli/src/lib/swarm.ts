@@ -31,7 +31,7 @@ import {
   type LaneModel,
 } from '@excalibur/tui';
 import type { GatewayChatInput, ModelGateway } from '@excalibur/model-gateway';
-import type { AutonomyLevel, ExcaliburConfig, ExcaliburEvent } from '@excalibur/shared';
+import type { AgentRole, AutonomyLevel, ExcaliburConfig, ExcaliburEvent } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
 import { loadInkUi } from '../ink/load';
 import { runConfiguredCommandCheck } from './verify-command';
@@ -62,6 +62,13 @@ export interface SwarmSubtask {
    * dependent lane runs only after its predecessors' merged result.
    */
   dependsOn?: ReadonlyArray<string>;
+  /**
+   * AO5-4 — optional agent ROLE for this lane (author-defined orchestrations).
+   * Defaults to `implementer`. A non-mutating role (reviewer/planner/…) gets the
+   * read-only tool subset and so produces an empty diff — author specs should use
+   * mutating roles for lanes meant to land changes.
+   */
+  role?: AgentRole;
 }
 
 /**
@@ -547,7 +554,7 @@ export async function executeSwarm(
       sessionId: `swarm_${lane.id}`,
       workdir: worktreePath,
       prompt: lanePrompt(byId.get(lane.id)?.instruction ?? lane.instruction, feedback),
-      role: 'implementer',
+      role: byId.get(lane.id)?.role ?? 'implementer',
       config: context.config,
       gateway: context.gateway,
       confirm: () => Promise.resolve(context.autonomyAutoApprove),

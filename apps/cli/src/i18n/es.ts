@@ -511,6 +511,7 @@ export const ES: Catalog = {
   'orchestrate.nothingToDo': 'Nada que reanudar — todos los carriles ya completaron.',
   'orchestrate.rerunning': 'Re-ejecutando {n} carril(es) de {runId}…',
   'orchestrate.resuming': 'Reanudando {n} carril(es) incompletos de {runId}…',
+  'orchestrate.runningSpec': 'Ejecutando orquestación autoría: {n} paso(s) de {path}…',
   'orchestration.none': 'No se encontró ninguna orquestación. Lanza un swarm o /explore primero.',
   'orchestration.notFound': 'No se encontró orquestación para la ejecución {id}.',
   'orchestration.heading': 'Orquestación {id} · {task} · {status}',
