@@ -53,7 +53,14 @@ export function registerOrchestrateCommand(program: Command, deps: CliDeps): voi
           if (options.resume === true) {
             const priorId = latestOrchestrationRunId(repoRoot);
             const manifest = priorId !== null ? loadOrchestrationManifest(repoRoot, priorId) : null;
-            if (manifest !== null) {
+            // AO7 review #2 — only reuse against a manifest that plausibly belongs to
+            // THIS spec: every spec step-id must be present in the prior run. Otherwise
+            // (a different spec, a plain `swarm`, or an auto-fan-out reusing generic ids
+            // like t1/t2) latestOrchestrationRunId would match the WRONG run and skip
+            // steps whose work was never applied → a broken merge. Mismatch → run fresh.
+            const manifestIds = manifest !== null ? new Set(manifest.lanes.map((l) => l.id)) : null;
+            const sameSpec = manifestIds !== null && subtasks.every((s) => manifestIds.has(s.id));
+            if (manifest !== null && sameSpec) {
               const plan = planResume(manifest, subtasks);
               if (plan.reusedIds.length > 0) {
                 deps.ui.info(

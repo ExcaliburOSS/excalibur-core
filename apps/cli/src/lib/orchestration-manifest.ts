@@ -24,12 +24,20 @@ export interface OrchestrationManifestLane {
   /** The child run this lane persisted to (AO4a), when available. */
   runId?: string;
   /**
-   * AO7-1 — content signature = hash of (instruction + sorted deps + role). Lets a
-   * later resume detect which lanes are UNCHANGED (content-addressed reuse) vs
-   * edited, so only changed lanes + their dependents re-run. Optional for back-compat
-   * with manifests written before AO7-1.
+   * AO7-1 — content signature = hash of (instruction + sorted deps + role + when +
+   * maxAttempts + outputSchema). Lets a later resume detect which lanes are UNCHANGED
+   * (content-addressed reuse) vs edited. Optional for back-compat with older manifests.
    */
   signature?: string;
+  /**
+   * AO7 review (#1/#5/#6) — persist the per-step controls so a RESUME reconstructs
+   * the SAME lane (and the SAME signature): a role/conditional/loop-until/schema lane
+   * re-runs with its semantics intact, and editing any of them correctly invalidates reuse.
+   */
+  role?: SwarmSubtask['role'];
+  when?: SwarmSubtask['when'];
+  maxAttempts?: SwarmSubtask['maxAttempts'];
+  outputSchema?: SwarmSubtask['outputSchema'];
 }
 
 export interface OrchestrationManifest {
@@ -160,11 +168,19 @@ export function laneSignature(lane: {
   instruction: string;
   dependsOn?: readonly string[];
   role?: string;
+  when?: string;
+  maxAttempts?: number;
+  outputSchema?: unknown;
 }): string {
   const material = JSON.stringify([
     lane.instruction.trim(),
     [...(lane.dependsOn ?? [])].sort(),
     lane.role ?? '',
+    lane.when ?? 'always',
+    lane.maxAttempts ?? 0,
+    // The schema comes from the same authored source each run → JSON.stringify is
+    // stable enough to detect an edit (a re-ordered key would re-run — fail-safe).
+    lane.outputSchema !== undefined ? JSON.stringify(lane.outputSchema) : '',
   ]);
   return createHash('sha256').update(material).digest('hex').slice(0, 16);
 }
@@ -194,6 +210,10 @@ export function buildOrchestrationManifest(input: {
       outcome: o?.outcome ?? 'empty',
       costCents: o?.costCents ?? null,
       ...(o?.runId !== undefined ? { runId: o.runId } : {}),
+      ...(s.role !== undefined ? { role: s.role } : {}),
+      ...(s.when !== undefined ? { when: s.when } : {}),
+      ...(s.maxAttempts !== undefined ? { maxAttempts: s.maxAttempts } : {}),
+      ...(s.outputSchema !== undefined ? { outputSchema: s.outputSchema } : {}),
       signature: laneSignature(s),
     };
   });
@@ -249,6 +269,12 @@ export function manifestToSubtasks(
     title: l.title,
     instruction: l.instruction,
     ...(l.dependsOn.length > 0 ? { dependsOn: l.dependsOn } : {}),
+    // AO7 review #5 — restore the per-step controls so a re-run / resume honours
+    // the lane's role, conditional (when), loop-until (maxAttempts) and schema.
+    ...(l.role !== undefined ? { role: l.role } : {}),
+    ...(l.when !== undefined ? { when: l.when } : {}),
+    ...(l.maxAttempts !== undefined ? { maxAttempts: l.maxAttempts } : {}),
+    ...(l.outputSchema !== undefined ? { outputSchema: l.outputSchema } : {}),
   }));
 }
 
@@ -266,8 +292,13 @@ export interface ResumePlan {
  * which lanes must RE-RUN vs can REUSE their prior `done` result. A lane re-runs
  * when it is new, its prior outcome was not `done`, its content signature changed,
  * OR any lane it (transitively) depends on re-runs — so editing one step correctly
- * invalidates everything downstream, exactly like a journal resume. Reused lanes'
- * applied work is assumed present in the tree (the prior run was applied).
+ * invalidates everything downstream, exactly like a journal resume.
+ *
+ * ASSUMPTION (working-tree-as-cache): a reused lane's applied work is taken to be
+ * present in the working tree — i.e. the prior run was APPLIED. If you DECLINED the
+ * prior apply, or a wave was reverted, the reused work is not in the tree; prefer a
+ * plain re-run (no `--resume`) in that case. (A future hardening can record the
+ * applied/landed state per lane to make this automatic.)
  */
 export function planResume(
   manifest: OrchestrationManifest,

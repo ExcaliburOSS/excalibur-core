@@ -93,6 +93,55 @@ describe('laneSignature (AO7-1, pure)', () => {
     expect(laneSignature(base)).not.toBe(laneSignature({ ...base, dependsOn: ['x'] }));
     expect(laneSignature(base)).not.toBe(laneSignature({ ...base, role: 'reviewer' }));
   });
+
+  it('AO7 review #6 — also changes when when / maxAttempts / outputSchema are edited', () => {
+    const base = { instruction: 'analyze' };
+    expect(laneSignature(base)).not.toBe(laneSignature({ ...base, when: 'on_failure' }));
+    expect(laneSignature(base)).not.toBe(laneSignature({ ...base, maxAttempts: 3 }));
+    expect(laneSignature(base)).not.toBe(
+      laneSignature({ ...base, outputSchema: { type: 'object' } }),
+    );
+  });
+});
+
+describe('AO7 review #1/#5 — manifest persists + restores per-step controls', () => {
+  const roleSpec: SwarmSubtask[] = [
+    { id: 't1', title: 'A', instruction: 'review', role: 'reviewer' },
+    {
+      id: 't2',
+      title: 'B',
+      instruction: 'build',
+      dependsOn: ['t1'],
+      when: 'on_failure',
+      maxAttempts: 2,
+    },
+  ];
+  const m = buildOrchestrationManifest({
+    task: 't',
+    parentRunId: 'r',
+    createdAt: '2026-06-24T00:00:00.000Z',
+    mode: 'staged',
+    subtasks: roleSpec,
+    waves: [['t1'], ['t2']],
+    outcomes: [
+      { id: 't1', outcome: 'done', costCents: 1 },
+      { id: 't2', outcome: 'failed', costCents: null },
+    ],
+  });
+
+  it('persists role/when/maxAttempts on the manifest lane and restores them', () => {
+    expect(m.lanes[0]).toMatchObject({ id: 't1', role: 'reviewer' });
+    expect(m.lanes[1]).toMatchObject({ when: 'on_failure', maxAttempts: 2 });
+    const subs = manifestToSubtasks(m);
+    expect(subs[0]).toMatchObject({ role: 'reviewer' });
+    expect(subs[1]).toMatchObject({ when: 'on_failure', maxAttempts: 2 });
+  });
+
+  it('plain --resume REUSES a role-bearing done lane (no false signature mismatch)', () => {
+    const plan = planResume(m);
+    expect(plan.reusedIds).toEqual(['t1']); // t1 (done, role:reviewer) reused, not re-run
+    expect(plan.rerun.map((s) => s.id)).toEqual(['t2']);
+  });
 });
 
 describe('planResume (AO7-1 content-addressed resume, pure)', () => {

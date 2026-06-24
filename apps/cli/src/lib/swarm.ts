@@ -7,7 +7,7 @@ import {
   capTotalAgents,
   buildSchemaInstruction,
   chooseConcurrency,
-  extractJsonValue,
+  extractJsonValues,
   getLocalDiff,
   planAgentAllocation,
   RunManager,
@@ -77,8 +77,8 @@ export interface SwarmSubtask {
    * AO7-4 — optional JSON-schema CONTRACT for this lane's final output. When set,
    * the lane is told to emit conforming JSON; its final message is validated and a
    * mismatch RE-DISPATCHES the lane (reusing the retry loop). The parsed value is
-   * recorded on the lane summary so the fan-in / dependents can consume structured
-   * data (CC's StructuredOutput, per-lane). Best for analysis/data lanes.
+   * recorded on `SwarmLaneSummary.structuredOutput` (available for inspection /
+   * a future fan-in consumer — not yet read by dependents). Best for analysis/data lanes.
    */
   outputSchema?: JsonSchema;
   /** AO7-2 — per-step attempt ceiling (loop-until-rubric), overrides the default. */
@@ -623,10 +623,17 @@ export async function executeSwarm(
     // instruction stays in the prompt so the re-attempt conforms). On success the
     // parsed value rides the summary to the fan-in / dependents.
     if (outputSchema !== undefined) {
-      const value = extractJsonValue(finalText);
-      const errors = validateAgainstSchema(value, outputSchema);
-      if (errors.length > 0) {
-        throw new Error(`lane output did not match its schema: ${errors.slice(0, 3).join('; ')}`);
+      // AO7 review #7/#8 — among ALL embedded JSON values prefer the one that
+      // VALIDATES (the model often echoes the schema/example FIRST), and reject when
+      // NONE validates — incl. an empty/no-JSON capture — even for a type-less schema.
+      const values = extractJsonValues(finalText);
+      const value = values.find((v) => validateAgainstSchema(v, outputSchema).length === 0);
+      if (value === undefined) {
+        const why =
+          values.length === 0
+            ? 'no JSON object found in the output'
+            : validateAgainstSchema(values[0], outputSchema).slice(0, 3).join('; ');
+        throw new Error(`lane output did not match its schema: ${why}`);
       }
       return { costCents, toolCalls, structuredOutput: value };
     }
@@ -697,18 +704,23 @@ export async function executeSwarm(
     ...(s.dependsOn !== undefined ? { dependsOn: s.dependsOn } : {}),
     ...(s.when !== undefined ? { when: s.when } : {}),
   });
-  // STAGED (a real dependency graph) vs FLAT (a single parallel wave).
+  // STAGED (a real dependency graph) vs FLAT (a single parallel wave). AO7 review
+  // #4 — `when` (conditional) is honoured ONLY by the staged executor, so force
+  // staged whenever ANY lane declares a non-default `when`, even for a single wave
+  // (otherwise a flat single-wave authored spec would run an on_failure/on_success
+  // lane unconditionally).
+  const hasConditional = subtasks.some((s) => s.when !== undefined && s.when !== 'always');
+  const useStaged = options.waves !== undefined && (options.waves.length > 1 || hasConditional);
   let result: SwarmResult<SwarmLaneSummary>;
   try {
-    result =
-      options.waves !== undefined && options.waves.length > 1
-        ? await runSwarmStaged(
-            repoRoot,
-            options.waves.map((w) => w.map(toLane)),
-            runLane,
-            execOptions,
-          )
-        : await runSwarm(repoRoot, subtasks.map(toLane), runLane, execOptions);
+    result = useStaged
+      ? await runSwarmStaged(
+          repoRoot,
+          (options.waves as ReadonlyArray<ReadonlyArray<SwarmSubtask>>).map((w) => w.map(toLane)),
+          runLane,
+          execOptions,
+        )
+      : await runSwarm(repoRoot, subtasks.map(toLane), runLane, execOptions);
   } finally {
     if (prevDepthEnv === undefined) {
       delete process.env['EXCALIBUR_SWARM_DEPTH'];
