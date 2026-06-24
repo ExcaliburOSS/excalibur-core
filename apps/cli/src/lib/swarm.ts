@@ -32,6 +32,7 @@ import type { CliDeps } from '../deps';
 import { loadInkUi } from '../ink/load';
 import { runConfiguredCommandCheck } from './verify-command';
 import { runProportionalMesh } from './verify-mesh';
+import { buildOrchestrationManifest } from './orchestration-manifest';
 import type { LanesViewHandle } from '@excalibur/tui/ink';
 
 /**
@@ -271,6 +272,8 @@ export async function executeSwarm(
     providerName?: string;
     /** Work item to link every child lane run to (AO4e). */
     workItemId?: string | null;
+    /** The originating task text, recorded in the orchestration manifest (AO5). */
+    task?: string;
   },
   options: {
     maxConcurrency?: number;
@@ -458,6 +461,31 @@ export async function executeSwarm(
       });
     } catch {
       /* best-effort */
+    }
+    // AO5 — persist a re-runnable/inspectable orchestration MANIFEST on the parent
+    // run (the foundation of Workflow-tool parity). Best-effort.
+    try {
+      const staged = options.waves !== undefined && options.waves.length > 1;
+      const waveIds = staged
+        ? options.waves!.map((w) => w.map((s) => s.id))
+        : [subtasks.map((s) => s.id)];
+      const manifest = buildOrchestrationManifest({
+        task: context.task ?? subtasks.map((s) => s.title).join('; '),
+        parentRunId: parentId,
+        createdAt: finishedAt,
+        mode: staged ? 'staged' : 'flat',
+        subtasks,
+        waves: waveIds,
+        outcomes: result.lanes.map((l) => ({
+          id: l.id,
+          outcome: l.failed ? 'failed' : l.diff.trim().length > 0 ? 'done' : 'empty',
+          costCents: l.result?.costCents ?? null,
+          ...(childByLane.get(l.id) !== undefined ? { runId: childByLane.get(l.id)! } : {}),
+        })),
+      });
+      runManager.writeArtifact(parentId, 'orchestration.json', JSON.stringify(manifest, null, 2));
+    } catch {
+      /* best-effort — a manifest write fault never breaks the swarm */
     }
   }
   return result;
@@ -648,6 +676,7 @@ export async function runSwarmFlow(
         config: ctx.config,
         autonomyAutoApprove: true, // a parallel batch can't prompt per-lane
         providerName: ctx.providerName,
+        task,
       },
       {
         maxConcurrency: concurrency,

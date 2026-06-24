@@ -107,7 +107,8 @@ user sign-off → build. Depends on AO3+AO4 telemetry.
 **AO5 — frontier (extends the lead; none required for world-class) (#189):**
 
 - **AO5-1** ✅ DONE: speculative best-of-N `/explore` + `excalibur explore` — fans the SAME task to N candidate approaches in parallel worktrees (diversified by APPROACH seed, not temperature), a model tournament judge picks the winner (pure `selectWinner`), applies ONLY the winner, ground-truth gated by the configured test (revert on red). Verified vs Kimi (3 candidates → judge → applied). Refinement AO5-1b: per-candidate test-oracle selection (node_modules-in-worktree caveat — today the judge selects + the applied winner is test-gated).
-- **AO5-2..5** remaining: dynamic re-planning/self-healing; verification gates as DAG EDGES; **author-scripted + persisted/resumable orchestration MANIFEST (CC Workflow-tool parity)**; ≤1 capped recursion level (depth 2, branch-namespace blocker).
+- **AO5-2 (manifest foundation)** ✅ DONE: every swarm persists `orchestration.json` on the parent run — version/mode/task/waves + per-lane instruction·dependsOn·outcome·cost·runId (pure `buildOrchestrationManifest`). Inspectable + the basis for re-run/resume. Verified vs Kimi.
+- **AO5-3..6** remaining: re-run `--from-manifest` + crash-RESUME (skip cached completed lanes) + a thin author-defined dep-graph surface (completes CC Workflow-tool parity); dynamic re-planning/self-healing; verification gates as DAG EDGES; ≤1 capped recursion (depth 2, branch-namespace blocker).
 
 **Top-5 build order:** AO4a swarm-as-run → AO3c staged executor (+AO3a/b first) → AO4b verified fan-in → AO3d confidence posture → AO4c budget-binds. Each verified vs **Kimi** (`~/.config/excalibur/moonshot.key`), adversarially reviewed, committed+pushed.
 
