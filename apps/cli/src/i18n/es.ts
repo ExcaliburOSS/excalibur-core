@@ -482,6 +482,20 @@ export const ES: Catalog = {
   'swarm.mesh-running': 'Revisión adversarial del resultado fusionado ({lenses} lente(s))…',
   'swarm.mesh-blocked':
     'La malla de verificación BLOQUEÓ el merge (sobrevivió un problema de severidad alta). Los cambios fusionados se REVIRTIERON.',
+  // explore best-of-N (AO5)
+  'explore.heading': 'Explorar: {n} enfoques candidatos en paralelo.',
+  'explore.confirm': '¿Lanzo {n} agentes candidatos y elijo el mejor?',
+  'explore.cancelled': 'Exploración cancelada.',
+  'explore.running': 'Ejecutando candidatos… cada uno en su worktree aislado.',
+  'explore.noCandidates': 'Ningún candidato produjo cambios utilizables.',
+  'explore.winner': 'Ganador: candidato {n} — {approach}',
+  'explore.confirmApply': '¿Aplico el candidato ganador a tu árbol de trabajo?',
+  'explore.leftUnapplied': 'Dejo el ganador sin aplicar. El diff está arriba.',
+  'explore.applyFailed': 'No se pudo aplicar el ganador: {error}',
+  'explore.verifying': 'Verificando el ganador contra los tests configurados…',
+  'explore.verified': 'Verificado: {detail}.',
+  'explore.verifyFailed': 'El ganador FALLÓ los tests ({detail}) — REVERTIDO, no se conservó.',
+  'explore.applied': 'Aplicado el candidato ganador.',
   'swarm.singleUnit':
     'Solo una unidad independiente: esto se ejecuta como un único agente (sin paralelismo real).',
   'swarm.confirmRun': '¿Ejecutar {count} agente(s) en paralelo?',
@@ -795,6 +809,8 @@ export const ES: Catalog = {
     'Uso: /loop [--every <seg>] [--times <n>] <prompt> — lo reejecuta periódicamente hasta ESC.',
   'repl.swarm-usage':
     'Uso: /swarm <tarea> — reparte la tarea entre agentes reales en paralelo (subtareas independientes, carriles en vivo).',
+  'repl.explore-usage':
+    'Uso: /explore <tarea> — ejecuta N enfoques candidatos en paralelo y aplica el mejor (best-of-N).',
   'repl.route-bg-offer':
     'Esto parece largo — ¿lo ejecuto en segundo plano (/bg) para que sigas trabajando?',
   'repl.route-swarm-offer':

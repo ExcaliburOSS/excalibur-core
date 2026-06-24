@@ -48,6 +48,7 @@ import {
 } from '../lib/context';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { chooseBuildShape, decomposeTask, runSwarmFlow } from '../lib/swarm';
+import { runExploreFlow } from '../lib/explore';
 import { runConfiguredCommandCheck } from '../lib/verify-command';
 import { runProportionalMesh } from '../lib/verify-mesh';
 import { runResearchFlow } from '../lib/research';
@@ -527,6 +528,16 @@ export async function runInteractiveSession(
             printStatusLine(deps, runtime);
             continue;
           }
+          if (input.name === 'explore') {
+            const ctrl = beginTurn();
+            try {
+              await handleExploreCommand(deps, runtime, input.argv.join(' '), ctrl.signal);
+            } finally {
+              endTurn();
+            }
+            printStatusLine(deps, runtime);
+            continue;
+          }
           if (input.name === 'bg') {
             handleBgCommand(deps, runtime, input.argv.join(' '), bgControllers);
             printStatusLine(deps, runtime);
@@ -740,6 +751,7 @@ const GHOST_COMMANDS = [
   'goal',
   'loop',
   'swarm',
+  'explore',
   'bg',
   'threads',
   'model',
@@ -1261,6 +1273,38 @@ async function handleSwarmCommand(
   requireConfiguredModel(gateway, deps.t); // a swarm of mock agents is pointless
   runtime.store.appendPromptHistory(`/swarm ${redactSecrets(task)}`);
   await runSwarmFlow(
+    deps,
+    runtime.repoRoot,
+    task,
+    { gateway: gateway.gateway, providerName: gateway.providerName, config: runtime.config },
+    { signal },
+  );
+}
+
+/**
+ * `/explore <task>` — best-of-N (AO5): fans the SAME task to N candidate agents
+ * in isolated worktrees, a model judge picks the winner, and ONLY the winner is
+ * applied (ground-truth gated when a test command is configured). The parallel
+ * counterpart to the single-agent `run --explore` workflow.
+ */
+async function handleExploreCommand(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  task: string,
+  signal: AbortSignal,
+): Promise<void> {
+  if (task.trim().length === 0) {
+    deps.ui.warn(deps.t('repl.explore-usage'));
+    return;
+  }
+  if (!getGitInfo(runtime.repoRoot).isRepo) {
+    deps.ui.error(deps.t('swarm.needsGitRepo'));
+    return;
+  }
+  const gateway = loadGatewayContext(runtime.repoRoot);
+  requireConfiguredModel(gateway, deps.t); // best-of-N over the mock is pointless
+  runtime.store.appendPromptHistory(`/explore ${redactSecrets(task)}`);
+  await runExploreFlow(
     deps,
     runtime.repoRoot,
     task,

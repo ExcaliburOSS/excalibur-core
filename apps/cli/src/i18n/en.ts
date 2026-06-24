@@ -465,6 +465,20 @@ export const EN: Catalog = {
   'swarm.mesh-running': 'Adversarial review of the merged result ({lenses} lens(es))…',
   'swarm.mesh-blocked':
     'Verification mesh BLOCKED the merge (a high-severity issue survived). The merged changes were REVERTED.',
+  // best-of-N explore (AO5)
+  'explore.heading': 'Explore: {n} candidate approaches in parallel.',
+  'explore.confirm': 'Run {n} candidate agents and pick the best?',
+  'explore.cancelled': 'Exploration cancelled.',
+  'explore.running': 'Running candidates… each in its own isolated worktree.',
+  'explore.noCandidates': 'No candidate produced usable changes.',
+  'explore.winner': 'Winner: candidate {n} — {approach}',
+  'explore.confirmApply': 'Apply the winning candidate to your working tree?',
+  'explore.leftUnapplied': 'Left the winner unapplied. The diff is above.',
+  'explore.applyFailed': 'Could not apply the winner: {error}',
+  'explore.verifying': 'Verifying the winner against the configured tests…',
+  'explore.verified': 'Verified: {detail}.',
+  'explore.verifyFailed': 'The winner FAILED the tests ({detail}) — REVERTED, not kept.',
+  'explore.applied': 'Applied the winning candidate.',
   'swarm.singleUnit': 'Only one independent unit — this runs as a single agent (no real fan-out).',
   'swarm.confirmRun': 'Run {count} agent(s) in parallel?',
   'swarm.cancelled': 'Swarm cancelled.',
@@ -770,6 +784,8 @@ export const EN: Catalog = {
     'Usage: /loop [--every <sec>] [--times <n>] <prompt> — re-runs it periodically until ESC.',
   'repl.swarm-usage':
     'Usage: /swarm <task> — fans the task out to real parallel agents (independent subtasks, live lanes).',
+  'repl.explore-usage':
+    'Usage: /explore <task> — runs N candidate approaches in parallel and applies the best (best-of-N).',
   'repl.route-bg-offer':
     'This looks long-running — run it in the background (/bg) so you can keep working?',
   'repl.route-swarm-offer':
