@@ -41,6 +41,11 @@ describe('compileAuthoredOrchestration (AO5-4)', () => {
     expect(bad('nope')).toThrow(CliUsageError);
   });
 
+  it('rejects an over-large spec (fail-fast, not silent truncation to the agent cap)', () => {
+    const steps = Array.from({ length: 50 }, (_v, i) => ({ id: `s${i}`, instruction: 'x' }));
+    expect(bad({ steps })).toThrow(/too many steps/);
+  });
+
   it('rejects a missing/empty/duplicate/unsafe id', () => {
     expect(bad({ steps: [{ instruction: 'x' }] })).toThrow(/missing an "id"/);
     expect(bad({ steps: [{ id: 'a b', instruction: 'x' }] })).toThrow(/invalid id/);

@@ -308,7 +308,17 @@ function runProcess(
     const onUnix = process.platform !== 'win32';
     const child = spawn(file, args, {
       cwd: options.cwd,
-      env: options.env ?? { PATH: process.env['PATH'] ?? '', HOME: process.env['HOME'] ?? '' },
+      // Minimal env (PATH+HOME) so a command can't read arbitrary secrets — BUT
+      // carry EXCALIBUR_SWARM_DEPTH through (non-secret): it is the recursion-cap
+      // propagation channel, so a nested `excalibur swarm` shelled by a lane still
+      // self-caps (without this, the child re-enters at depth 0 — a fork-bomb risk).
+      env: options.env ?? {
+        PATH: process.env['PATH'] ?? '',
+        HOME: process.env['HOME'] ?? '',
+        ...(process.env['EXCALIBUR_SWARM_DEPTH'] !== undefined
+          ? { EXCALIBUR_SWARM_DEPTH: process.env['EXCALIBUR_SWARM_DEPTH'] }
+          : {}),
+      },
       shell: options.shell ?? false,
       stdio: ['pipe', 'pipe', 'pipe'],
       // Run in its own process group (group leader pid == child.pid) so an abort

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { topologicalWaves } from '@excalibur/core';
+import { SWARM_MAX_TOTAL_AGENTS, topologicalWaves } from '@excalibur/core';
 import { agentRoleSchema, type AgentRole } from '@excalibur/shared';
 import { CliUsageError } from '../errors';
 import type { SwarmSubtask } from './swarm';
@@ -53,6 +53,14 @@ export function compileAuthoredOrchestration(raw: unknown): {
   const rawSteps = Array.isArray(spec['steps']) ? (spec['steps'] as unknown[]) : null;
   if (rawSteps === null || rawSteps.length === 0) {
     throw new CliUsageError('orchestration spec needs a non-empty "steps" list');
+  }
+  // Strict contract + safety: cap the step count BEFORE the O(n^2) toposort below,
+  // so an over-large spec fails fast with a clear error rather than being silently
+  // truncated to the swarm's agent ceiling (or hanging the CLI on a huge DAG).
+  if (rawSteps.length > SWARM_MAX_TOTAL_AGENTS) {
+    throw new CliUsageError(
+      `orchestration spec has too many steps (${rawSteps.length}); the swarm runs at most ${SWARM_MAX_TOTAL_AGENTS} lanes — split it or reduce steps`,
+    );
   }
   const ids = new Set<string>();
   const subtasks: SwarmSubtask[] = rawSteps.map((entry, i): SwarmSubtask => {

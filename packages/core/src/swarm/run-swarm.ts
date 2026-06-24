@@ -83,7 +83,12 @@ export type SwarmLaneGrader<T> = (args: {
 export interface SwarmWaveVerdict {
   /** Whether the merged tree at this wave boundary is healthy. */
   passed: boolean;
-  /** When false, roll this wave's merge back (reset the merge worktree to pre-wave). */
+  /**
+   * For a FAILED wave (`passed: false`): unless explicitly set to `false`, the
+   * wave's merge is rolled back (the merge worktree resets to pre-wave) so
+   * dependents base on the last healthy tree. Set `false` for an ADVISORY-only
+   * red verdict that keeps the merge. Ignored when `passed` is true.
+   */
   revert?: boolean;
   /** One line of detail (test failure / blocking review), surfaced on the lane. */
   detail?: string;
@@ -318,22 +323,28 @@ async function runOneLane<T>(
   // failure context, and captureLane picks up whatever it leaves in the tree.
   if (options.heal !== undefined) {
     resetWorktree(setup.worktreePath, baseRef);
-    const heal = await options.heal({
-      lane: setup.lane,
-      lastError,
-      ...(exhaustedGrade !== undefined ? { lastGrade: exhaustedGrade } : {}),
-      attempts: maxAttempts,
-      worktreePath: setup.worktreePath,
-      baseRef,
-    });
-    if (heal.healed) {
-      emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled' });
-      return {
-        failed: false,
-        attempts: maxAttempts + 1,
-        ...(heal.result !== undefined ? { result: heal.result } : {}),
-        ...(heal.grade !== undefined ? { grade: heal.grade } : {}),
-      };
+    try {
+      const heal = await options.heal({
+        lane: setup.lane,
+        lastError,
+        ...(exhaustedGrade !== undefined ? { lastGrade: exhaustedGrade } : {}),
+        attempts: maxAttempts,
+        worktreePath: setup.worktreePath,
+        baseRef,
+      });
+      if (heal.healed) {
+        emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled' });
+        return {
+          failed: false,
+          attempts: maxAttempts + 1,
+          ...(heal.result !== undefined ? { result: heal.result } : {}),
+          ...(heal.grade !== undefined ? { grade: heal.grade } : {}),
+        };
+      }
+    } catch (error) {
+      // A THROWING healer must NOT crash the swarm (and, when staged, abort every
+      // remaining wave) — degrade to a failed lane carrying the healer's error.
+      lastError = error instanceof Error ? error.message : String(error);
     }
   }
   emitLane(options.onLane, {
@@ -531,12 +542,14 @@ export async function runSwarmStaged<T>(
 
         // 3. MERGE this wave onto the accumulating worktree (at currentBaseRef),
         //    3-way healing a texturally-conflicting lane before giving up (AO4d).
+        const waveConflictIds = new Set<string>();
         for (const lane of laneResults) {
           if (lane.failed || lane.diff.trim().length === 0) {
             continue;
           }
           if (!mergeOneLane(mergePath, lane.diff)) {
             conflicts.push({ id: lane.id, reason: 'did not apply onto the merge (even 3-way)' });
+            waveConflictIds.add(lane.id);
           }
         }
 
@@ -561,12 +574,16 @@ export async function runSwarmStaged<T>(
             mergedRef: currentBaseRef,
             waveDiff,
           });
-          if (!verdict.passed && verdict.revert === true) {
+          // A failed wave reverts UNLESS the verifier explicitly opted out
+          // (revert:false = advisory-only); the safe behavior is the default.
+          if (!verdict.passed && verdict.revert !== false) {
             resetWorktree(mergePath, preWaveRef);
             currentBaseRef = revParse(mergePath, 'HEAD') ?? preWaveRef;
             const why = `wave verification failed${verdict.detail ? `: ${verdict.detail}` : ''}`;
             for (const lane of laneResults) {
-              if (!lane.failed && lane.diff.trim().length > 0) {
+              // A lane that already CONFLICTED (never merged) stays a conflict —
+              // don't ALSO relabel it failed (it wasn't "failed by verification").
+              if (!lane.failed && lane.diff.trim().length > 0 && !waveConflictIds.has(lane.id)) {
                 lane.failed = true;
                 lane.error = lane.error ?? why;
               }

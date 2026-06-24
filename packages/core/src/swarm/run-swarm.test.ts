@@ -205,6 +205,31 @@ describe('runSwarm', () => {
     }
   });
 
+  it('AO5-5: a THROWING healer degrades to a failed lane (does NOT crash the swarm)', async () => {
+    const repo = initRepo();
+    try {
+      const result = await runSwarm(
+        repo,
+        [lane('a'), lane('b')],
+        ({ lane: l, worktreePath }) => {
+          if (l.id === 'a') return Promise.reject(new Error('a always throws'));
+          writeFileSync(join(worktreePath, 'b.ts'), '// b\n', 'utf8'); // healthy sibling
+          return Promise.resolve(null);
+        },
+        {
+          heal: () => Promise.reject(new Error('healer itself blew up')),
+        },
+      );
+      // The swarm completed (no throw): the broken lane is failed, the sibling merged.
+      expect(result.lanes.find((l) => l.id === 'a')?.failed).toBe(true);
+      expect(result.lanes.find((l) => l.id === 'a')?.error).toContain('healer itself blew up');
+      expect(result.lanes.find((l) => l.id === 'b')?.failed).toBe(false);
+      expect(result.mergedDiff).toContain('b.ts');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
   it('AO5-5: refuses to fan out beyond depth 1 (the ≤1-depth recursion cap)', async () => {
     const repo = initRepo();
     try {
@@ -520,6 +545,49 @@ describe('runSwarmStaged (AO3c staged dependency-graph executor)', () => {
           { verifyWave: () => Promise.reject(new Error('gate boom')) },
         ),
       ).rejects.toThrow('gate boom');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('AO5-6: a failed wave reverts BY DEFAULT when `revert` is omitted (safe default)', async () => {
+    const repo = initRepo();
+    try {
+      const result = await runSwarmStaged(
+        repo,
+        [[lane('base')], [lane('extend')]],
+        ({ lane: l, worktreePath }) => {
+          writeFileSync(join(worktreePath, l.id === 'base' ? 'shared.ts' : 'derived.ts'), '// x\n');
+          return Promise.resolve(null);
+        },
+        // passed:false with NO `revert` → must still roll the wave back.
+        {
+          verifyWave: ({ waveIndex }) =>
+            Promise.resolve(waveIndex === 0 ? { passed: false } : { passed: true }),
+        },
+      );
+      expect(result.lanes.find((l) => l.id === 'base')?.failed).toBe(true);
+      expect(result.mergedDiff).not.toContain('shared.ts');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('AO5-6: an ADVISORY red verdict (`revert:false`) KEEPS the merge', async () => {
+    const repo = initRepo();
+    try {
+      const result = await runSwarmStaged(
+        repo,
+        [[lane('base')]],
+        ({ worktreePath }) => {
+          writeFileSync(join(worktreePath, 'shared.ts'), '// x\n');
+          return Promise.resolve(null);
+        },
+        { verifyWave: () => Promise.resolve({ passed: false, revert: false }) },
+      );
+      // Advisory-only: not reverted, lane not relabeled failed, content kept.
+      expect(result.lanes.find((l) => l.id === 'base')?.failed).toBe(false);
+      expect(result.mergedDiff).toContain('shared.ts');
     } finally {
       removeDir(repo);
     }
