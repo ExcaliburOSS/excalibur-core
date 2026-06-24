@@ -21,6 +21,17 @@ describe('fleet (pure thread state machine)', () => {
     expect(spawnThread(f, 't1', 'dup').threads).toHaveLength(2); // dedup by id
   });
 
+  it('AO8-1: stores an optional follow-up on the thread (survives settle)', () => {
+    let f = spawnThread(initialFleet(), 't1', 'build it', 'run the tests');
+    expect(f.threads[0]?.followUp).toBe('run the tests');
+    // The follow-up persists through settle (so the REPL can dispatch it on done).
+    f = settleThread(f, 't1', 'done', 'done!');
+    expect(f.threads[0]?.followUp).toBe('run the tests');
+    // No follow-up by default / for an empty string.
+    expect(spawnThread(initialFleet(), 't2', 'x').threads[0]?.followUp).toBeUndefined();
+    expect(spawnThread(initialFleet(), 't3', 'x', '').threads[0]?.followUp).toBeUndefined();
+  });
+
   it('auto-focuses a thread that becomes blocked (rule 1)', () => {
     let f = spawnThread(spawnThread(initialFleet(), 't1', 'a'), 't2', 'b');
     f = blockThread(f, 't2');

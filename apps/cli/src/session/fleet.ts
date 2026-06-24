@@ -25,6 +25,9 @@ export interface FleetThread {
   draft: string;
   /** A pending one-shot banner (set on settle), drained by the REPL. */
   banner: string | null;
+  /** AO8-1 — a task to auto-dispatch when this thread completes (reaction-on-
+   * completion / chaining); absent = no follow-up. Consumed once by the REPL. */
+  followUp?: string;
 }
 
 export interface FleetState {
@@ -37,14 +40,30 @@ export function initialFleet(): FleetState {
   return { threads: [], foreground: -1 };
 }
 
-/** Registers a new running thread (does NOT steal focus). */
-export function spawnThread(state: FleetState, id: string, title: string): FleetState {
+/** Registers a new running thread (does NOT steal focus). AO8-1: an optional
+ * `followUp` task is stored to auto-dispatch when this thread completes. */
+export function spawnThread(
+  state: FleetState,
+  id: string,
+  title: string,
+  followUp?: string,
+): FleetState {
   if (state.threads.some((t) => t.id === id)) {
     return state;
   }
   return {
     ...state,
-    threads: [...state.threads, { id, title, status: 'running', draft: '', banner: null }],
+    threads: [
+      ...state.threads,
+      {
+        id,
+        title,
+        status: 'running',
+        draft: '',
+        banner: null,
+        ...(followUp !== undefined && followUp.length > 0 ? { followUp } : {}),
+      },
+    ],
   };
 }
 

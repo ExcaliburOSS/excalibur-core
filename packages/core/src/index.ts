@@ -374,6 +374,13 @@ export {
   type PlanComplexity,
 } from './sessions/plan-shaping';
 export {
+  buildChainPrompt,
+  parseChainRequest,
+  parseChain,
+  type TaskChain,
+  type ChainContext,
+} from './sessions/chain';
+export {
   type StructuralInput,
   type StatusLineModel,
   type BuildStatusLineInput,

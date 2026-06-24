@@ -863,6 +863,7 @@ export const EN: Catalog = {
   'repl.bg-usage':
     'Usage: /bg <task> — runs the task in the background (its own recorded run) while you keep working.',
   'repl.bg-started': '▸ background: {title} — running (use /threads to check on it)',
+  'repl.bg-followup': '↳ chaining follow-up: {title}',
   'repl.bg-done': '✓ background done: {title}',
   'repl.bg-failed': '✗ background failed: {title} — {error}',
   'repl.bg-active': '{n} bg',

@@ -925,6 +925,7 @@ export const ES: Catalog = {
   'repl.bg-usage':
     'Uso: /bg <tarea> — ejecuta la tarea en segundo plano (su propia ejecución registrada) mientras sigues trabajando.',
   'repl.bg-started': '▸ segundo plano: {title} — en curso (usa /threads para verlo)',
+  'repl.bg-followup': '↳ encadenando seguimiento: {title}',
   'repl.bg-done': '✓ segundo plano hecho: {title}',
   'repl.bg-failed': '✗ segundo plano falló: {title} — {error}',
   'repl.bg-active': '{n} en 2º plano',

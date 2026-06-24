@@ -9,6 +9,8 @@ import {
   planShape,
   shouldSurfacePlanShape,
   shouldAskPlanQuestions,
+  parseChain,
+  type TaskChain,
   type PlanShape,
   decidePosture,
   riskOfShape,
@@ -548,7 +550,7 @@ export async function runInteractiveSession(
             continue;
           }
           if (input.name === 'bg') {
-            handleBgCommand(deps, runtime, input.argv.join(' '), bgControllers);
+            void handleBgCommand(deps, runtime, input.argv.join(' '), bgControllers);
             printStatusLine(deps, runtime);
             continue;
           }
@@ -677,7 +679,7 @@ export async function runInteractiveSession(
         intent === 'bg' &&
         (await acceptRoute('repl.route-bg-offer', 'repl.route-bg-auto'))
       ) {
-        handleBgCommand(deps, runtime, text, bgControllers);
+        void handleBgCommand(deps, runtime, text, bgControllers);
         printStatusLine(deps, runtime);
         continue;
       }
@@ -1503,17 +1505,84 @@ async function handleExploreCommand(
  * finishes a one-shot banner is raised above the next prompt. Blocked paths stay
  * hard-denied at the tool layer. Never throws to the caller (fire-and-forget).
  */
-function handleBgCommand(
+async function handleBgCommand(
   deps: CliDeps,
   runtime: SessionRuntime,
   task: string,
   controllers: Map<string, AbortController>,
-): void {
+): Promise<void> {
   const trimmed = task.trim();
   if (trimmed.length === 0) {
     deps.ui.warn(deps.t('repl.bg-usage'));
     return;
   }
+  runtime.store.appendPromptHistory(`/bg ${redactSecrets(trimmed)}`);
+  // AO8-1 — split a chained request ("build X and then run the tests") into the
+  // primary task + an auto-follow-up; best-effort (no model → the whole thing).
+  const chain = await parseBgChain(deps, runtime, trimmed);
+  launchBgThread(deps, runtime, chain.task, controllers, chain.followUp ?? undefined);
+}
+
+/** Builds the cheap-model adapter + splits a `/bg` request into a {@link TaskChain}
+ * (AO8-1). Gated exactly like {@link shapePlan}; any fault → no follow-up. */
+async function parseBgChain(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  request: string,
+): Promise<TaskChain> {
+  if (
+    deps.env['EXCALIBUR_ROUTER'] === 'off' ||
+    !deps.ui.isInteractive() ||
+    runtime.model === 'mock'
+  ) {
+    return { task: request, followUp: null };
+  }
+  let gateway: ReturnType<typeof loadGatewayContext>;
+  let provider: string | undefined;
+  try {
+    gateway = loadGatewayContext(runtime.repoRoot);
+    provider = gateway.cheapProviderName ?? gateway.providerName;
+  } catch {
+    return { task: request, followUp: null };
+  }
+  if (!gateway.configured || provider == null) {
+    return { task: request, followUp: null };
+  }
+  const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[provider]
+    ?.type;
+  if (providerType === 'mock') {
+    return { task: request, followUp: null };
+  }
+  const model = async (prompt: string, sig?: AbortSignal): Promise<string> => {
+    const output = await gateway.gateway.chat({
+      provider,
+      messages: [{ role: 'user', content: redactSecrets(prompt) }],
+      maxTokens: 400,
+      timeoutMs: 15000,
+      metadata: { kind: 'chain' },
+      ...(sig !== undefined ? { signal: sig } : {}),
+    });
+    return output.content;
+  };
+  try {
+    return await parseChain(request, { interactive: true, mock: false }, model);
+  } catch {
+    return { task: request, followUp: null };
+  }
+}
+
+/**
+ * Spawns + runs ONE background thread. AO8-1: an optional `followUp` is stored on
+ * the thread and AUTO-DISPATCHED when this thread completes successfully (a
+ * single chain link — the follow-up itself carries none, so chains never recurse).
+ */
+function launchBgThread(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  task: string,
+  controllers: Map<string, AbortController>,
+  followUp?: string,
+): void {
   // Build the turn deps NOW so a misconfigured model fails HERE (visibly) rather
   // than inside the detached promise where the rejection would be swallowed.
   const ctrl = new AbortController();
@@ -1525,19 +1594,27 @@ function handleBgCommand(
     return;
   }
   const id = generateId('bg');
-  const title = trimmed.length > 56 ? `${trimmed.slice(0, 55)}…` : trimmed;
-  runtime.fleet = spawnThread(runtime.fleet, id, title);
+  const title = task.length > 56 ? `${task.slice(0, 55)}…` : task;
+  runtime.fleet = spawnThread(runtime.fleet, id, title, followUp);
   controllers.set(id, ctrl);
-  runtime.store.appendPromptHistory(`/bg ${redactSecrets(trimmed)}`);
   deps.ui.info(deps.t('repl.bg-started', { title }));
 
   const bgDeps: AgentTurnDeps = { ...base, quiet: true, approvals: { auto: true } };
-  void runAgentTurn(bgDeps, trimmed)
+  void runAgentTurn(bgDeps, task)
     .then((result) => {
       if (result.costCents !== null) {
         runtime.costCents += result.costCents;
       }
+      const pendingFollowUp = runtime.fleet.threads.find((t) => t.id === id)?.followUp;
       runtime.fleet = settleThread(runtime.fleet, id, 'done', deps.t('repl.bg-done', { title }));
+      // AO8-1 — REACTION ON COMPLETION: the finished thread auto-dispatches its
+      // follow-up (no user command). One link only (the follow-up has no follow-up).
+      if (pendingFollowUp !== undefined && pendingFollowUp.length > 0) {
+        const fuTitle =
+          pendingFollowUp.length > 56 ? `${pendingFollowUp.slice(0, 55)}…` : pendingFollowUp;
+        deps.ui.info(deps.t('repl.bg-followup', { title: fuTitle }));
+        launchBgThread(deps, runtime, pendingFollowUp, controllers);
+      }
     })
     .catch((error: unknown) => {
       const reason = error instanceof Error ? error.message : String(error);
