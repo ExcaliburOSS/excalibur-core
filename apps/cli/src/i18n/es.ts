@@ -513,6 +513,20 @@ export const ES: Catalog = {
   'orchestrate.nothingToDo': 'Nada que reanudar — todos los carriles ya completaron.',
   'orchestrate.rerunning': 'Re-ejecutando {n} carril(es) de {runId}…',
   'orchestrate.reusing': 'Reutilizando {reused} carril(es) sin cambios; re-ejecutando {rerun}.',
+  'schedule.invalid-spec':
+    'horario inválido «{spec}» — usa p.ej. «every 30m», «2h», «at 09:00», «daily 14:30».',
+  'schedule.needs-task': 'se requiere una tarea no vacía.',
+  'schedule.added':
+    'Programado {id} ({spec}) — próxima ejecución {next}. Mantén `excalibur schedule run` activo para dispararlo.',
+  'schedule.list-empty':
+    'No hay trabajos programados. Añade uno con `excalibur schedule add "every 2h" "<tarea>"`.',
+  'schedule.removed': 'Eliminado el horario {id}.',
+  'schedule.not-found': 'No hay ningún horario con id {id}.',
+  'schedule.daemon-start':
+    'Planificador en marcha — {count} trabajo(s), comprobando cada {tick}s. Ctrl-C para parar.',
+  'schedule.daemon-stop': 'Planificador detenido.',
+  'schedule.firing': '⏰ disparando: {task}',
+  'schedule.fired': '   → ejecución {runId} iniciada',
   'orchestrate.resuming': 'Reanudando {n} carril(es) incompletos de {runId}…',
   'orchestrate.runningSpec': 'Ejecutando orquestación autoría: {n} paso(s) de {path}…',
   'orchestration.none': 'No se encontró ninguna orquestación. Lanza un swarm o /explore primero.',

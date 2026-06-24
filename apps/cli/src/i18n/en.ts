@@ -496,6 +496,20 @@ export const EN: Catalog = {
   'orchestrate.nothingToDo': 'Nothing to resume — every lane already completed.',
   'orchestrate.rerunning': 'Re-running {n} lane(s) from {runId}…',
   'orchestrate.reusing': 'Reusing {reused} unchanged lane(s); re-running {rerun}.',
+  'schedule.invalid-spec':
+    'invalid schedule "{spec}" — use e.g. "every 30m", "2h", "at 09:00", "daily 14:30".',
+  'schedule.needs-task': 'a non-empty task is required.',
+  'schedule.added':
+    'Scheduled {id} ({spec}) — next run {next}. Keep `excalibur schedule run` alive to fire it.',
+  'schedule.list-empty':
+    'No scheduled jobs. Add one with `excalibur schedule add "every 2h" "<task>"`.',
+  'schedule.removed': 'Removed schedule {id}.',
+  'schedule.not-found': 'No schedule with id {id}.',
+  'schedule.daemon-start':
+    'Scheduler running — {count} job(s), checking every {tick}s. Ctrl-C to stop.',
+  'schedule.daemon-stop': 'Scheduler stopped.',
+  'schedule.firing': '⏰ firing: {task}',
+  'schedule.fired': '   → started run {runId}',
   'orchestrate.resuming': 'Resuming {n} incomplete lane(s) from {runId}…',
   'orchestrate.runningSpec': 'Running authored orchestration: {n} step(s) from {path}…',
   'orchestration.none': 'No orchestration found. Run a swarm or /explore first.',

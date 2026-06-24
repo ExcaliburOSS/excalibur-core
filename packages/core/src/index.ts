@@ -316,6 +316,21 @@ export {
   type BuildRepoContextInput,
 } from './instructions/repo-context';
 
+// AO8-3 — autonomous scheduling (OSS cron/interval)
+export {
+  parseDurationMs,
+  parseTimeOfDay,
+  parseScheduleSpec,
+  nextRun,
+  isDue,
+  dueJobs,
+  advanceJob,
+  describeSpec,
+  type ScheduleSpec,
+  type ScheduledJob,
+} from './scheduling/schedule';
+export { ScheduleStore } from './scheduling/schedule-store';
+
 // Discovery (D-7)
 export {
   DiscoveryManager,
