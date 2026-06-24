@@ -15,6 +15,11 @@ import {
   renderChoiceLine,
   type SelectState,
 } from './lib/select-input';
+import {
+  reduceMultiSelectKey,
+  renderMultiChoiceLine,
+  type MultiSelectState,
+} from './lib/multi-select-input';
 import type { SelectKeymap } from './lib/keymap';
 
 /**
@@ -88,6 +93,17 @@ export interface SelectOptions {
    * callers with config pass `resolveSelectKeymap(config.keybindings?.select)` to
    * honor user-rebound keys. Ignored by the numbered fallback.
    */
+  keymap?: SelectKeymap;
+}
+
+export interface MultiSelectOptions {
+  /** Skip the prompt and resolve with the pre-checked defaults (the `--yes` flag). */
+  yes?: boolean;
+  /** Indices checked from the start (the high-confidence recommendations). */
+  preselected?: number[];
+  /** Dim navigation hint under the question (already translated). */
+  navHint?: string;
+  /** Effective picker keybindings (P1.13b) — defaults to the built-in arrow/jk set. */
   keymap?: SelectKeymap;
 }
 
@@ -698,6 +714,174 @@ export class Ui {
         resolve(index);
       };
 
+      readline.emitKeypressEvents(input);
+      if (typeof input.setRawMode === 'function') {
+        input.setRawMode(true);
+      }
+      input.resume();
+      input.on('keypress', onKeypress);
+      process.on('exit', restoreCooked);
+      process.once('SIGTERM', onTermSignal);
+      process.once('SIGHUP', onTermSignal);
+    });
+  }
+
+  /**
+   * MULTI-select chooser (plan-shaping): returns the chosen zero-based indices.
+   * On a real TTY it is an INTERACTIVE checkbox list — ↑/↓ (and j/k) move, SPACE
+   * toggles, `a`/`n` select all/none, Enter submits, Esc resolves with the
+   * pre-checked defaults. Non-TTY / `--yes` / `EXCALIBUR_RAW_INPUT=0` resolve to
+   * `preselected` (so a scripted/auto path keeps the recommended set, no prompt).
+   */
+  async multiSelect(
+    question: string,
+    choices: SelectChoice[],
+    options: MultiSelectOptions = {},
+  ): Promise<number[]> {
+    const valid = (i: number): boolean => Number.isInteger(i) && i >= 0 && i < choices.length;
+    const preselected = [...new Set((options.preselected ?? []).filter(valid))].sort(
+      (a, b) => a - b,
+    );
+    const rawAllowed = process.env['EXCALIBUR_RAW_INPUT'] !== '0';
+    const useArrows =
+      options.yes !== true &&
+      this.interactive &&
+      hasTty(this.stdin) &&
+      this.isOutputTty() &&
+      rawAllowed &&
+      choices.length > 0;
+    if (!useArrows) {
+      return preselected; // scripted / --yes / non-TTY → accept the recommended set
+    }
+    return this.multiSelectInteractive(
+      question,
+      choices,
+      preselected,
+      options.navHint,
+      options.keymap,
+    );
+  }
+
+  /** The interactive checkbox chooser (real TTY) — mirrors {@link selectInteractive}. */
+  private multiSelectInteractive(
+    question: string,
+    choices: SelectChoice[],
+    preselected: number[],
+    navHint?: string,
+    keymap?: SelectKeymap,
+  ): Promise<number[]> {
+    const input = this.stdin as NodeJS.ReadStream;
+    const out = this.stdout;
+    const ESC = String.fromCharCode(27);
+    const ascii = process.env['EXCALIBUR_ASCII'] === '1';
+    const total = choices.length;
+    const rows = (out as { rows?: number }).rows ?? 24;
+    const windowSize = Math.max(4, Math.min(12, rows - 6));
+    let state: MultiSelectState = { index: 0, selected: new Set(preselected) };
+    const fallback = (): number[] => [...state.selected].sort((a, b) => a - b);
+
+    const borrowed = this.suspendEditor !== null;
+    if (borrowed) {
+      this.suspendInput();
+    }
+
+    let linesDrawn = 0;
+    const block = (): string[] => {
+      const lines: string[] = [this.formatQuestion(question)];
+      lines.push(
+        pc.dim(navHint ?? '↑/↓ move · space toggle · a/n all/none · enter confirm · esc cancel'),
+      );
+      const { start, end } = computeWindow(state.index, total, windowSize);
+      if (start > 0) {
+        lines.push(pc.dim(`  ▲ ${start} more`));
+      }
+      for (let i = start; i < end; i += 1) {
+        lines.push(
+          renderMultiChoiceLine(
+            choices[i] as SelectChoice,
+            i === state.index,
+            state.selected.has(i),
+            ascii,
+          ),
+        );
+      }
+      if (end < total) {
+        lines.push(pc.dim(`  ▼ ${total - end} more`));
+      }
+      return lines;
+    };
+    const draw = (): void => {
+      if (linesDrawn > 0) {
+        out.write(`${ESC}[${linesDrawn}A`);
+      }
+      out.write(`\r${ESC}[0J`);
+      const lines = block();
+      out.write(`${lines.join('\n')}\n`);
+      linesDrawn = lines.length;
+    };
+    const restoreCooked = (): void => {
+      try {
+        if (input.isTTY === true && typeof input.setRawMode === 'function') {
+          input.setRawMode(false);
+        }
+      } catch {
+        // best-effort: never throw while restoring the terminal
+      }
+    };
+    const onTermSignal = (): void => {
+      restoreCooked();
+      process.exit(143);
+    };
+
+    draw();
+    return new Promise<number[]>((resolve) => {
+      let done = false;
+      const finish = (result: number[]): void => {
+        if (done) {
+          return;
+        }
+        done = true;
+        input.removeListener('keypress', onKeypress);
+        process.removeListener('exit', restoreCooked);
+        process.removeListener('SIGTERM', onTermSignal);
+        process.removeListener('SIGHUP', onTermSignal);
+        restoreCooked();
+        if (borrowed) {
+          this.resumeInput();
+        }
+        resolve(result);
+      };
+      const onKeypress = (_str: string | undefined, key: ParsedKey | undefined): void => {
+        if (key === undefined) {
+          return;
+        }
+        try {
+          const result = reduceMultiSelectKey(state, key, total, keymap);
+          state = result.state;
+          switch (result.action.type) {
+            case 'move':
+            case 'toggle':
+              draw();
+              return;
+            case 'submit':
+              draw();
+              finish(result.action.selected);
+              return;
+            case 'cancel':
+              finish(fallback());
+              return;
+            case 'sigint':
+              out.write('\n');
+              finish(fallback());
+              process.kill(process.pid, 'SIGINT');
+              return;
+            case 'none':
+              return;
+          }
+        } catch {
+          finish(fallback());
+        }
+      };
       readline.emitKeypressEvents(input);
       if (typeof input.setRawMode === 'function') {
         input.setRawMode(true);

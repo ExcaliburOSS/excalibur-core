@@ -354,6 +354,18 @@ export {
   parseOrchestrationAction,
   classifyOrchestrationAction,
   type OrchestrationAction,
+} from './sessions/intent-router';
+export {
+  buildPlanShapePrompt,
+  parsePlanShape,
+  planShape,
+  shouldSurfacePlanShape,
+  shouldAskPlanQuestions,
+  type PlanShape,
+  type PlanRecommendation,
+  type PlanComplexity,
+} from './sessions/plan-shaping';
+export {
   type StructuralInput,
   type StatusLineModel,
   type BuildStatusLineInput,

@@ -17,7 +17,8 @@
     "prepare": "git config core.hooksPath .husky || true",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "verify:real": "node scripts/verify-real.mjs"
+    "verify:real": "node scripts/verify-real.mjs",
+    "verify:plan-shaping": "node scripts/verify-plan-shaping.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",

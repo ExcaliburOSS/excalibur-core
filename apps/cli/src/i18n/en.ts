@@ -843,6 +843,9 @@ export const EN: Catalog = {
   'repl.auto-build-sequential': 'Auto-orchestrating: a single workstream → one focused run.',
   'repl.orchestration-hint':
     'Tip: ask me to "show the orchestration" or "pause it" anytime — or open its live chronogram in the dashboard.',
+  'repl.plan-shape-intro': 'Shaping the plan — pick which related work to fold in (space toggles):',
+  'repl.plan-shape-prompt': 'Include in the plan?',
+  'repl.plan-shape-nav': '↑/↓ move · space toggle · a/n all/none · enter confirm · esc skip',
   'repl.auto-build-review': 'Adversarial review of the result ({lenses} lens(es))…',
   'repl.auto-build-review-high':
     'A high-severity issue survived review — inspect the changes before relying on them.',

@@ -6,6 +6,10 @@ import {
   changeGlyph,
   classifyOrchestrationAction,
   classifyTurnDecision,
+  planShape,
+  shouldSurfacePlanShape,
+  shouldAskPlanQuestions,
+  type PlanShape,
   decidePosture,
   riskOfShape,
   compactSession,
@@ -910,6 +914,118 @@ function buildIntentClassifier(deps: CliDeps, runtime: SessionRuntime): IntentMo
   };
 }
 
+/**
+ * PLAN-SHAPING (CC/Cursor-style co-creation): before a build/plan turn runs,
+ * propose LLM-derived clarifying questions + a MULTI-SELECT list of related
+ * developments (high-confidence pre-checked) the user toggles into the plan; fold
+ * the choices + answers into the task text. It surfaces ONLY when it genuinely
+ * helps — a LARGE plan, an UNCLEAR design, or real OPTIONAL developments — and
+ * stays SILENT for small or already-clear tasks (the {@link shouldSurfacePlanShape}
+ * gate). SKIPS entirely when there is no fast model, a mock, or a non-interactive
+ * stdin (returns the text as-is, so scripted / --yes / bg paths are unchanged).
+ * Best-effort: any fault → original text.
+ */
+async function shapePlan(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  text: string,
+  signal: AbortSignal,
+): Promise<string> {
+  if (
+    deps.env['EXCALIBUR_ROUTER'] === 'off' ||
+    !deps.ui.isInteractive() ||
+    runtime.model === 'mock'
+  ) {
+    return text;
+  }
+  const gateway = loadGatewayContext(runtime.repoRoot);
+  const provider = gateway.cheapProviderName ?? gateway.providerName;
+  if (!gateway.configured || provider == null) {
+    return text;
+  }
+  const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[provider]
+    ?.type;
+  if (providerType === 'mock') {
+    return text;
+  }
+  // A dedicated adapter — the intent classifier caps maxTokens at 6 (one word),
+  // far too small for the shaping JSON; this allows a full questions+recs reply.
+  const model = async (prompt: string, sig?: AbortSignal): Promise<string> => {
+    const output = await gateway.gateway.chat({
+      provider,
+      messages: [{ role: 'user', content: redactSecrets(prompt) }],
+      maxTokens: 700,
+      timeoutMs: 20000,
+      metadata: { kind: 'plan-shape' },
+      ...(sig !== undefined ? { signal: sig } : {}),
+    });
+    return output.content;
+  };
+
+  let shape: PlanShape;
+  try {
+    shape = await planShape(
+      text,
+      { interactive: true, mock: false, level: runtime.autonomyLevel },
+      model,
+      signal,
+    );
+  } catch {
+    return text;
+  }
+  // The gate: only interrupt the user when shaping genuinely helps (large plan,
+  // unclear design, or real optional scope). Small / clear-medium tasks proceed
+  // silently — planning is unchanged.
+  if (!shouldSurfacePlanShape(shape)) {
+    return text;
+  }
+
+  const extras: string[] = [];
+  if (shape.recommendations.length > 0) {
+    deps.ui.info(deps.t('repl.plan-shape-intro'));
+    const choices = shape.recommendations.map((r) => ({
+      label: r.title,
+      ...(r.detail.length > 0 ? { hint: r.detail } : {}),
+    }));
+    const preselected = shape.recommendations
+      .map((r, i) => (r.recommended ? i : -1))
+      .filter((i) => i >= 0);
+    const chosen = await deps.ui.multiSelect(deps.t('repl.plan-shape-prompt'), choices, {
+      preselected,
+      navHint: deps.t('repl.plan-shape-nav'),
+    });
+    for (const i of chosen) {
+      const r = shape.recommendations[i];
+      if (r !== undefined) {
+        extras.push(`- ${r.title}${r.detail.length > 0 ? ` (${r.detail})` : ''}`);
+      }
+    }
+  }
+  // Asymmetric: only interrupt to ASK when the plan is large or the design is
+  // unclear. A clear medium task that surfaced for its recommendations alone
+  // never gets interrogated (the user just toggled the pre-checked extras).
+  const answers: string[] = [];
+  if (shouldAskPlanQuestions(shape)) {
+    for (const q of shape.questions) {
+      const a = await deps.ui.ask(q, { defaultAnswer: '' });
+      if (a.trim().length > 0) {
+        answers.push(`- ${q} → ${a.trim()}`);
+      }
+    }
+  }
+  if (extras.length === 0 && answers.length === 0) {
+    return text;
+  }
+  let refined = text;
+  if (extras.length > 0) {
+    refined += `\n\nAlso include in the plan:\n${extras.join('\n')}`;
+  }
+  if (answers.length > 0) {
+    refined += `\n\nClarifications (from the user):\n${answers.join('\n')}`;
+  }
+  return refined;
+}
+
 /** Builds the agent-turn deps from the session runtime. */
 function agentTurnDeps(deps: CliDeps, runtime: SessionRuntime, signal: AbortSignal): AgentTurnDeps {
   const gateway = loadGatewayContext(runtime.repoRoot);
@@ -1207,7 +1323,10 @@ async function dispatchPlan(
   signal: AbortSignal,
   seed: ChatMessage[],
 ): Promise<void> {
-  const plan = await runPlanTurn(agentTurnDeps(deps, runtime, signal), text, seed);
+  // Plan-shaping: co-create the scope (clarifying Qs + multi-select recommendations)
+  // before the plan is generated; the choices refine the plan prompt.
+  const shaped = await shapePlan(deps, runtime, text, signal);
+  const plan = await runPlanTurn(agentTurnDeps(deps, runtime, signal), shaped, seed);
   runtime.store.appendTurn(runtime.session.id, {
     role: 'assistant',
     kind: 'message',
@@ -1236,6 +1355,9 @@ async function dispatchAutoBuild(
   signal: AbortSignal,
   seed: ChatMessage[],
 ): Promise<void> {
+  // Plan-shaping: co-create the scope (clarifying Qs + multi-select recommendations)
+  // before decomposing/building; the choices refine the task that gets decomposed.
+  text = await shapePlan(deps, runtime, text, signal);
   const isRepo = getGitInfo(runtime.repoRoot).isRepo;
   if (isRepo) {
     try {

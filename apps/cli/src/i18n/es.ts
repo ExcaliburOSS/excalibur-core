@@ -903,6 +903,10 @@ export const ES: Catalog = {
     'Auto-orquestando: un solo flujo de trabajo → una ejecución enfocada.',
   'repl.orchestration-hint':
     'Sugerencia: pídeme «muéstrame la orquestación» o «pausala» cuando quieras — o abre su cronograma en vivo en el dashboard.',
+  'repl.plan-shape-intro':
+    'Dando forma al plan — elige qué trabajo relacionado incluir (espacio marca):',
+  'repl.plan-shape-prompt': '¿Incluir en el plan?',
+  'repl.plan-shape-nav': '↑/↓ mover · espacio marca · a/n todo/nada · enter confirma · esc omitir',
   'repl.auto-build-review': 'Revisión adversarial del resultado ({lenses} lente(s))…',
   'repl.auto-build-review-high':
     'Sobrevivió un problema de severidad alta — revisa los cambios antes de fiarte de ellos.',
