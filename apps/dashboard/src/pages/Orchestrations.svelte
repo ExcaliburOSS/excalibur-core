@@ -55,9 +55,15 @@
         <article class="orch">
           <header>
             <span class="dot {statusClass(o.status)}" aria-hidden="true"></span>
-            <span class="title">{o.title}</span>
+            <a class="title" href={`#/orchestrations/${encodeURIComponent(o.parentRunId)}`}
+              >{o.title}</a
+            >
             <span class="count faint">{t('orch.lanes', { n: o.laneCount })}</span>
             <span class="grow"></span>
+            <a
+              class="chrono-link faint"
+              href={`#/orchestrations/${encodeURIComponent(o.parentRunId)}`}>{t('orch.chronogram')}</a
+            >
             <span class="status {statusClass(o.status)}">{o.status}</span>
           </header>
           <ul class="lanes">
@@ -108,6 +114,11 @@
   }
   .title {
     font-weight: 600;
+    color: var(--text);
+  }
+  .chrono-link {
+    font-size: 12px;
+    color: var(--accent);
   }
   .count {
     font-size: 12px;

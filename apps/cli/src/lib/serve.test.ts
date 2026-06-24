@@ -195,6 +195,71 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
     expect((await get('/api/work-items/not-a-key')).status).toBe(400);
   });
 
+  it('serves the orchestration chronogram (waves + lanes joined to live runs); guards bad ids (AO6 Pillar 2)', async () => {
+    const manager = new RunManager(repoRoot);
+    const parent = manager.createRun({
+      title: 'swarm: 2 lanes',
+      autonomyLevel: 3,
+      workflow: 'swarm',
+      model: 'kimi',
+      executionStyle: 'fast',
+    });
+    manager.updateRecord(parent.id, { status: 'running' });
+    const childA = manager.createRun({
+      title: 'Lane A',
+      autonomyLevel: 3,
+      workflow: 'swarm-lane',
+      model: 'kimi',
+      executionStyle: 'fast',
+      parentRunId: parent.id,
+    });
+    manager.updateRecord(childA.id, { status: 'completed', completedAt: new Date().toISOString() });
+    const childB = manager.createRun({
+      title: 'Lane B',
+      autonomyLevel: 3,
+      workflow: 'swarm-lane',
+      model: 'kimi',
+      executionStyle: 'fast',
+      parentRunId: parent.id,
+    });
+    manager.updateRecord(childB.id, { status: 'running' });
+    manager.writeArtifact(
+      parent.id,
+      'orchestration-plan.json',
+      JSON.stringify({
+        version: 1,
+        task: 'do two things',
+        mode: 'staged',
+        parentRunId: parent.id,
+        createdAt: new Date().toISOString(),
+        waves: [['t1'], ['t2']],
+        lanes: [
+          { id: 't1', title: 'Lane A', instruction: 'A', dependsOn: [], runId: childA.id },
+          { id: 't2', title: 'Lane B', instruction: 'B', dependsOn: ['t1'], runId: childB.id },
+        ],
+      }),
+    );
+
+    const res = await get(`/api/orchestrations/${parent.id}`);
+    expect(res.status).toBe(200);
+    const dto = (await res.json()) as {
+      parentRunId: string;
+      waves: string[][];
+      lanes: { id: string; state: string; dependsOn: string[]; runId: string | null }[];
+    };
+    expect(dto.parentRunId).toBe(parent.id);
+    expect(dto.waves).toEqual([['t1'], ['t2']]);
+    expect(dto.lanes).toHaveLength(2);
+    expect(dto.lanes[0]?.state).toBe('done'); // childA completed
+    expect(dto.lanes[1]?.state).toBe('running'); // childB still running
+    expect(dto.lanes[1]?.dependsOn).toEqual(['t1']); // the DAG edge
+    expect(dto.lanes[1]?.runId).toBe(childB.id); // click-through target
+
+    // Guards: unknown parent → 404, malformed id → 400.
+    expect((await get('/api/orchestrations/run_20990101_000000')).status).toBe(404);
+    expect((await get('/api/orchestrations/not-a-run')).status).toBe(400);
+  });
+
   it('streams a completed run as SSE (replays events, ends)', async () => {
     const res = await get(`/api/runs/${runId}/stream`);
     expect(res.headers.get('content-type')).toContain('text/event-stream');

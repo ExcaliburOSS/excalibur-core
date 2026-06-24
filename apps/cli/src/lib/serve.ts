@@ -108,7 +108,7 @@ function tokenMatches(presented: string | null, secret: string | undefined): boo
 /** Cap on simultaneously-open SSE streams (anti-resource-exhaustion). */
 const MAX_OPEN_STREAMS = 64;
 
-type RouteResult = Json | Html | 'sse' | 'sse-board' | null;
+type RouteResult = Json | Html | 'sse' | 'sse-board' | 'sse-orchestration' | null;
 
 /** Routes a request to a payload, an HTML page, or an SSE sentinel. */
 function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
@@ -134,12 +134,15 @@ function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
     // AO4e: parallel orchestrations (parent swarm run + its lane child runs).
     return { status: 200, body: { orchestrations: buildOrchestrations(repoRoot) } };
   }
-  const orchMatch = /^\/api\/orchestrations\/([^/]+)$/.exec(path);
+  const orchMatch = /^\/api\/orchestrations\/([^/]+)(\/stream)?$/.exec(path);
   if (orchMatch !== null) {
     // AO6 Pillar 2: the chronogram detail — the wave/DAG timeline of one swarm.
     const id = decodeURIComponent(orchMatch[1] as string);
     if (!RUN_ID.test(id)) {
       return { status: 400, body: { error: 'invalid run id' } };
+    }
+    if (orchMatch[2] === '/stream') {
+      return 'sse-orchestration'; // push the chronogram on change (live wave/DAG fill)
     }
     const detail = buildChronogramForRun(repoRoot, id);
     return detail === null
@@ -349,6 +352,42 @@ function streamBoard(repoRoot: string, res: ServerResponse, pollMs: number): voi
   res.on('close', () => clearInterval(timer));
 }
 
+/**
+ * Streams ONE orchestration's chronogram as SSE (AO6 Pillar 2): emit the current
+ * wave/DAG snapshot immediately, then re-evaluate on an interval and push only
+ * when it CHANGED — so the dashboard timeline fills wave-by-wave live without a
+ * client poll. Mirrors {@link streamBoard}. A transient build error skips a tick.
+ */
+function streamChronogram(repoRoot: string, id: string, res: ServerResponse, pollMs: number): void {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  let last = '';
+  let beats = 0;
+  const tick = (): void => {
+    let snapshot: string;
+    try {
+      const dto = buildChronogramForRun(repoRoot, id);
+      if (dto === null) return; // not (yet) an orchestration — try again next tick
+      snapshot = JSON.stringify(dto);
+    } catch {
+      return;
+    }
+    if (snapshot !== last) {
+      last = snapshot;
+      res.write(`event: orchestration\ndata: ${snapshot}\n\n`);
+    } else if ((beats += 1) % 10 === 0) {
+      res.write(': keep-alive\n\n');
+    }
+  };
+  tick();
+  const timer = setInterval(tick, Math.max(250, pollMs));
+  timer.unref?.();
+  res.on('close', () => clearInterval(timer));
+}
+
 /** Reads a JSON request body (capped at 1 MiB); `{}` for an empty body. */
 function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
@@ -549,6 +588,19 @@ export function createExcaliburServer(options: ServeOptions): Server {
     }
     if (result === 'sse-board') {
       withStreamCap(res, () => streamBoard(options.repoRoot, res, pollMs));
+      return;
+    }
+    if (result === 'sse-orchestration') {
+      const normalized = url.pathname.replace(/\/+$/, '');
+      const id = decodeURIComponent(
+        /\/api\/orchestrations\/([^/]+)\/stream$/.exec(normalized)?.[1] ?? '',
+      );
+      if (id.length === 0) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'invalid run id' }));
+        return;
+      }
+      withStreamCap(res, () => streamChronogram(options.repoRoot, id, res, pollMs));
       return;
     }
     if ('html' in result) {

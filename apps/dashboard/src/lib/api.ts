@@ -6,6 +6,7 @@
  */
 import type {
   BoardResponse,
+  ChronogramDto,
   DashboardLane,
   DiscoverySummary,
   InsightsReportDto,
@@ -113,6 +114,10 @@ export const fetchInsights = (): Promise<InsightsReportDto> => get('/api/insight
 /** Parallel orchestrations — parent swarm runs + their lane children (AO4e). */
 export const fetchOrchestrations = (): Promise<{ orchestrations: OrchestrationSummary[] }> =>
   get('/api/orchestrations');
+
+/** One orchestration's chronogram — the wave/DAG timeline DTO (AO6 Pillar 2). */
+export const fetchChronogram = (id: string): Promise<ChronogramDto> =>
+  get(`/api/orchestrations/${encodeURIComponent(id)}`);
 
 /** Saved plans (D3). */
 export const fetchPlans = (): Promise<{ plans: PlanSummary[] }> => get('/api/plans');

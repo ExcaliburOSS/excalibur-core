@@ -13,6 +13,7 @@ export interface Route {
     | 'run'
     | 'insights'
     | 'orchestrations'
+    | 'orchestration'
     | 'plans'
     | 'notFound';
   /** Path params (e.g. `{ key: 'WI-12' }`). */
@@ -25,6 +26,7 @@ const PATTERNS: { name: Route['name']; re: RegExp; keys: string[] }[] = [
   { name: 'run', re: /^\/runs\/([^/]+)$/, keys: ['id'] },
   { name: 'runs', re: /^\/runs$/, keys: [] },
   { name: 'insights', re: /^\/insights$/, keys: [] },
+  { name: 'orchestration', re: /^\/orchestrations\/([^/]+)$/, keys: ['id'] },
   { name: 'orchestrations', re: /^\/orchestrations$/, keys: [] },
   { name: 'plans', re: /^\/plans$/, keys: [] },
 ];

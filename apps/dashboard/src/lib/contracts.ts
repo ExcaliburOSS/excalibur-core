@@ -11,6 +11,9 @@
 export type {
   BoardResponse,
   ChecklistItemDto,
+  ChronogramDto,
+  ChronogramLaneDto,
+  ChronogramLaneState,
   DashboardBoardLane,
   DashboardLane,
   CountCostDto,

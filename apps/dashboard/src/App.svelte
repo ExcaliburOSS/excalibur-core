@@ -6,6 +6,7 @@
   import Runs from './pages/Runs.svelte';
   import Insights from './pages/Insights.svelte';
   import Orchestrations from './pages/Orchestrations.svelte';
+  import Chronogram from './pages/Chronogram.svelte';
   import Plans from './pages/Plans.svelte';
 
   const router = createRouter();
@@ -47,6 +48,8 @@
       <Insights />
     {:else if router.current.name === 'orchestrations'}
       <Orchestrations />
+    {:else if router.current.name === 'orchestration'}
+      <Chronogram id={router.current.params.id ?? ''} />
     {:else if router.current.name === 'plans'}
       <Plans />
     {:else}
