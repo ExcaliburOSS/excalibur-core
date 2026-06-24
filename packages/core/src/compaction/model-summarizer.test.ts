@@ -55,6 +55,29 @@ describe('createModelSummarizer', () => {
     expect(structuredSummary.condensed).toEqual({ entries: 3, userTurns: 2, assistantTurns: 1 });
   });
 
+  it('fidelity guard: unions file paths referenced in the prefix into filesTouched', async () => {
+    const entries = projectTranscript([
+      turn(0, 'user', 'please edit src/db/client.ts and packages/core/src/x.ts'),
+      turn(1, 'assistant', 'done'),
+    ]).entries;
+    // The model omits the files entirely; the deterministic guard must re-add the
+    // directory-qualified paths (bare filenames are intentionally not matched).
+    const summarize = createModelSummarizer({
+      chat: fakeChat(
+        JSON.stringify({
+          summary: 'S',
+          objective: 'O',
+          decisions: [],
+          filesTouched: [],
+          pending: [],
+        }),
+      ),
+    });
+    const { structuredSummary } = await summarize(entries);
+    expect(structuredSummary.filesTouched).toContain('src/db/client.ts');
+    expect(structuredSummary.filesTouched).toContain('packages/core/src/x.ts');
+  });
+
   it('tolerates JSON wrapped in code fences / prose', async () => {
     const summarize = createModelSummarizer({
       chat: fakeChat(

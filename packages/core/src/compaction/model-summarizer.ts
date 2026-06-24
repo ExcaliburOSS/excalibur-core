@@ -140,6 +140,38 @@ function toStringField(value: unknown, max: number): string {
 }
 
 /**
+ * A path-like token: at least one `/` segment plus a file with a short
+ * extension (e.g. `src/auth/login.ts`). Conservative enough to avoid matching
+ * prose, so extracted paths are real file references.
+ */
+const PATH_RE = /(?:[\w.@~-]+\/)+[\w.-]+\.[A-Za-z][\w]{0,7}/g;
+
+/**
+ * Deterministic fidelity guard: union any file paths REFERENCED in the
+ * summarized prefix into `filesTouched`, so a file the model omitted from its
+ * summary is never lost from the durable context. Redacted + bounded; the
+ * model-provided list keeps priority (its order is preserved, extras appended).
+ */
+function withReferencedPaths(
+  filesTouched: string[],
+  entries: ReadonlyArray<TranscriptEntry>,
+): string[] {
+  const have = new Set(filesTouched.map((f) => f.toLowerCase()));
+  const extras: string[] = [];
+  for (const entry of entries) {
+    for (const match of entry.text.match(PATH_RE) ?? []) {
+      const path = redactSecrets(match).slice(0, 300);
+      const key = path.toLowerCase();
+      if (!have.has(key)) {
+        have.add(key);
+        extras.push(path);
+      }
+    }
+  }
+  return [...filesTouched, ...extras].slice(0, 40);
+}
+
+/**
  * Builds an async, model-backed summarizer. The returned function is a drop-in
  * for the compactor's `summarize` strategy (its async sibling `compactAsync`).
  */
@@ -192,7 +224,7 @@ export function createModelSummarizer(options: ModelSummarizerOptions): AsyncSum
         structuredSummary: {
           objective: '',
           decisions: [],
-          filesTouched: [],
+          filesTouched: withReferencedPaths([], entries),
           pending: [],
           condensed,
         },
@@ -205,7 +237,7 @@ export function createModelSummarizer(options: ModelSummarizerOptions): AsyncSum
       structuredSummary: {
         objective: toStringField(parsed['objective'], 400),
         decisions: toStringArray(parsed['decisions']),
-        filesTouched: toStringArray(parsed['filesTouched']),
+        filesTouched: withReferencedPaths(toStringArray(parsed['filesTouched']), entries),
         pending: toStringArray(parsed['pending']),
         condensed,
       },
