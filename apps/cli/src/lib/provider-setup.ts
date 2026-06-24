@@ -4,9 +4,34 @@ import { stringify as stringifyYaml } from 'yaml';
 import { isCommandOnPath } from '@excalibur/agent-runtime';
 import type { ProviderConfig, ProvidersFileConfig } from '@excalibur/model-gateway';
 import type { CliDeps } from '../deps';
-import { providersFilePath } from './context';
+import { loadConfigContext, providersFilePath } from './context';
+import { resolveSelectKeymap, type SelectKeymap } from './keymap';
 import { PROVIDER_CATALOG, type ProviderCatalogEntry } from './model-catalog';
 import { saveSecret } from './secrets-store';
+
+/**
+ * The repo's effective list-picker keymap (honors `config.keybindings.select`),
+ * best-effort — defaults when there's no config yet (e.g. first-run onboarding).
+ */
+export function repoSelectKeymap(deps: CliDeps): SelectKeymap | undefined {
+  try {
+    return resolveSelectKeymap(loadConfigContext(deps.cwd()).config.keybindings?.select);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Section header for a catalog entry in the grouped provider picker. */
+function catalogGroup(entry: ProviderCatalogEntry): string {
+  const kind = entry.subscription?.kind;
+  if (kind === 'subscription-key') {
+    return 'Recommended';
+  }
+  if (kind === 'cli-passthrough') {
+    return 'Subscription or API';
+  }
+  return 'API only';
+}
 
 /**
  * Model provider onboarding (onboarding spec §4), shared by `excalibur init` and
@@ -265,7 +290,7 @@ type ProviderChoice =
  */
 export async function promptProviderSetup(
   deps: CliDeps,
-  options: { yes: boolean; allowLater?: boolean },
+  options: { yes: boolean; allowLater?: boolean; keymap?: SelectKeymap },
 ): Promise<ProvidersFileConfig | null> {
   if (options.yes || !deps.ui.isInteractive()) {
     return MOCK_ONLY; // tests/CI/offline — no key to prompt for
@@ -291,18 +316,24 @@ export async function promptProviderSetup(
   const labels = choices.map((choice) => {
     switch (choice.kind) {
       case 'catalog':
-        return { label: choice.entry.label, hint: choice.entry.hint };
+        return {
+          label: choice.entry.label,
+          hint: choice.entry.hint,
+          group: catalogGroup(choice.entry),
+        };
       case 'ollama':
         return {
           label: deps.t('provider-setup.opt_ollama'),
           hint: ollamaDetected
             ? deps.t('provider-setup.hint_ollama_detected')
             : deps.t('provider-setup.hint_ollama_install'),
+          group: 'Local',
         };
       case 'self-hosted':
         return {
           label: deps.t('provider-setup.opt_self_hosted'),
           hint: deps.t('provider-setup.hint_self_hosted'),
+          group: 'Local',
         };
       case 'mock':
         return {
@@ -318,6 +349,7 @@ export async function promptProviderSetup(
     yes: false,
     defaultIndex: 0,
     navHint: deps.t('common.select_hint'),
+    ...(options.keymap !== undefined ? { keymap: options.keymap } : {}),
   });
   const choice = choices[index] ?? { kind: 'later' };
 
@@ -338,7 +370,12 @@ export async function promptProviderSetup(
               hint: deps.t('provider-setup.hint_api_key'),
             },
           ],
-          { yes: false, defaultIndex: 0, navHint: deps.t('common.select_hint') },
+          {
+            yes: false,
+            defaultIndex: 0,
+            navHint: deps.t('common.select_hint'),
+            ...(options.keymap !== undefined ? { keymap: options.keymap } : {}),
+          },
         );
         return how === 0 ? setupSubscription(deps, entry) : setupApiKeyRail(deps, entry);
       }

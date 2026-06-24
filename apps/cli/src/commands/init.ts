@@ -13,7 +13,7 @@ import type { Command } from 'commander';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
 import { loadGatewayContext, providersFilePath, safetyLine } from '../lib/context';
-import { promptProviderSetup } from '../lib/provider-setup';
+import { promptProviderSetup, repoSelectKeymap } from '../lib/provider-setup';
 
 interface InitOptions {
   team?: boolean;
@@ -101,7 +101,7 @@ export function registerInitCommand(program: Command, deps: CliDeps): void {
       // (Build Contract §4.6). `excalibur models setup` configures later.
       let providers = undefined;
       if (!yes && !existsSync(providersFilePath(repoRoot))) {
-        const chosen = await promptProviderSetup(deps, { yes });
+        const chosen = await promptProviderSetup(deps, { yes, keymap: repoSelectKeymap(deps) });
         if (chosen !== null) {
           providers = chosen;
         }

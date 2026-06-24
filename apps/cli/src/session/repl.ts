@@ -59,7 +59,7 @@ import { resolveRun, runScrubber } from '../lib/replay-scrubber';
 import { buildSessionLog, formatSessionLog } from '../lib/session-log';
 import { buildStartupContext } from '../lib/startup-context';
 import { setAutoApprove } from '../lib/config-file';
-import { writeProvidersFile } from '../lib/provider-setup';
+import { repoSelectKeymap, writeProvidersFile } from '../lib/provider-setup';
 import { listSwitchableProviders, providerHint } from '../lib/model-switch';
 import { resolveSelectKeymap } from '../lib/keymap';
 import { LOG_SENTINEL, REWIND_SENTINEL } from '../ui';
@@ -175,7 +175,7 @@ export async function runInteractiveSession(
   // non-interactive run keeps the cwd unchanged.
   let repoRoot = deps.cwd();
   if (deps.ui.isInteractive() && deps.ui.isOutputTty()) {
-    repoRoot = await resolveProjectRoot(deps, repoRoot);
+    repoRoot = await resolveProjectRoot(deps, repoRoot, repoSelectKeymap(deps));
   }
   // Repo analysis warms the context engine (ISD scanning) once per session, and
   // feeds the zero-config onboarding below.

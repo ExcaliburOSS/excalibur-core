@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import pc from 'picocolors';
 import { isCommandOnPath } from '@excalibur/agent-runtime';
 import type { CliDeps } from '../deps';
+import type { SelectKeymap } from '../lib/keymap';
 
 /**
  * Smart project-location resolution for the interactive shell.
@@ -151,7 +152,11 @@ async function createNew(deps: CliDeps, parentDir: string): Promise<string> {
  * (possibly new) absolute root. Callers must only invoke this on an interactive
  * TTY — a non-interactive run keeps the cwd unchanged.
  */
-export async function resolveProjectRoot(deps: CliDeps, cwd: string): Promise<string> {
+export async function resolveProjectRoot(
+  deps: CliDeps,
+  cwd: string,
+  keymap?: SelectKeymap,
+): Promise<string> {
   let entries: string[];
   try {
     entries = readdirSync(cwd);
@@ -183,7 +188,11 @@ export async function resolveProjectRoot(deps: CliDeps, cwd: string): Promise<st
             hint: deps.t('project-location.opt-here-hint'),
           },
         ],
-        { defaultIndex: 0, navHint: deps.t('common.select_hint') },
+        {
+          defaultIndex: 0,
+          navHint: deps.t('common.select_hint'),
+          ...(keymap !== undefined ? { keymap } : {}),
+        },
       );
       return index === 0 ? createNew(deps, cwd) : cwd;
     }

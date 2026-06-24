@@ -7,7 +7,7 @@ import type { ProvidersFileConfig } from '@excalibur/model-gateway';
 import type { CliDeps } from '../deps';
 import { providersFilePath, safetyLine } from '../lib/context';
 import { runConnectionTest } from '../lib/connection-test';
-import { promptProviderSetup } from '../lib/provider-setup';
+import { promptProviderSetup, repoSelectKeymap } from '../lib/provider-setup';
 
 /**
  * Zero-config onboarding for the interactive shell (the `core-onboarding-ux`
@@ -55,7 +55,11 @@ export async function maybeAutoOnboard(
 
   let providers: ProvidersFileConfig | undefined;
   if (!providerConfigured) {
-    const chosen = await promptProviderSetup(deps, { yes: false, allowLater: false });
+    const chosen = await promptProviderSetup(deps, {
+      yes: false,
+      allowLater: false,
+      keymap: repoSelectKeymap(deps),
+    });
     if (chosen !== null) {
       providers = chosen;
     }

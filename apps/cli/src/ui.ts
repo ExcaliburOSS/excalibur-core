@@ -66,6 +66,11 @@ export interface SelectChoice {
   label: string;
   /** Extra hint rendered dim after the label. */
   hint?: string;
+  /**
+   * Optional section label. Consecutive choices sharing a group get a single dim
+   * header above them in the interactive picker (shown only when not filtering).
+   */
+  group?: string;
 }
 
 export interface SelectOptions {
@@ -549,9 +554,10 @@ export class Ui {
     const safe = (i: number): number => (i < 0 || i >= total ? 0 : i);
 
     // How many list rows fit: leave room for the question, nav hint, the optional
-    // filter line, the two ▲/▼ indicators and a margin. Clamped to a comfy band.
+    // filter line, the two ▲/▼ indicators and up to a few group headers. Clamped
+    // to a comfy band so the drawn block can never exceed the viewport.
     const rows = (out as { rows?: number }).rows ?? 24;
-    const windowSize = Math.max(5, Math.min(12, rows - 6));
+    const windowSize = Math.max(4, Math.min(12, rows - 8));
 
     let state: SelectState = { index: safe(defaultIndex), query: '' };
     // The filtered view = original indices whose label/hint match the query.
@@ -595,9 +601,17 @@ export class Ui {
       if (start > 0) {
         lines.push(pc.dim(`  ▲ ${start} more`));
       }
+      let lastGroup: string | undefined;
       for (let i = start; i < end; i += 1) {
         const orig = filtered[i] as number;
-        lines.push(renderChoiceLine(choices[orig] as SelectChoice, i === state.index, orig + 1));
+        const choice = choices[orig] as SelectChoice;
+        // Section headers only when not filtering — a single dim line when the
+        // group changes (the first visible row shows its group for context).
+        if (state.query.length === 0 && choice.group !== undefined && choice.group !== lastGroup) {
+          lines.push(pc.dim(pc.bold(choice.group)));
+          lastGroup = choice.group;
+        }
+        lines.push(renderChoiceLine(choice, i === state.index, orig + 1));
       }
       if (end < filtered.length) {
         lines.push(pc.dim(`  ▼ ${filtered.length - end} more`));

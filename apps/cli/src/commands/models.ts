@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import type { CliDeps } from '../deps';
 import { loadGatewayContext, providerNames } from '../lib/context';
 import { runConnectionTest } from '../lib/connection-test';
-import { promptProviderSetup, writeProvidersFile } from '../lib/provider-setup';
+import { promptProviderSetup, repoSelectKeymap, writeProvidersFile } from '../lib/provider-setup';
 
 /**
  * `excalibur models list|setup` — provider configuration. API keys are
@@ -63,7 +63,10 @@ export function registerModelsCommand(program: Command, deps: CliDeps): void {
     .description('configure a model provider (env var names only, never key values)')
     .option('-y, --yes', 'skip prompts (writes the offline mock — for tests/CI, not a real model)')
     .action(async (options: { yes?: boolean }) => {
-      const providers = await promptProviderSetup(deps, { yes: options.yes === true });
+      const providers = await promptProviderSetup(deps, {
+        yes: options.yes === true,
+        keymap: repoSelectKeymap(deps),
+      });
       if (providers === null) {
         deps.ui.info(deps.t('models.setup-skipped'));
         return;
