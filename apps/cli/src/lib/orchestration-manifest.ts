@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RunManager } from '@excalibur/core';
@@ -22,6 +23,13 @@ export interface OrchestrationManifestLane {
   costCents: number | null;
   /** The child run this lane persisted to (AO4a), when available. */
   runId?: string;
+  /**
+   * AO7-1 — content signature = hash of (instruction + sorted deps + role). Lets a
+   * later resume detect which lanes are UNCHANGED (content-addressed reuse) vs
+   * edited, so only changed lanes + their dependents re-run. Optional for back-compat
+   * with manifests written before AO7-1.
+   */
+  signature?: string;
 }
 
 export interface OrchestrationManifest {
@@ -143,6 +151,25 @@ export interface ManifestLaneOutcome {
 }
 
 /**
+ * AO7-1 — a lane's CONTENT signature: a stable hash of what determines its work
+ * (instruction + sorted dependsOn + role). Two lanes with the same signature are
+ * interchangeable for resume; an edited instruction/role/deps changes it, marking
+ * the lane (and its dependents) for re-run. Pure + deterministic.
+ */
+export function laneSignature(lane: {
+  instruction: string;
+  dependsOn?: readonly string[];
+  role?: string;
+}): string {
+  const material = JSON.stringify([
+    lane.instruction.trim(),
+    [...(lane.dependsOn ?? [])].sort(),
+    lane.role ?? '',
+  ]);
+  return createHash('sha256').update(material).digest('hex').slice(0, 16);
+}
+
+/**
  * Builds the manifest (pure). `subtasks` carries the instructions + dependsOn;
  * `waves` is the executed lane-id grouping (a single wave for the flat path);
  * `outcomes` carries each lane's result. Lane order follows `subtasks`.
@@ -167,6 +194,7 @@ export function buildOrchestrationManifest(input: {
       outcome: o?.outcome ?? 'empty',
       costCents: o?.costCents ?? null,
       ...(o?.runId !== undefined ? { runId: o.runId } : {}),
+      signature: laneSignature(s),
     };
   });
   return {
@@ -222,4 +250,52 @@ export function manifestToSubtasks(
     instruction: l.instruction,
     ...(l.dependsOn.length > 0 ? { dependsOn: l.dependsOn } : {}),
   }));
+}
+
+export interface ResumePlan {
+  /** Lanes that must re-run (changed/failed/empty, plus their transitive dependents). */
+  rerun: SwarmSubtask[];
+  /** Ids whose prior `done` result is reused as-is (unchanged + all deps reused). */
+  reusedIds: string[];
+}
+
+/**
+ * AO7-1 — CONTENT-ADDRESSED resume planner (pure). Given a prior manifest and the
+ * lanes to run now (defaults to the manifest's own lanes — the plain `--resume`
+ * case; pass a freshly-compiled set for an edited `--spec … --resume`), decide
+ * which lanes must RE-RUN vs can REUSE their prior `done` result. A lane re-runs
+ * when it is new, its prior outcome was not `done`, its content signature changed,
+ * OR any lane it (transitively) depends on re-runs — so editing one step correctly
+ * invalidates everything downstream, exactly like a journal resume. Reused lanes'
+ * applied work is assumed present in the tree (the prior run was applied).
+ */
+export function planResume(
+  manifest: OrchestrationManifest,
+  newSubtasks?: ReadonlyArray<SwarmSubtask>,
+): ResumePlan {
+  const subtasks: SwarmSubtask[] =
+    newSubtasks !== undefined ? [...newSubtasks] : manifestToSubtasks(manifest);
+  const prevById = new Map(manifest.lanes.map((l) => [l.id, l]));
+  const rerun = new Set<string>();
+  // Seed: a lane re-runs if it's new, did not complete before, or its content changed.
+  for (const s of subtasks) {
+    const prev = prevById.get(s.id);
+    if (prev === undefined || prev.outcome !== 'done' || prev.signature !== laneSignature(s)) {
+      rerun.add(s.id);
+    }
+  }
+  // Propagate to dependents until the rerun set is stable (transitive invalidation).
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const s of subtasks) {
+      if (!rerun.has(s.id) && (s.dependsOn ?? []).some((d) => rerun.has(d))) {
+        rerun.add(s.id);
+        changed = true;
+      }
+    }
+  }
+  return {
+    rerun: subtasks.filter((s) => rerun.has(s.id)),
+    reusedIds: subtasks.filter((s) => !rerun.has(s.id)).map((s) => s.id),
+  };
 }

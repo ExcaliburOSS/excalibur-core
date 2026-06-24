@@ -8,6 +8,7 @@ import {
   latestOrchestrationRunId,
   loadOrchestrationManifest,
   manifestToSubtasks,
+  planResume,
 } from '../lib/orchestration-manifest';
 import { loadAuthoredOrchestration } from '../lib/authored-orchestration';
 
@@ -46,13 +47,36 @@ export function registerOrchestrateCommand(program: Command, deps: CliDeps): voi
           const gw = loadGatewayContext(repoRoot);
           requireConfiguredModel(gw, deps.t);
           const { config: cfg } = loadConfigContext(repoRoot);
-          deps.ui.info(deps.t('orchestrate.runningSpec', { n: subtasks.length, path }));
+          // AO7-1 — content-addressed resume of an EDITED spec: reuse the prior
+          // run's unchanged steps, re-run only the edited ones + their dependents.
+          let toRun = subtasks;
+          if (options.resume === true) {
+            const priorId = latestOrchestrationRunId(repoRoot);
+            const manifest = priorId !== null ? loadOrchestrationManifest(repoRoot, priorId) : null;
+            if (manifest !== null) {
+              const plan = planResume(manifest, subtasks);
+              if (plan.reusedIds.length > 0) {
+                deps.ui.info(
+                  deps.t('orchestrate.reusing', {
+                    reused: plan.reusedIds.length,
+                    rerun: plan.rerun.length,
+                  }),
+                );
+              }
+              if (plan.rerun.length === 0) {
+                deps.ui.info(deps.t('orchestrate.nothingToDo'));
+                return;
+              }
+              toRun = plan.rerun;
+            }
+          }
+          deps.ui.info(deps.t('orchestrate.runningSpec', { n: toRun.length, path }));
           await runSwarmFlow(
             deps,
             repoRoot,
             task,
             { gateway: gw.gateway, providerName: gw.providerName, config: cfg },
-            { subtasks, ...(options.yes === true ? { yes: true } : {}) },
+            { subtasks: toRun, ...(options.yes === true ? { yes: true } : {}) },
           );
           return;
         }
@@ -76,7 +100,20 @@ async function runManifestOrchestration(
   if (manifest === null) {
     throw new CliUsageError(deps.t('orchestrate.noManifest', { runId }));
   }
-  const subtasks = manifestToSubtasks(manifest, { resume: options.resume === true });
+  // AO7-1 — resume re-runs the failed/empty lanes AND their transitive dependents
+  // (a `done` lane whose input lane re-runs must re-run too); a plain re-run does all.
+  let subtasks: ReturnType<typeof manifestToSubtasks>;
+  if (options.resume === true) {
+    const plan = planResume(manifest);
+    if (plan.reusedIds.length > 0) {
+      deps.ui.info(
+        deps.t('orchestrate.reusing', { reused: plan.reusedIds.length, rerun: plan.rerun.length }),
+      );
+    }
+    subtasks = plan.rerun;
+  } else {
+    subtasks = manifestToSubtasks(manifest);
+  }
   if (subtasks.length === 0) {
     deps.ui.info(deps.t('orchestrate.nothingToDo'));
     return;

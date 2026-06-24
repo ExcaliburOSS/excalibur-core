@@ -512,6 +512,7 @@ export const ES: Catalog = {
   'orchestrate.noManifest': 'No se encontró manifiesto de orquestación para la ejecución {runId}.',
   'orchestrate.nothingToDo': 'Nada que reanudar — todos los carriles ya completaron.',
   'orchestrate.rerunning': 'Re-ejecutando {n} carril(es) de {runId}…',
+  'orchestrate.reusing': 'Reutilizando {reused} carril(es) sin cambios; re-ejecutando {rerun}.',
   'orchestrate.resuming': 'Reanudando {n} carril(es) incompletos de {runId}…',
   'orchestrate.runningSpec': 'Ejecutando orquestación autoría: {n} paso(s) de {path}…',
   'orchestration.none': 'No se encontró ninguna orquestación. Lanza un swarm o /explore primero.',

@@ -495,6 +495,7 @@ export const EN: Catalog = {
   'orchestrate.noManifest': 'No orchestration manifest found for run {runId}.',
   'orchestrate.nothingToDo': 'Nothing to resume — every lane already completed.',
   'orchestrate.rerunning': 'Re-running {n} lane(s) from {runId}…',
+  'orchestrate.reusing': 'Reusing {reused} unchanged lane(s); re-running {rerun}.',
   'orchestrate.resuming': 'Resuming {n} incomplete lane(s) from {runId}…',
   'orchestrate.runningSpec': 'Running authored orchestration: {n} step(s) from {path}…',
   'orchestration.none': 'No orchestration found. Run a swarm or /explore first.',
