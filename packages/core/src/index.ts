@@ -98,6 +98,8 @@ export {
   type SwarmResult,
   type SwarmWaveVerdict,
   type SwarmWaveVerifier,
+  type SwarmHeal,
+  type SwarmLaneHealer,
 } from './swarm/run-swarm';
 export {
   capTotalAgents,

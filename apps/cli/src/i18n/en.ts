@@ -466,6 +466,10 @@ export const EN: Catalog = {
   'swarm.mesh-running': 'Adversarial review of the merged result ({lenses} lens(es))…',
   'swarm.mesh-blocked':
     'Verification mesh BLOCKED the merge (a high-severity issue survived). The merged changes were REVERTED.',
+  'swarm.healing':
+    'Lane {id} exhausted its attempts — one self-heal pass with the failure context…',
+  'swarm.healed': 'Lane {id} self-healed — its corrected work is kept.',
+  'swarm.heal-failed': 'Lane {id} could not self-heal — left as failed.',
   'swarm.verify-wave': 'Verifying wave {wave} (gate before dependents run)…',
   'swarm.wave-verified': 'Wave {wave} verified — dependents proceed.',
   'swarm.wave-reverted':

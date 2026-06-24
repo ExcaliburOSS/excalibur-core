@@ -180,6 +180,9 @@ export async function runExploreFlow(
     },
     {
       maxConcurrency: concurrency,
+      // AO5-5 — a distinct namespace so a concurrent explore + swarm in one repo
+      // never collide on `excalibur/swarm-d0-*` worktrees/branches.
+      idPrefix: 'explore',
       ...(options.signal !== undefined ? { signal: options.signal } : {}),
     },
   );

@@ -158,6 +158,13 @@ const orchestrationSectionSchema = z.object({
    * healthy tree. Opt-in (default off); costs one test+mesh run per wave boundary.
    */
   verifyWaves: z.boolean().optional(),
+  /**
+   * AO5-5 — SELF-HEAL: when a swarm lane exhausts its attempts, fire ONE bounded
+   * heal attempt that re-instructs the lane with the failure context (last error +
+   * grader feedback) before giving up. Opt-in (default off); bounded to a single
+   * heal per lane and subject to the same budget cap as a normal lane.
+   */
+  selfHeal: z.boolean().optional(),
 });
 
 const contextSectionSchema = z.object({

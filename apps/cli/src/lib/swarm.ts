@@ -6,14 +6,18 @@ import {
   budgetCapCentsFromUsd,
   capTotalAgents,
   chooseConcurrency,
+  getLocalDiff,
   planAgentAllocation,
   RunManager,
   runSwarm,
   runSwarmStaged,
+  stageAll,
   SWARM_MAX_TOTAL_AGENTS,
   topologicalWaves,
   type Subtask,
+  type SwarmHeal,
   type SwarmLaneGrader,
+  type SwarmLaneHealer,
   type SwarmLaneProgress,
   type SwarmResult,
 } from '@excalibur/core';
@@ -316,6 +320,10 @@ export async function executeSwarm(
   } = {},
 ): Promise<SwarmResult<SwarmLaneSummary>> {
   const byId = new Map(subtasks.map((s) => [s.id, s]));
+  // AO5-5 — recursion depth: inherited from the env so a nested `excalibur swarm`
+  // shelled by a lane self-caps; the core refuses to fan out at depth > 1. The
+  // env is set to depth+1 around the executor run (below) so lane children inherit it.
+  const swarmDepth = Number.parseInt(process.env['EXCALIBUR_SWARM_DEPTH'] ?? '0', 10) || 0;
   // AO5-6 — per-wave verification gate (STAGED only): verify each wave's merged
   // tree (configured test + mesh) at its boundary; a red verdict reverts the wave
   // so dependents base on the healthy tree. Opt-in via orchestration.verifyWaves.
@@ -362,6 +370,7 @@ export async function executeSwarm(
     ...(options.onLane !== undefined ? { onLane: options.onLane } : {}),
     ...(options.grade !== undefined ? { grade: options.grade } : {}),
     ...(verifyWave !== undefined ? { verifyWave } : {}),
+    depth: swarmDepth,
   };
 
   // AO4a — SWARM-AS-RUN: persist parallel work as first-class runs so the shipped
@@ -575,21 +584,85 @@ export async function executeSwarm(
     return { costCents, toolCalls };
   };
 
+  // AO5-5 — SELF-HEAL: when a lane exhausts its attempts, re-instruct it ONCE with
+  // the failure context. Routed through runLane so the budget gate + pause + child
+  // run events apply for free; bounded to a single heal (the core never re-enters).
+  const healOptions: { heal?: SwarmLaneHealer<SwarmLaneSummary> } =
+    context.config.orchestration?.selfHeal === true
+      ? {
+          heal: async ({
+            lane,
+            lastError,
+            lastGrade,
+            worktreePath,
+          }): Promise<SwarmHeal<SwarmLaneSummary>> => {
+            if (ledger.exceeded()) {
+              return { healed: false }; // no budget left — don't spend on a heal
+            }
+            const ctx = [lastError, lastGrade?.feedback]
+              .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+              .join(' — ');
+            deps.ui.warn(deps.t('swarm.healing', { id: lane.id }));
+            const summary = await runLane({
+              lane: {
+                id: lane.id,
+                instruction: byId.get(lane.id)?.instruction ?? lane.instruction,
+              },
+              worktreePath,
+              feedback: `Your previous attempts FAILED. Diagnose and fix the ROOT CAUSE — do not repeat the same approach. Failure context:\n${ctx}`,
+            });
+            stageAll(worktreePath);
+            const diff = getLocalDiff(worktreePath);
+            if (diff.trim().length === 0) {
+              deps.ui.info(deps.t('swarm.heal-failed', { id: lane.id }));
+              return { healed: false };
+            }
+            // Re-grade ONCE when a grader is set; else a non-empty corrective diff heals.
+            if (options.grade !== undefined) {
+              const g = await options.grade({ lane, diff, result: summary, attempt: 0 });
+              if (!g.pass) {
+                deps.ui.info(deps.t('swarm.heal-failed', { id: lane.id }));
+                return { healed: false, grade: g };
+              }
+              deps.ui.success(deps.t('swarm.healed', { id: lane.id }));
+              return { healed: true, result: summary, grade: g };
+            }
+            deps.ui.success(deps.t('swarm.healed', { id: lane.id }));
+            return { healed: true, result: summary };
+          },
+        }
+      : {};
+  const execOptions = { ...swarmOptions, ...healOptions };
+
+  // AO5-5 — inherit-able recursion depth: a nested `excalibur swarm` shelled by a
+  // lane (the only nesting vector) inherits depth+1 and self-caps. Set around the
+  // run, then restored so a long-lived REPL never leaks a stale depth.
+  const prevDepthEnv = process.env['EXCALIBUR_SWARM_DEPTH'];
+  process.env['EXCALIBUR_SWARM_DEPTH'] = String(swarmDepth + 1);
   // STAGED (a real dependency graph) vs FLAT (a single parallel wave).
-  const result =
-    options.waves !== undefined && options.waves.length > 1
-      ? await runSwarmStaged(
-          repoRoot,
-          options.waves.map((w) => w.map((s) => ({ id: s.id, instruction: s.instruction }))),
-          runLane,
-          swarmOptions,
-        )
-      : await runSwarm(
-          repoRoot,
-          subtasks.map((s) => ({ id: s.id, instruction: s.instruction })),
-          runLane,
-          swarmOptions,
-        );
+  let result: SwarmResult<SwarmLaneSummary>;
+  try {
+    result =
+      options.waves !== undefined && options.waves.length > 1
+        ? await runSwarmStaged(
+            repoRoot,
+            options.waves.map((w) => w.map((s) => ({ id: s.id, instruction: s.instruction }))),
+            runLane,
+            execOptions,
+          )
+        : await runSwarm(
+            repoRoot,
+            subtasks.map((s) => ({ id: s.id, instruction: s.instruction })),
+            runLane,
+            execOptions,
+          );
+  } finally {
+    if (prevDepthEnv === undefined) {
+      delete process.env['EXCALIBUR_SWARM_DEPTH'];
+    } else {
+      process.env['EXCALIBUR_SWARM_DEPTH'] = prevDepthEnv;
+    }
+  }
 
   // Finalize the persisted runs from the outcome (best-effort).
   const finishedAt = new Date().toISOString();

@@ -158,6 +158,71 @@ describe('runSwarm', () => {
     }
   });
 
+  it('AO5-5: SELF-HEALS a lane that exhausted its attempts (one bounded heal salvages it)', async () => {
+    const repo = initRepo();
+    try {
+      let healCalls = 0;
+      const result = await runSwarm(
+        repo,
+        [lane('a')],
+        () => Promise.reject(new Error('always throws')), // fails every attempt
+        {
+          heal: ({ worktreePath, lastError }) => {
+            healCalls += 1;
+            writeFileSync(
+              join(worktreePath, 'healed.ts'),
+              `// fixed after: ${lastError}\n`,
+              'utf8',
+            );
+            return Promise.resolve({ healed: true });
+          },
+        },
+      );
+      expect(healCalls).toBe(1); // fires EXACTLY once, never recursively
+      const a = result.lanes.find((l) => l.id === 'a');
+      expect(a?.failed).toBe(false);
+      expect(a?.attempts).toBe(2); // maxAttempts(1) + 1 heal
+      expect(result.mergedDiff).toContain('healed.ts');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('AO5-5: a declined heal leaves the lane failed (no infinite loop)', async () => {
+    const repo = initRepo();
+    try {
+      let healCalls = 0;
+      const result = await runSwarm(repo, [lane('a')], () => Promise.reject(new Error('boom')), {
+        heal: () => {
+          healCalls += 1;
+          return Promise.resolve({ healed: false });
+        },
+      });
+      expect(healCalls).toBe(1);
+      expect(result.lanes.find((l) => l.id === 'a')?.failed).toBe(true);
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('AO5-5: refuses to fan out beyond depth 1 (the ≤1-depth recursion cap)', async () => {
+    const repo = initRepo();
+    try {
+      const result = await runSwarm(
+        repo,
+        [lane('a'), lane('b')],
+        ({ lane: l, worktreePath }) => {
+          writeFileSync(join(worktreePath, `${l.id}.ts`), '// x\n', 'utf8');
+          return Promise.resolve(null);
+        },
+        { depth: 2 },
+      );
+      expect(result).toEqual({ lanes: [], mergedDiff: '', conflicts: [] });
+    } finally {
+      removeDir(repo);
+    }
+  });
+
   it('RE-DISPATCHES a transiently-failing lane up to maxAttempts (grader/rubric retry)', async () => {
     const repo = initRepo();
     try {

@@ -106,6 +106,31 @@ export type SwarmWaveVerifier<T> = (args: {
   waveDiff: string;
 }) => Promise<SwarmWaveVerdict>;
 
+/** A self-heal verdict (AO5-5): whether a bounded heal attempt salvaged the lane. */
+export interface SwarmHeal<T = unknown> {
+  /** True when the heal re-run salvaged the lane (its diff is kept + merged). */
+  healed: boolean;
+  result?: T;
+  /** The grader verdict of the heal attempt, when a grader re-ran. */
+  grade?: SwarmGrade;
+}
+
+/**
+ * AO5-5 — the SELF-HEAL hook. When a lane exhausts its attempts (a throw every
+ * time, OR it never met the rubric), the executor fires ONE bounded heal: the CLI
+ * re-instructs the lane with the FAILURE CONTEXT (last error + grader feedback)
+ * and reports whether it salvaged the work. Fires at most once per lane, never
+ * recursively. Injected from the CLI so core stays free of the model/budget.
+ */
+export type SwarmLaneHealer<T> = (args: {
+  lane: SwarmLane;
+  lastError: string;
+  lastGrade?: SwarmGrade;
+  attempts: number;
+  worktreePath: string;
+  baseRef: string;
+}) => Promise<SwarmHeal<T>>;
+
 /** The outcome of one lane. */
 export interface SwarmLaneResult<T> {
   id: string;
@@ -182,6 +207,19 @@ export interface RunSwarmOptions<T = unknown> {
    * wave back so dependents base on the healthy tree. Off by default (no gate).
    */
   verifyWave?: SwarmWaveVerifier<T>;
+  /**
+   * AO5-5 — SELF-HEAL: fired ONCE when a lane exhausts its attempts. The hook
+   * re-instructs the lane with the failure context; if it salvages the work the
+   * lane is kept (not failed). Off by default. Bounded to a single heal per lane.
+   */
+  heal?: SwarmLaneHealer<T>;
+  /**
+   * AO5-5 — recursion DEPTH of this swarm (0 = top-level). A swarm refuses to fan
+   * out at depth > 1 (the ≤1-depth cap), and the worktree/branch namespace is
+   * depth-distinct (`swarm-d<n>`) so a depth-1 child never collides with its
+   * parent's worktrees. Default 0.
+   */
+  depth?: number;
 }
 
 /** Fires a lane-progress callback, swallowing any error (never breaks the swarm). */
@@ -231,6 +269,7 @@ async function runOneLane<T>(
   const maxAttempts = Math.max(1, options.maxAttempts ?? 1);
   let lastError = '';
   let feedback: string | undefined;
+  let exhaustedGrade: SwarmGrade | undefined;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     // Before a RE-DISPATCH, restore the lane's worktree to pristine base so a
     // prior attempt's edits never contaminate this attempt's diff.
@@ -259,13 +298,8 @@ async function runOneLane<T>(
           if (attempt < maxAttempts) {
             continue; // revise
           }
-          emitLane(options.onLane, {
-            index: setup.index,
-            id: setup.lane.id,
-            phase: 'settled',
-            failed: true,
-          });
-          return { failed: true, error: `rubric not met: ${lastError}`, attempts: attempt, grade };
+          exhaustedGrade = grade; // attempts spent → fall through to the heal/terminal block
+          break;
         }
         emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled' });
         return { failed: false, result, attempts: attempt, grade };
@@ -278,13 +312,42 @@ async function runOneLane<T>(
       // Re-dispatch on a non-final attempt.
     }
   }
+  // AO5-5 — SELF-HEAL: one bounded heal attempt now that attempts are exhausted
+  // (throw-exhausted → error only; rubric-exhausted → error + grade). Fires AT
+  // MOST ONCE per lane and never re-enters; the CLI hook re-instructs with the
+  // failure context, and captureLane picks up whatever it leaves in the tree.
+  if (options.heal !== undefined) {
+    resetWorktree(setup.worktreePath, baseRef);
+    const heal = await options.heal({
+      lane: setup.lane,
+      lastError,
+      ...(exhaustedGrade !== undefined ? { lastGrade: exhaustedGrade } : {}),
+      attempts: maxAttempts,
+      worktreePath: setup.worktreePath,
+      baseRef,
+    });
+    if (heal.healed) {
+      emitLane(options.onLane, { index: setup.index, id: setup.lane.id, phase: 'settled' });
+      return {
+        failed: false,
+        attempts: maxAttempts + 1,
+        ...(heal.result !== undefined ? { result: heal.result } : {}),
+        ...(heal.grade !== undefined ? { grade: heal.grade } : {}),
+      };
+    }
+  }
   emitLane(options.onLane, {
     index: setup.index,
     id: setup.lane.id,
     phase: 'settled',
     failed: true,
   });
-  return { failed: true, error: lastError, attempts: maxAttempts };
+  return {
+    failed: true,
+    error: exhaustedGrade !== undefined ? `rubric not met: ${lastError}` : lastError,
+    attempts: maxAttempts,
+    ...(exhaustedGrade !== undefined ? { grade: exhaustedGrade } : {}),
+  };
 }
 
 /** Stages a lane's worktree and captures its diff into a {@link SwarmLaneResult}. */
@@ -343,8 +406,14 @@ export async function runSwarm<T>(
   if (lanes.length === 0) {
     return { lanes: [], mergedDiff: '', conflicts: [] };
   }
+  // AO5-5 — ≤1-depth cap: a swarm may spawn ONE nested level, never a grandchild.
+  if ((options.depth ?? 0) > 1) {
+    return { lanes: [], mergedDiff: '', conflicts: [] };
+  }
   const baseRef = revParse(repoRoot, options.baseRef ?? 'HEAD') ?? 'HEAD';
-  const prefix = options.idPrefix ?? 'swarm';
+  // Depth-distinct namespace so a depth-1 child never collides with its parent's
+  // worktrees/branches (both live in the same repo while the parent lane runs).
+  const prefix = options.idPrefix ?? `swarm-d${options.depth ?? 0}`;
   excludePathFromGit(repoRoot, '.excalibur/worktrees/');
 
   // 1. SETUP (sequential — git locks the worktree admin, so never parallel here).
@@ -413,8 +482,13 @@ export async function runSwarmStaged<T>(
   if (nonEmptyWaves.length === 0) {
     return { lanes: [], mergedDiff: '', conflicts: [] };
   }
+  // AO5-5 — ≤1-depth cap (a swarm may spawn ONE nested level, never a grandchild).
+  if ((options.depth ?? 0) > 1) {
+    return { lanes: [], mergedDiff: '', conflicts: [] };
+  }
   const baseRef = revParse(repoRoot, options.baseRef ?? 'HEAD') ?? 'HEAD';
-  const prefix = options.idPrefix ?? 'swarm';
+  // Depth-distinct namespace so a depth-1 child never collides with its parent.
+  const prefix = options.idPrefix ?? `swarm-d${options.depth ?? 0}`;
   excludePathFromGit(repoRoot, '.excalibur/worktrees/');
 
   // The accumulating merge worktree persists across ALL waves; each wave is
