@@ -1,8 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestCli, makeTempRepo, removeDir } from '../test-utils';
+
+// Each test's `beforeEach` runs a full `init --yes` (repo analysis + writes) and
+// the commands are fast but real. The default 5s budget is too tight under the
+// full suite's parallel CPU contention (it passes comfortably in isolation), so
+// give this file generous timeouts to kill a load-induced flake at the source.
+vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
 
 describe('excalibur browser', () => {
   let repo: string;
