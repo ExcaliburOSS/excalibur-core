@@ -1,6 +1,6 @@
 import { PassThrough, Readable, Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
-import { reduceSelectKey, renderChoiceLine, type SelectState } from './select-input';
+import { computeWindow, reduceSelectKey, renderChoiceLine, type SelectState } from './select-input';
 import type { ParsedKey } from './raw-input';
 import { resolveSelectKeymap } from './keymap';
 import { Ui } from '../ui';
@@ -13,12 +13,12 @@ import { Ui } from '../ui';
  */
 
 const key = (k: Partial<ParsedKey>): ParsedKey => k;
-const at = (index: number): SelectState => ({ index });
+const at = (index: number, query = ''): SelectState => ({ index, query });
 
 describe('reduceSelectKey (pure state machine)', () => {
   it('↓/j advance and wrap at the end', () => {
     expect(reduceSelectKey(at(0), key({ name: 'down' }), 3)).toEqual({
-      state: { index: 1 },
+      state: { index: 1, query: '' },
       action: { type: 'move' },
     });
     expect(reduceSelectKey(at(2), key({ name: 'down' }), 3).state.index).toBe(0); // wrap
@@ -61,13 +61,34 @@ describe('reduceSelectKey (pure state machine)', () => {
     });
   });
 
-  it('a digit 1–9 jumps to that row AND submits (old muscle memory)', () => {
+  it('a digit 1–9 jumps to that row AND submits (no active filter, short list)', () => {
     expect(reduceSelectKey(at(0), key({ sequence: '3' }), 5).action).toEqual({
       type: 'submit',
       index: 2,
     });
-    // out-of-range digit is ignored
-    expect(reduceSelectKey(at(0), key({ sequence: '9' }), 3).action).toEqual({ type: 'none' });
+    // An out-of-range digit is not a jump → it extends the type-ahead filter.
+    const r = reduceSelectKey(at(0), key({ sequence: '9' }), 3);
+    expect(r.action).toEqual({ type: 'filter' });
+    expect(r.state.query).toBe('9');
+  });
+
+  it('type-ahead: printable chars build the filter, backspace trims, Esc clears then cancels', () => {
+    // Typing 'd' (not a nav key) appends to the query and resets the highlight.
+    const typed = reduceSelectKey(at(2, 'gl'), key({ name: 'd', sequence: 'd' }), 7);
+    expect(typed.action).toEqual({ type: 'filter' });
+    expect(typed.state).toEqual({ index: 0, query: 'gld' });
+    // Backspace edits the filter.
+    const back = reduceSelectKey(at(0, 'glm'), key({ name: 'backspace' }), 1);
+    expect(back.state.query).toBe('gl');
+    expect(back.action).toEqual({ type: 'filter' });
+    // Esc with a filter clears it (no cancel yet); Esc with no filter cancels.
+    expect(reduceSelectKey(at(0, 'gl'), key({ name: 'escape' }), 1).action).toEqual({
+      type: 'filter',
+    });
+    expect(reduceSelectKey(at(0, 'gl'), key({ name: 'escape' }), 1).state.query).toBe('');
+    expect(reduceSelectKey(at(0, ''), key({ name: 'escape' }), 1).action).toEqual({
+      type: 'cancel',
+    });
   });
 
   it('Esc cancels; Ctrl-C raises sigint; modifier combos never navigate', () => {
@@ -82,6 +103,21 @@ describe('reduceSelectKey (pure state machine)', () => {
     expect(reduceSelectKey(at(1), key({ meta: true, name: 'up' }), 3).action).toEqual({
       type: 'none',
     });
+  });
+});
+
+describe('computeWindow', () => {
+  it('returns the whole range when everything fits', () => {
+    expect(computeWindow(0, 5, 8)).toEqual({ start: 0, end: 5 });
+    expect(computeWindow(4, 5, 5)).toEqual({ start: 0, end: 5 });
+  });
+  it('scrolls to keep the active row on screen, clamped at the ends', () => {
+    expect(computeWindow(0, 15, 8)).toEqual({ start: 0, end: 8 }); // top
+    expect(computeWindow(14, 15, 8)).toEqual({ start: 7, end: 15 }); // bottom clamp
+    const mid = computeWindow(8, 15, 8); // centered-ish
+    expect(mid.end - mid.start).toBe(8);
+    expect(8).toBeGreaterThanOrEqual(mid.start);
+    expect(8).toBeLessThan(mid.end);
   });
 });
 
@@ -155,6 +191,29 @@ describe('Ui.select interactive arrow chooser (fake TTY)', () => {
     await expect(pending).resolves.toBe(2);
     expect(stdin.rawCalls).toContain(false); // cooked restored on finish
     expect(out.text).toContain('Pick a provider');
+  });
+
+  it('type-ahead: typing filters the list and Enter resolves the ORIGINAL index', async () => {
+    const stdin = fakeTty();
+    const out = ttyOut();
+    const ui = new Ui({
+      stdin,
+      stdout: out as unknown as NodeJS.WritableStream,
+      stderr: new PassThrough() as unknown as NodeJS.WritableStream,
+      interactive: true,
+    });
+    const pending = ui.select(
+      'Provider',
+      [{ label: 'Kimi' }, { label: 'MiniMax' }, { label: 'DeepSeek' }, { label: 'Groq' }],
+      { defaultIndex: 0 },
+    );
+    // Type "deep" → filters to DeepSeek (original index 2); Enter selects it.
+    for (const ch of 'deep') {
+      stdin.emit('keypress', ch, { name: ch, sequence: ch });
+    }
+    stdin.emit('keypress', '\r', { name: 'return' });
+    await expect(pending).resolves.toBe(2);
+    expect(out.text).toContain('filter:');
   });
 
   it('falls back to the numbered chooser when stdin is not a TTY (arrow mode needs BOTH)', async () => {

@@ -9,7 +9,12 @@ import {
   type ParsedKey,
   type RawInputState,
 } from './lib/raw-input';
-import { reduceSelectKey, renderChoiceLine, type SelectState } from './lib/select-input';
+import {
+  computeWindow,
+  reduceSelectKey,
+  renderChoiceLine,
+  type SelectState,
+} from './lib/select-input';
 import type { SelectKeymap } from './lib/keymap';
 
 /**
@@ -540,9 +545,30 @@ export class Ui {
     const input = this.stdin as NodeJS.ReadStream;
     const out = this.stdout;
     const ESC = String.fromCharCode(27);
-    const count = choices.length;
-    const safe = (i: number): number => (i < 0 || i >= count ? 0 : i);
-    let state: SelectState = { index: safe(defaultIndex) };
+    const total = choices.length;
+    const safe = (i: number): number => (i < 0 || i >= total ? 0 : i);
+
+    // How many list rows fit: leave room for the question, nav hint, the optional
+    // filter line, the two ▲/▼ indicators and a margin. Clamped to a comfy band.
+    const rows = (out as { rows?: number }).rows ?? 24;
+    const windowSize = Math.max(5, Math.min(12, rows - 6));
+
+    let state: SelectState = { index: safe(defaultIndex), query: '' };
+    // The filtered view = original indices whose label/hint match the query.
+    const computeFiltered = (query: string): number[] => {
+      if (query.length === 0) {
+        return choices.map((_, i) => i);
+      }
+      const q = query.toLowerCase();
+      const out: number[] = [];
+      choices.forEach((choice, i) => {
+        if (`${choice.label} ${choice.hint ?? ''}`.toLowerCase().includes(q)) {
+          out.push(i);
+        }
+      });
+      return out;
+    };
+    let filtered = computeFiltered('');
 
     // Borrow stdin from the persistent raw editor when one is open; hand it back
     // when we're done. No-op during onboarding (the editor isn't open yet).
@@ -551,13 +577,41 @@ export class Ui {
       this.suspendInput();
     }
 
-    const renderRow = (i: number): string =>
-      renderChoiceLine(choices[i] as SelectChoice, i === state.index, i + 1);
-    const repaint = (): void => {
-      out.write(`${ESC}[${count}A`); // up to the first row
-      for (let i = 0; i < count; i += 1) {
-        out.write(`\r${ESC}[2K${renderRow(i)}\n`);
+    // Build the block as an array of lines, then paint it in place — clearing
+    // exactly what we drew last time (ESC[J), so a list taller than the viewport
+    // can never corrupt the redraw.
+    let linesDrawn = 0;
+    const block = (): string[] => {
+      const lines: string[] = [this.formatQuestion(question)];
+      lines.push(pc.dim(navHint ?? '↑/↓ move · type to filter · enter select · esc cancel'));
+      if (state.query.length > 0) {
+        lines.push(`${pc.dim('filter:')} ${state.query}${pc.dim('▏')}`);
       }
+      if (filtered.length === 0) {
+        lines.push(pc.dim('  no matches — backspace to edit'));
+        return lines;
+      }
+      const { start, end } = computeWindow(state.index, filtered.length, windowSize);
+      if (start > 0) {
+        lines.push(pc.dim(`  ▲ ${start} more`));
+      }
+      for (let i = start; i < end; i += 1) {
+        const orig = filtered[i] as number;
+        lines.push(renderChoiceLine(choices[orig] as SelectChoice, i === state.index, orig + 1));
+      }
+      if (end < filtered.length) {
+        lines.push(pc.dim(`  ▼ ${filtered.length - end} more`));
+      }
+      return lines;
+    };
+    const draw = (): void => {
+      if (linesDrawn > 0) {
+        out.write(`${ESC}[${linesDrawn}A`); // back to the first line of the block
+      }
+      out.write(`\r${ESC}[0J`); // clear from the cursor to end of screen
+      const lines = block();
+      out.write(`${lines.join('\n')}\n`);
+      linesDrawn = lines.length;
     };
 
     const restoreCooked = (): void => {
@@ -574,13 +628,7 @@ export class Ui {
       process.exit(143);
     };
 
-    // Render the header + initial list. The question and nav hint stay static
-    // above the list; only the `count` list rows are repainted on each move.
-    this.write(this.formatQuestion(question));
-    this.write(pc.dim(navHint ?? '  ↑/↓ move · enter select · esc cancel'));
-    for (let i = 0; i < count; i += 1) {
-      out.write(`${renderRow(i)}\n`);
-    }
+    draw();
 
     return new Promise<number>((resolve) => {
       let done = false;
@@ -589,16 +637,22 @@ export class Ui {
           return;
         }
         try {
-          const result = reduceSelectKey(state, key, count, keymap);
+          const result = reduceSelectKey(state, key, filtered.length, keymap);
           state = result.state;
           switch (result.action.type) {
+            case 'filter':
+              filtered = computeFiltered(state.query);
+              draw();
+              return;
             case 'move':
-              repaint();
+              draw();
               return;
-            case 'submit':
-              repaint(); // paint the final highlight before leaving
-              finish(result.action.index);
+            case 'submit': {
+              const orig = filtered[result.action.index];
+              draw(); // paint the final highlight before leaving
+              finish(orig ?? safe(defaultIndex));
               return;
+            }
             case 'cancel':
               finish(safe(defaultIndex));
               return;
