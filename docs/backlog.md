@@ -189,11 +189,11 @@ user sign-off → build. Depends on AO3+AO4 telemetry.
 - **AO7-3 (#203) Budget-in-the-loop** ✅ DONE (`29d0bda`): pure `candidatesForBudget(targetCents, perUnitCents, {min,max})` in core; best-of-N explore SIZES its candidate count to `budget.maxRunUsd` (≈8¢/candidate) instead of a fixed 3 — pre-sizing the fan-out vs being cut off mid-flight. 6/6 budget tests.
 - **AO7-4 (#204) Schema-forced structured lane output** ✅ DONE (`f180205`): a lane/step can declare `outputSchema` (JSON Schema) → its instruction is augmented with the schema, its final assistant message is captured + validated (core extractJsonValue/validateAgainstSchema), a mismatch THROWS (reusing the retry loop), and the parsed value rides `SwarmLaneSummary.structuredOutput` to the fan-in/dependents. Best for analysis/data lanes; opt-in. 14/15 authored + 12/12 swarm. **⇒ AO7 (#201–204) COMPLETE — the CC-Workflow-tool authoring-harness gap is closed.**
 
-**AO8 — autonomous-background gap vs CC (#205–#207).** CC's runtime re-invokes the agent on a background task's completion + has ScheduleWakeup/cron; Excalibur's `/bg`+`/threads` fleet + `serve` are user-facing but lack agent-reaction-on-complete and OSS scheduling. Registered (designed, NOT built):
+**AO8 — autonomous-background gap vs CC (#205–#207) ✅ COMPLETE.** CC's runtime re-invokes the agent on a background task's completion + has ScheduleWakeup/cron; this closes both halves for Excalibur OSS:
 
-- **AO8-1 (#205)** reaction-on-completion: on-settle hook in the fleet → a finished `/bg` thread auto-dispatches a declared follow-up ("when that finishes, also run X"), NL-reachable.
-- **AO8-2 (#206)** completion supervisor: an LLM evaluates a settled thread's outcome → {done | continue | spawn follow-up | escalate}, autonomy/posture-gated (the intelligent re-invoke-on-complete).
-- **AO8-3 (#207)** OSS scheduler: persisted interval/at-time/cron jobs fired by a long-lived host (serve tick or `excalibur schedule`) → runs via RunController; lifts the Enterprise M4c design into OSS.
+- **AO8-1 (#205)** reaction-on-completion ✅ (`72c9a38`): core `parseChain` (LLM, multilingual, no regex) splits a `/bg` request into {task, followUp}; the fleet thread carries the follow-up and auto-dispatches it on settle-done (one link, no recursion).
+- **AO8-2 (#206)** completion supervisor ✅ (`3ab9fa9`): opt-in (`orchestration.superviseBackground`) `superviseCompletion` — on settle (done AND failed) an LLM decides {done|continue|escalate}; at full autonomy a `continue` auto-dispatches a follow-up, else it's a suggestion; conservative default `done`.
+- **AO8-3 (#207)** OSS scheduler ✅ (`4b98a6b`): pure `scheduling/` (parse "every 30m"/"at 09:00", nextRun/isDue/advanceJob — no clock, fully tested) + `ScheduleStore` (`.excalibur/schedules.json`) + `excalibur schedule add|list|remove|run` (the `run` daemon ticks + fires due jobs via RunController + reschedules). Off by default. NL routing of schedules in-shell is a noted follow-up.
 
 ---
 
