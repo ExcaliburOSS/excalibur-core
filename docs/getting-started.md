@@ -28,7 +28,7 @@ cd your-repo
 excalibur init
 ```
 
-`init` detects your stack (languages, frameworks, package manager), your test/lint/typecheck/build commands, and any AI instruction files you already maintain (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules`, Copilot instructions, `SKILL.md` files, README/docs/ADRs). It then offers to connect a model provider (skippable — the mock is the zero-config fallback) and writes a minimal `.excalibur/`:
+`init` detects your stack (languages, frameworks, package manager), your test/lint/typecheck/build commands, and any AI instruction files you already maintain (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules`, Copilot instructions, `SKILL.md` files, README/docs/ADRs). It then offers to connect a model provider — **paste your API key** (masked) and it's saved to `~/.config/excalibur/secrets.env` (`0600`), or pick free local Ollama; skippable here, the mock is the zero-config fallback (see [providers](providers.md)) — and writes a minimal `.excalibur/`:
 
 ```text
 .excalibur/config.yaml

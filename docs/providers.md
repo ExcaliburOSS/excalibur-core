@@ -14,6 +14,8 @@ excalibur models setup
 
 Pick a provider from the catalog — **Kimi K2 (Moonshot)** (recommended), **MiniMax**, **GLM (Zhipu / Z.ai)**, Anthropic, OpenAI, Google Gemini, DeepSeek, OpenRouter, plus fast inference hosts **Groq**, **xAI (Grok)**, **Cerebras**, **Together** and **Fireworks** — plus free local **Ollama** (auto-detected when installed), a keyless **self-hosted** endpoint (vLLM/TGI/your own Qwen gateway), or "configure later". For a hosted provider you simply **paste your API key** (masked); Excalibur saves it to a global secrets store (`~/.config/excalibur/secrets.env`, mode `0600`) and loads it on every launch. `providers.yaml` records only the **name of the environment variable** that holds the key — never the value — so the committed config stays secret-free. Pasting one key auto-configures a curated good + fast model pair (`default` + `cheap`).
 
+The chooser is an **arrow-key + type-ahead** picker (↑/↓ or just type to filter — "deep" → DeepSeek), grouped by tier, scrolling for long lists. If a provider's key is already in your environment it's **auto-detected** and offered in one keystroke (no pasting). After saving, a live connection test confirms the model answers (and warns if a pinned model id has gone stale). Note: the zero-friction **first-run** shell onboarding omits "configure later" (Excalibur needs a model); the explicit `init` / `models setup` commands keep it.
+
 The resulting file (OSS spec §14 format):
 
 ```yaml
