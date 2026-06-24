@@ -729,9 +729,11 @@ export class Ui {
   /**
    * MULTI-select chooser (plan-shaping): returns the chosen zero-based indices.
    * On a real TTY it is an INTERACTIVE checkbox list — ↑/↓ (and j/k) move, SPACE
-   * toggles, `a`/`n` select all/none, Enter submits, Esc resolves with the
-   * pre-checked defaults. Non-TTY / `--yes` / `EXCALIBUR_RAW_INPUT=0` resolve to
-   * `preselected` (so a scripted/auto path keeps the recommended set, no prompt).
+   * toggles, `a`/`n` select all/none, Enter confirms the current selection (which
+   * starts pre-checked), and Esc SKIPS (resolves with an EMPTY set — adds nothing,
+   * matching the "esc skip" hint). Non-TTY / `--yes` / `EXCALIBUR_RAW_INPUT=0`
+   * resolve to `preselected` (a scripted/auto path keeps the recommended set, no
+   * prompt). Best-effort: a terminal fault restores the editor and skips (empty).
    */
   async multiSelect(
     question: string,
@@ -778,7 +780,9 @@ export class Ui {
     const rows = (out as { rows?: number }).rows ?? 24;
     const windowSize = Math.max(4, Math.min(12, rows - 6));
     let state: MultiSelectState = { index: 0, selected: new Set(preselected) };
-    const fallback = (): number[] => [...state.selected].sort((a, b) => a - b);
+    // Esc / Ctrl-C / any fault resolve with an EMPTY set — a true SKIP that adds
+    // nothing (NOT the user's half-made edits), matching the "esc skip" hint.
+    const SKIP: number[] = [];
 
     const borrowed = this.suspendEditor !== null;
     if (borrowed) {
@@ -789,7 +793,7 @@ export class Ui {
     const block = (): string[] => {
       const lines: string[] = [this.formatQuestion(question)];
       lines.push(
-        pc.dim(navHint ?? '↑/↓ move · space toggle · a/n all/none · enter confirm · esc cancel'),
+        pc.dim(navHint ?? '↑/↓ move · space toggle · a/n all/none · enter confirm · esc skip'),
       );
       const { start, end } = computeWindow(state.index, total, windowSize);
       if (start > 0) {
@@ -868,29 +872,36 @@ export class Ui {
               finish(result.action.selected);
               return;
             case 'cancel':
-              finish(fallback());
+              finish(SKIP);
               return;
             case 'sigint':
               out.write('\n');
-              finish(fallback());
+              finish(SKIP);
               process.kill(process.pid, 'SIGINT');
               return;
             case 'none':
               return;
           }
         } catch {
-          finish(fallback());
+          finish(SKIP);
         }
       };
-      readline.emitKeypressEvents(input);
-      if (typeof input.setRawMode === 'function') {
-        input.setRawMode(true);
+      // Entering raw mode can throw (e.g. EIO/ENOTTY on a TTY that just went
+      // away). If it does, finish() restores cooked mode, resumes the borrowed
+      // editor, and resolves with SKIP — so we never throw or leave it suspended.
+      try {
+        readline.emitKeypressEvents(input);
+        if (typeof input.setRawMode === 'function') {
+          input.setRawMode(true);
+        }
+        input.resume();
+        input.on('keypress', onKeypress);
+        process.on('exit', restoreCooked);
+        process.once('SIGTERM', onTermSignal);
+        process.once('SIGHUP', onTermSignal);
+      } catch {
+        finish(SKIP);
       }
-      input.resume();
-      input.on('keypress', onKeypress);
-      process.on('exit', restoreCooked);
-      process.once('SIGTERM', onTermSignal);
-      process.once('SIGHUP', onTermSignal);
     });
   }
 

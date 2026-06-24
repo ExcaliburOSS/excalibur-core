@@ -178,6 +178,17 @@ function parseComplexity(value: unknown): PlanComplexity {
   return value === 'small' || value === 'large' ? value : 'medium';
 }
 
+/**
+ * Sanitizes a model-supplied string for a SINGLE-LINE TUI row: collapses all
+ * interior whitespace (incl. newlines) to one space and caps the length. Without
+ * this, an embedded `\n` would break the raw-mode redraw and an over-long string
+ * would wrap/scroll the checkbox list (and is a cheap injection surface).
+ */
+function oneLine(value: string, max: number): string {
+  const collapsed = value.replace(/\s+/g, ' ').trim();
+  return collapsed.length > max ? `${collapsed.slice(0, max - 1).trimEnd()}…` : collapsed;
+}
+
 /** Parses + sanitizes a model answer into a {@link PlanShape} (≤3 Qs, ≤6 recs). */
 export function parsePlanShape(modelOutput: string): PlanShape {
   const obj = firstJsonObject(modelOutput);
@@ -186,7 +197,7 @@ export function parsePlanShape(modelOutput: string): PlanShape {
   // Default to clear (silent) unless the model explicitly says the design is not.
   const clear = obj['clear'] !== false;
   const questions = (Array.isArray(obj['questions']) ? (obj['questions'] as unknown[]) : [])
-    .map((q) => (typeof q === 'string' ? q.trim() : ''))
+    .map((q) => (typeof q === 'string' ? oneLine(q, 200) : ''))
     .filter((q) => q.length > 0)
     .slice(0, 3);
   const recommendations = (
@@ -195,9 +206,9 @@ export function parsePlanShape(modelOutput: string): PlanShape {
     .map((r): PlanRecommendation | null => {
       if (typeof r !== 'object' || r === null) return null;
       const e = r as Record<string, unknown>;
-      const title = typeof e['title'] === 'string' ? e['title'].trim() : '';
+      const title = typeof e['title'] === 'string' ? oneLine(e['title'], 80) : '';
       if (title.length === 0) return null;
-      const detail = typeof e['detail'] === 'string' ? e['detail'].trim() : '';
+      const detail = typeof e['detail'] === 'string' ? oneLine(e['detail'], 120) : '';
       return { title, detail, recommended: e['recommended'] === true };
     })
     .filter((r): r is PlanRecommendation => r !== null)

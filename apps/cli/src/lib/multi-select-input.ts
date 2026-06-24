@@ -14,7 +14,7 @@
  *   - SPACE toggles the highlighted row's checkbox;
  *   - `a` selects ALL, `n` selects NONE (quick bulk ops);
  *   - ENTER submits the current selection (possibly empty — that's a valid "none");
- *   - Esc cancels (the shell resolves with the pre-checked defaults); Ctrl-C aborts.
+ *   - Esc cancels (the shell SKIPS — resolves with an empty set, adding nothing); Ctrl-C aborts.
  *
  * Lists are short (a handful of recommendations) so there is no type-ahead filter
  * — every printable char that isn't a bulk-op is ignored.
@@ -38,7 +38,7 @@ export type MultiSelectAction =
   | { type: 'move' } // highlight moved → repaint
   | { type: 'toggle' } // selection changed → repaint
   | { type: 'submit'; selected: number[] } // Enter → resolve with the checked indices (ascending)
-  | { type: 'cancel' } // Esc → resolve with the pre-checked defaults
+  | { type: 'cancel' } // Esc → SKIP (the shell resolves with an empty set)
   | { type: 'sigint' } // Ctrl-C → abort
   | { type: 'none' };
 

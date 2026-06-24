@@ -938,8 +938,16 @@ async function shapePlan(
   ) {
     return text;
   }
-  const gateway = loadGatewayContext(runtime.repoRoot);
-  const provider = gateway.cheapProviderName ?? gateway.providerName;
+  // Best-effort: a malformed/unreadable providers.yaml makes loadGatewayContext
+  // throw — that must NOT break the plan turn, so fall back to the original text.
+  let gateway: ReturnType<typeof loadGatewayContext>;
+  let provider: string | undefined;
+  try {
+    gateway = loadGatewayContext(runtime.repoRoot);
+    provider = gateway.cheapProviderName ?? gateway.providerName;
+  } catch {
+    return text;
+  }
   if (!gateway.configured || provider == null) {
     return text;
   }

@@ -140,6 +140,25 @@ describe('parsePlanShape', () => {
     expect(out.recommendations).toEqual([{ title: 'ok', detail: 'x', recommended: false }]);
   });
 
+  it('sanitizes strings to a single capped line (no newlines/over-long → no TUI corruption)', () => {
+    const out = parsePlanShape(
+      JSON.stringify({
+        complexity: 'large',
+        clear: false,
+        questions: [`Which\n\ndatabase?  ${'x'.repeat(400)}`],
+        recommendations: [{ title: `Add\ntests${'y'.repeat(200)}`, detail: 'a\nb\tc' }],
+      }),
+    );
+    // interior newlines/tabs collapsed to single spaces
+    expect(out.questions[0]).not.toContain('\n');
+    expect(out.recommendations[0]?.title).not.toContain('\n');
+    expect(out.recommendations[0]?.detail).toBe('a b c');
+    // length caps (questions ≤200, title ≤80) with an ellipsis
+    expect(out.questions[0]!.length).toBeLessThanOrEqual(200);
+    expect(out.recommendations[0]!.title.length).toBeLessThanOrEqual(80);
+    expect(out.questions[0]).toContain('…');
+  });
+
   it('returns the EMPTY (never-surfacing) shape on junk', () => {
     const out = parsePlanShape('not json at all');
     expect(out).toEqual({ complexity: 'small', clear: true, questions: [], recommendations: [] });
