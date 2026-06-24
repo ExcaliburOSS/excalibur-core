@@ -819,6 +819,8 @@ export const EN: Catalog = {
   'repl.compacted-auto':
     'Auto-compacted {n} earlier turn(s) → summary · {before}→{after} tokens. Full detail stays in the run history.',
   'repl.compaction-failed': 'Compaction failed: {reason}',
+  'repl.compacting': 'Compacting context…',
+  'repl.compacting-overflow': 'Context full — compacting and retrying…',
   'repl.plan-usage': 'Usage: /plan <task>. Describe what you want planned.',
   'repl.goal-done-gate': '  goal · done-gate: `{test}` must pass',
   'repl.goal-iteration': '  goal · iteration {n}/{max}: {status} — {reason}',

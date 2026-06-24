@@ -79,6 +79,13 @@ export interface AgentTurnResult {
   runId: string;
   /** Whether the loop mutated the working tree (a patch was generated). */
   mutated: boolean;
+  /**
+   * Peak prompt (input) tokens the provider reported across this turn's model
+   * calls — the real measure of how full the context window got. Undefined when
+   * no usage was reported (e.g. the offline mock). Used by the REPL to drive
+   * accurate compaction triggering instead of a chars/4 heuristic.
+   */
+  inputTokens?: number;
 }
 
 /**
@@ -209,6 +216,8 @@ interface DriveResult {
   model: string;
   mutated: boolean;
   aborted: boolean;
+  /** Peak prompt (input) tokens across the turn's model calls (0 if unreported). */
+  maxInputTokens: number;
 }
 
 /**
@@ -231,6 +240,7 @@ async function driveLoop(
   let mutated = false;
   let aborted = false;
   let totalTokens = 0;
+  let maxInputTokens = 0;
   const turnStart = Date.now();
   const unicode = deps.env['EXCALIBUR_ASCII'] === undefined;
 
@@ -420,6 +430,7 @@ async function driveLoop(
         const outputTokens = event.payload['outputTokens'];
         if (typeof inputTokens === 'number' && typeof outputTokens === 'number') {
           totalTokens += inputTokens + outputTokens;
+          maxInputTokens = Math.max(maxInputTokens, inputTokens);
           runManager.appendModelCall(run.id, {
             provider: turn.config.models?.default ?? turn.providerName,
             model: typeof m === 'string' ? m : turn.providerName,
@@ -494,7 +505,7 @@ async function driveLoop(
   }
   renderer?.finish();
 
-  return { finalText, costCents, model, mutated, aborted };
+  return { finalText, costCents, model, mutated, aborted, maxInputTokens };
 }
 
 /** Present-continuous label for the model "thinking" between tool calls, by role. */
@@ -818,6 +829,7 @@ function toResult(runId: string, result: DriveResult, providerName: string): Age
     costCents: result.costCents,
     runId,
     mutated: result.mutated,
+    ...(result.maxInputTokens > 0 ? { inputTokens: result.maxInputTokens } : {}),
   };
 }
 

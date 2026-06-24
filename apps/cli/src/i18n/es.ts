@@ -877,6 +877,8 @@ export const ES: Catalog = {
   'repl.compacted-auto':
     'Compactados automáticamente {n} turno(s) anteriores → resumen · {before}→{after} tokens. El detalle completo permanece en el historial de ejecuciones.',
   'repl.compaction-failed': 'Falló la compactación: {reason}',
+  'repl.compacting': 'Compactando contexto…',
+  'repl.compacting-overflow': 'Contexto lleno — compactando y reintentando…',
   'repl.plan-usage': 'Uso: /plan <tarea>. Describe qué quieres planificar.',
   'repl.goal-done-gate': '  objetivo · puerta-de-hecho: `{test}` debe pasar',
   'repl.goal-iteration': '  objetivo · iteración {n}/{max}: {status} — {reason}',

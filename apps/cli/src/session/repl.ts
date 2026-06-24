@@ -73,6 +73,7 @@ import { buildSessionLog, formatSessionLog } from '../lib/session-log';
 import { buildStartupContext } from '../lib/startup-context';
 import { setAutoApprove } from '../lib/config-file';
 import { repoSelectKeymap, writeProvidersFile } from '../lib/provider-setup';
+import { isContextOverflowError } from '../lib/context-overflow';
 import { listSwitchableProviders, providerHint } from '../lib/model-switch';
 import { resolveSelectKeymap } from '../lib/keymap';
 import { LOG_SENTINEL, REWIND_SENTINEL } from '../ui';
@@ -162,6 +163,18 @@ interface SessionRuntime {
   /** AO8-4 — set on REPL teardown so a late background callback (chain / supervisor)
    * never spawns a new thread into a closing session. */
   shuttingDown: boolean;
+  /**
+   * In-flight background auto-compaction (fired after a turn, awaited before the
+   * next turn builds its seed). Lets compaction overlap with the user's typing so
+   * it's effectively invisible. Undefined when none is pending.
+   */
+  pendingCompaction?: Promise<void>;
+  /**
+   * Peak prompt tokens the provider reported on the last turn — the REAL context
+   * size, used for an accurate compaction trigger + the `ctx%` status indicator
+   * (falls back to a chars/4 estimate when unknown, e.g. the offline mock).
+   */
+  lastInputTokens?: number;
 }
 
 /**
@@ -593,7 +606,13 @@ export async function runInteractiveSession(
             store.appendPromptHistory(safe);
             store.appendTurn(session.id, { role: 'user', kind: 'message', text: safe });
             const ctrl = beginTurn();
-            await dispatchAgentTurn(deps, runtime, expanded, ctrl.signal, sessionSeed(runtime));
+            await dispatchAgentTurn(
+              deps,
+              runtime,
+              expanded,
+              ctrl.signal,
+              await sessionSeedSettled(runtime),
+            );
             endTurn();
             printStatusLine(deps, runtime);
             continue;
@@ -618,7 +637,7 @@ export async function runInteractiveSession(
       // Prior conversation (compacted) for cross-turn memory — captured BEFORE
       // recording this turn's user message, so it is context only, not the
       // current prompt. Empty on the first turn → an independent turn as before.
-      const seed = sessionSeed(runtime);
+      const seed = await sessionSeedSettled(runtime);
 
       const safeText = redactSecrets(text);
       store.appendPromptHistory(safeText);
@@ -1129,10 +1148,16 @@ async function recordAssistantTurn(
     costCents: result.costCents,
     artifactRef: result.runId,
   });
-  // After each recorded turn, auto-compact if the session is over budget
-  // (best-effort; respects the `compaction.enabled` switch). Awaited so the next
-  // turn's seed reflects the compaction.
-  await runCompaction(deps, runtime, { manual: false });
+  if (typeof result.inputTokens === 'number') {
+    runtime.lastInputTokens = result.inputTokens; // real context size for the gate + ctx%
+  }
+  // Auto-compact in the BACKGROUND (best-effort; respects `compaction.enabled`).
+  // Fire-and-forget + silent so it overlaps with the user typing the next prompt;
+  // `sessionSeedSettled()` awaits it before the next turn builds its seed, so the
+  // user effectively never waits for compaction (near-invisible).
+  runtime.pendingCompaction = runCompaction(deps, runtime, { manual: false, silent: true }).catch(
+    () => undefined,
+  );
 }
 
 /**
@@ -1243,10 +1268,13 @@ function sessionLocale(_runtime: SessionRuntime): string {
 async function runCompaction(
   deps: CliDeps,
   runtime: SessionRuntime,
-  opts: { manual: boolean },
+  opts: { manual: boolean; force?: boolean; silent?: boolean },
 ): Promise<void> {
   const config = runtime.config.compaction ?? DEFAULT_COMPACTION_CONFIG;
-  if (!opts.manual && !config.enabled) {
+  // `force` (manual /compact, or the reactive overflow path) bypasses the budget
+  // gate; the proactive auto path still respects the master switch + budget.
+  const force = opts.manual || opts.force === true;
+  if (!force && !config.enabled) {
     return; // the automatic path respects the master switch
   }
   try {
@@ -1255,47 +1283,56 @@ async function runCompaction(
     // The on-disk transcript is lossless (it keeps every turn, even ones already
     // folded into a prior summary). Gating the AUTOMATIC path on that raw total
     // would re-compact the same prefix on every turn once it first goes over
-    // budget. Gate instead on the EFFECTIVE context we actually send — the
-    // latest summary + kept tail + new turns (what buildSessionSeed produces).
-    if (!opts.manual) {
+    // budget. Gate instead on the EFFECTIVE context we'd send — preferring the
+    // provider's REAL last prompt-token count over the chars/4 estimate.
+    if (!force) {
       const latest = runtime.store.latestCompaction(runtime.session.id);
-      const effectiveTokens = buildSessionSeed(turns, latest).reduce(
+      const estimated = buildSessionSeed(turns, latest).reduce(
         (sum, message) => sum + estimateTokens(message.content),
         0,
       );
+      const effectiveTokens = Math.max(runtime.lastInputTokens ?? 0, estimated);
       if (effectiveTokens <= contextWindow - config.reserveTokens) {
         return; // effective context is within budget — no compaction churn
       }
     }
     const summarizer = buildCompactionSummarizer(runtime, config);
+    // Manual /compact is blocking → show a self-erasing spinner (TTY-only); the
+    // auto/reactive paths run silently in the background.
+    const spinner = opts.manual ? deps.ui.createSpinner() : null;
+    spinner?.start(() => deps.t('repl.compacting'));
     let record;
-    if (summarizer !== undefined) {
-      try {
-        record = await compactSessionAsync(turns, {
-          config,
-          contextWindow,
-          model: runtime.model,
-          force: opts.manual,
-          locale: sessionLocale(runtime),
-          summarize: summarizer,
-        });
-      } catch {
-        // The real-model summary failed (network/timeout) — fall back to the
-        // deterministic offline summarizer so compaction still happens.
+    try {
+      if (summarizer !== undefined) {
+        try {
+          record = await compactSessionAsync(turns, {
+            config,
+            contextWindow,
+            model: runtime.model,
+            force,
+            locale: sessionLocale(runtime),
+            summarize: summarizer,
+          });
+        } catch {
+          // The real-model summary failed (network/timeout) — fall back to the
+          // deterministic offline summarizer so compaction still happens.
+          record = compactSession(turns, {
+            config,
+            contextWindow,
+            model: runtime.model,
+            force,
+          });
+        }
+      } else {
         record = compactSession(turns, {
           config,
           contextWindow,
           model: runtime.model,
-          force: opts.manual,
+          force,
         });
       }
-    } else {
-      record = compactSession(turns, {
-        config,
-        contextWindow,
-        model: runtime.model,
-        force: opts.manual,
-      });
+    } finally {
+      spinner?.stop();
     }
     if (record === null) {
       if (opts.manual) {
@@ -1304,20 +1341,24 @@ async function runCompaction(
       return;
     }
     runtime.store.appendCompaction(runtime.session.id, record);
-    const n = record.details.summarizedEntryIds.length;
-    deps.ui.info(
-      opts.manual
-        ? deps.t('repl.compacted-manual', {
-            n,
-            before: record.tokensBefore,
-            after: record.tokensAfter,
-          })
-        : deps.t('repl.compacted-auto', {
-            n,
-            before: record.tokensBefore,
-            after: record.tokensAfter,
-          }),
-    );
+    // Reflect the freed context immediately in the ctx% indicator.
+    runtime.lastInputTokens = record.tokensAfter;
+    if (!opts.silent) {
+      const n = record.details.summarizedEntryIds.length;
+      deps.ui.info(
+        opts.manual
+          ? deps.t('repl.compacted-manual', {
+              n,
+              before: record.tokensBefore,
+              after: record.tokensAfter,
+            })
+          : deps.t('repl.compacted-auto', {
+              n,
+              before: record.tokensBefore,
+              after: record.tokensAfter,
+            }),
+      );
+    }
   } catch (error) {
     if (opts.manual) {
       deps.ui.warn(
@@ -1345,6 +1386,19 @@ function sessionSeed(runtime: SessionRuntime): ChatMessage[] {
   }
 }
 
+/**
+ * Awaits any in-flight background compaction, THEN builds the seed — so the next
+ * turn always reflects the latest compaction without the user ever waiting for it
+ * synchronously (it ran while they were reading/typing).
+ */
+async function sessionSeedSettled(runtime: SessionRuntime): Promise<ChatMessage[]> {
+  if (runtime.pendingCompaction !== undefined) {
+    await runtime.pendingCompaction;
+    runtime.pendingCompaction = undefined;
+  }
+  return sessionSeed(runtime);
+}
+
 /** Dispatches a direct model-driven turn (the default NL path). */
 async function dispatchAgentTurn(
   deps: CliDeps,
@@ -1353,7 +1407,24 @@ async function dispatchAgentTurn(
   signal: AbortSignal,
   seed: ChatMessage[],
 ): Promise<void> {
-  const result = await runAgentTurn(agentTurnDeps(deps, runtime, signal), text, seed);
+  let result;
+  try {
+    result = await runAgentTurn(agentTurnDeps(deps, runtime, signal), text, seed);
+  } catch (error) {
+    // Reactive safety net: the prompt overflowed the context window (the
+    // heuristic under-counted, or a single turn grew huge). Force a compaction
+    // and retry the turn ONCE with the freed-up seed — never on an abort.
+    if (signal.aborted || !isContextOverflowError(error)) {
+      throw error;
+    }
+    deps.ui.info(deps.t('repl.compacting-overflow'));
+    await runCompaction(deps, runtime, { manual: false, force: true, silent: true });
+    result = await runAgentTurn(
+      agentTurnDeps(deps, runtime, signal),
+      text,
+      await sessionSeedSettled(runtime),
+    );
+  }
   await recordAssistantTurn(deps, runtime, result);
 }
 
@@ -2632,8 +2703,30 @@ function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
   const active = fleetCounts(runtime.fleet).active;
   const bg = active > 0 ? ` · ${pc.cyan(deps.t('repl.bg-active', { n: active }))}` : '';
   deps.ui.info(
-    `${status.autonomy} · ${status.workflow} · ${status.model} · ${cost} · ${safetyLine(deps.t, runtime.config)}${bg}`,
+    `${status.autonomy} · ${status.workflow} · ${status.model} · ${cost} · ${safetyLine(deps.t, runtime.config)}${contextUsageLabel(runtime)}${bg}`,
   );
+}
+
+/**
+ * Ambient context-usage indicator for the status line — `· ctx 62%` from the
+ * provider's real last prompt-token count vs the model's window. Shown only once
+ * it starts to matter (≥50%), dim, amber past 80% (compaction keeps it down).
+ */
+function contextUsageLabel(runtime: SessionRuntime): string {
+  const used = runtime.lastInputTokens;
+  if (used === undefined || used <= 0) {
+    return '';
+  }
+  const window = compactionContextWindow(runtime.repoRoot, runtime.model);
+  if (window <= 0) {
+    return '';
+  }
+  const pct = Math.min(99, Math.round((used / window) * 100));
+  if (pct < 50) {
+    return '';
+  }
+  const text = `ctx ${pct}%`;
+  return ` · ${pct >= 80 ? pc.yellow(text) : pc.dim(text)}`;
 }
 
 /** Replays a compact transcript summary when resuming a session. */
