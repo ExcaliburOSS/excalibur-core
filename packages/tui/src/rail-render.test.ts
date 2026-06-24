@@ -135,6 +135,29 @@ describe('renderRail', () => {
     expect(text).toContain('Add a test');
   });
 
+  it('expands a per-edit file_write diff body under the rail with expandAll (AO6 Pillar 1)', () => {
+    const diff = `diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1,2 @@\n-old line\n+new line\n+extra line\n`;
+    const m = model({
+      phases: [
+        {
+          id: 'b',
+          name: 'Implement',
+          state: 'running',
+          events: [{ text: 'write src/a.ts', kind: 'write', note: '+2 −1 · 1 file', diff }],
+        },
+      ],
+    });
+    // The live fallback stays lean — the note suffices, no diff body dumped.
+    const live = renderRail(m).join('\n');
+    expect(live).toContain('write src/a.ts');
+    expect(live).toContain('+2 −1 · 1 file');
+    expect(live).not.toContain('new line');
+    // The full-history surface (`logs`/replay) expands the highlighted body.
+    const full = renderRail(m, { expandAll: true }).join('\n');
+    expect(full).toContain('new line');
+    expect(full).toContain('extra line');
+  });
+
   it('prepends a per-tool glyph when an event carries a kind', () => {
     const lines = renderRail(
       model({

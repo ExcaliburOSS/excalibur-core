@@ -163,6 +163,32 @@ describe('reduceRail', () => {
     expect(patchEvent?.diff).toBe(diff);
   });
 
+  it('streams a per-edit file_write diff inline + a diffstat note (AO6 Pillar 1)', () => {
+    const diff = `diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1,2 @@\n-x\n+y\n+z\n`;
+    const rail = reduceRail([
+      ev('phase_started', { name: 'Implement' }, 'p1'),
+      ev('file_write', { path: 'src/a.ts', diff }, 'p1'),
+    ]);
+    const writeEvent = rail.phases[0]?.events?.[0];
+    expect(writeEvent?.kind).toBe('write');
+    expect(writeEvent?.text).toBe('write src/a.ts');
+    expect(writeEvent?.note).toBe('+2 −1 · 1 file');
+    // The raw diff rides on the event so the live Ink rail renders it inline
+    // (collapsible). A write with no diff carries neither field (back-compat).
+    expect(writeEvent?.diff).toBe(diff);
+  });
+
+  it('a file_write without a diff carries no diff/note (back-compat)', () => {
+    const rail = reduceRail([
+      ev('phase_started', { name: 'Implement' }, 'p1'),
+      ev('file_write', { path: 'src/a.ts' }, 'p1'),
+    ]);
+    const writeEvent = rail.phases[0]?.events?.[0];
+    expect(writeEvent?.kind).toBe('write');
+    expect(writeEvent?.diff).toBeUndefined();
+    expect(writeEvent?.note).toBeUndefined();
+  });
+
   it('marks the phase failed + errored on an error event', () => {
     const rail = reduceRail([
       ev('phase_started', { name: 'Verify' }, 'p1'),

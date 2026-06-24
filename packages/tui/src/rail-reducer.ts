@@ -43,8 +43,20 @@ function railEventFor(event: ExcaliburEvent): PhaseEvent | null {
       };
     case 'file_read':
       return { text: `read ${str(p, 'path')}`, tone: 'muted', kind: 'read' };
-    case 'file_write':
-      return { text: `write ${str(p, 'path')}`, tone: 'accent', kind: 'write' };
+    case 'file_write': {
+      // AO6 Pillar 1: the adapter carries a per-edit unified diff so the live
+      // rail streams the highlighted change inline (collapsible) right after the
+      // write line — CC-parity. The diffstat rides along as the line annotation.
+      const diff = str(p, 'diff');
+      const note = diff.length > 0 ? formatDiffStat(parseDiffStat(diff)) : '';
+      return {
+        text: `write ${str(p, 'path')}`,
+        tone: 'accent',
+        kind: 'write',
+        ...(note.length > 0 ? { note } : {}),
+        ...(diff.length > 0 ? { diff } : {}),
+      };
+    }
     case 'command_started':
       return { text: `$ ${str(p, 'command')}`, tone: 'muted', kind: 'command' };
     case 'command_completed': {

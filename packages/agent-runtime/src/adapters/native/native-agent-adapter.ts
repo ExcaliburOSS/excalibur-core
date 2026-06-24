@@ -845,8 +845,21 @@ export class NativeAgentAdapter implements AgentAdapter {
       }
     }
 
+    // CC-parity inline diff (AO6 Pillar 1): for a file-mutating edit, capture
+    // the per-edit unified diff of the just-written file(s) — AFTER any formatter
+    // ran above, so it reflects the final on-disk content — and carry it on the
+    // `file_write` event. The live rail then streams the highlighted diff inline
+    // (collapsible, Space to expand) right after the write line. Best-effort.
+    let editDiff = '';
+    if (ok && editedNow.length > 0 && (toolName === 'write_file' || toolName === 'edit')) {
+      editDiff = await diffForEditedPaths(ctx.workdir, editedNow);
+    }
+
     const eventType = eventTypeForTool(toolName);
     const payload = toolEventPayload(toolName, call.arguments, ok, result);
+    if (editDiff.length > 0) {
+      payload['diff'] = editDiff;
+    }
     const content =
       diagnosticsNote.length > 0 ? `${result}\n\n${redactSecrets(diagnosticsNote)}` : result;
     events.push({
@@ -1251,6 +1264,48 @@ function formatDiagnosticsForModel(diag: DiagnosticsPayload): string {
 }
 
 /** Reads `+++ b/<path>` lines from a unified diff. */
+/** Beyond this, the inline per-edit diff is truncated (the live DiffView caps display independently). */
+const MAX_INLINE_DIFF_LINES = 400;
+
+/** Line-caps a per-edit diff so a huge write can't bloat `events.jsonl`. */
+function capInlineDiff(diff: string): string {
+  if (diff.trim().length === 0) return '';
+  const lines = diff.split('\n');
+  if (lines.length <= MAX_INLINE_DIFF_LINES) return diff;
+  const head = lines.slice(0, MAX_INLINE_DIFF_LINES);
+  head.push(`… (+${lines.length - MAX_INLINE_DIFF_LINES} more diff lines truncated)`);
+  return head.join('\n');
+}
+
+/**
+ * Best-effort per-edit unified diff for the just-written files (AO6 Pillar 1) —
+ * the source of the inline highlighted diff streamed in the live rail right
+ * after each write (CC-parity). Mirrors {@link NativeAgentAdapter.maybeEmitPatch}'s
+ * git approach: `--intent-to-add` so newly-created files appear in the diff,
+ * diff ONLY the given paths, then reset the index so nothing is left staged.
+ * Returns '' when the workdir is not a git repo, no change is visible, or git
+ * fails — the write line then renders with no diff (the activity line stays).
+ */
+async function diffForEditedPaths(workdir: string, paths: string[]): Promise<string> {
+  if (paths.length === 0) return '';
+  const sorted = [...new Set(paths)].sort();
+  const runGit = async (args: string[]): Promise<string | null> => {
+    try {
+      const { stdout } = await execFileAsync('git', args, {
+        cwd: workdir,
+        maxBuffer: 8 * 1024 * 1024,
+      });
+      return stdout;
+    } catch {
+      return null;
+    }
+  };
+  await runGit(['add', '--intent-to-add', '--', ...sorted]);
+  const diff = (await runGit(['diff', '--no-color', '--', ...sorted])) ?? '';
+  await runGit(['reset', '-q', '--', ...sorted]);
+  return capInlineDiff(diff);
+}
+
 function filesAffectedFromDiff(diff: string): string[] {
   const affected: string[] = [];
   for (const line of diff.split('\n')) {

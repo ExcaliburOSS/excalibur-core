@@ -206,6 +206,41 @@ describe('<RunView> inline diff', () => {
     });
     expect(expanded).toContain('rate * amount');
   });
+
+  it('streams the highlighted diff inline under a file_write line (AO6 Pillar 1)', () => {
+    const writeModel = model({
+      phases: [
+        {
+          id: 'implement',
+          name: 'Implement',
+          state: 'running',
+          events: [
+            {
+              text: 'write src/calc.ts',
+              note: '+1 −1 · 1 file',
+              tone: 'accent',
+              kind: 'write',
+              diff: SAMPLE_DIFF,
+            },
+          ],
+        },
+      ],
+    });
+    // Collapsed by default: the write line + a hint, no body.
+    const collapsed = frameOf({ model: writeModel, spinnerFrame: 0, useStatic: false });
+    expect(collapsed).toContain('write src/calc.ts');
+    expect(collapsed).toContain('expand diff');
+    expect(collapsed).not.toContain('rate * amount');
+    // Space (diffsExpanded) reveals the highlighted body right under the write.
+    const expanded = frameOf({
+      model: writeModel,
+      spinnerFrame: 0,
+      useStatic: false,
+      diffsExpanded: true,
+      tier: 'truecolor',
+    });
+    expect(expanded).toContain('rate * amount');
+  });
 });
 
 describe('createRunViewStore', () => {

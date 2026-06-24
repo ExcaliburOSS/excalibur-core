@@ -1,4 +1,5 @@
 import { paint, type ColorTier } from './color.js';
+import { renderDiff } from './diff-view.js';
 import { renderTodos } from './rail-todos.js';
 import {
   ascii,
@@ -154,6 +155,28 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
         const text = c(event.text, hex);
         const noteCol = note.length > 0 ? c(note, palette.muted) : '';
         lines.push(` ${c(RAIL, palette.rail)}   ${prefix}${text}${noteCol}`.trimEnd());
+        // AO6 Pillar 1: under the full-history surface (`logs`/replay), expand a
+        // carried per-edit diff into a highlighted body nested on the rail. The
+        // live fallback stays lean — the `+N −M` note already conveys the change.
+        if (options.expandAll === true && event.diff !== undefined && event.diff.length > 0) {
+          const body = renderDiff(event.diff, {
+            tier,
+            palette,
+            width: 76,
+            layout: 'unified',
+            ...(options.mode !== undefined ? { mode: options.mode } : {}),
+          });
+          const cap = 40;
+          for (const dl of body.slice(0, cap)) {
+            lines.push(` ${c(RAIL, palette.rail)}   ${dl}`.trimEnd());
+          }
+          const hidden = body.length - Math.min(body.length, cap);
+          if (hidden > 0) {
+            lines.push(
+              ` ${c(RAIL, palette.rail)}   ${c(`… +${hidden} more lines`, palette.muted)}`.trimEnd(),
+            );
+          }
+        }
       }
     }
   });
