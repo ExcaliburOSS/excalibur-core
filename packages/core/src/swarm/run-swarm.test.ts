@@ -248,6 +248,24 @@ describe('runSwarm', () => {
     }
   });
 
+  it('AO5-5: runSwarmStaged ALSO refuses to fan out beyond depth 1 (the cap holds when staged)', async () => {
+    const repo = initRepo();
+    try {
+      const result = await runSwarmStaged(
+        repo,
+        [[lane('a')], [lane('b')]],
+        ({ lane: l, worktreePath }) => {
+          writeFileSync(join(worktreePath, `${l.id}.ts`), '// x\n', 'utf8');
+          return Promise.resolve(null);
+        },
+        { depth: 2 },
+      );
+      expect(result).toEqual({ lanes: [], mergedDiff: '', conflicts: [] });
+    } finally {
+      removeDir(repo);
+    }
+  });
+
   it('RE-DISPATCHES a transiently-failing lane up to maxAttempts (grader/rubric retry)', async () => {
     const repo = initRepo();
     try {

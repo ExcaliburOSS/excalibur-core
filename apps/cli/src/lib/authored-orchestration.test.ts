@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SWARM_MAX_TOTAL_AGENTS } from '@excalibur/core';
 import { compileAuthoredOrchestration, resolveAuthoredSpecPath } from './authored-orchestration';
 import { CliUsageError } from '../errors';
 
@@ -41,9 +42,29 @@ describe('compileAuthoredOrchestration (AO5-4)', () => {
     expect(bad('nope')).toThrow(CliUsageError);
   });
 
-  it('rejects an over-large spec (fail-fast, not silent truncation to the agent cap)', () => {
-    const steps = Array.from({ length: 50 }, (_v, i) => ({ id: `s${i}`, instruction: 'x' }));
-    expect(bad({ steps })).toThrow(/too many steps/);
+  it('rejects an over-large spec at the boundary (cap compiles, cap+1 throws)', () => {
+    const mkSteps = (n: number) =>
+      Array.from({ length: n }, (_v, i) => ({ id: `s${i}`, instruction: 'x' }));
+    // Exactly the cap compiles; one more is a fail-fast error (no silent truncation).
+    expect(() =>
+      compileAuthoredOrchestration({ steps: mkSteps(SWARM_MAX_TOTAL_AGENTS) }),
+    ).not.toThrow();
+    expect(bad({ steps: mkSteps(SWARM_MAX_TOTAL_AGENTS + 1) })).toThrow(/too many steps/);
+  });
+
+  it('rejects a non-list dependsOn (a bare scalar would silently mis-schedule)', () => {
+    expect(
+      bad({
+        steps: [
+          { id: 'a', instruction: 'x' },
+          { id: 'b', instruction: 'y', dependsOn: 'a' },
+        ],
+      }),
+    ).toThrow(/non-list "dependsOn"/);
+  });
+
+  it('rejects a present-but-non-string id with a clear message (not "missing")', () => {
+    expect(bad({ steps: [{ id: 123, instruction: 'x' }] })).toThrow(/id must be a string/);
   });
 
   it('rejects a missing/empty/duplicate/unsafe id', () => {

@@ -12,6 +12,17 @@ describe('excaliburConfigSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('leaves the AO5 orchestration safety toggles OFF by default (verifyWaves / selfHeal opt-in)', () => {
+    // The recursion-cap heal + wave-gate are OPT-IN: an unset orchestration
+    // section (or empty) must NOT enable them.
+    const empty = excaliburConfigSchema.parse({});
+    expect(empty.orchestration?.verifyWaves).toBeUndefined();
+    expect(empty.orchestration?.selfHeal).toBeUndefined();
+    const parsed = excaliburConfigSchema.parse({ orchestration: {} });
+    expect(parsed.orchestration?.verifyWaves).toBeUndefined();
+    expect(parsed.orchestration?.selfHeal).toBeUndefined();
+  });
+
   it('accepts a full config covering every pinned section', () => {
     const result = excaliburConfigSchema.safeParse({
       version: 1,

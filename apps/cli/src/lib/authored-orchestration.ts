@@ -68,6 +68,11 @@ export function compileAuthoredOrchestration(raw: unknown): {
       throw new CliUsageError(`step ${i + 1} must be a mapping with an id + instruction`);
     }
     const e = entry as Record<string, unknown>;
+    // A present-but-wrong-type id is an ERROR with a clear message (not the
+    // misleading "missing an id" you'd get from collapsing it to '').
+    if (e['id'] !== undefined && typeof e['id'] !== 'string') {
+      throw new CliUsageError(`step ${i + 1} id must be a string — quote it, e.g. "123"`);
+    }
     const id = typeof e['id'] === 'string' ? e['id'].trim() : '';
     if (id.length === 0) throw new CliUsageError(`step ${i + 1} is missing an "id"`);
     if (!STEP_ID.test(id)) {
@@ -75,9 +80,20 @@ export function compileAuthoredOrchestration(raw: unknown): {
     }
     if (ids.has(id)) throw new CliUsageError(`duplicate step id "${id}"`);
     ids.add(id);
+    if (e['instruction'] !== undefined && typeof e['instruction'] !== 'string') {
+      throw new CliUsageError(`step "${id}" instruction must be a string`);
+    }
     const instruction = typeof e['instruction'] === 'string' ? e['instruction'].trim() : '';
     if (instruction.length === 0)
       throw new CliUsageError(`step "${id}" is missing an "instruction"`);
+    // A non-list dependsOn (e.g. a bare `dependsOn: base`) would otherwise be
+    // SILENTLY dropped → the step mis-schedules into wave 0. Reject it (strict
+    // contract: a typo is an error, not a wrong schedule).
+    if (e['dependsOn'] !== undefined && !Array.isArray(e['dependsOn'])) {
+      throw new CliUsageError(
+        `step "${id}" has a non-list "dependsOn" — use a YAML list, e.g. [base]`,
+      );
+    }
     const dependsOn = Array.isArray(e['dependsOn'])
       ? (e['dependsOn'] as unknown[]).map((d) => String(d).trim()).filter((d) => d.length > 0)
       : [];
@@ -128,7 +144,11 @@ export function compileAuthoredOrchestration(raw: unknown): {
 /**
  * Resolves a `nameOrPath` to the author spec file: a bare name → the convention
  * `.excalibur/orchestrations/<name>.yaml`; anything that looks like a path (has a
- * separator or a `.yaml`/`.yml` extension) → resolved relative to the repo root.
+ * separator or a `.yaml`/`.yml` extension) → a RELATIVE path is resolved against
+ * the repo root, an ABSOLUTE path is used as-is. Note: a relative `../…` or an
+ * absolute path MAY resolve outside the repository — this is an operator-supplied
+ * local CLI argument (the operator already has shell access), not untrusted input,
+ * so the path is intentionally not confined to the repo.
  */
 export function resolveAuthoredSpecPath(repoRoot: string, nameOrPath: string): string {
   const looksLikePath = nameOrPath.includes('/') || /\.ya?ml$/i.test(nameOrPath);
