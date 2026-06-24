@@ -121,6 +121,50 @@ export interface OrchestrationSummary {
   lanes: OrchestrationLaneDto[];
 }
 
+/** A lane's state in the orchestration chronogram (AO6 Pillar 2). */
+export type ChronogramLaneState = 'pending' | 'running' | 'done' | 'empty' | 'failed' | 'cancelled';
+
+/** One lane of the chronogram: a node in the wave/DAG timeline. */
+export interface ChronogramLaneDto {
+  id: string;
+  title: string;
+  instruction: string;
+  /** 0-based wave index (which dependency level this lane ran in). */
+  wave: number;
+  /** Lane ids this lane depends on (the DAG edges). */
+  dependsOn: string[];
+  state: ChronogramLaneState;
+  /** The child run this lane streams to (click-through target), if persisted. */
+  runId: string | null;
+  costCents: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  /** Wall-clock span once finished (completedAt − startedAt); null while live. */
+  durationMs: number | null;
+}
+
+/**
+ * The orchestration CHRONOGRAM (AO6 Pillar 2): a swarm projected as a live
+ * wave/DAG timeline — the structure (waves + dependsOn) from the persisted
+ * `orchestration-plan.json` (written at swarm start) joined with the live
+ * per-lane child-run state/cost/timing. Feeds both the dashboard timeline and
+ * the TTY `renderChronogram`, so they stay byte-aligned like `reduceRail`.
+ */
+export interface ChronogramDto {
+  parentRunId: string;
+  task: string;
+  mode: 'flat' | 'staged';
+  /** Overall parent-run status. */
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  workItemId: string | null;
+  /** Lane-id groupings in execution order (one wave for `flat`). */
+  waves: string[][];
+  lanes: ChronogramLaneDto[];
+  totalCostCents: number | null;
+}
+
 /** An external link off a work item (PR / commit / doc). */
 export interface WorkItemLinkDto {
   type: 'pull_request' | 'commit' | 'document' | 'url' | 'issue' | 'other';

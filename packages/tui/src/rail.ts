@@ -33,6 +33,7 @@ export {
   type LanesModel,
   type RenderLanesOptions,
 } from './rail-lanes.js';
+export { renderChronogram, type RenderChronogramOptions } from './chronogram-render.js';
 export {
   detectThemeSync,
   formatCents,

@@ -17,6 +17,7 @@ import {
   moveWorkItemLane,
   InvalidLaneError,
 } from './dashboard-data';
+import { buildChronogramForRun } from './chronogram';
 
 /**
  * `excalibur serve` (plan P1.12 / the headless-server enabler) — a local,
@@ -132,6 +133,18 @@ function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
   if (path === '/api/orchestrations') {
     // AO4e: parallel orchestrations (parent swarm run + its lane child runs).
     return { status: 200, body: { orchestrations: buildOrchestrations(repoRoot) } };
+  }
+  const orchMatch = /^\/api\/orchestrations\/([^/]+)$/.exec(path);
+  if (orchMatch !== null) {
+    // AO6 Pillar 2: the chronogram detail — the wave/DAG timeline of one swarm.
+    const id = decodeURIComponent(orchMatch[1] as string);
+    if (!RUN_ID.test(id)) {
+      return { status: 400, body: { error: 'invalid run id' } };
+    }
+    const detail = buildChronogramForRun(repoRoot, id);
+    return detail === null
+      ? { status: 404, body: { error: 'orchestration not found' } }
+      : { status: 200, body: detail };
   }
   if (path === '/api/board') {
     // The task-first kanban home (D1) — work items projected onto the 5 lanes.

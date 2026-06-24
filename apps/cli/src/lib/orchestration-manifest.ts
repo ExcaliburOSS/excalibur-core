@@ -37,6 +37,48 @@ export interface OrchestrationManifest {
   lanes: OrchestrationManifestLane[];
 }
 
+/** One lane of the orchestration PLAN (the structure, known at swarm start). */
+export interface OrchestrationPlanLane {
+  id: string;
+  title: string;
+  instruction: string;
+  dependsOn: string[];
+  /** The child run this lane streams to (filled in as lanes are dispatched). */
+  runId?: string;
+}
+
+/**
+ * AO6 Pillar 2 — the orchestration PLAN: the wave/DAG STRUCTURE of a swarm,
+ * persisted as `orchestration-plan.json` on the parent run AT START (unlike the
+ * outcome `orchestration.json`, which is written at the end). This is what lets
+ * the LIVE chronogram render the DAG immediately and fill it wave-by-wave as the
+ * child runs progress. Shares the manifest's wave/lane vocabulary.
+ */
+export interface OrchestrationPlan {
+  version: 1;
+  task: string;
+  mode: 'flat' | 'staged';
+  parentRunId: string;
+  /** ISO timestamp — stamped by the caller (the lib never reads the clock). */
+  createdAt: string;
+  waves: string[][];
+  lanes: OrchestrationPlanLane[];
+}
+
+/** Reads + validates a run's `orchestration-plan.json`; null if absent/wrong shape. */
+export function loadOrchestrationPlan(repoRoot: string, runId: string): OrchestrationPlan | null {
+  try {
+    const dir = new RunManager(repoRoot).getRun(runId).dir;
+    const raw = JSON.parse(readFileSync(join(dir, 'orchestration-plan.json'), 'utf8')) as unknown;
+    if (typeof raw !== 'object' || raw === null) return null;
+    const p = raw as Partial<OrchestrationPlan>;
+    if (p.version !== 1 || !Array.isArray(p.lanes) || !Array.isArray(p.waves)) return null;
+    return p as OrchestrationPlan;
+  } catch {
+    return null;
+  }
+}
+
 export interface ManifestLaneOutcome {
   id: string;
   outcome: 'done' | 'empty' | 'failed';

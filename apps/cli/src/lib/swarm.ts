@@ -32,7 +32,7 @@ import type { CliDeps } from '../deps';
 import { loadInkUi } from '../ink/load';
 import { runConfiguredCommandCheck } from './verify-command';
 import { runProportionalMesh } from './verify-mesh';
-import { buildOrchestrationManifest } from './orchestration-manifest';
+import { buildOrchestrationManifest, type OrchestrationPlan } from './orchestration-manifest';
 import type { LanesViewHandle } from '@excalibur/tui/ink';
 
 /**
@@ -318,6 +318,40 @@ export async function executeSwarm(
   } catch {
     parentId = null;
   }
+
+  // AO6 Pillar 2 — persist the orchestration PLAN (the wave/DAG STRUCTURE) at
+  // START, so the LIVE chronogram can render the DAG immediately and fill it
+  // wave-by-wave as lanes progress (the outcome `orchestration.json` only lands
+  // at the end). Each lane's `runId` is back-filled as its child run is created.
+  const planStaged = options.waves !== undefined && options.waves.length > 1;
+  const orchestrationPlan: OrchestrationPlan = {
+    version: 1,
+    task: context.task ?? subtasks.map((s) => s.title).join('; '),
+    mode: planStaged ? 'staged' : 'flat',
+    parentRunId: parentId ?? '',
+    createdAt: new Date().toISOString(),
+    waves: planStaged ? options.waves!.map((w) => w.map((s) => s.id)) : [subtasks.map((s) => s.id)],
+    lanes: subtasks.map((s) => ({
+      id: s.id,
+      title: s.title,
+      instruction: s.instruction,
+      dependsOn: [...(s.dependsOn ?? [])],
+    })),
+  };
+  const writePlan = (): void => {
+    if (parentId === null) return;
+    try {
+      runManager.writeArtifact(
+        parentId,
+        'orchestration-plan.json',
+        JSON.stringify(orchestrationPlan, null, 2),
+      );
+    } catch {
+      /* best-effort — a plan write fault never breaks the swarm */
+    }
+  };
+  writePlan();
+
   const childByLane = new Map<string, string>();
   const childRunFor = (laneId: string): string | null => {
     const existing = childByLane.get(laneId);
@@ -334,6 +368,12 @@ export async function executeSwarm(
       });
       runManager.updateRecord(child.id, { status: 'running' });
       childByLane.set(laneId, child.id);
+      // Back-fill the lane→child link so the live chronogram can attach state.
+      const planLane = orchestrationPlan.lanes.find((l) => l.id === laneId);
+      if (planLane !== undefined) {
+        planLane.runId = child.id;
+        writePlan();
+      }
       return child.id;
     } catch {
       return null;
