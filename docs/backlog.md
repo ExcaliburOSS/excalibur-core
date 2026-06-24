@@ -106,13 +106,19 @@ user sign-off → build. Depends on AO3+AO4 telemetry.
 
 > **AO6 scope agreed with the user (2026-06-24), pending sign-off — 5 pillars:**
 >
-> 1. **CC-parity live activity stream** — the gap the user flagged: today the rail
->    streams activity LINES (`read/write/tool/$cmd/exit/tests/patch +N−M`) + a
->    role "working/thinking" label, and highlighted diffs render in RunView /
->    `changes` / `rewind` — but the per-file highlighted diff is NOT streamed
->    INLINE right after each `file_write` (CC shows it inline). FIX: stream the
->    inline (collapsible) highlighted diff per edit in the live rail + keep the
->    thinking indicator. Reviewable history already exists (rewind/changes/dashboard).
+> 1. **CC-parity live activity stream** ✅ DONE (2026-06-24, `37a48bf`): each
+>    `file_write`/`edit` now streams its highlighted unified diff INLINE under the
+>    write line in the live rail — collapsible (Space), with a `+N −M` diffstat
+>    note. The native adapter captures a best-effort per-edit git diff (scoped to
+>    the just-written paths, after formatters, line-capped) onto the `file_write`
+>    event; `rail-reducer` threads it onto the PhaseEvent (mirrors
+>    `patch_generated`); the Ink `RunView`/`DiffView` already render any
+>    `event.diff`, and `rail-render` (non-TTY) expands it under `expandAll`
+>    (logs/replay). Back-compat: no diff → unchanged (golden-rail byte-identical
+>    held). tui 101/101 + agent-runtime 389/389 + typecheck green; verified e2e vs
+>    Kimi (real edit run → unified diff on file_write → `excalibur logs` renders it
+>    inline). The thinking/working label + reviewable history (rewind/changes/
+>    dashboard) were already in place.
 > 2. **Visual orchestration chronogram** — live wave/DAG timeline (dashboard+TTY,
 >    SSE): lanes as bars (state/cost/duration), merge node + tests/mesh gates,
 >    click→run/diff.
