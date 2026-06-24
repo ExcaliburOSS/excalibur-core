@@ -21,6 +21,32 @@ export function repoSelectKeymap(deps: CliDeps): SelectKeymap | undefined {
   }
 }
 
+/** A catalog provider whose API key is already exported in the environment. */
+export interface DetectedProvider {
+  entry: ProviderCatalogEntry;
+  envVar: string;
+  rail: 'api' | 'subscription';
+}
+
+/**
+ * Scans the environment for provider API keys the user has already exported, so
+ * onboarding can offer the zero-friction path (use it directly) instead of
+ * making them scroll the catalog. Prefers a sanctioned subscription-key env var
+ * over the pay-per-token one when both are set. One result per catalog entry.
+ */
+export function detectEnvProviders(env: NodeJS.ProcessEnv): DetectedProvider[] {
+  const found: DetectedProvider[] = [];
+  for (const entry of PROVIDER_CATALOG) {
+    const subEnv = entry.subscription?.keyConfig?.apiKeyEnv;
+    if (subEnv !== undefined && (env[subEnv] ?? '').length > 0) {
+      found.push({ entry, envVar: subEnv, rail: 'subscription' });
+    } else if ((env[entry.apiKeyEnv] ?? '').length > 0) {
+      found.push({ entry, envVar: entry.apiKeyEnv, rail: 'api' });
+    }
+  }
+  return found;
+}
+
 /** Section header for a catalog entry in the grouped provider picker. */
 function catalogGroup(entry: ProviderCatalogEntry): string {
   const kind = entry.subscription?.kind;
@@ -302,13 +328,37 @@ export async function promptProviderSetup(
   // local Ollama / self-hosted for users without a paid key).
   const allowLater = options.allowLater !== false;
 
+  // Zero-friction fast path: if EXACTLY ONE provider's key is already exported,
+  // offer to use it directly — one keystroke to a working model, no scrolling.
+  const detected = detectEnvProviders(deps.env);
+  if (detected.length === 1) {
+    const d = detected[0] as DetectedProvider;
+    // i18n: kept literal until Phase 4 (en.ts is being edited concurrently).
+    const use = await deps.ui.confirm(
+      `Detected ${d.envVar} in your environment — set up ${d.entry.label}?`,
+      { defaultYes: true },
+    );
+    if (use) {
+      return d.rail === 'subscription'
+        ? setupSubscription(deps, d.entry)
+        : setupApiKeyRail(deps, d.entry);
+    }
+  }
+
   const ollamaDetected = isCommandOnPath('ollama', deps.env);
+  // When several keys are detected, float those providers to the top under a
+  // "Detected" header so the user lands on one they can use immediately.
+  const detectedKeys = new Set(detected.map((d) => d.entry.key));
+  const showDetected = detected.length > 1;
+  const orderedCatalog = showDetected
+    ? [...detected.map((d) => d.entry), ...PROVIDER_CATALOG.filter((e) => !detectedKeys.has(e.key))]
+    : PROVIDER_CATALOG;
   // NO mock here: the mock is NEVER offered to an interactive user (it would be
   // user-facing fake functionality). It is reachable only via the explicit
   // non-interactive `--yes` tests/CI hatch above, or a hand-written
   // `type: mock` in providers.yaml. Real providers + "configure later" only.
   const choices: ProviderChoice[] = [
-    ...PROVIDER_CATALOG.map((entry): ProviderChoice => ({ kind: 'catalog', entry })),
+    ...orderedCatalog.map((entry): ProviderChoice => ({ kind: 'catalog', entry })),
     { kind: 'ollama' },
     { kind: 'self-hosted' },
     ...(allowLater ? [{ kind: 'later' as const }] : []),
@@ -319,7 +369,10 @@ export async function promptProviderSetup(
         return {
           label: choice.entry.label,
           hint: choice.entry.hint,
-          group: catalogGroup(choice.entry),
+          group:
+            showDetected && detectedKeys.has(choice.entry.key)
+              ? 'Detected (key in your environment)'
+              : catalogGroup(choice.entry),
         };
       case 'ollama':
         return {
@@ -357,6 +410,17 @@ export async function promptProviderSetup(
     case 'catalog': {
       const entry = choice.entry;
       if (entry.subscription !== undefined) {
+        // Skip the "how do you pay" fork when exactly one rail's key is already
+        // in the env — the choice is already made for the user.
+        const subEnv = entry.subscription.keyConfig?.apiKeyEnv;
+        const subSet = subEnv !== undefined && (deps.env[subEnv] ?? '').length > 0;
+        const apiSet = (deps.env[entry.apiKeyEnv] ?? '').length > 0;
+        if (subSet && !apiSet) {
+          return setupSubscription(deps, entry);
+        }
+        if (apiSet && !subSet) {
+          return setupApiKeyRail(deps, entry);
+        }
         // Subscription-first ordering (OSS individual devs mostly pay a subscription).
         const how = await deps.ui.select(
           deps.t('provider-setup.how_do_you_use', { label: entry.label }),
