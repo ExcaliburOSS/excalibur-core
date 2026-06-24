@@ -81,3 +81,83 @@ export async function parseChain(
     return { task: trimmed, followUp: null };
   }
 }
+
+/** AO8-2 — what to do after a background task finishes. */
+export type SupervisorAction = 'done' | 'continue' | 'escalate';
+
+/** A supervisor's verdict on a completed background task. */
+export interface SupervisorDecision {
+  action: SupervisorAction;
+  /** For `continue`: the follow-up task to run next. */
+  followUp: string | null;
+  /** For `continue`/`escalate`: one line to surface to the user. */
+  note: string | null;
+}
+
+const SUPERVISOR_DONE: SupervisorDecision = { action: 'done', followUp: null, note: null };
+
+/** The completed task's outcome, fed to the supervisor. */
+export interface CompletionOutcome {
+  task: string;
+  outcome: 'done' | 'failed';
+  /** The error message when it failed. */
+  error?: string;
+}
+
+/** Builds the language-agnostic supervisor prompt (the MODEL handles any language). */
+export function buildSupervisorPrompt(c: CompletionOutcome): string {
+  return [
+    'A background coding task just FINISHED. Decide the single next action. Be CONSERVATIVE:',
+    'most finished tasks need NOTHING more — default to "done". Only:',
+    '- "continue": there is an OBVIOUS, high-value next step (give it as a short "followUp" task);',
+    '- "escalate": it failed or got stuck in a way that needs the USER (give a one-line "note");',
+    '- "done": it is complete, or any next step is optional/unclear.',
+    'Reply in the SAME LANGUAGE as the task. Return ONLY this JSON (no prose/markdown/fences):',
+    '{"action": "done" | "continue" | "escalate", "followUp": string | null, "note": string | null}',
+    '',
+    `Task: ${c.task}`,
+    `Outcome: ${c.outcome}${c.error !== undefined && c.error.length > 0 ? ` — ${c.error}` : ''}`,
+  ].join('\n');
+}
+
+/** Parses + sanitizes the supervisor's answer (best-effort → `done`). */
+export function parseSupervisorDecision(modelOutput: string): SupervisorDecision {
+  const obj = firstJsonObject(modelOutput);
+  if (obj === null) return SUPERVISOR_DONE;
+  const action: SupervisorAction =
+    obj['action'] === 'continue' || obj['action'] === 'escalate' ? obj['action'] : 'done';
+  const followUpRaw = obj['followUp'];
+  const followUp =
+    typeof followUpRaw === 'string' && followUpRaw.trim().length > 0
+      ? oneLine(followUpRaw, 500)
+      : null;
+  const noteRaw = obj['note'];
+  const note =
+    typeof noteRaw === 'string' && noteRaw.trim().length > 0 ? oneLine(noteRaw, 300) : null;
+  // A `continue` with no follow-up task is not actionable → downgrade to `done`.
+  if (action === 'continue' && followUp === null)
+    return note !== null ? { action: 'done', followUp: null, note } : SUPERVISOR_DONE;
+  return { action, followUp, note };
+}
+
+/**
+ * Decides the next action after a background task finishes, via the injected
+ * model. Gated to a real interactive, non-mock turn; otherwise (and on any fault)
+ * `done`. Never throws. Whether a `continue` AUTO-dispatches vs is offered is the
+ * caller's call (it knows the autonomy level).
+ */
+export async function superviseCompletion(
+  c: CompletionOutcome,
+  ctx: ChainContext,
+  classify: IntentModel,
+  signal?: AbortSignal,
+): Promise<SupervisorDecision> {
+  if (ctx.mock || !ctx.interactive || c.task.trim().length === 0) {
+    return SUPERVISOR_DONE;
+  }
+  try {
+    return parseSupervisorDecision(await classify(buildSupervisorPrompt(c), signal));
+  } catch {
+    return SUPERVISOR_DONE;
+  }
+}

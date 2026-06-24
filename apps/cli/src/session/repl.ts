@@ -10,6 +10,7 @@ import {
   shouldSurfacePlanShape,
   shouldAskPlanQuestions,
   parseChain,
+  superviseCompletion,
   type TaskChain,
   type PlanShape,
   decidePosture,
@@ -1523,19 +1524,19 @@ async function handleBgCommand(
   launchBgThread(deps, runtime, chain.task, controllers, chain.followUp ?? undefined);
 }
 
-/** Builds the cheap-model adapter + splits a `/bg` request into a {@link TaskChain}
- * (AO8-1). Gated exactly like {@link shapePlan}; any fault → no follow-up. */
-async function parseBgChain(
+/** Builds the cheap-model `classify` adapter used by the AO8 background reactions
+ * (chain split + completion supervisor), or null when there is no usable model
+ * (router off / non-interactive / mock / unconfigured). Gated like {@link shapePlan}. */
+function buildCheapModel(
   deps: CliDeps,
   runtime: SessionRuntime,
-  request: string,
-): Promise<TaskChain> {
+): ((prompt: string, signal?: AbortSignal) => Promise<string>) | null {
   if (
     deps.env['EXCALIBUR_ROUTER'] === 'off' ||
     !deps.ui.isInteractive() ||
     runtime.model === 'mock'
   ) {
-    return { task: request, followUp: null };
+    return null;
   }
   let gateway: ReturnType<typeof loadGatewayContext>;
   let provider: string | undefined;
@@ -1543,32 +1544,89 @@ async function parseBgChain(
     gateway = loadGatewayContext(runtime.repoRoot);
     provider = gateway.cheapProviderName ?? gateway.providerName;
   } catch {
-    return { task: request, followUp: null };
+    return null;
   }
   if (!gateway.configured || provider == null) {
-    return { task: request, followUp: null };
+    return null;
   }
   const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[provider]
     ?.type;
   if (providerType === 'mock') {
-    return { task: request, followUp: null };
+    return null;
   }
-  const model = async (prompt: string, sig?: AbortSignal): Promise<string> => {
+  return async (prompt: string, sig?: AbortSignal): Promise<string> => {
     const output = await gateway.gateway.chat({
       provider,
       messages: [{ role: 'user', content: redactSecrets(prompt) }],
       maxTokens: 400,
       timeoutMs: 15000,
-      metadata: { kind: 'chain' },
+      metadata: { kind: 'bg-react' },
       ...(sig !== undefined ? { signal: sig } : {}),
     });
     return output.content;
   };
+}
+
+/** AO8-1 — splits a `/bg` request into {task, followUp}; best-effort → no chain. */
+async function parseBgChain(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  request: string,
+): Promise<TaskChain> {
+  const model = buildCheapModel(deps, runtime);
+  if (model === null) {
+    return { task: request, followUp: null };
+  }
   try {
     return await parseChain(request, { interactive: true, mock: false }, model);
   } catch {
     return { task: request, followUp: null };
   }
+}
+
+/**
+ * AO8-2 — when a bg thread settles, an OPT-IN supervisor decides the next action.
+ * At full autonomy a `continue` AUTO-dispatches a follow-up; otherwise it surfaces
+ * a one-line suggestion. `escalate` always surfaces a note. Off unless
+ * `orchestration.superviseBackground` is set; best-effort (never affects the session).
+ */
+function maybeSuperviseCompletion(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  task: string,
+  outcome: 'done' | 'failed',
+  error: string | undefined,
+  controllers: Map<string, AbortController>,
+): void {
+  if (runtime.config.orchestration?.superviseBackground !== true) {
+    return;
+  }
+  const model = buildCheapModel(deps, runtime);
+  if (model === null) {
+    return;
+  }
+  void superviseCompletion(
+    { task, outcome, ...(error !== undefined ? { error } : {}) },
+    { interactive: true, mock: false },
+    model,
+  )
+    .then((decision) => {
+      if (decision.action === 'continue' && decision.followUp !== null) {
+        const t =
+          decision.followUp.length > 56 ? `${decision.followUp.slice(0, 55)}…` : decision.followUp;
+        if (runtime.approvals.auto) {
+          deps.ui.info(deps.t('repl.bg-supervise-continue', { title: t }));
+          launchBgThread(deps, runtime, decision.followUp, controllers);
+        } else {
+          deps.ui.info(deps.t('repl.bg-supervise-suggest', { title: t }));
+        }
+      } else if (decision.action === 'escalate' && decision.note !== null) {
+        deps.ui.warn(deps.t('repl.bg-supervise-escalate', { note: decision.note }));
+      }
+    })
+    .catch(() => {
+      /* best-effort: a supervisor fault must never affect the session */
+    });
 }
 
 /**
@@ -1614,6 +1672,9 @@ function launchBgThread(
           pendingFollowUp.length > 56 ? `${pendingFollowUp.slice(0, 55)}…` : pendingFollowUp;
         deps.ui.info(deps.t('repl.bg-followup', { title: fuTitle }));
         launchBgThread(deps, runtime, pendingFollowUp, controllers);
+      } else {
+        // AO8-2 — no explicit chain → let the (opt-in) supervisor decide next.
+        maybeSuperviseCompletion(deps, runtime, task, 'done', undefined, controllers);
       }
     })
     .catch((error: unknown) => {
@@ -1624,6 +1685,8 @@ function launchBgThread(
         'failed',
         deps.t('repl.bg-failed', { title, error: reason }),
       );
+      // AO8-2 — a FAILED bg task is exactly when the supervisor adds value.
+      maybeSuperviseCompletion(deps, runtime, task, 'failed', reason, controllers);
     })
     .finally(() => {
       controllers.delete(id);

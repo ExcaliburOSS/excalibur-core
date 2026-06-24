@@ -165,6 +165,13 @@ const orchestrationSectionSchema = z.object({
    * heal per lane and subject to the same budget cap as a normal lane.
    */
   selfHeal: z.boolean().optional(),
+  /**
+   * AO8-2 — SUPERVISE background completions: when a `/bg` thread finishes, a fast
+   * model decides the next action ({done | continue | escalate}). At full autonomy
+   * a `continue` auto-dispatches a follow-up; otherwise it surfaces a one-line
+   * suggestion. Opt-in (default off); costs one cheap-model call per completion.
+   */
+  superviseBackground: z.boolean().optional(),
 });
 
 const contextSectionSchema = z.object({

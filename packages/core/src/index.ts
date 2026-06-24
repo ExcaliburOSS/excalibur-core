@@ -377,8 +377,14 @@ export {
   buildChainPrompt,
   parseChainRequest,
   parseChain,
+  buildSupervisorPrompt,
+  parseSupervisorDecision,
+  superviseCompletion,
   type TaskChain,
   type ChainContext,
+  type SupervisorAction,
+  type SupervisorDecision,
+  type CompletionOutcome,
 } from './sessions/chain';
 export {
   type StructuralInput,
