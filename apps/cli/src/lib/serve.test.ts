@@ -345,6 +345,14 @@ describe('excalibur serve — interactive write surface (D2)', () => {
       },
       cancel: () => true,
       approve: () => true,
+      shapePlan: () =>
+        Promise.resolve({
+          complexity: 'small' as const,
+          clear: true,
+          questions: [],
+          recommendations: [],
+          surface: false,
+        }),
     };
     server = createExcaliburServer({ repoRoot, token: TOKEN, pollMs: 50, write });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -404,6 +412,14 @@ describe('excalibur serve — live board SSE + read-only share token (D5)', () =
       startRun: () => Promise.resolve({ runId: 'run_20260101_000000' }),
       cancel: () => true,
       approve: () => true,
+      shapePlan: () =>
+        Promise.resolve({
+          complexity: 'small' as const,
+          clear: true,
+          questions: [],
+          recommendations: [],
+          surface: false,
+        }),
     };
     server = createExcaliburServer({
       repoRoot,

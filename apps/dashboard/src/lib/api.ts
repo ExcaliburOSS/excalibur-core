@@ -12,6 +12,7 @@ import type {
   InsightsReportDto,
   OrchestrationSummary,
   PlanDetail,
+  PlanShapeView,
   PlanSummary,
   RunRecord,
   WorkItemDetail,
@@ -141,6 +142,10 @@ export const startRun = (input: {
   task: string;
   workItemId?: string;
 }): Promise<{ runId: string }> => post('/api/runs', input);
+
+/** Plan-shaping proposal for a task — clarifying questions + scope recs (D). */
+export const shapePlan = (task: string): Promise<PlanShapeView> =>
+  post('/api/plan-shape', { task });
 
 /** Cancel a run. */
 export const cancelRun = (id: string): Promise<{ cancelled: boolean }> =>

@@ -24,6 +24,8 @@ export type {
   OrchestrationSummary,
   PlanDetail,
   PlanRefDto,
+  PlanShapeRecommendationDto,
+  PlanShapeView,
   PlanSummary,
   RunRecord,
   RunSummary,

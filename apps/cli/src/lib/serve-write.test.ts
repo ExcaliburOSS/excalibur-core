@@ -19,12 +19,13 @@ let base: string;
 
 function makeHandler(): {
   handler: ServeWriteHandler;
-  calls: { start: unknown[]; cancel: string[]; approve: Array<[string, boolean]> };
+  calls: { start: unknown[]; cancel: string[]; approve: Array<[string, boolean]>; shape: string[] };
 } {
   const calls = {
     start: [] as unknown[],
     cancel: [] as string[],
     approve: [] as Array<[string, boolean]>,
+    shape: [] as string[],
   };
   const handler: ServeWriteHandler = {
     startRun: (input) => {
@@ -38,6 +39,16 @@ function makeHandler(): {
     approve: (id, decision) => {
       calls.approve.push([id, decision]);
       return true;
+    },
+    shapePlan: (task) => {
+      calls.shape.push(task);
+      return Promise.resolve({
+        complexity: 'large',
+        clear: false,
+        questions: ['Which store?'],
+        recommendations: [{ title: 'Add tests', detail: 'cover the new path', recommended: true }],
+        surface: true,
+      });
     },
   };
   return { handler, calls };
@@ -91,6 +102,35 @@ describe('serve write surface', () => {
     await listen(handler);
     const res = await post('/api/runs', { workflow: 'fast-fix' });
     expect(res.status).toBe(400);
+  });
+
+  it('shapes a plan via POST /api/plan-shape (D)', async () => {
+    const { handler, calls } = makeHandler();
+    await listen(handler);
+    const res = await post('/api/plan-shape', { task: 'add a payments flow' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      surface: boolean;
+      questions: string[];
+      recommendations: unknown[];
+    };
+    expect(body.surface).toBe(true);
+    expect(body.questions).toEqual(['Which store?']);
+    expect(body.recommendations).toHaveLength(1);
+    expect(calls.shape).toEqual(['add a payments flow']);
+  });
+
+  it('rejects a plan-shape with no task (400)', async () => {
+    const { handler } = makeHandler();
+    await listen(handler);
+    const res = await post('/api/plan-shape', { task: '   ' });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects plan-shape with 403 when the write surface is disabled', async () => {
+    await listen();
+    const res = await post('/api/plan-shape', { task: 'x' });
+    expect(res.status).toBe(403);
   });
 
   it('cancels a run via POST /api/runs/:id/cancel', async () => {

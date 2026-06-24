@@ -17,6 +17,7 @@ import {
   moveWorkItemLane,
   InvalidLaneError,
 } from './dashboard-data';
+import type { PlanShapeView } from '@excalibur/shared';
 import { buildChronogramForRun } from './chronogram';
 import { setOrchestrationPaused } from './orchestration-manifest';
 
@@ -54,6 +55,8 @@ export interface ServeWriteHandler {
   cancel(runId: string): boolean;
   /** Answer a run's pending approval; false if the run is unknown. */
   approve(runId: string, decision: boolean): boolean;
+  /** Plan-shaping proposal for a task (D — dashboard "shape & start" panel). */
+  shapePlan(task: string): Promise<PlanShapeView>;
 }
 
 export interface ServeOptions {
@@ -463,6 +466,19 @@ async function handleWrite(
         ...(workItemId !== undefined ? { workItemId } : {}),
       });
       send(201, out);
+      return;
+    }
+    // D: plan-shaping — propose clarifying questions + scope recommendations for
+    // a task BEFORE starting a run (a model compute, not a mutation, but it needs
+    // the configured model so it lives on the write surface).
+    if (path === '/api/plan-shape') {
+      const body = await readJsonBody(req);
+      const task = typeof body['task'] === 'string' ? body['task'].trim() : '';
+      if (task.length === 0) {
+        send(400, { error: 'a non-empty "task" is required' });
+        return;
+      }
+      send(200, await options.write.shapePlan(task));
       return;
     }
     // D2: move a work item to another lane (drag-to-change-status).

@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { Command } from 'commander';
-import { RunController } from '@excalibur/core';
+import { planShape, RunController, shouldSurfacePlanShape } from '@excalibur/core';
+import { redactSecrets } from '@excalibur/model-gateway';
 import { executionStyleSchema, isAutonomyLevel, type ExecutionStyle } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
@@ -10,7 +11,7 @@ import { createExcaliburServer, type ServeWriteHandler } from '../lib/serve';
 /** Builds the control-plane write handler: start/cancel/approve runs via a RunController. */
 function buildWriteHandler(repoRoot: string): ServeWriteHandler {
   const { config } = loadConfigContext(repoRoot);
-  const { gateway, providerName, configured } = loadGatewayContext(repoRoot);
+  const { gateway, providerName, cheapProviderName, configured } = loadGatewayContext(repoRoot);
   const controller = new RunController();
   return {
     startRun: async (input) => {
@@ -47,6 +48,34 @@ function buildWriteHandler(repoRoot: string): ServeWriteHandler {
       }
       handle.approve(decision);
       return true;
+    },
+    shapePlan: async (task) => {
+      // Unconfigured → no shaping (the panel just starts the run as-is).
+      if (!configured) {
+        return {
+          complexity: 'small',
+          clear: true,
+          questions: [],
+          recommendations: [],
+          surface: false,
+        };
+      }
+      const provider = cheapProviderName ?? providerName;
+      const model = async (prompt: string, signal?: AbortSignal): Promise<string> => {
+        const output = await gateway.chat({
+          provider,
+          messages: [{ role: 'user', content: redactSecrets(prompt) }],
+          maxTokens: 1200,
+          timeoutMs: 20000,
+          metadata: { kind: 'plan-shape' },
+          ...(signal !== undefined ? { signal } : {}),
+        });
+        return output.content;
+      };
+      // The web user opted in by clicking "shape", so run at an act-capable
+      // level; `surface` carries the gate so the UI can stay quiet if it is clear.
+      const shape = await planShape(task, { interactive: true, mock: false, level: 4 }, model);
+      return { ...shape, surface: shouldSurfacePlanShape(shape) };
     },
   };
 }

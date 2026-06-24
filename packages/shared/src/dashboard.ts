@@ -234,6 +234,27 @@ export interface PlanDetail extends PlanSummary {
   body: string;
 }
 
+/** One plan-shaping recommendation toggled into scope (D — dashboard panel). */
+export interface PlanShapeRecommendationDto {
+  title: string;
+  detail: string;
+  /** Pre-checked in the panel when true. */
+  recommended: boolean;
+}
+
+/**
+ * A plan-shaping proposal for the dashboard "shape & start" panel (D), mirroring
+ * the core `PlanShape`. `surface` is the gate result (large / unclear / has
+ * optional scope) so the web UI can stay quiet for a clear, small task.
+ */
+export interface PlanShapeView {
+  complexity: 'small' | 'medium' | 'large';
+  clear: boolean;
+  questions: string[];
+  recommendations: PlanShapeRecommendationDto[];
+  surface: boolean;
+}
+
 /** A discovery session summary (D3). */
 export interface DiscoverySummary {
   id: string;
