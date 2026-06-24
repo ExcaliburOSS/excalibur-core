@@ -32,10 +32,11 @@ export function registerOrchestrateCommand(program: Command, deps: CliDeps): voi
     .option('--resume', 're-dispatch only the lanes that did not complete')
     .option('--spec <name|path>', 'run an authored orchestration spec (YAML of named steps)')
     .option('-y, --yes', 'apply the merged result without prompting')
+    .option('--work-item <key>', 'link every lane to an existing work item (e.g. WI-12)')
     .action(
       async (
         runIdArg: string | undefined,
-        options: { resume?: boolean; yes?: boolean; spec?: string },
+        options: { resume?: boolean; yes?: boolean; spec?: string; workItem?: string },
       ) => {
         const repoRoot = deps.cwd();
         if (!getGitInfo(repoRoot).isRepo) {
@@ -82,7 +83,12 @@ export function registerOrchestrateCommand(program: Command, deps: CliDeps): voi
             deps,
             repoRoot,
             task,
-            { gateway: gw.gateway, providerName: gw.providerName, config: cfg },
+            {
+              gateway: gw.gateway,
+              providerName: gw.providerName,
+              config: cfg,
+              ...(options.workItem !== undefined ? { workItemId: options.workItem } : {}),
+            },
             { subtasks: toRun, ...(options.yes === true ? { yes: true } : {}) },
           );
           return;
@@ -97,7 +103,7 @@ async function runManifestOrchestration(
   deps: CliDeps,
   repoRoot: string,
   runIdArg: string | undefined,
-  options: { resume?: boolean; yes?: boolean },
+  options: { resume?: boolean; yes?: boolean; workItem?: string },
 ): Promise<void> {
   const runId = runIdArg ?? latestOrchestrationRunId(repoRoot) ?? undefined;
   if (runId === undefined) {
@@ -138,7 +144,12 @@ async function runManifestOrchestration(
     deps,
     repoRoot,
     manifest.task,
-    { gateway: gateway.gateway, providerName: gateway.providerName, config },
+    {
+      gateway: gateway.gateway,
+      providerName: gateway.providerName,
+      config,
+      ...(options.workItem !== undefined ? { workItemId: options.workItem } : {}),
+    },
     { subtasks, ...(options.yes === true ? { yes: true } : {}) },
   );
 }

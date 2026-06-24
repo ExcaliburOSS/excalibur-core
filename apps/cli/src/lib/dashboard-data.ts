@@ -196,6 +196,9 @@ export function buildOrchestrations(repoRoot: string): OrchestrationSummary[] {
         title: c.record.title,
         status: c.record.status,
         costCents: laneCost(c),
+        // AO4e-3 — surface the lane's work item (live now that SwarmFlowContext
+        // threads workItemId → each child run records it).
+        workItemId: c.record.workItemId ?? null,
       }));
     summaries.push({
       parentRunId: parentId,

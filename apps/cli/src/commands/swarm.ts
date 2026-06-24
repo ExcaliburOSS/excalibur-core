@@ -25,6 +25,7 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
     )
     .option('--apply', 'apply the merged changes to your working tree without prompting')
     .option('-y, --yes', 'skip prompts and apply the merged changes (same as --apply)')
+    .option('--work-item <key>', 'link every lane to an existing work item (e.g. WI-12)')
     .action(
       async (
         taskWords: string[],
@@ -34,6 +35,7 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
           grade?: boolean;
           apply?: boolean;
           yes?: boolean;
+          workItem?: string;
         },
       ) => {
         const task = taskWords.join(' ').trim();
@@ -54,7 +56,12 @@ export function registerSwarmCommand(program: Command, deps: CliDeps): void {
           deps,
           repoRoot,
           task,
-          { gateway: gateway.gateway, providerName: gateway.providerName, config },
+          {
+            gateway: gateway.gateway,
+            providerName: gateway.providerName,
+            config,
+            ...(options.workItem !== undefined ? { workItemId: options.workItem } : {}),
+          },
           {
             ...(maxAgents !== undefined ? { maxAgents } : {}),
             ...(retries !== undefined ? { retries } : {}),

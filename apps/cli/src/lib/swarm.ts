@@ -501,6 +501,9 @@ export async function executeSwarm(
   const isPaused = (): boolean =>
     parentId !== null && (loadOrchestrationControl(repoRoot, parentId)?.paused ?? false);
   const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+  // AO4e-3 — lanes the user cancelled per-lane (kept out of the generic finalize
+  // so their child run keeps its 'cancelled' status).
+  const cancelledLaneIds = new Set<string>();
 
   const runLane = async ({
     lane,
@@ -511,6 +514,10 @@ export async function executeSwarm(
     worktreePath: string;
     feedback?: string;
   }): Promise<SwarmLaneSummary> => {
+    // Create the child run NOW (before the gates) so its id is resolvable for the
+    // per-lane cancel check (AO4e-3) and every lane is visible in the dashboard the
+    // moment the swarm starts — not only once it begins model work.
+    const childId = childRunFor(lane.id);
     // Pause gate (AO6 Pillar 3): HOLD a not-yet-started lane while the
     // orchestration is paused; clearing the flag resumes the same swarm.
     await holdWhilePaused({
@@ -544,6 +551,26 @@ export async function executeSwarm(
     if (options.signal?.aborted ?? false) {
       return { costCents: 0, toolCalls: 0 };
     }
+    // AO4e-3 — per-lane cancel: if this lane was cancelled from the dashboard (its
+    // child run id is on the parent's control file) and it has not started, SKIP it
+    // (no model spend) and keep its child run marked 'cancelled'.
+    if (
+      childId !== null &&
+      parentId !== null &&
+      (loadOrchestrationControl(repoRoot, parentId)?.cancelledRunIds ?? []).includes(childId)
+    ) {
+      cancelledLaneIds.add(lane.id);
+      try {
+        runManager.updateRecord(childId, {
+          status: 'cancelled',
+          completedAt: new Date().toISOString(),
+        });
+      } catch {
+        /* best-effort */
+      }
+      deps.ui.warn(deps.t('swarm.lane-cancelled', { title: byId.get(lane.id)?.title ?? lane.id }));
+      return { costCents: 0, toolCalls: 0 };
+    }
     // Budget gate: once the shared cap is hit, do NOT start another lane (no
     // model spend) — the already-merged lanes are the partial result.
     if (ledger.exceeded()) {
@@ -558,7 +585,6 @@ export async function executeSwarm(
       }
       return { costCents: 0, toolCalls: 0 };
     }
-    const childId = childRunFor(lane.id);
     const adapter = new NativeAgentAdapter();
     let costCents: number | null = null;
     let toolCalls = 0;
@@ -734,6 +760,9 @@ export async function executeSwarm(
   for (const laneResult of result.lanes) {
     const childId = childByLane.get(laneResult.id);
     if (childId === undefined) continue;
+    // AO4e-3 — a per-lane-cancelled lane keeps its 'cancelled' status; don't
+    // overwrite it with the generic completed/failed finalization.
+    if (cancelledLaneIds.has(laneResult.id)) continue;
     try {
       runManager.updateRecord(childId, {
         status: laneResult.failed ? 'failed' : 'completed',
@@ -787,6 +816,10 @@ export interface SwarmFlowContext {
   gateway: ModelGateway;
   providerName: string;
   config: ExcaliburConfig;
+  /** AO4e-3 — link every lane's child run to this work item (surfaced per-lane in
+   * the dashboard). Supplied by `swarm`/`orchestrate --work-item`; the ad-hoc REPL
+   * auto-build has no work item in scope, so it stays null. */
+  workItemId?: string | null;
 }
 
 export interface SwarmFlowOptions {
@@ -998,6 +1031,8 @@ export async function runSwarmFlow(
         autonomyAutoApprove: true, // a parallel batch can't prompt per-lane
         providerName: ctx.providerName,
         task,
+        // AO4e-3 — forward the work item so each lane's child run links to it.
+        ...(ctx.workItemId != null ? { workItemId: ctx.workItemId } : {}),
       },
       {
         maxConcurrency: concurrency,

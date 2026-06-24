@@ -106,6 +106,10 @@ export interface OrchestrationControl {
   paused: boolean;
   /** ISO timestamp of the last pause (informational). */
   pausedAt?: string;
+  /** AO4e-3 — child run ids the user cancelled per-lane: a live swarm's lane gate
+   * SKIPS a not-yet-started lane whose child run id is here (no model spend),
+   * marking it cancelled. In-flight lanes finish (same granularity as pause). */
+  cancelledRunIds?: string[];
 }
 
 /** Reads a run's `orchestration-control.json`; null if absent/unreadable. */
@@ -120,12 +124,37 @@ export function loadOrchestrationControl(
     ) as unknown;
     if (typeof raw !== 'object' || raw === null) return null;
     const c = raw as Partial<OrchestrationControl>;
+    const cancelled = Array.isArray(c.cancelledRunIds)
+      ? c.cancelledRunIds.filter((x): x is string => typeof x === 'string')
+      : [];
     return {
       paused: c.paused === true,
       ...(typeof c.pausedAt === 'string' ? { pausedAt: c.pausedAt } : {}),
+      ...(cancelled.length > 0 ? { cancelledRunIds: cancelled } : {}),
     };
   } catch {
     return null;
+  }
+}
+
+/** Persists a control file, MERGING over the current one so pause + per-lane
+ * cancel never clobber each other (best-effort, returns success). */
+function writeOrchestrationControl(
+  repoRoot: string,
+  runId: string,
+  patch: Partial<OrchestrationControl>,
+): boolean {
+  try {
+    const current = loadOrchestrationControl(repoRoot, runId) ?? { paused: false };
+    const next: OrchestrationControl = { ...current, ...patch };
+    new RunManager(repoRoot).writeArtifact(
+      runId,
+      'orchestration-control.json',
+      JSON.stringify(next, null, 2),
+    );
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -136,19 +165,27 @@ export function setOrchestrationPaused(
   paused: boolean,
   nowIso: string,
 ): boolean {
-  try {
-    const control: OrchestrationControl = paused
-      ? { paused: true, pausedAt: nowIso }
-      : { paused: false };
-    new RunManager(repoRoot).writeArtifact(
-      runId,
-      'orchestration-control.json',
-      JSON.stringify(control, null, 2),
-    );
-    return true;
-  } catch {
-    return false;
-  }
+  return writeOrchestrationControl(
+    repoRoot,
+    runId,
+    paused ? { paused: true, pausedAt: nowIso } : { paused: false },
+  );
+}
+
+/**
+ * AO4e-3 — marks ONE lane (its child run id) cancelled on the parent's control
+ * file. The live swarm's lane gate skips that lane if it has not started yet (an
+ * in-flight lane finishes, as with pause). Best-effort; returns success.
+ */
+export function cancelOrchestrationLane(
+  repoRoot: string,
+  parentRunId: string,
+  laneRunId: string,
+): boolean {
+  const current = loadOrchestrationControl(repoRoot, parentRunId);
+  const set = new Set(current?.cancelledRunIds ?? []);
+  set.add(laneRunId);
+  return writeOrchestrationControl(repoRoot, parentRunId, { cancelledRunIds: [...set] });
 }
 
 export interface ManifestLaneOutcome {

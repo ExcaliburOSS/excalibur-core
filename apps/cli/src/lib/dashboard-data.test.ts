@@ -48,6 +48,29 @@ describe('dashboard-data (store → DTO mappers)', () => {
     expect(o.laneCount).toBe(2);
     expect(o.lanes.map((l) => l.title)).toEqual(['lane A', 'lane B']);
     expect(o.lanes.map((l) => l.status)).toEqual(['completed', 'failed']);
+    // AO4e-3 — lanes with no work item project null (not undefined/missing).
+    expect(o.lanes.map((l) => l.workItemId)).toEqual([null, null]);
+  });
+
+  it('projects each lane child run work item id (AO4e-3)', () => {
+    const manager = new RunManager(repoRoot);
+    const parent = manager.createRun({
+      title: 'swarm: 1 lane',
+      autonomyLevel: 3,
+      workflow: 'swarm',
+      workItemId: 'WI-7',
+    });
+    const a = manager.createRun({
+      title: 'lane A',
+      autonomyLevel: 3,
+      workflow: 'swarm-lane',
+      parentRunId: parent.id,
+      workItemId: 'WI-7',
+    });
+    manager.updateRecord(a.id, { status: 'running' });
+    const o = buildOrchestrations(repoRoot)[0]!;
+    expect(o.workItemId).toBe('WI-7'); // parent level (existing)
+    expect(o.lanes[0]!.workItemId).toBe('WI-7'); // AO4e-3 — now per-lane too
   });
 
   it('returns no orchestrations when there is no parallel work', () => {

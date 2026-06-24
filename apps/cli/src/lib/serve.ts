@@ -19,7 +19,7 @@ import {
 } from './dashboard-data';
 import type { PlanShapeView } from '@excalibur/shared';
 import { buildChronogramForRun } from './chronogram';
-import { setOrchestrationPaused } from './orchestration-manifest';
+import { cancelOrchestrationLane, setOrchestrationPaused } from './orchestration-manifest';
 
 /**
  * `excalibur serve` (plan P1.12 / the headless-server enabler) — a local,
@@ -112,7 +112,14 @@ function tokenMatches(presented: string | null, secret: string | undefined): boo
 /** Cap on simultaneously-open SSE streams (anti-resource-exhaustion). */
 const MAX_OPEN_STREAMS = 64;
 
-type RouteResult = Json | Html | 'sse' | 'sse-board' | 'sse-orchestration' | null;
+type RouteResult =
+  | Json
+  | Html
+  | 'sse'
+  | 'sse-board'
+  | 'sse-orchestration'
+  | 'sse-orchestrations'
+  | null;
 
 /** Routes a request to a payload, an HTML page, or an SSE sentinel. */
 function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
@@ -137,6 +144,10 @@ function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
   if (path === '/api/orchestrations') {
     // AO4e: parallel orchestrations (parent swarm run + its lane child runs).
     return { status: 200, body: { orchestrations: buildOrchestrations(repoRoot) } };
+  }
+  if (path === '/api/orchestrations/stream') {
+    // AO4e-3: push the orchestrations LIST on change (was a 3s client poll).
+    return 'sse-orchestrations';
   }
   const orchMatch = /^\/api\/orchestrations\/([^/]+)(\/stream)?$/.exec(path);
   if (orchMatch !== null) {
@@ -357,6 +368,39 @@ function streamBoard(repoRoot: string, res: ServerResponse, pollMs: number): voi
 }
 
 /**
+ * AO4e-3 — streams the orchestrations LIST as SSE: emit the current set, then push
+ * a new snapshot only when it CHANGES (a lane finished, a swarm started, a lane was
+ * cancelled). Replaces the dashboard's 3s poll. Mirrors {@link streamBoard}.
+ */
+function streamOrchestrations(repoRoot: string, res: ServerResponse, pollMs: number): void {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  let last = '';
+  let beats = 0;
+  const tick = (): void => {
+    let snapshot: string;
+    try {
+      snapshot = JSON.stringify({ orchestrations: buildOrchestrations(repoRoot) });
+    } catch {
+      return; // a transient read error — try again next tick
+    }
+    if (snapshot !== last) {
+      last = snapshot;
+      res.write(`event: orchestrations\ndata: ${snapshot}\n\n`);
+    } else if ((beats += 1) % 10 === 0) {
+      res.write(': keep-alive\n\n');
+    }
+  };
+  tick();
+  const timer = setInterval(tick, Math.max(250, pollMs));
+  timer.unref?.();
+  res.on('close', () => clearInterval(timer));
+}
+
+/**
  * Streams ONE orchestration's chronogram as SSE (AO6 Pillar 2): emit the current
  * wave/DAG snapshot immediately, then re-evaluate on an interval and push only
  * when it CHANGED — so the dashboard timeline fills wave-by-wave live without a
@@ -525,6 +569,24 @@ async function handleWrite(
       }
       return;
     }
+    // AO4e-3: cancel ONE lane of a live orchestration (skip it if not started;
+    // an in-flight lane finishes, as with pause). A mutation → write surface.
+    const laneCancelMatch = /^\/api\/orchestrations\/([^/]+)\/lanes\/([^/]+)\/cancel$/.exec(path);
+    if (laneCancelMatch !== null) {
+      const parentId = decodeURIComponent(laneCancelMatch[1] as string);
+      const laneRunId = decodeURIComponent(laneCancelMatch[2] as string);
+      if (!RUN_ID.test(parentId) || !RUN_ID.test(laneRunId)) {
+        send(400, { error: 'invalid run id' });
+        return;
+      }
+      const ok = cancelOrchestrationLane(options.repoRoot, parentId, laneRunId);
+      if (ok) {
+        send(200, { cancelled: true });
+      } else {
+        send(404, { error: 'orchestration not found' });
+      }
+      return;
+    }
     const match = /^\/api\/runs\/([^/]+)\/(cancel|approve)$/.exec(path);
     if (match !== null) {
       const id = decodeURIComponent(match[1] as string);
@@ -624,6 +686,10 @@ export function createExcaliburServer(options: ServeOptions): Server {
     }
     if (result === 'sse-board') {
       withStreamCap(res, () => streamBoard(options.repoRoot, res, pollMs));
+      return;
+    }
+    if (result === 'sse-orchestrations') {
+      withStreamCap(res, () => streamOrchestrations(options.repoRoot, res, pollMs));
       return;
     }
     if (result === 'sse-orchestration') {

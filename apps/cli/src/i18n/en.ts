@@ -464,6 +464,7 @@ export const EN: Catalog = {
     'Verified fan-in FAILED: {detail}. The merged changes were REVERTED, not kept — the lanes were individually fine but break in combination.',
   'swarm.budget-stopped':
     'Budget cap reached (${spent} of ${cap}) — not starting more lanes. The lanes that finished are the partial result.',
+  'swarm.lane-cancelled': 'Lane cancelled: {title} (skipped — no model spend).',
   'swarm.retryFailed': '{n} lane(s) failed — retry just those now?',
   'swarm.mesh-running': 'Adversarial review of the merged result ({lenses} lens(es))…',
   'swarm.mesh-blocked':

@@ -159,4 +159,14 @@ export const approveRun = (id: string, decision: boolean): Promise<{ ok: boolean
 export const pauseOrchestration = (id: string, paused: boolean): Promise<{ paused: boolean }> =>
   post(`/api/orchestrations/${encodeURIComponent(id)}/pause`, { paused });
 
+/** Cancel ONE lane (its child run) of a live orchestration (AO4e-3). */
+export const cancelOrchestrationLane = (
+  parentId: string,
+  laneRunId: string,
+): Promise<{ cancelled: boolean }> =>
+  post(
+    `/api/orchestrations/${encodeURIComponent(parentId)}/lanes/${encodeURIComponent(laneRunId)}/cancel`,
+    {},
+  );
+
 export { authToken };

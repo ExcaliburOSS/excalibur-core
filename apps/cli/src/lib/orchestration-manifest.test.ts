@@ -1,13 +1,51 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { RunManager } from '@excalibur/core';
 import {
   buildOrchestrationManifest,
+  cancelOrchestrationLane,
   laneSignature,
+  loadOrchestrationControl,
   manifestToSubtasks,
   planResume,
+  setOrchestrationPaused,
   type ManifestLaneOutcome,
   type OrchestrationManifest,
 } from './orchestration-manifest';
 import type { SwarmSubtask } from './swarm';
+import { makeTempDir, removeDir } from '../test-utils';
+
+describe('orchestration control file (AO4e-3 — pause + per-lane cancel merge)', () => {
+  let repoRoot: string;
+  beforeEach(() => {
+    repoRoot = makeTempDir();
+  });
+  afterEach(() => {
+    removeDir(repoRoot);
+  });
+
+  it('pause and per-lane cancel persist WITHOUT clobbering each other', () => {
+    const parent = new RunManager(repoRoot).createRun({
+      title: 'swarm',
+      autonomyLevel: 3,
+      workflow: 'swarm',
+    });
+    cancelOrchestrationLane(repoRoot, parent.id, 'run_lane_a');
+    cancelOrchestrationLane(repoRoot, parent.id, 'run_lane_b');
+    setOrchestrationPaused(repoRoot, parent.id, true, '2026-06-25T00:00:00.000Z');
+    let c = loadOrchestrationControl(repoRoot, parent.id)!;
+    expect(c.paused).toBe(true); // pause did NOT drop the cancellations
+    expect([...(c.cancelledRunIds ?? [])].sort()).toEqual(['run_lane_a', 'run_lane_b']);
+
+    setOrchestrationPaused(repoRoot, parent.id, false, '2026-06-25T00:01:00.000Z');
+    c = loadOrchestrationControl(repoRoot, parent.id)!;
+    expect(c.paused).toBe(false); // resume KEEPS the cancellations
+    expect([...(c.cancelledRunIds ?? [])].sort()).toEqual(['run_lane_a', 'run_lane_b']);
+
+    cancelOrchestrationLane(repoRoot, parent.id, 'run_lane_a'); // idempotent (a set)
+    c = loadOrchestrationControl(repoRoot, parent.id)!;
+    expect([...(c.cancelledRunIds ?? [])].sort()).toEqual(['run_lane_a', 'run_lane_b']);
+  });
+});
 
 const subtasks: SwarmSubtask[] = [
   { id: 't1', title: 'A', instruction: 'do A' },

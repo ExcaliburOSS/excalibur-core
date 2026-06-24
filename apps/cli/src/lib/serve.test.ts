@@ -6,6 +6,7 @@ import { createEvent } from '@excalibur/shared';
 import type { Server } from 'node:http';
 import { createExcaliburServer } from './serve';
 import { dashboardHtml } from './dashboard';
+import { loadOrchestrationControl } from './orchestration-manifest';
 import { makeTempDir, removeDir } from '../test-utils';
 
 const TOKEN = 'test-token-abc';
@@ -260,6 +261,44 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
     expect((await get('/api/orchestrations/not-a-run')).status).toBe(400);
   });
 
+  it('lists orchestrations with per-lane work item ids + streams the list (AO4e-3)', async () => {
+    const manager = new RunManager(repoRoot);
+    const parent = manager.createRun({
+      title: 'swarm: wi',
+      autonomyLevel: 3,
+      workflow: 'swarm',
+      workItemId: 'WI-42',
+    });
+    const child = manager.createRun({
+      title: 'Lane WI',
+      autonomyLevel: 3,
+      workflow: 'swarm-lane',
+      parentRunId: parent.id,
+      workItemId: 'WI-42',
+    });
+    manager.updateRecord(child.id, { status: 'running' });
+
+    // The LIST projects the per-lane work item (was missing → dead linkage).
+    const list = (await (await get('/api/orchestrations')).json()) as {
+      orchestrations: {
+        parentRunId: string;
+        lanes: { runId: string; workItemId: string | null }[];
+      }[];
+    };
+    const o = list.orchestrations.find((x) => x.parentRunId === parent.id)!;
+    expect(o.lanes[0]?.workItemId).toBe('WI-42');
+
+    // The LIST stream emits an `orchestrations` frame (replaces the 3s poll).
+    const res = await fetch(`${base}/api/orchestrations/stream?token=${TOKEN}`);
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+    const reader = res.body!.getReader();
+    const { value } = await reader.read();
+    const text = new TextDecoder().decode(value);
+    expect(text).toContain('event: orchestrations');
+    expect(text).toContain('"workItemId":"WI-42"');
+    await reader.cancel();
+  });
+
   it('streams a completed run as SSE (replays events, ends)', async () => {
     const res = await get(`/api/runs/${runId}/stream`);
     expect(res.headers.get('content-type')).toContain('text/event-stream');
@@ -396,6 +435,26 @@ describe('excalibur serve — interactive write surface (D2)', () => {
     expect(startCalls[0]).toMatchObject({ task: 'do it', workItemId: wiKey });
     // a malformed workItemId is rejected
     expect((await post('/api/runs', { task: 'x', workItemId: 'evil/../x' })).status).toBe(400);
+  });
+
+  it('cancels ONE lane of an orchestration (AO4e-3) — writes the control file', async () => {
+    const manager = new RunManager(repoRoot);
+    const parent = manager.createRun({ title: 'swarm', autonomyLevel: 3, workflow: 'swarm' });
+    const child = manager.createRun({
+      title: 'Lane',
+      autonomyLevel: 3,
+      workflow: 'swarm-lane',
+      parentRunId: parent.id,
+    });
+    const res = await post(`/api/orchestrations/${parent.id}/lanes/${child.id}/cancel`, {});
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { cancelled: boolean }).toEqual({ cancelled: true });
+    // The control file the live lane gate polls now lists this lane's child run.
+    expect(loadOrchestrationControl(repoRoot, parent.id)?.cancelledRunIds).toEqual([child.id]);
+    // Malformed ids are rejected.
+    expect((await post(`/api/orchestrations/not-a-run/lanes/${child.id}/cancel`, {})).status).toBe(
+      400,
+    );
   });
 });
 

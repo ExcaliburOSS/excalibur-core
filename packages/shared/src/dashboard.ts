@@ -103,6 +103,9 @@ export interface OrchestrationLaneDto {
   title: string;
   status: string;
   costCents: number | null;
+  /** The work item this lane advanced, if any (AO4e-3) — surfaced per-lane so the
+   * task-centric dashboard shows which work item each parallel lane is moving. */
+  workItemId: string | null;
 }
 
 /**

@@ -1,31 +1,109 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fetchOrchestrations, ApiError } from '../lib/api';
+  import {
+    fetchOrchestrations,
+    fetchHealth,
+    cancelOrchestrationLane,
+    authToken,
+    ApiError,
+  } from '../lib/api';
   import type { OrchestrationSummary } from '../lib/contracts';
   import { t } from '../lib/i18n';
 
   let orchestrations = $state<OrchestrationSummary[]>([]);
   let error = $state<string | null>(null);
   let loading = $state(true);
+  let writable = $state(false); // per-lane cancel needs serve --write
+  let es: EventSource | null = null;
+  let timer: ReturnType<typeof setInterval> | null = null;
+  let reconnect: ReturnType<typeof setTimeout> | null = null;
 
-  async function load(): Promise<void> {
+  async function load(quiet = false): Promise<void> {
+    if (!quiet) loading = true;
     try {
       const res = await fetchOrchestrations();
       orchestrations = res.orchestrations;
       error = null;
     } catch (e) {
-      error = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
+      if (orchestrations.length === 0) {
+        error = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
+      }
     } finally {
       loading = false;
     }
   }
 
+  // AO4e-3 — live list via SSE: the server pushes a new snapshot only when it
+  // changes (a lane finished, a swarm started, a lane was cancelled). Replaces the
+  // old 3s poll; falls back to polling + reconnect if the stream drops.
+  function connect(): void {
+    if (es !== null || typeof EventSource === 'undefined') return;
+    const stream = new EventSource(
+      `/api/orchestrations/stream?token=${encodeURIComponent(authToken())}`,
+    );
+    stream.addEventListener('orchestrations', (ev) => {
+      try {
+        orchestrations = (
+          JSON.parse((ev as MessageEvent).data) as { orchestrations: OrchestrationSummary[] }
+        ).orchestrations;
+        loading = false;
+        error = null;
+      } catch {
+        /* ignore a malformed frame */
+      }
+    });
+    stream.onopen = () => stopPoll();
+    stream.onerror = () => {
+      stream.close();
+      es = null;
+      startPoll();
+      scheduleReconnect();
+    };
+    es = stream;
+  }
+  function scheduleReconnect(): void {
+    if (reconnect !== null) return;
+    reconnect = setTimeout(() => {
+      reconnect = null;
+      if (es === null) connect();
+    }, 5000);
+  }
+  function startPoll(): void {
+    if (timer !== null) return;
+    timer = setInterval(() => {
+      if (document.visibilityState === 'visible') void load(true);
+    }, 4000);
+  }
+  function stopPoll(): void {
+    if (timer !== null) {
+      clearInterval(timer);
+      timer = null;
+    }
+  }
+
+  async function cancelLane(parentId: string, runId: string): Promise<void> {
+    try {
+      await cancelOrchestrationLane(parentId, runId);
+      void load(true);
+    } catch (e) {
+      error = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
+    }
+  }
+
   onMount(() => {
     void load();
-    // Light polling keeps the multi-lane view live while a swarm runs (no SSE
-    // dependency — the read surface is cheap). Cleared on unmount.
-    const timer = setInterval(() => void load(), 3000);
-    return () => clearInterval(timer);
+    fetchHealth()
+      .then((h) => (writable = h.write))
+      .catch(() => {
+        /* read-only share link — leave write off */
+      });
+    connect();
+    return () => {
+      es?.close();
+      es = null;
+      stopPoll();
+      if (reconnect !== null) clearTimeout(reconnect);
+    };
   });
 
   const dollars = (cents: number | null): string =>
@@ -37,6 +115,7 @@
     if (status === 'running' || status === 'queued') return 'run';
     return 'idle';
   }
+  const laneActive = (status: string): boolean => status === 'running' || status === 'queued';
 </script>
 
 <section>
@@ -73,8 +152,18 @@
                 <a href={`#/runs/${encodeURIComponent(lane.runId)}`} class="lane-title"
                   >{lane.title}</a
                 >
+                {#if lane.workItemId}
+                  <a class="wi" href={`#/work-items/${encodeURIComponent(lane.workItemId)}`}
+                    >{lane.workItemId}</a
+                  >
+                {/if}
                 <span class="grow"></span>
                 <span class="cost faint">{dollars(lane.costCents)}</span>
+                {#if writable && laneActive(lane.status)}
+                  <button class="cancel" onclick={() => cancelLane(o.parentRunId, lane.runId)}
+                    >{t('orch.cancel-lane')}</button
+                  >
+                {/if}
                 <span class="lane-status {statusClass(lane.status)}">{lane.status}</span>
               </li>
             {/each}
@@ -143,9 +232,31 @@
   .lane-title {
     color: var(--text);
   }
+  .wi {
+    font-size: 11px;
+    color: var(--accent);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
   .cost {
     font-variant-numeric: tabular-nums;
     font-size: 12px;
+  }
+  .cancel {
+    font: inherit;
+    font-size: 11px;
+    color: var(--bad, #f85149);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 1px 7px;
+    cursor: pointer;
+  }
+  .cancel:hover {
+    border-color: var(--bad, #f85149);
   }
   .status,
   .lane-status {
