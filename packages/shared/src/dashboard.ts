@@ -163,6 +163,12 @@ export interface ChronogramDto {
   waves: string[][];
   lanes: ChronogramLaneDto[];
   totalCostCents: number | null;
+  /**
+   * Whether the orchestration is PAUSED mid-flight (AO6 Pillar 3): a live swarm
+   * stops dispatching new lanes and holds at the gate; in-flight lanes finish.
+   * Derived from the persisted control flag, independent of the run status.
+   */
+  paused: boolean;
 }
 
 /** An external link off a work item (PR / commit / doc). */

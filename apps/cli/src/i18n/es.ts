@@ -506,6 +506,13 @@ export const ES: Catalog = {
   'orchestration.none': 'No se encontró ninguna orquestación. Lanza un swarm o /explore primero.',
   'orchestration.notFound': 'No se encontró orquestación para la ejecución {id}.',
   'orchestration.heading': 'Orquestación {id} · {task} · {status}',
+  'orchestration.pause-set':
+    'Orquestación {id} pausada — un swarm en vivo se detendrá al terminar sus carriles en vuelo.',
+  'orchestration.resume-set':
+    'Orquestación {id} reanudada — un swarm retenido continúa despachando carriles.',
+  'orchestration.paused-held':
+    'Orquestación pausada — reteniendo carriles nuevos (los en vuelo terminan). Reanuda para continuar.',
+  'orchestration.resumed': 'Orquestación reanudada — despachando carriles de nuevo.',
   'chronogram.title': 'Cronograma',
   'chronogram.wave': 'Onda',
   'chronogram.depends': 'depende',
@@ -513,6 +520,7 @@ export const ES: Catalog = {
   'chronogram.running': 'en curso',
   'chronogram.failed': 'fallidos',
   'chronogram.pending': 'pendientes',
+  'chronogram.paused': 'pausada',
   'swarm.singleUnit':
     'Solo una unidad independiente: esto se ejecuta como un único agente (sin paralelismo real).',
   'swarm.confirmRun': '¿Ejecutar {count} agente(s) en paralelo?',

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import { fetchChronogram, authToken, ApiError } from '../lib/api';
+  import { fetchChronogram, fetchHealth, pauseOrchestration, authToken, ApiError } from '../lib/api';
   import type { ChronogramDto, ChronogramLaneDto, ChronogramLaneState } from '../lib/contracts';
   import { navigate } from '../lib/router.svelte';
   import { t } from '../lib/i18n';
@@ -12,6 +12,8 @@
   let error = $state<string | null>(null);
   let loading = $state(true);
   let live = $state(false);
+  let writable = $state(false);
+  let toggling = $state(false);
   // A ticking clock so a still-running lane's bar grows toward "now".
   let nowTick = $state(Date.now());
 
@@ -63,9 +65,27 @@
     }, 5000);
   }
 
+  async function togglePause(): Promise<void> {
+    if (chronogram === null || toggling) return;
+    toggling = true;
+    const next = !chronogram.paused;
+    try {
+      await pauseOrchestration(id, next);
+      // Optimistic — SSE will confirm with the authoritative snapshot.
+      chronogram = { ...chronogram, paused: next };
+    } catch {
+      /* leave the prior state; the next snapshot corrects it */
+    } finally {
+      toggling = false;
+    }
+  }
+
   onMount(() => {
     void load();
     connect();
+    fetchHealth()
+      .then((h) => (writable = h.write))
+      .catch(() => (writable = false));
     clock = setInterval(() => (nowTick = Date.now()), 1000);
   });
   onDestroy(() => {
@@ -174,12 +194,21 @@
     <header class="head">
       <h1>{chronogram.task}</h1>
       <div class="meta faint">
-        <span class="badge {stateClass(chronogram.status as ChronogramLaneState)}"
-          >{chronogram.status}</span
-        >
+        {#if chronogram.paused}
+          <span class="badge paused">{t('chrono.paused')}</span>
+        {:else}
+          <span class="badge {stateClass(chronogram.status as ChronogramLaneState)}"
+            >{chronogram.status}</span
+          >
+        {/if}
         <span class="mode">{chronogram.mode}</span>
         {#if chronogram.totalCostCents !== null}<span>{dollars(chronogram.totalCostCents)}</span>{/if}
         {#if live}<span class="livedot" title={t('chrono.live')}></span>{/if}
+        {#if writable}
+          <button class="pausebtn" type="button" disabled={toggling} onclick={togglePause}>
+            {chronogram.paused ? t('chrono.resume') : t('chrono.pause')}
+          </button>
+        {/if}
       </div>
     </header>
 
@@ -274,9 +303,30 @@
     border-radius: var(--radius-sm);
     border: 1px solid var(--line);
   }
+  .badge.paused {
+    color: var(--warn);
+    border-color: var(--warn);
+  }
   .mode {
     text-transform: uppercase;
     letter-spacing: 0.04em;
+  }
+  .pausebtn {
+    font: inherit;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line-strong);
+    background: var(--panel-2);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .pausebtn:hover:not(:disabled) {
+    border-color: var(--accent);
+  }
+  .pausebtn:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
   .livedot {
     width: 8px;

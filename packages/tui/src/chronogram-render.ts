@@ -39,6 +39,7 @@ export interface RenderChronogramOptions {
     failed?: string;
     pending?: string;
     depends?: string;
+    paused?: string;
   };
 }
 
@@ -110,7 +111,7 @@ export function renderChronogram(
   const lines: string[] = [];
 
   // Header: task · mode · status · total cost · elapsed span.
-  const headParts = [model.task, model.mode, model.status];
+  const headParts = [model.task, model.mode, model.paused ? (L.paused ?? 'paused') : model.status];
   if (model.totalCostCents !== null && model.totalCostCents > 0) {
     headParts.push(formatCents(model.totalCostCents));
   }

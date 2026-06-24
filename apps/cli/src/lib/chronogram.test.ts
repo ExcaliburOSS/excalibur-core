@@ -80,6 +80,24 @@ describe('buildChronogram (AO6 Pillar 2, pure)', () => {
     // Cost is summed across lanes that reported any.
     expect(c.totalCostCents).toBe(16);
     expect(cc?.costCents).toBeNull();
+    expect(c.paused).toBe(false); // default when not supplied
+  });
+
+  it('carries the paused flag through (AO6 Pillar 3)', () => {
+    const c = buildChronogram({
+      parentRunId: 'p',
+      task: 't',
+      mode: 'flat',
+      status: 'waiting_approval',
+      startedAt: '2026-06-24T00:00:00.000Z',
+      completedAt: null,
+      workItemId: null,
+      waves: [['t1']],
+      lanes: [{ id: 't1', title: 'A', instruction: '', dependsOn: [], runId: null }],
+      runsById: new Map(),
+      paused: true,
+    });
+    expect(c.paused).toBe(true);
   });
 
   it('a final outcome refines a completed lane to empty (ran, no diff)', () => {

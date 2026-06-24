@@ -1,6 +1,10 @@
 import { RunManager } from '@excalibur/core';
 import type { ChronogramDto, ChronogramLaneDto, ChronogramLaneState } from '@excalibur/shared';
-import { loadOrchestrationManifest, loadOrchestrationPlan } from './orchestration-manifest';
+import {
+  loadOrchestrationControl,
+  loadOrchestrationManifest,
+  loadOrchestrationPlan,
+} from './orchestration-manifest';
 
 /**
  * AO6 Pillar 2 — the orchestration CHRONOGRAM builder. Joins the wave/DAG
@@ -73,6 +77,7 @@ export function buildChronogram(input: {
   }>;
   outcomes?: ReadonlyMap<string, 'done' | 'empty' | 'failed'>;
   runsById: ReadonlyMap<string, ChronogramLaneRun>;
+  paused?: boolean;
 }): ChronogramDto {
   const waveOf = new Map<string, number>();
   input.waves.forEach((wave, index) => {
@@ -112,6 +117,7 @@ export function buildChronogram(input: {
     waves: input.waves.map((w) => [...w]),
     lanes,
     totalCostCents: sawCost ? total : null,
+    paused: input.paused ?? false,
   };
 }
 
@@ -158,6 +164,7 @@ export function buildChronogramForRun(repoRoot: string, parentRunId: string): Ch
   const manifest = loadOrchestrationManifest(repoRoot, parentRunId);
   const outcomes =
     manifest !== null ? new Map(manifest.lanes.map((l) => [l.id, l.outcome] as const)) : undefined;
+  const paused = loadOrchestrationControl(repoRoot, parentRunId)?.paused ?? false;
 
   if (plan !== null) {
     return buildChronogram({
@@ -178,6 +185,7 @@ export function buildChronogramForRun(repoRoot: string, parentRunId: string): Ch
       })),
       ...(outcomes !== undefined ? { outcomes } : {}),
       runsById,
+      paused,
     });
   }
   if (manifest !== null) {
@@ -199,6 +207,7 @@ export function buildChronogramForRun(repoRoot: string, parentRunId: string): Ch
       })),
       outcomes: outcomes ?? new Map(),
       runsById,
+      paused,
     });
   }
   // Legacy fallback: neither artifact — one flat wave of the child runs as lanes.
@@ -220,5 +229,6 @@ export function buildChronogramForRun(repoRoot: string, parentRunId: string): Ch
       runId: c.record.id,
     })),
     runsById,
+    paused,
   });
 }

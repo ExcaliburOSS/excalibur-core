@@ -18,6 +18,7 @@ import {
   InvalidLaneError,
 } from './dashboard-data';
 import { buildChronogramForRun } from './chronogram';
+import { setOrchestrationPaused } from './orchestration-manifest';
 
 /**
  * `excalibur serve` (plan P1.12 / the headless-server enabler) — a local,
@@ -486,6 +487,25 @@ async function handleWrite(
           // A corrupt/unreadable work-item file is a server error, not a 404.
           send(500, { error: message });
         }
+      }
+      return;
+    }
+    // AO6 Pillar 3: pause / resume an orchestration mid-flight (toggle the
+    // control flag a live swarm's lane gate polls). A mutation → write surface.
+    const pauseMatch = /^\/api\/orchestrations\/([^/]+)\/pause$/.exec(path);
+    if (pauseMatch !== null) {
+      const id = decodeURIComponent(pauseMatch[1] as string);
+      if (!RUN_ID.test(id)) {
+        send(400, { error: 'invalid run id' });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const paused = body['paused'] === true;
+      const ok = setOrchestrationPaused(options.repoRoot, id, paused, new Date().toISOString());
+      if (ok) {
+        send(200, { paused });
+      } else {
+        send(404, { error: 'orchestration not found' });
       }
       return;
     }

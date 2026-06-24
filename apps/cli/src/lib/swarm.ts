@@ -32,7 +32,11 @@ import type { CliDeps } from '../deps';
 import { loadInkUi } from '../ink/load';
 import { runConfiguredCommandCheck } from './verify-command';
 import { runProportionalMesh } from './verify-mesh';
-import { buildOrchestrationManifest, type OrchestrationPlan } from './orchestration-manifest';
+import {
+  buildOrchestrationManifest,
+  loadOrchestrationControl,
+  type OrchestrationPlan,
+} from './orchestration-manifest';
 import type { LanesViewHandle } from '@excalibur/tui/ink';
 
 /**
@@ -168,6 +172,30 @@ export async function decomposeTask(
   return subtasks.length > 0
     ? subtasks
     : [{ id: 't1', title: task.slice(0, 60), instruction: task }];
+}
+
+/**
+ * AO6 Pillar 3 — the pause HOLD loop (pure, testable). Returns immediately when
+ * not paused (or already aborted). Otherwise fires `onPause` once, then polls
+ * `isPaused` (sleeping `pollMs` between checks) until it clears or `isAborted`
+ * goes true, then fires `onResume`. The lane gate wraps this around its
+ * model-spend; extracted so the hold/resume contract is unit-testable without a
+ * live swarm.
+ */
+export async function holdWhilePaused(opts: {
+  isPaused: () => boolean;
+  isAborted: () => boolean;
+  sleep: (ms: number) => Promise<void>;
+  pollMs: number;
+  onPause?: () => void;
+  onResume?: () => void;
+}): Promise<void> {
+  if (!opts.isPaused() || opts.isAborted()) return;
+  opts.onPause?.();
+  while (opts.isPaused() && !opts.isAborted()) {
+    await opts.sleep(opts.pollMs);
+  }
+  opts.onResume?.();
 }
 
 /** Maps decomposed subtasks to the allocator's `Subtask[]`, carrying dependsOn
@@ -388,6 +416,17 @@ export async function executeSwarm(
   const ledger = new BudgetLedger(budgetCapCentsFromUsd(context.config.budget?.maxRunUsd));
   let budgetNotified = false;
 
+  // AO6 Pillar 3 — real mid-flight pause. The control flag (set cross-process by
+  // the dashboard / a second CLI / NL) is polled at each lane's gate: while
+  // paused, a not-yet-started lane HOLDS (no model spend) — the in-flight lanes
+  // finish — and clearing it resumes the SAME swarm. A cancel (abort) breaks the
+  // hold. Distinct from cancel, which tears the whole swarm down.
+  const PAUSE_POLL_MS = 700;
+  let pausedNotified = false;
+  const isPaused = (): boolean =>
+    parentId !== null && (loadOrchestrationControl(repoRoot, parentId)?.paused ?? false);
+  const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
   const runLane = async ({
     lane,
     worktreePath,
@@ -397,6 +436,39 @@ export async function executeSwarm(
     worktreePath: string;
     feedback?: string;
   }): Promise<SwarmLaneSummary> => {
+    // Pause gate (AO6 Pillar 3): HOLD a not-yet-started lane while the
+    // orchestration is paused; clearing the flag resumes the same swarm.
+    await holdWhilePaused({
+      isPaused,
+      isAborted: () => options.signal?.aborted ?? false,
+      sleep,
+      pollMs: PAUSE_POLL_MS,
+      onPause: () => {
+        if (parentId !== null && !pausedNotified) {
+          pausedNotified = true;
+          deps.ui.warn(deps.t('orchestration.paused-held'));
+          try {
+            runManager.updateRecord(parentId, { status: 'waiting_approval' });
+          } catch {
+            /* best-effort */
+          }
+        }
+      },
+      onResume: () => {
+        if (parentId !== null && pausedNotified) {
+          pausedNotified = false;
+          try {
+            runManager.updateRecord(parentId, { status: 'running' });
+          } catch {
+            /* best-effort */
+          }
+          if (!(options.signal?.aborted ?? false)) deps.ui.info(deps.t('orchestration.resumed'));
+        }
+      },
+    });
+    if (options.signal?.aborted ?? false) {
+      return { costCents: 0, toolCalls: 0 };
+    }
     // Budget gate: once the shared cap is hit, do NOT start another lane (no
     // model spend) — the already-merged lanes are the partial result.
     if (ledger.exceeded()) {

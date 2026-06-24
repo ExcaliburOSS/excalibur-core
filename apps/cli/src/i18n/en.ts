@@ -489,6 +489,13 @@ export const EN: Catalog = {
   'orchestration.none': 'No orchestration found. Run a swarm or /explore first.',
   'orchestration.notFound': 'No orchestration found for run {id}.',
   'orchestration.heading': 'Orchestration {id} · {task} · {status}',
+  'orchestration.pause-set':
+    'Paused orchestration {id} — a live swarm will hold after its in-flight lanes finish.',
+  'orchestration.resume-set':
+    'Resumed orchestration {id} — a held swarm continues dispatching lanes.',
+  'orchestration.paused-held':
+    'Orchestration paused — holding new lanes (in-flight lanes finish). Resume to continue.',
+  'orchestration.resumed': 'Orchestration resumed — dispatching lanes again.',
   'chronogram.title': 'Chronogram',
   'chronogram.wave': 'Wave',
   'chronogram.depends': 'depends',
@@ -496,6 +503,7 @@ export const EN: Catalog = {
   'chronogram.running': 'running',
   'chronogram.failed': 'failed',
   'chronogram.pending': 'pending',
+  'chronogram.paused': 'paused',
   'swarm.singleUnit': 'Only one independent unit — this runs as a single agent (no real fan-out).',
   'swarm.confirmRun': 'Run {count} agent(s) in parallel?',
   'swarm.cancelled': 'Swarm cancelled.',

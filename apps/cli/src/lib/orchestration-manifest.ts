@@ -79,6 +79,62 @@ export function loadOrchestrationPlan(repoRoot: string, runId: string): Orchestr
   }
 }
 
+/**
+ * AO6 Pillar 3 — the orchestration CONTROL flag, persisted as
+ * `orchestration-control.json` on the parent run. A live swarm's lane gate polls
+ * it: while `paused` is true it holds (no new lanes dispatched; in-flight finish),
+ * resuming when cleared. Cross-process (the dashboard / a second CLI sets it; the
+ * running swarm reads it).
+ */
+export interface OrchestrationControl {
+  paused: boolean;
+  /** ISO timestamp of the last pause (informational). */
+  pausedAt?: string;
+}
+
+/** Reads a run's `orchestration-control.json`; null if absent/unreadable. */
+export function loadOrchestrationControl(
+  repoRoot: string,
+  runId: string,
+): OrchestrationControl | null {
+  try {
+    const dir = new RunManager(repoRoot).getRun(runId).dir;
+    const raw = JSON.parse(
+      readFileSync(join(dir, 'orchestration-control.json'), 'utf8'),
+    ) as unknown;
+    if (typeof raw !== 'object' || raw === null) return null;
+    const c = raw as Partial<OrchestrationControl>;
+    return {
+      paused: c.paused === true,
+      ...(typeof c.pausedAt === 'string' ? { pausedAt: c.pausedAt } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Sets the paused flag on a run's control file (best-effort, returns success). */
+export function setOrchestrationPaused(
+  repoRoot: string,
+  runId: string,
+  paused: boolean,
+  nowIso: string,
+): boolean {
+  try {
+    const control: OrchestrationControl = paused
+      ? { paused: true, pausedAt: nowIso }
+      : { paused: false };
+    new RunManager(repoRoot).writeArtifact(
+      runId,
+      'orchestration-control.json',
+      JSON.stringify(control, null, 2),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export interface ManifestLaneOutcome {
   id: string;
   outcome: 'done' | 'empty' | 'failed';

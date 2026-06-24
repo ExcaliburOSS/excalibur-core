@@ -150,4 +150,8 @@ export const cancelRun = (id: string): Promise<{ cancelled: boolean }> =>
 export const approveRun = (id: string, decision: boolean): Promise<{ ok: boolean }> =>
   post(`/api/runs/${encodeURIComponent(id)}/approve`, { decision });
 
+/** Pause / resume an orchestration mid-flight (AO6 Pillar 3). */
+export const pauseOrchestration = (id: string, paused: boolean): Promise<{ paused: boolean }> =>
+  post(`/api/orchestrations/${encodeURIComponent(id)}/pause`, { paused });
+
 export { authToken };

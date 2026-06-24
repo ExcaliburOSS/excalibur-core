@@ -54,6 +54,7 @@ const model = (over: Partial<ChronogramDto> = {}): ChronogramDto => ({
     },
   ],
   totalCostCents: 16,
+  paused: false,
   ...over,
 });
 
@@ -92,6 +93,11 @@ describe('renderChronogram (AO6 Pillar 2)', () => {
     const truecolor = renderChronogram(m, { tier: 'truecolor' });
     expect(truecolor.join('\n')).toContain('\x1b[');
     expect(truecolor.map(stripAnsi)).toEqual(renderChronogram(m));
+  });
+
+  it('shows a paused marker in the header when the orchestration is paused (AO6 Pillar 3)', () => {
+    const text = renderChronogram(model({ paused: true })).join('\n');
+    expect(text).toContain('paused');
   });
 
   it('computes live elapsed for a running lane when nowMs is supplied', () => {
