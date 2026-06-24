@@ -3,6 +3,7 @@
   import { fetchChronogram, fetchHealth, pauseOrchestration, authToken, ApiError } from '../lib/api';
   import type { ChronogramDto, ChronogramLaneDto, ChronogramLaneState } from '../lib/contracts';
   import { navigate } from '../lib/router.svelte';
+  import { laneBarAt, laneStateAt, timeBounds } from '../lib/chronogram-time';
   import { t } from '../lib/i18n';
 
   // The parent (swarm) run id from the route (`#/orchestrations/:id`).
@@ -16,6 +17,8 @@
   let toggling = $state(false);
   // A ticking clock so a still-running lane's bar grows toward "now".
   let nowTick = $state(Date.now());
+  // Time-travel (AO6 Pillar 4): null = follow live; a ms value = scrub head.
+  let scrubMs = $state<number | null>(null);
 
   let es: EventSource | null = null;
   let reconnect: ReturnType<typeof setTimeout> | null = null;
@@ -124,62 +127,63 @@
   }
 
   interface LaneGeo extends ChronogramLaneDto {
+    /** State AS OF the scrub head (time-travel). */
+    state: ChronogramLaneState;
     hasBar: boolean;
     left: number;
     width: number;
     elapsedMs: number | null;
   }
 
-  // The shared time axis: t0 = earliest lane start, t1 = latest end (or now for a
-  // still-running lane). Each lane bar is positioned/sized against that span — a
-  // real chronogram (time on x), grouped by dependency wave.
+  // The orchestration timeline span [t0, t1] (ms). With live data, t1 tracks now.
+  const bounds = $derived(
+    chronogram !== null ? timeBounds(chronogram, nowTick) : { t0: 0, t1: 1 },
+  );
+  // The scrub HEAD: follow live (= t1) unless the user dragged the slider back.
+  const following = $derived(scrubMs === null);
+  const head = $derived(
+    scrubMs === null ? bounds.t1 : Math.min(Math.max(scrubMs, bounds.t0), bounds.t1),
+  );
+
+  // Each lane positioned/sized against the span and CLIPPED to the scrub head, with
+  // its state AS OF that head — so scrubbing replays the waves filling in (Pillar 4).
   const geo = $derived.by((): LaneGeo[] => {
     const c = chronogram;
     if (c === null) return [];
-    const starts: number[] = [];
-    const ends: number[] = [];
-    for (const lane of c.lanes) {
-      const s = lane.startedAt !== null ? Date.parse(lane.startedAt) : null;
-      if (s !== null && !Number.isNaN(s)) {
-        starts.push(s);
-        const e =
-          lane.completedAt !== null
-            ? Date.parse(lane.completedAt)
-            : lane.state === 'running'
-              ? nowTick
-              : s;
-        if (!Number.isNaN(e)) ends.push(e);
-      }
-    }
-    const t0 = starts.length > 0 ? Math.min(...starts) : 0;
-    const t1 = ends.length > 0 ? Math.max(...ends) : t0 + 1;
-    const span = Math.max(1, t1 - t0);
     return c.lanes.map((lane): LaneGeo => {
+      const bar = laneBarAt(lane, head, bounds.t0, bounds.t1, nowTick);
       const s = lane.startedAt !== null ? Date.parse(lane.startedAt) : null;
-      const hasBar = s !== null && !Number.isNaN(s);
-      const e =
-        lane.completedAt !== null
-          ? Date.parse(lane.completedAt)
-          : lane.state === 'running' && hasBar
-            ? nowTick
-            : s;
-      const left = hasBar ? ((s! - t0) / span) * 100 : 0;
-      const width = hasBar && e !== null ? Math.max(2.5, ((e - s!) / span) * 100) : 0;
       const elapsedMs =
-        lane.durationMs !== null
-          ? lane.durationMs
-          : lane.state === 'running' && hasBar
-            ? Math.max(0, nowTick - s!)
-            : null;
-      return { ...lane, hasBar, left, width, elapsedMs };
+        s !== null && !Number.isNaN(s) && head >= s
+          ? Math.max(0, Math.min(head, laneEndMs(lane)) - s)
+          : null;
+      return { ...lane, state: laneStateAt(lane, head), ...bar, elapsedMs };
     });
   });
+
+  function laneEndMs(lane: ChronogramLaneDto): number {
+    const s = lane.startedAt !== null ? Date.parse(lane.startedAt) : nowTick;
+    if (lane.completedAt !== null) {
+      const e = Date.parse(lane.completedAt);
+      if (!Number.isNaN(e)) return e;
+    }
+    return lane.state === 'running' ? nowTick : s;
+  }
 
   const byId = $derived(new Map(geo.map((l) => [l.id, l])));
   const titleOf = (laneId: string): string => byId.get(laneId)?.title ?? laneId;
 
+  // Tallies reflect the SCRUBBED (time-traveled) states, so the summary rewinds too.
   function tally(state: ChronogramLaneState): number {
-    return (chronogram?.lanes ?? []).filter((l) => l.state === state).length;
+    return geo.filter((l) => l.state === state).length;
+  }
+
+  function fmtClock(t: number): string {
+    try {
+      return new Date(t).toLocaleTimeString();
+    } catch {
+      return '';
+    }
   }
 </script>
 
@@ -211,6 +215,30 @@
         {/if}
       </div>
     </header>
+
+    {#if chronogram.lanes.some((l) => l.startedAt !== null)}
+      <div class="scrub">
+        <input
+          class="slider"
+          type="range"
+          min={bounds.t0}
+          max={bounds.t1}
+          value={head}
+          step="500"
+          aria-label={t('chrono.scrub')}
+          oninput={(e) => {
+            const v = Number((e.currentTarget as HTMLInputElement).value);
+            scrubMs = v >= bounds.t1 ? null : v;
+          }}
+        />
+        <span class="clock faint">{fmtClock(head)}</span>
+        {#if !following}
+          <button class="livebtn" type="button" onclick={() => (scrubMs = null)}
+            >{t('chrono.now')}</button
+          >
+        {/if}
+      </div>
+    {/if}
 
     <div class="waves">
       {#each chronogram.waves as wave, w (w)}
@@ -334,6 +362,33 @@
     border-radius: 50%;
     background: var(--accent);
     animation: blink 1.4s ease-in-out infinite;
+  }
+  .scrub {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .slider {
+    flex: 1;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  .clock {
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    min-width: 84px;
+    text-align: right;
+  }
+  .livebtn {
+    font: inherit;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--accent-dim);
+    background: var(--panel-2);
+    color: var(--accent);
+    cursor: pointer;
   }
   .waves {
     display: flex;
