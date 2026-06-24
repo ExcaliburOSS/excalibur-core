@@ -31,14 +31,19 @@ import { promptProviderSetup, repoSelectKeymap } from '../lib/provider-setup';
 export async function maybeAutoOnboard(
   deps: CliDeps,
   repoRoot: string,
-  analysis: RepoAnalysis,
+  // A PROMISE so the (sometimes slow) repo analysis overlaps with the provider
+  // prompts — awaited only just before writing the init plan. Early-exit paths
+  // consume it so a rejection can never surface as an unhandled rejection.
+  analysisPromise: Promise<RepoAnalysis>,
 ): Promise<boolean> {
   if (!deps.ui.isInteractive() || !deps.ui.isOutputTty()) {
+    void analysisPromise.catch(() => undefined);
     return false;
   }
   const dirExists = existsSync(join(repoRoot, EXCALIBUR_DIR));
   const providerConfigured = existsSync(providersFilePath(repoRoot));
   if (dirExists && providerConfigured) {
+    void analysisPromise.catch(() => undefined);
     return false; // already set up — nothing to onboard
   }
 
@@ -67,7 +72,10 @@ export async function maybeAutoOnboard(
 
   // Write a minimal `.excalibur/` (config + instructions + extensions [+ the
   // chosen providers.yaml]). `overwrite: false` only writes missing files, so
-  // re-onboarding to add a provider leaves any existing config untouched.
+  // re-onboarding to add a provider leaves any existing config untouched. The
+  // repo analysis was kicked off in parallel; await it now (it overlapped the
+  // provider prompts above).
+  const analysis = await analysisPromise;
   const plan = generateInitPlan(analysis, {
     mode: 'minimal',
     locale: deps.locale,

@@ -178,8 +178,10 @@ export async function runInteractiveSession(
     repoRoot = await resolveProjectRoot(deps, repoRoot, repoSelectKeymap(deps));
   }
   // Repo analysis warms the context engine (ISD scanning) once per session, and
-  // feeds the zero-config onboarding below.
-  const analysis = await analyzeRepository(repoRoot, {
+  // feeds the zero-config onboarding below. Kick it off WITHOUT awaiting so it
+  // overlaps with the onboarding prompts (it can be slow on a large repo);
+  // onboarding awaits it just before it writes the init plan.
+  const analysisPromise = analyzeRepository(repoRoot, {
     homeDir: deps.homeDir(),
     includeUserGlobal: deps.includeUserGlobal,
   });
@@ -188,7 +190,7 @@ export async function runInteractiveSession(
   // the model wizard + write a minimal .excalibur/ BEFORE the welcome — so the
   // welcome shows the real configured model. The user never has to discover
   // `init`/`models setup`. No-op on a non-TTY or an already-set-up repo.
-  await maybeAutoOnboard(deps, repoRoot, analysis);
+  await maybeAutoOnboard(deps, repoRoot, analysisPromise);
   let config = loadConfigContext(repoRoot).config;
   // Extensions can bring MCP servers (EXT-6); merge them into the session config
   // so the native agent loop connects them too (the repo's own mcp.servers wins).
