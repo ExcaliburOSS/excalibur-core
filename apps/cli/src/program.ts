@@ -42,6 +42,7 @@ import { registerReviewCommand } from './commands/review';
 import { registerRunCommand } from './commands/run';
 import { registerSwarmCommand } from './commands/swarm';
 import { registerExploreCommand } from './commands/explore';
+import { registerOrchestrateCommand } from './commands/orchestrate';
 import { registerSkillsCommand } from './commands/skills';
 import { registerStatusCommand } from './commands/status';
 import { registerStatsCommand } from './commands/stats';
@@ -96,6 +97,7 @@ export function buildProgram(overrides: Partial<CliDeps> = {}): Command {
   registerRunCommand(program, deps);
   registerSwarmCommand(program, deps);
   registerExploreCommand(program, deps);
+  registerOrchestrateCommand(program, deps);
   registerStatusCommand(program, deps);
   registerStatsCommand(program, deps);
   registerSessionCommand(program, deps);

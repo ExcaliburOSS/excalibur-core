@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { RunManager } from '@excalibur/core';
 import type { SwarmSubtask } from './swarm';
 
 /**
@@ -77,4 +80,48 @@ export function buildOrchestrationManifest(input: {
     waves: input.waves.map((w) => [...w]),
     lanes,
   };
+}
+
+/** Reads + validates a run's `orchestration.json`; null if absent/unreadable/wrong shape. */
+export function loadOrchestrationManifest(
+  repoRoot: string,
+  runId: string,
+): OrchestrationManifest | null {
+  try {
+    const dir = new RunManager(repoRoot).getRun(runId).dir;
+    const raw = JSON.parse(readFileSync(join(dir, 'orchestration.json'), 'utf8')) as unknown;
+    if (typeof raw !== 'object' || raw === null) return null;
+    const m = raw as Partial<OrchestrationManifest>;
+    if (m.version !== 1 || !Array.isArray(m.lanes) || typeof m.task !== 'string') return null;
+    return m as OrchestrationManifest;
+  } catch {
+    return null;
+  }
+}
+
+/** The newest run that is a parallel-orchestration parent (workflow `swarm`). */
+export function latestOrchestrationRunId(repoRoot: string): string | null {
+  const swarms = new RunManager(repoRoot).listRuns().filter((r) => r.record.workflow === 'swarm');
+  // listRuns is chronological by id; the last is newest.
+  return swarms.length > 0 ? swarms[swarms.length - 1]!.id : null;
+}
+
+/**
+ * Reconstructs the runnable {@link SwarmSubtask}s from a manifest (pure). For a
+ * RESUME, lanes whose recorded outcome was `done` are dropped — only the
+ * failed/empty lanes re-dispatch; dependsOn is preserved (the staged executor
+ * re-levelizes, ignoring deps on now-dropped completed lanes).
+ */
+export function manifestToSubtasks(
+  manifest: OrchestrationManifest,
+  options: { resume?: boolean } = {},
+): SwarmSubtask[] {
+  const lanes =
+    options.resume === true ? manifest.lanes.filter((l) => l.outcome !== 'done') : manifest.lanes;
+  return lanes.map((l) => ({
+    id: l.id,
+    title: l.title,
+    instruction: l.instruction,
+    ...(l.dependsOn.length > 0 ? { dependsOn: l.dependsOn } : {}),
+  }));
 }

@@ -479,6 +479,12 @@ export const EN: Catalog = {
   'explore.verified': 'Verified: {detail}.',
   'explore.verifyFailed': 'The winner FAILED the tests ({detail}) — REVERTED, not kept.',
   'explore.applied': 'Applied the winning candidate.',
+  // orchestrate — re-run / resume from the manifest (AO5)
+  'orchestrate.none': 'No past orchestration found. Run a swarm or /explore first.',
+  'orchestrate.noManifest': 'No orchestration manifest found for run {runId}.',
+  'orchestrate.nothingToDo': 'Nothing to resume — every lane already completed.',
+  'orchestrate.rerunning': 'Re-running {n} lane(s) from {runId}…',
+  'orchestrate.resuming': 'Resuming {n} incomplete lane(s) from {runId}…',
   'swarm.singleUnit': 'Only one independent unit — this runs as a single agent (no real fan-out).',
   'swarm.confirmRun': 'Run {count} agent(s) in parallel?',
   'swarm.cancelled': 'Swarm cancelled.',

@@ -496,6 +496,12 @@ export const ES: Catalog = {
   'explore.verified': 'Verificado: {detail}.',
   'explore.verifyFailed': 'El ganador FALLÓ los tests ({detail}) — REVERTIDO, no se conservó.',
   'explore.applied': 'Aplicado el candidato ganador.',
+  // orchestrate — re-ejecutar / reanudar desde el manifiesto (AO5)
+  'orchestrate.none': 'No hay ninguna orquestación previa. Lanza un swarm o /explore primero.',
+  'orchestrate.noManifest': 'No se encontró manifiesto de orquestación para la ejecución {runId}.',
+  'orchestrate.nothingToDo': 'Nada que reanudar — todos los carriles ya completaron.',
+  'orchestrate.rerunning': 'Re-ejecutando {n} carril(es) de {runId}…',
+  'orchestrate.resuming': 'Reanudando {n} carril(es) incompletos de {runId}…',
   'swarm.singleUnit':
     'Solo una unidad independiente: esto se ejecuta como un único agente (sin paralelismo real).',
   'swarm.confirmRun': '¿Ejecutar {count} agente(s) en paralelo?',
