@@ -184,10 +184,16 @@ user sign-off → build. Depends on AO3+AO4 telemetry.
 
 **AO7 — close the expressiveness/resume gap with Claude Code's Workflow tool (#201–#204).** From a head-to-head comparison (2026-06-24): we beat CC on verified git-worktree merges + ground-truth test gate, end-user observability (chronogram/time-travel/pause), and zero-command NL/auto reachability. CC's Workflow _tool_ is still ahead as an agent-facing **authoring harness** on four axes — these tasks close that gap (extends the lead; none required for "world-class", all opt-in / back-compat):
 
-- **AO7-1 (#201) Granular lane-level resume (journal/content-addressed):** today `orchestration.json` + `orchestrate --resume` re-dispatches incomplete lanes (coarse). Add content-addressed lane caching so an unchanged (instruction, deps, base) lane returns its prior result instantly on resume — CC's "longest-unchanged-prefix" granularity, at the lane level.
-- **AO7-2 (#202) More expressive authored spec:** the authored YAML is a static DAG (steps + deps). Add opt-in control flow — `loop-until` / best-of-N / conditional steps (and/or a JS-authored variant) — so authors can express CC-style `loop-until-dry`, tournaments, budget loops, not just a fixed DAG.
-- **AO7-3 (#203) Budget-in-the-loop:** scale swarm depth/lane-count dynamically to a token/cost target (mirrors CC's `budget.remaining()` loops), beyond the current hard `BudgetLedger` stop.
-- **AO7-4 (#204) Schema-forced structured lane output:** lane results are free text today; add an opt-in JSON-schema contract per lane (validated, retried on mismatch) so fan-in can consume structured data, like CC's `StructuredOutput`.
+- **AO7-1 (#201) Granular lane-level resume** ✅ DONE (`053f84f`): per-lane content `signature` (instruction+sorted-deps+role) on the manifest + pure `planResume(manifest, newSubtasks?)` with TRANSITIVE invalidation. `orchestrate --resume` now re-runs failed/empty lanes + their dependents (was: drop-all-done, a correctness gap); `orchestrate --spec X --resume` re-runs only EDITED steps + dependents, reusing unchanged (journal-resume headline; reused work persists in the tree, no diff re-apply). 9/9 manifest tests.
+- **AO7-2 (#202) More expressive authored spec:** opt-in control flow — `loop-until` / best-of-N / conditional steps. **PENDING — a focused build:** each needs real executor control-flow (runtime iteration/judging/branching) that interacts with the AO5-5 ≤1-depth cap + the staged wave loop → real regression risk; warrants its own session, not a rushed slice.
+- **AO7-3 (#203) Budget-in-the-loop** ✅ DONE (`29d0bda`): pure `candidatesForBudget(targetCents, perUnitCents, {min,max})` in core; best-of-N explore SIZES its candidate count to `budget.maxRunUsd` (≈8¢/candidate) instead of a fixed 3 — pre-sizing the fan-out vs being cut off mid-flight. 6/6 budget tests.
+- **AO7-4 (#204) Schema-forced structured lane output:** **DEFERRED (re-scope first).** Niche for a code-swarm — lanes produce DIFFS, not structured answers — and `SwarmLaneSummary` captures only cost+toolCalls (no final assistant message), so it needs new final-message-capture plumbing. Most useful only for analysis/research lanes; revisit if/when authored specs add data-returning steps.
+
+**AO8 — autonomous-background gap vs CC (#205–#207).** CC's runtime re-invokes the agent on a background task's completion + has ScheduleWakeup/cron; Excalibur's `/bg`+`/threads` fleet + `serve` are user-facing but lack agent-reaction-on-complete and OSS scheduling. Registered (designed, NOT built):
+
+- **AO8-1 (#205)** reaction-on-completion: on-settle hook in the fleet → a finished `/bg` thread auto-dispatches a declared follow-up ("when that finishes, also run X"), NL-reachable.
+- **AO8-2 (#206)** completion supervisor: an LLM evaluates a settled thread's outcome → {done | continue | spawn follow-up | escalate}, autonomy/posture-gated (the intelligent re-invoke-on-complete).
+- **AO8-3 (#207)** OSS scheduler: persisted interval/at-time/cron jobs fired by a long-lived host (serve tick or `excalibur schedule`) → runs via RunController; lifts the Enterprise M4c design into OSS.
 
 ---
 
