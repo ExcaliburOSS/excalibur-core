@@ -356,6 +356,8 @@ export const EN: Catalog = {
   // discovery
   'discovery.sessionCreated': 'Discovery session {id} ({inputType}) → {dir}',
   'discovery.answerPrompt': 'Answer the questions below — press Enter to skip any of them.',
+  'discovery.shapeConsider': 'Aspects you may want to fold into scope (space toggles):',
+  'discovery.shapePrompt': 'Include in scope?',
   'discovery.doNotBuild':
     'Recommendation: do not build. The evidence collected does not justify this work — see recommendation.md for the reasons. Nothing further is suggested.',
   'discovery.suggestedNextSteps': 'Suggested next steps:',

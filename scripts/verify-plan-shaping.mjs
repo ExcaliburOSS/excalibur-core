@@ -42,7 +42,9 @@ async function ask(prompt) {
     body: JSON.stringify({
       model: MODEL,
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 700,
+      // Match the production adapter — a smaller budget truncates verbose-language
+      // (e.g. Spanish) replies mid-JSON, which would parse as empty (false skip).
+      max_tokens: 1200,
     }),
   });
   if (!res.ok) throw new Error(`Kimi ${res.status}: ${await res.text()}`);

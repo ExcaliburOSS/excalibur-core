@@ -957,12 +957,14 @@ async function shapePlan(
     return text;
   }
   // A dedicated adapter — the intent classifier caps maxTokens at 6 (one word),
-  // far too small for the shaping JSON; this allows a full questions+recs reply.
+  // far too small for the shaping JSON. A generous ceiling (a cap, not a target)
+  // keeps a verbose-language reply (e.g. Spanish, 3 Qs + 6 detailed recs) from
+  // truncating mid-JSON → unparseable → silently no shaping.
   const model = async (prompt: string, sig?: AbortSignal): Promise<string> => {
     const output = await gateway.gateway.chat({
       provider,
       messages: [{ role: 'user', content: redactSecrets(prompt) }],
-      maxTokens: 700,
+      maxTokens: 1200,
       timeoutMs: 20000,
       metadata: { kind: 'plan-shape' },
       ...(sig !== undefined ? { signal: sig } : {}),

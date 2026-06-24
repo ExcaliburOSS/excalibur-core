@@ -2,7 +2,8 @@ import { execFile } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { isCommandOnPath } from '@excalibur/agent-runtime';
-import { DiscoveryManager } from '@excalibur/core';
+import { DiscoveryManager, discoveryShape, type DiscoveryShape } from '@excalibur/core';
+import { redactSecrets } from '@excalibur/model-gateway';
 import {
   discoveryInputTypeSchema,
   type DiscoveryInputType,
@@ -58,6 +59,64 @@ function nextSteps(record: DiscoveryRecord, title: string): string[] {
 }
 
 /**
+ * Dynamic Discovery (C): tailor the questions + scope considerations to THIS
+ * input via the fast model, reusing the plan-shaping primitive. Returns null
+ * (→ fall back to the static pack) when the router is off, `--yes`/non-TTY, no
+ * real cheap provider is configured, the model is the mock, or the model adds
+ * nothing. Best-effort: never throws.
+ */
+async function tailorDiscovery(
+  deps: CliDeps,
+  repoRoot: string,
+  flow: DiscoveryFlowInput,
+  baseQuestions: string[],
+): Promise<DiscoveryShape | null> {
+  if (deps.env['EXCALIBUR_ROUTER'] === 'off' || flow.yes || !deps.ui.isInteractive()) {
+    return null;
+  }
+  let gateway: ReturnType<typeof loadGatewayContext>;
+  let provider: string | undefined;
+  try {
+    gateway = loadGatewayContext(repoRoot);
+    provider = gateway.cheapProviderName ?? gateway.providerName;
+  } catch {
+    return null;
+  }
+  if (!gateway.configured || provider == null) {
+    return null;
+  }
+  const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[provider]
+    ?.type;
+  if (providerType === 'mock') {
+    return null;
+  }
+  const model = async (prompt: string, sig?: AbortSignal): Promise<string> => {
+    const output = await gateway.gateway.chat({
+      provider,
+      messages: [{ role: 'user', content: redactSecrets(prompt) }],
+      // Generous ceiling (a cap, not a target): 5 questions + 6 detailed recs in
+      // a verbose language (e.g. Spanish) overflow a smaller budget and truncate
+      // the JSON → unparseable → silently no tailoring. 1200 covers the worst case.
+      maxTokens: 1200,
+      timeoutMs: 20000,
+      metadata: { kind: 'discovery-shape' },
+      ...(sig !== undefined ? { signal: sig } : {}),
+    });
+    return output.content;
+  };
+  const shape = await discoveryShape(
+    flow.input,
+    flow.inputType,
+    baseQuestions,
+    { interactive: true, mock: false },
+    model,
+  );
+  // Only adopt the tailored set when it actually produced questions; otherwise
+  // fall back to the proven static pack (never leave the user with nothing).
+  return shape.questions.length > 0 ? shape : null;
+}
+
+/**
  * The interactive Discovery flow (D-7, discovery-core.md §6), reused by
  * `excalibur run` when it recommends Discovery first. Questions are
  * skippable with an empty answer; `--yes`/non-TTY records them unanswered.
@@ -82,18 +141,65 @@ export async function runDiscoveryFlow(deps: CliDeps, flow: DiscoveryFlowInput):
   );
 
   const pack = DISCOVERY_QUESTION_PACKS[flow.inputType];
+  const tailored = await tailorDiscovery(
+    deps,
+    repoRoot,
+    flow,
+    pack.map((q) => q.text),
+  );
   deps.ui.write();
   deps.ui.info(deps.t('discovery.answerPrompt'));
-  for (const question of pack) {
-    const answer = await deps.ui.ask(`${pc.bold(question.text)}`, {
-      yes: flow.yes,
-      defaultAnswer: '',
-    });
-    manager.recordAnswer(session.id, {
-      key: question.id,
-      question: question.text,
-      answer: answer.trim().length > 0 ? answer.trim() : null,
-    });
+  if (tailored !== null) {
+    // Dynamic path: ask the model's input-specific questions, then offer the
+    // scope considerations as a pre-checked multi-select.
+    let i = 0;
+    for (const question of tailored.questions) {
+      i += 1;
+      const answer = await deps.ui.ask(`${pc.bold(question)}`, {
+        yes: flow.yes,
+        defaultAnswer: '',
+      });
+      manager.recordAnswer(session.id, {
+        key: `tailored-${i}`,
+        question,
+        answer: answer.trim().length > 0 ? answer.trim() : null,
+      });
+    }
+    if (tailored.recommendations.length > 0) {
+      deps.ui.info(deps.t('discovery.shapeConsider'));
+      const choices = tailored.recommendations.map((r) => ({
+        label: r.title,
+        ...(r.detail.length > 0 ? { hint: r.detail } : {}),
+      }));
+      const preselected = tailored.recommendations
+        .map((r, idx) => (r.recommended ? idx : -1))
+        .filter((idx) => idx >= 0);
+      const chosen = await deps.ui.multiSelect(deps.t('discovery.shapePrompt'), choices, {
+        preselected,
+        navHint: deps.t('repl.plan-shape-nav'),
+      });
+      const picked = new Set(chosen);
+      tailored.recommendations.forEach((r, idx) => {
+        manager.recordAnswer(session.id, {
+          key: `consideration-${idx + 1}`,
+          question: r.title,
+          answer: picked.has(idx) ? r.detail || 'include in scope' : null,
+        });
+      });
+    }
+  } else {
+    // Static fallback: the proven generic question pack for this input type.
+    for (const question of pack) {
+      const answer = await deps.ui.ask(`${pc.bold(question.text)}`, {
+        yes: flow.yes,
+        defaultAnswer: '',
+      });
+      manager.recordAnswer(session.id, {
+        key: question.id,
+        question: question.text,
+        answer: answer.trim().length > 0 ? answer.trim() : null,
+      });
+    }
   }
 
   const { gateway } = loadGatewayContext(repoRoot);

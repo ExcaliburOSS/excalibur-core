@@ -321,6 +321,13 @@ export {
   type CreateDiscoverySessionInput,
   type LocalDiscoverySession,
 } from './discovery/discovery-manager';
+export {
+  buildDiscoveryShapePrompt,
+  parseDiscoveryShape,
+  discoveryShape,
+  type DiscoveryShape,
+  type DiscoveryShapeContext,
+} from './discovery/discovery-shaping';
 
 // Sessions (M-Shell Slice A)
 export {

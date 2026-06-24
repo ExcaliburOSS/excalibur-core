@@ -369,6 +369,8 @@ export const ES: Catalog = {
   'discovery.sessionCreated': 'Sesión de Discovery {id} ({inputType}) → {dir}',
   'discovery.answerPrompt':
     'Responde las preguntas a continuación — pulsa Enter para omitir cualquiera de ellas.',
+  'discovery.shapeConsider': 'Aspectos que quizá quieras incluir en el alcance (espacio marca):',
+  'discovery.shapePrompt': '¿Incluir en el alcance?',
   'discovery.doNotBuild':
     'Recomendación: no construir. La evidencia recopilada no justifica este trabajo — consulta recommendation.md para conocer los motivos. No se sugiere nada más.',
   'discovery.suggestedNextSteps': 'Próximos pasos sugeridos:',

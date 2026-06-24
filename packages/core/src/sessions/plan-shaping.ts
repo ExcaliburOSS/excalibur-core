@@ -140,7 +140,7 @@ export function buildPlanShapePrompt(request: string): string {
 }
 
 /** Extracts the first balanced JSON object from model output (fence/prose tolerant). */
-function firstJsonObject(content: string): Record<string, unknown> | null {
+export function firstJsonObject(content: string): Record<string, unknown> | null {
   const start = content.indexOf('{');
   if (start === -1) return null;
   let depth = 0;
@@ -184,7 +184,7 @@ function parseComplexity(value: unknown): PlanComplexity {
  * this, an embedded `\n` would break the raw-mode redraw and an over-long string
  * would wrap/scroll the checkbox list (and is a cheap injection surface).
  */
-function oneLine(value: string, max: number): string {
+export function oneLine(value: string, max: number): string {
   const collapsed = value.replace(/\s+/g, ' ').trim();
   return collapsed.length > max ? `${collapsed.slice(0, max - 1).trimEnd()}…` : collapsed;
 }
