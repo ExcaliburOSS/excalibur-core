@@ -479,6 +479,7 @@ export const ES: Catalog = {
     'Fan-in verificado FALLÓ: {detail}. Los cambios fusionados se REVIRTIERON, no se conservaron — los carriles estaban bien por separado pero rompen al combinarse.',
   'swarm.budget-stopped':
     'Tope de presupuesto alcanzado (${spent} de ${cap}) — no lanzo más carriles. Los carriles ya terminados son el resultado parcial.',
+  'swarm.retryFailed': '{n} carril(es) fallaron — ¿los reintento ahora?',
   'swarm.mesh-running': 'Revisión adversarial del resultado fusionado ({lenses} lente(s))…',
   'swarm.mesh-blocked':
     'La malla de verificación BLOQUEÓ el merge (sobrevivió un problema de severidad alta). Los cambios fusionados se REVIRTIERON.',

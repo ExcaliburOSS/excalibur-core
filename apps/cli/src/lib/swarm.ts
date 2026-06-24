@@ -517,6 +517,9 @@ export interface SwarmFlowOptions {
   grade?: boolean;
   /** Cancels the in-flight swarm (ESC / Ctrl-C). */
   signal?: AbortSignal;
+  /** Internal: suppress the proactive "retry failed lanes?" offer (set on the
+   * retry run itself, so a failed retry never loops the offer). */
+  noResumeOffer?: boolean;
 }
 
 /**
@@ -740,8 +743,34 @@ export async function runSwarmFlow(
     inkLanes?.unmount();
   }
 
+  // AO5 — PROACTIVE resume: if any lane failed, Excalibur OFFERS to retry just
+  // those lanes (no command). One-shot (noResumeOffer guards the retry run). Runs
+  // after the successful lanes are applied below, so good work ships first.
+  const failedSubtasks = lanes.filter((s) => result.lanes.some((l) => l.id === s.id && l.failed));
+  const offerRetryFailed = async (): Promise<void> => {
+    if (
+      failedSubtasks.length === 0 ||
+      options.noResumeOffer === true ||
+      options.yes === true ||
+      !deps.ui.isInteractive()
+    ) {
+      return;
+    }
+    const retry = await deps.ui.confirm(deps.t('swarm.retryFailed', { n: failedSubtasks.length }), {
+      defaultYes: true,
+    });
+    if (retry) {
+      await runSwarmFlow(deps, repoRoot, task, ctx, {
+        ...options,
+        subtasks: failedSubtasks,
+        noResumeOffer: true,
+      });
+    }
+  };
+
   if (result.mergedDiff.trim().length === 0) {
     deps.ui.info(deps.t('swarm.noChanges'));
+    await offerRetryFailed();
     return;
   }
   deps.ui.write();
@@ -804,4 +833,5 @@ export async function runSwarmFlow(
     }
   }
   deps.ui.success(deps.t('swarm.applied'));
+  await offerRetryFailed();
 }
