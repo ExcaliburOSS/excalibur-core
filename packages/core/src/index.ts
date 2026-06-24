@@ -96,6 +96,8 @@ export {
   type SwarmLaneResult,
   type SwarmLaneRunner,
   type SwarmResult,
+  type SwarmWaveVerdict,
+  type SwarmWaveVerifier,
 } from './swarm/run-swarm';
 export {
   capTotalAgents,

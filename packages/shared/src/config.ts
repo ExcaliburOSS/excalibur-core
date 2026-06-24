@@ -151,6 +151,13 @@ const orchestrationSectionSchema = z.object({
    * repo's tests being green + runnable; teams with a reliable suite enable it.
    */
   verifyMerge: z.boolean().optional(),
+  /**
+   * AO5-6 — verification gates as DAG EDGES: in a STAGED (dependency-wave) swarm,
+   * verify each wave's merged result (configured test + adversarial mesh) BEFORE
+   * its dependents run; a red wave is rolled back so dependents base on the last
+   * healthy tree. Opt-in (default off); costs one test+mesh run per wave boundary.
+   */
+  verifyWaves: z.boolean().optional(),
 });
 
 const contextSectionSchema = z.object({

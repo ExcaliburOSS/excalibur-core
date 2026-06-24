@@ -374,4 +374,89 @@ describe('runSwarmStaged (AO3c staged dependency-graph executor)', () => {
       removeDir(repo);
     }
   });
+
+  it('AO5-6: a RED per-wave gate REVERTS the wave so dependents base on the healthy tree', async () => {
+    const repo = initRepo();
+    try {
+      const verifyCalls: number[] = [];
+      const result = await runSwarmStaged(
+        repo,
+        [[lane('base')], [lane('extend')]],
+        ({ lane: l, worktreePath }) => {
+          if (l.id === 'base') {
+            writeFileSync(join(worktreePath, 'shared.ts'), 'export const base = 1;\n', 'utf8');
+            return Promise.resolve(null);
+          }
+          const seen = existsSync(join(worktreePath, 'shared.ts'))
+            ? readFileSync(join(worktreePath, 'shared.ts'), 'utf8').trim()
+            : 'MISSING';
+          writeFileSync(join(worktreePath, 'derived.ts'), `// saw: ${seen}\n`, 'utf8');
+          return Promise.resolve(null);
+        },
+        {
+          // Fail wave 0 (revert it); pass wave 1.
+          verifyWave: ({ waveIndex }) => {
+            verifyCalls.push(waveIndex);
+            return Promise.resolve(
+              waveIndex === 0 ? { passed: false, revert: true, detail: 'red' } : { passed: true },
+            );
+          },
+        },
+      );
+      expect(verifyCalls).toEqual([0, 1]); // gate fired at each wave boundary
+      // Wave 0 reverted → its lane marked failed, shared.ts NOT in the merged diff.
+      expect(result.lanes.find((l) => l.id === 'base')?.failed).toBe(true);
+      expect(result.mergedDiff).not.toContain('shared.ts');
+      // Wave 1 still ran, but on the REVERTED (original) base → saw MISSING.
+      expect(result.mergedDiff).toContain('derived.ts');
+      expect(result.mergedDiff).toContain('saw: MISSING');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('AO5-6: a GREEN per-wave gate is identical to no gate (dependents see the merge)', async () => {
+    const repo = initRepo();
+    try {
+      const result = await runSwarmStaged(
+        repo,
+        [[lane('base')], [lane('extend')]],
+        ({ lane: l, worktreePath }) => {
+          if (l.id === 'base') {
+            writeFileSync(join(worktreePath, 'shared.ts'), 'export const base = 1;\n', 'utf8');
+            return Promise.resolve(null);
+          }
+          const seen = existsSync(join(worktreePath, 'shared.ts'))
+            ? readFileSync(join(worktreePath, 'shared.ts'), 'utf8').trim()
+            : 'MISSING';
+          writeFileSync(join(worktreePath, 'derived.ts'), `// saw: ${seen}\n`, 'utf8');
+          return Promise.resolve(null);
+        },
+        { verifyWave: () => Promise.resolve({ passed: true }) },
+      );
+      expect(result.mergedDiff).toContain('saw: export const base = 1;');
+      expect(result.mergedDiff).toContain('shared.ts');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('AO5-6: a THROWING per-wave gate propagates (not swallowed like onLane)', async () => {
+    const repo = initRepo();
+    try {
+      await expect(
+        runSwarmStaged(
+          repo,
+          [[lane('a')]],
+          ({ worktreePath }) => {
+            writeFileSync(join(worktreePath, 'a.ts'), '// a\n', 'utf8');
+            return Promise.resolve(null);
+          },
+          { verifyWave: () => Promise.reject(new Error('gate boom')) },
+        ),
+      ).rejects.toThrow('gate boom');
+    } finally {
+      removeDir(repo);
+    }
+  });
 });

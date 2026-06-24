@@ -316,11 +316,52 @@ export async function executeSwarm(
   } = {},
 ): Promise<SwarmResult<SwarmLaneSummary>> {
   const byId = new Map(subtasks.map((s) => [s.id, s]));
+  // AO5-6 — per-wave verification gate (STAGED only): verify each wave's merged
+  // tree (configured test + mesh) at its boundary; a red verdict reverts the wave
+  // so dependents base on the healthy tree. Opt-in via orchestration.verifyWaves.
+  const meshCtx: SwarmFlowContext = {
+    gateway: context.gateway,
+    providerName: context.providerName ?? '',
+    config: context.config,
+  };
+  const verifyWave =
+    context.config.orchestration?.verifyWaves === true
+      ? async (args: {
+          waveIndex: number;
+          waveDiff: string;
+          mergePath: string;
+        }): Promise<{ passed: boolean; revert?: boolean; detail?: string }> => {
+          deps.ui.info(deps.t('swarm.verify-wave', { wave: args.waveIndex + 1 }));
+          const checks = await runMergedTreeChecks(
+            deps,
+            meshCtx,
+            args.mergePath,
+            args.waveDiff,
+            options.signal,
+          );
+          if (!checks.passed) {
+            deps.ui.warn(
+              deps.t('swarm.wave-reverted', {
+                wave: args.waveIndex + 1,
+                detail: checks.detail ?? '',
+              }),
+            );
+            return {
+              passed: false,
+              revert: true,
+              ...(checks.detail ? { detail: checks.detail } : {}),
+            };
+          }
+          deps.ui.success(deps.t('swarm.wave-verified', { wave: args.waveIndex + 1 }));
+          return { passed: true };
+        }
+      : undefined;
   const swarmOptions = {
     ...(options.maxConcurrency !== undefined ? { maxConcurrency: options.maxConcurrency } : {}),
     ...(options.maxAttempts !== undefined ? { maxAttempts: options.maxAttempts } : {}),
     ...(options.onLane !== undefined ? { onLane: options.onLane } : {}),
     ...(options.grade !== undefined ? { grade: options.grade } : {}),
+    ...(verifyWave !== undefined ? { verifyWave } : {}),
   };
 
   // AO4a — SWARM-AS-RUN: persist parallel work as first-class runs so the shipped
@@ -655,6 +696,33 @@ async function runMergeMesh(deps: CliDeps, ctx: SwarmFlowContext, diff: string):
     deps.ui.write(`  [${issue.severity.toUpperCase()}] ${where}${issue.problem}`);
   }
   return out.result.blocked;
+}
+
+/**
+ * AO5-6 — the ground-truth checks behind BOTH the per-wave gate and the final
+ * verified fan-in: run the configured test command against `cwd` (the merged
+ * tree), then a proportional adversarial mesh over `diff`. Returns `passed:false`
+ * with a reason on a red test OR a surviving HIGH issue; best-effort otherwise (a
+ * missing command / flaky jury never blocks). The CALLER owns the revert.
+ */
+async function runMergedTreeChecks(
+  deps: CliDeps,
+  ctx: SwarmFlowContext,
+  cwd: string,
+  diff: string,
+  signal: AbortSignal | undefined,
+): Promise<{ passed: boolean; detail?: string }> {
+  const verify = runConfiguredCommandCheck(cwd, ctx.config.commands?.test, signal);
+  if (verify !== undefined) {
+    const verdict = await verify();
+    if (!verdict.passed) {
+      return { passed: false, detail: verdict.detail };
+    }
+  }
+  if (await runMergeMesh(deps, ctx, diff)) {
+    return { passed: false, detail: 'verification mesh blocked (surviving high-severity issue)' };
+  }
+  return { passed: true };
 }
 
 /**

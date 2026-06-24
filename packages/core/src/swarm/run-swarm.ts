@@ -74,6 +74,38 @@ export type SwarmLaneGrader<T> = (args: {
   attempt: number;
 }) => Promise<SwarmGrade>;
 
+/**
+ * AO5-6 — a per-WAVE verification verdict. After a wave merges + commits onto the
+ * accumulating merge worktree, the gate verifies the merged-so-far tree BEFORE
+ * dependents run; a red verdict with `revert` rolls THIS wave's commit back so
+ * dependents base on the last healthy tree (a verification gate as a DAG EDGE).
+ */
+export interface SwarmWaveVerdict {
+  /** Whether the merged tree at this wave boundary is healthy. */
+  passed: boolean;
+  /** When false, roll this wave's merge back (reset the merge worktree to pre-wave). */
+  revert?: boolean;
+  /** One line of detail (test failure / blocking review), surfaced on the lane. */
+  detail?: string;
+}
+
+/**
+ * Scores a WAVE's merged result at its boundary (AO5-6). Injected from the CLI so
+ * `@excalibur/core` stays free of the test runner / model — mirrors {@link grade}.
+ * Receives the merge worktree path (the cwd to run the configured test against)
+ * and the wave's INCREMENTAL diff (for proportional jury sizing).
+ */
+export type SwarmWaveVerifier<T> = (args: {
+  waveIndex: number;
+  lanes: ReadonlyArray<SwarmLaneResult<T>>;
+  /** The accumulating merge worktree (run the configured test here, not repoRoot). */
+  mergePath: string;
+  /** The merge worktree HEAD after this wave committed. */
+  mergedRef: string;
+  /** This wave's incremental diff (mergePath: pre-wave..HEAD) — size the jury on this. */
+  waveDiff: string;
+}) => Promise<SwarmWaveVerdict>;
+
 /** The outcome of one lane. */
 export interface SwarmLaneResult<T> {
   id: string;
@@ -144,6 +176,12 @@ export interface RunSwarmOptions<T = unknown> {
    * Off by default (throw-based retry only).
    */
   grade?: SwarmLaneGrader<T>;
+  /**
+   * AO5-6 — STAGED-ONLY per-wave verification gate. After each wave merges +
+   * commits, this verifies the merged-so-far tree; a red+revert verdict rolls the
+   * wave back so dependents base on the healthy tree. Off by default (no gate).
+   */
+  verifyWave?: SwarmWaveVerifier<T>;
 }
 
 /** Fires a lane-progress callback, swallowing any error (never breaks the swarm). */
@@ -388,9 +426,13 @@ export async function runSwarmStaged<T>(
   const conflicts: SwarmConflict[] = [];
   let currentBaseRef = baseRef;
   let globalIndex = 0;
+  let waveIndex = 0;
 
   try {
     for (const wave of nonEmptyWaves) {
+      // The merge HEAD BEFORE this wave merges — the revert target for the AO5-6
+      // gate (currentBaseRef tracks the merge worktree HEAD across waves).
+      const preWaveRef = currentBaseRef;
       // 1. SETUP this wave's lane worktrees at the predecessors-merged base.
       const setups: LaneSetup[] = wave.map((lane) => {
         const index = globalIndex++;
@@ -429,12 +471,41 @@ export async function runSwarmStaged<T>(
         stageAll(mergePath);
         commitAll(mergePath, `excalibur swarm wave: ${wave.map((l) => l.id).join(', ')}`);
         currentBaseRef = revParse(mergePath, 'HEAD') ?? currentBaseRef;
+
+        // 4b. AO5-6 — VERIFICATION GATE AS A DAG EDGE: verify the merged-so-far
+        //     tree at this wave boundary BEFORE dependents run. A red+revert
+        //     verdict rolls THIS wave's commit back so dependents base on the last
+        //     healthy tree (and its merged lanes read as failed). Opt-in; skipped
+        //     for a no-op wave (HEAD unchanged). NOT swallowed — a gate that must
+        //     block dependents propagates a throw (unlike best-effort onLane).
+        if (options.verifyWave !== undefined && currentBaseRef !== preWaveRef) {
+          const waveDiff = diffRefs(mergePath, preWaveRef, 'HEAD');
+          const verdict = await options.verifyWave({
+            waveIndex,
+            lanes: laneResults,
+            mergePath,
+            mergedRef: currentBaseRef,
+            waveDiff,
+          });
+          if (!verdict.passed && verdict.revert === true) {
+            resetWorktree(mergePath, preWaveRef);
+            currentBaseRef = revParse(mergePath, 'HEAD') ?? preWaveRef;
+            const why = `wave verification failed${verdict.detail ? `: ${verdict.detail}` : ''}`;
+            for (const lane of laneResults) {
+              if (!lane.failed && lane.diff.trim().length > 0) {
+                lane.failed = true;
+                lane.error = lane.error ?? why;
+              }
+            }
+          }
+        }
       } finally {
         // 5. TEARDOWN this wave's lane worktrees (wave-scoped — free disk early).
         for (const setup of setups) {
           removeWorktree(repoRoot, setup.worktreePath, { force: true });
         }
       }
+      waveIndex += 1;
     }
 
     // FINAL: the whole accumulation vs the original base (every wave committed).

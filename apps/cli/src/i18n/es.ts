@@ -483,6 +483,10 @@ export const ES: Catalog = {
   'swarm.mesh-running': 'Revisión adversarial del resultado fusionado ({lenses} lente(s))…',
   'swarm.mesh-blocked':
     'La malla de verificación BLOQUEÓ el merge (sobrevivió un problema de severidad alta). Los cambios fusionados se REVIRTIERON.',
+  'swarm.verify-wave': 'Verificando la onda {wave} (gate antes de que corran sus dependientes)…',
+  'swarm.wave-verified': 'Onda {wave} verificada — sus dependientes continúan.',
+  'swarm.wave-reverted':
+    'La onda {wave} FALLÓ la verificación ({detail}) — revertida para que los dependientes partan del último árbol sano.',
   // explore best-of-N (AO5)
   'explore.heading': 'Explorar: {n} enfoques candidatos en paralelo.',
   'explore.confirm': '¿Lanzo {n} agentes candidatos y elijo el mejor?',

@@ -466,6 +466,10 @@ export const EN: Catalog = {
   'swarm.mesh-running': 'Adversarial review of the merged result ({lenses} lens(es))…',
   'swarm.mesh-blocked':
     'Verification mesh BLOCKED the merge (a high-severity issue survived). The merged changes were REVERTED.',
+  'swarm.verify-wave': 'Verifying wave {wave} (gate before dependents run)…',
+  'swarm.wave-verified': 'Wave {wave} verified — dependents proceed.',
+  'swarm.wave-reverted':
+    'Wave {wave} FAILED verification ({detail}) — rolled back so dependents base on the last healthy tree.',
   // best-of-N explore (AO5)
   'explore.heading': 'Explore: {n} candidate approaches in parallel.',
   'explore.confirm': 'Run {n} candidate agents and pick the best?',
