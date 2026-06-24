@@ -119,9 +119,21 @@ user sign-off → build. Depends on AO3+AO4 telemetry.
 >    Kimi (real edit run → unified diff on file_write → `excalibur logs` renders it
 >    inline). The thinking/working label + reviewable history (rewind/changes/
 >    dashboard) were already in place.
-> 2. **Visual orchestration chronogram** — live wave/DAG timeline (dashboard+TTY,
->    SSE): lanes as bars (state/cost/duration), merge node + tests/mesh gates,
->    click→run/diff.
+> 2. **Visual orchestration chronogram** ✅ DONE (2026-06-24, `3083122`+`b709e56`):
+>    a live wave/DAG timeline of a swarm, dashboard + TTY, fed by SSE — one
+>    `ChronogramDto` (in `@excalibur/shared`), two presenters. Swarm persists
+>    `orchestration-plan.json` (the wave/DAG STRUCTURE) at START so the live view
+>    renders the DAG immediately + fills it wave-by-wave; pure `buildChronogram`
+>    joins that with live per-lane child-run state/cost/timing (plan→manifest→
+>    derived fallbacks). TTY: `renderChronogram` + `excalibur orchestration
+[runId]` (alias `chronogram`, `--json`) — header · per-wave lane rows with
+>    state glyph + proportional duration bar + elapsed/cost + dependency hint ·
+>    fan-in summary. Dashboard: `Chronogram.svelte` Gantt timeline (lanes as bars
+>    on a shared time axis, grouped by wave, state colors, running bars pulse,
+>    deps, click→child run) + `GET /api/orchestrations/:id(/stream)` (JSON + SSE
+>    push). Verified e2e vs Kimi (real swarm → plan persisted → builder → TTY →
+>    JSON endpoint → SSE frame → embedded SPA serves). cli 496/496+1, tui 105/105,
+>    serve 25, shared 133, dashboard svelte-check clean.
 > 3. **Pause/resume mid-flight** — real pause (stop dispatching; in-flight finish)
 >    - resume; today only cancel exists. (After-the-fact resume = AO5-3 ✅.)
 > 4. **Time-travel of an orchestration** in the UI — scrubber over the combined
