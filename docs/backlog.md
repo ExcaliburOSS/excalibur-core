@@ -134,8 +134,18 @@ user sign-off → build. Depends on AO3+AO4 telemetry.
 >    push). Verified e2e vs Kimi (real swarm → plan persisted → builder → TTY →
 >    JSON endpoint → SSE frame → embedded SPA serves). cli 496/496+1, tui 105/105,
 >    serve 25, shared 133, dashboard svelte-check clean.
-> 3. **Pause/resume mid-flight** — real pause (stop dispatching; in-flight finish)
->    - resume; today only cancel exists. (After-the-fact resume = AO5-3 ✅.)
+> 3. **Pause/resume mid-flight** ✅ DONE (2026-06-24, `9a59f05`): a real pause —
+>    a live swarm stops dispatching NEW lanes and HOLDS at the gate (in-flight
+>    lanes finish); clearing the flag resumes the SAME swarm. Persisted
+>    `orchestration-control.json` `{paused}` the lane gate polls; pure unit-tested
+>    `holdWhilePaused` (hold→resume, abort beats pause). Parent run shows
+>    `waiting_approval` while held → `running` on resume. `ChronogramDto.paused`
+>    surfaces it (TTY header + dashboard badge). Reachable via CLI (`orchestration
+<id> --pause|--resume`), serve (`POST /api/orchestrations/:id/pause`, write
+>    surface) + a dashboard Pause/Resume button. (After-the-fact re-dispatch of a
+>    finished orchestration stays `orchestrate --resume`, AO5-3.) Verified vs Kimi
+>    (control path over a real orchestration end-to-end) + deterministic gate
+>    tests. cli 501/501, tui 106/106.
 > 4. **Time-travel of an orchestration** in the UI — scrubber over the combined
 >    parent+lanes event timeline, reusing `rewind`/`reduceRail`.
 > 5. **All reachable by NL/proactive/UI** — best-of-N + resume already are (AO5-NL);
