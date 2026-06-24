@@ -5,7 +5,9 @@ import {
   BudgetLedger,
   budgetCapCentsFromUsd,
   capTotalAgents,
+  buildSchemaInstruction,
   chooseConcurrency,
+  extractJsonValue,
   getLocalDiff,
   planAgentAllocation,
   RunManager,
@@ -14,6 +16,8 @@ import {
   stageAll,
   SWARM_MAX_TOTAL_AGENTS,
   topologicalWaves,
+  validateAgainstSchema,
+  type JsonSchema,
   type Subtask,
   type SwarmHeal,
   type SwarmLaneGrader,
@@ -69,6 +73,14 @@ export interface SwarmSubtask {
    * mutating roles for lanes meant to land changes.
    */
   role?: AgentRole;
+  /**
+   * AO7-4 — optional JSON-schema CONTRACT for this lane's final output. When set,
+   * the lane is told to emit conforming JSON; its final message is validated and a
+   * mismatch RE-DISPATCHES the lane (reusing the retry loop). The parsed value is
+   * recorded on the lane summary so the fan-in / dependents can consume structured
+   * data (CC's StructuredOutput, per-lane). Best for analysis/data lanes.
+   */
+  outputSchema?: JsonSchema;
 }
 
 /**
@@ -237,6 +249,8 @@ export function chooseBuildShape(input: {
 export interface SwarmLaneSummary {
   costCents: number | null;
   toolCalls: number;
+  /** AO7-4 — the lane's schema-validated structured output, when it declared one. */
+  structuredOutput?: unknown;
 }
 
 /**
@@ -549,11 +563,20 @@ export async function executeSwarm(
     // without doing any work THROWS — which is what lets `--retries` actually
     // re-dispatch a transient failure (runSwarm only retries on a throw).
     let lastError: string | null = null;
+    // AO7-4 — when the lane declares an output schema, tell the agent to emit
+    // conforming JSON and capture its final message to validate after the run.
+    const outputSchema = byId.get(lane.id)?.outputSchema;
+    let finalText = '';
+    const baseInstruction = byId.get(lane.id)?.instruction ?? lane.instruction;
+    const instruction =
+      outputSchema !== undefined
+        ? `${baseInstruction}\n\n${buildSchemaInstruction(outputSchema)}`
+        : baseInstruction;
     for await (const event of adapter.run({
       runId: childId ?? `swarm_${lane.id}`,
       sessionId: `swarm_${lane.id}`,
       workdir: worktreePath,
-      prompt: lanePrompt(byId.get(lane.id)?.instruction ?? lane.instruction, feedback),
+      prompt: lanePrompt(instruction, feedback),
       role: byId.get(lane.id)?.role ?? 'implementer',
       config: context.config,
       gateway: context.gateway,
@@ -576,8 +599,11 @@ export async function executeSwarm(
         lastError = typeof msg === 'string' ? msg : 'agent error';
       }
       if (e.type === 'assistant_message') {
-        const total = (e.payload as Record<string, unknown>)['totalCostCents'];
+        const payload = e.payload as Record<string, unknown>;
+        const total = payload['totalCostCents'];
         if (typeof total === 'number') costCents = total;
+        const text = payload['text'];
+        if (typeof text === 'string' && text.trim().length > 0) finalText = text;
       }
     }
     // Account this lane's spend so later lanes (and waves) see the running total
@@ -587,6 +613,18 @@ export async function executeSwarm(
     // treat as a (likely transient) lane failure so the retry loop fires.
     if (lastError !== null && toolCalls === 0) {
       throw new Error(lastError);
+    }
+    // AO7-4 — enforce the lane's output schema: parse the final message and
+    // validate. A mismatch THROWS → the retry/heal loop re-dispatches (the schema
+    // instruction stays in the prompt so the re-attempt conforms). On success the
+    // parsed value rides the summary to the fan-in / dependents.
+    if (outputSchema !== undefined) {
+      const value = extractJsonValue(finalText);
+      const errors = validateAgainstSchema(value, outputSchema);
+      if (errors.length > 0) {
+        throw new Error(`lane output did not match its schema: ${errors.slice(0, 3).join('; ')}`);
+      }
+      return { costCents, toolCalls, structuredOutput: value };
     }
     return { costCents, toolCalls };
   };

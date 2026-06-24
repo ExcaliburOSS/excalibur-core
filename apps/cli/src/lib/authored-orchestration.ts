@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { SWARM_MAX_TOTAL_AGENTS, topologicalWaves } from '@excalibur/core';
+import { SWARM_MAX_TOTAL_AGENTS, topologicalWaves, type JsonSchema } from '@excalibur/core';
 import { agentRoleSchema, type AgentRole } from '@excalibur/shared';
 import { CliUsageError } from '../errors';
 import type { SwarmSubtask } from './swarm';
@@ -26,6 +26,8 @@ export interface AuthoredStep {
   dependsOn?: string[];
   role?: AgentRole;
   title?: string;
+  /** AO7-4 — JSON-schema contract for this step's output (validated + retried). */
+  outputSchema?: JsonSchema;
 }
 
 export interface AuthoredOrchestration {
@@ -105,6 +107,17 @@ export function compileAuthoredOrchestration(raw: unknown): {
       }
       role = parsed.data;
     }
+    // AO7-4 — optional output schema (a YAML mapping → JsonSchema). A present-but-
+    // non-mapping value is a contract violation (an author typo), not silently dropped.
+    if (
+      e['outputSchema'] !== undefined &&
+      (typeof e['outputSchema'] !== 'object' || e['outputSchema'] === null)
+    ) {
+      throw new CliUsageError(
+        `step "${id}" has a non-mapping "outputSchema" — use a JSON-schema object`,
+      );
+    }
+    const outputSchema = e['outputSchema'] as JsonSchema | undefined;
     const title =
       typeof e['title'] === 'string' && e['title'].trim().length > 0
         ? e['title'].trim()
@@ -115,6 +128,7 @@ export function compileAuthoredOrchestration(raw: unknown): {
       instruction,
       ...(dependsOn.length > 0 ? { dependsOn } : {}),
       ...(role !== undefined ? { role } : {}),
+      ...(outputSchema !== undefined ? { outputSchema } : {}),
     };
   });
 

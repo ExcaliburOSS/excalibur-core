@@ -108,6 +108,17 @@ describe('compileAuthoredOrchestration (AO5-4)', () => {
   it('rejects an invalid role', () => {
     expect(bad({ steps: [{ id: 'a', instruction: 'x', role: 'wizard' }] })).toThrow(/invalid role/);
   });
+
+  it('AO7-4: threads an outputSchema onto the subtask, and rejects a non-mapping one', () => {
+    const schema = { type: 'object', properties: { ok: { type: 'boolean' } } };
+    const { subtasks } = compileAuthoredOrchestration({
+      steps: [{ id: 'a', instruction: 'analyze', outputSchema: schema }],
+    });
+    expect(subtasks[0]?.outputSchema).toEqual(schema);
+    expect(bad({ steps: [{ id: 'a', instruction: 'x', outputSchema: 'nope' }] })).toThrow(
+      /non-mapping "outputSchema"/,
+    );
+  });
 });
 
 describe('resolveAuthoredSpecPath', () => {
