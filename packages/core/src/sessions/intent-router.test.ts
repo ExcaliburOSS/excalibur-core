@@ -2,10 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CONFIG, type ExcaliburConfig } from '@excalibur/shared';
 import {
   buildIntentPrompt,
+  buildScheduleExtractionPrompt,
   buildStatusLineModel,
   classifyOrchestrationAction,
+  classifyScheduleExtraction,
   classifyTurnIntent,
   parseOrchestrationAction,
+  parseScheduleExtraction,
   decidePosture,
   parseStructuralInput,
   parseTurnConfidence,
@@ -60,6 +63,7 @@ describe('parseTurnIntent', () => {
     expect(parseTurnIntent('Category: bg')).toBe('bg');
     expect(parseTurnIntent('je ne sais pas')).toBe('chat');
     expect(parseTurnIntent('')).toBe('chat');
+    expect(parseTurnIntent('schedule')).toBe('schedule'); // AO8-4
   });
 });
 
@@ -89,6 +93,43 @@ describe('riskOfShape (AO3d-2, pure)', () => {
     expect(riskOfShape('goal')).toBe('high');
     expect(riskOfShape('explore')).toBe('high'); // best-of-N is a cost amplifier
     expect(riskOfShape('orchestration')).toBe('low'); // view/pause/resume an existing run
+    expect(riskOfShape('schedule')).toBe('medium'); // AO8-4 — reversible but commits future runs
+  });
+});
+
+describe('schedule extraction (AO8-4, NL → cadence + task, LLM, multi-language)', () => {
+  it('parses a {cadence, task} JSON object; null when a field is missing', () => {
+    expect(parseScheduleExtraction('{"cadence":"every 2h","task":"run the test sweep"}')).toEqual({
+      cadence: 'every 2h',
+      task: 'run the test sweep',
+    });
+    // fence/prose tolerant via firstJsonObject
+    expect(
+      parseScheduleExtraction('Sure:\n```json\n{"cadence":"at 09:00","task":"publish"}\n```'),
+    ).toEqual({ cadence: 'at 09:00', task: 'publish' });
+    expect(parseScheduleExtraction('{"cadence":"","task":"x"}')).toBeNull();
+    expect(parseScheduleExtraction('{"task":"x"}')).toBeNull();
+    expect(parseScheduleExtraction('no json here')).toBeNull();
+  });
+
+  it('builds a language-agnostic prompt that carries the request verbatim', () => {
+    const p = buildScheduleExtractionPrompt('cada 2 horas haz el barrido de tests');
+    expect(p).toContain('cada 2 horas haz el barrido de tests');
+    expect(p).toContain('cadence');
+    expect(p).toContain('task');
+  });
+
+  it('classifies via the injected model regardless of language; null on error', async () => {
+    const model = vi
+      .fn()
+      .mockResolvedValue('{"cadence":"at 09:00","task":"haz el barrido de tests"}');
+    expect(await classifyScheduleExtraction('cada mañana haz el barrido de tests', model)).toEqual({
+      cadence: 'at 09:00',
+      task: 'haz el barrido de tests',
+    });
+    expect(model.mock.calls[0]?.[0]).toContain('cada mañana haz el barrido de tests');
+    const boom = vi.fn().mockRejectedValue(new Error('down'));
+    expect(await classifyScheduleExtraction('every morning run X', boom)).toBeNull();
   });
 });
 

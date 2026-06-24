@@ -914,6 +914,14 @@ export const ES: Catalog = {
   'repl.route-explore-auto':
     'Auto-enrutado: explorando enfoques candidatos en paralelo (best-of-N).',
   'repl.route-narrate-hint': '  (alto impacto — lo ejecuto ya; pulsa Esc para parar.)',
+  // AO8-4 — programación por lenguaje natural (petición recurrente → tarea programada persistida).
+  'repl.schedule-confirm': '¿Programar «{task}» para ejecutarse {spec}?',
+  'repl.schedule-declined': 'No se ha programado.',
+  'repl.schedule-unparsed':
+    'Entendí que quieres programarlo, pero no pude leer la cadencia «{cadence}». Prueba `schedule add "every 2h" "<tarea>"`.',
+  'repl.schedule-added': '✓ Programado «{task}» — {spec} · siguiente {next}',
+  'repl.schedule-daemon-hint':
+    '  (mantén vivo `excalibur schedule run` o `excalibur serve` para que se dispare.)',
   'repl.auto-build-parallel':
     'Auto-orquestando: {count} flujos de trabajo independientes → un swarm en paralelo.',
   'repl.auto-build-sequential':

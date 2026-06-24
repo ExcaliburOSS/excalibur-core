@@ -5,7 +5,13 @@ import {
   buildTurnSummary,
   changeGlyph,
   classifyOrchestrationAction,
+  classifyScheduleExtraction,
   classifyTurnDecision,
+  ScheduleStore,
+  parseScheduleSpec,
+  nextRun,
+  describeSpec,
+  type ScheduledJob,
   planShape,
   shouldSurfacePlanShape,
   shouldAskPlanQuestions,
@@ -759,6 +765,23 @@ export async function runInteractiveSession(
                 }),
               );
             }
+          }
+        } else if (intent === 'schedule') {
+          // AO8-4 — NL-routed scheduling (any language): "every morning run the
+          // test sweep" → a persisted ScheduledJob (the OSS analog of cron /
+          // ScheduleWakeup), no `schedule add` command needed. If the cadence
+          // can't be understood, fall through to a normal turn so the model can
+          // still respond / clarify.
+          const handled = await dispatchSchedule(
+            deps,
+            runtime,
+            text,
+            classifyIntent,
+            posture('schedule'),
+            ctrl.signal,
+          );
+          if (!handled) {
+            await dispatchAgentTurn(deps, runtime, text, ctrl.signal, seed);
           }
         } else if (intent === 'plan') {
           // Plan, posture ASK → the deliberate plan → approve → execute gate.
@@ -1529,6 +1552,84 @@ async function handleBgCommand(
   // primary task + an auto-follow-up; best-effort (no model → the whole thing).
   const chain = await parseBgChain(deps, runtime, trimmed);
   launchBgThread(deps, runtime, chain.task, controllers, chain.followUp ?? undefined);
+}
+
+/**
+ * AO8-4 — NL → scheduled job. Extracts a cadence + task from a free-form recurring
+ * request (any language) via the cheap intent model, parses the cadence, and —
+ * honouring the `schedule`-route {@link RoutePosture} (auto/narrate just create it;
+ * ask shows the EXACT parsed schedule first) — persists a {@link ScheduledJob} (the
+ * OSS analog of cron / ScheduleWakeup). Returns false when no usable cadence/task
+ * could be extracted (the caller falls back to a normal turn so the model can still
+ * respond / clarify); true once the turn is handled (scheduled, declined, or the
+ * cadence was unparseable). Never throws.
+ */
+async function dispatchSchedule(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  text: string,
+  classify: IntentModel | undefined,
+  posture: RoutePosture,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (classify === undefined) {
+    return false; // no model to extract with → let a normal turn handle it
+  }
+  const extracted = await classifyScheduleExtraction(text, classify, signal);
+  if (extracted === null) {
+    return false;
+  }
+  const spec = parseScheduleSpec(extracted.cadence);
+  if (spec === null) {
+    // Understood the SCHEDULE intent but not the cadence — say so + point at the
+    // explicit command rather than guessing a cadence.
+    deps.ui.warn(deps.t('repl.schedule-unparsed', { cadence: extracted.cadence }));
+    return true;
+  }
+  // Posture: a `schedule` is medium-risk (commits to FUTURE autonomous runs) — at
+  // full autonomy it just creates it (narrate adds the hint), otherwise it asks,
+  // showing the EXACT parsed schedule so the user confirms what will actually run.
+  if (posture === 'ask') {
+    const ok = await deps.ui.confirm(
+      deps.t('repl.schedule-confirm', { spec: describeSpec(spec), task: extracted.task }),
+      { defaultYes: true },
+    );
+    if (!ok) {
+      deps.ui.info(deps.t('repl.schedule-declined'));
+      return true;
+    }
+  } else if (posture === 'narrate') {
+    deps.ui.info(deps.t('repl.route-narrate-hint'));
+  }
+  const now = Date.now();
+  const job: ScheduledJob = {
+    id: generateId('sched'),
+    task: extracted.task,
+    spec,
+    createdAtMs: now,
+    lastRunMs: null,
+    nextRunMs: nextRun(spec, now),
+    enabled: true,
+  };
+  try {
+    new ScheduleStore(runtime.repoRoot).add(job);
+  } catch (error) {
+    deps.ui.error(error instanceof Error ? error.message : String(error));
+    return true;
+  }
+  runtime.store.appendPromptHistory(
+    `schedule ${describeSpec(spec)} ${redactSecrets(extracted.task)}`,
+  );
+  deps.ui.success(
+    deps.t('repl.schedule-added', {
+      spec: describeSpec(spec),
+      task: extracted.task,
+      next: new Date(job.nextRunMs).toLocaleString(),
+    }),
+  );
+  // Off by default: nothing fires unless the daemon (`schedule run`) or `serve` is alive.
+  deps.ui.info(deps.t('repl.schedule-daemon-hint'));
+  return true;
 }
 
 /** Builds the cheap-model `classify` adapter used by the AO8 background reactions

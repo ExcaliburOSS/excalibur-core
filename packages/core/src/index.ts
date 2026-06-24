@@ -377,6 +377,10 @@ export {
   parseOrchestrationAction,
   classifyOrchestrationAction,
   type OrchestrationAction,
+  buildScheduleExtractionPrompt,
+  parseScheduleExtraction,
+  classifyScheduleExtraction,
+  type ScheduleExtraction,
 } from './sessions/intent-router';
 export {
   buildPlanShapePrompt,

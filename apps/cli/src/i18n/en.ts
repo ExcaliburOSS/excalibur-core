@@ -855,6 +855,14 @@ export const EN: Catalog = {
   'repl.route-explore-auto':
     'Auto-routing: exploring candidate approaches in parallel (best-of-N).',
   'repl.route-narrate-hint': '  (high-impact — running it now; press Esc to stop.)',
+  // AO8-4 — NL-routed scheduling (a recurring request → a persisted scheduled job).
+  'repl.schedule-confirm': 'Schedule "{task}" to run {spec}?',
+  'repl.schedule-declined': 'Not scheduled.',
+  'repl.schedule-unparsed':
+    'I understood you want to schedule that, but couldn\'t read the cadence "{cadence}". Try `schedule add "every 2h" "<task>"`.',
+  'repl.schedule-added': '✓ Scheduled "{task}" — {spec} · next {next}',
+  'repl.schedule-daemon-hint':
+    '  (keep `excalibur schedule run` or `excalibur serve` alive for it to fire.)',
   'repl.auto-build-parallel':
     'Auto-orchestrating: {count} independent workstreams → a parallel swarm.',
   'repl.auto-build-sequential': 'Auto-orchestrating: a single workstream → one focused run.',

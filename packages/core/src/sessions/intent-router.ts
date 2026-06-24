@@ -1,5 +1,6 @@
 import { type AutonomyLevel, type ExcaliburConfig } from '@excalibur/shared';
 import { DEFAULT_SAFETY_PRESET_ID, SAFETY_PRESETS } from '../onboarding/onboarding';
+import { firstJsonObject } from './plan-shaping';
 
 /**
  * Structural input parsing + the StatusLine model for the M-Shell REPL.
@@ -66,6 +67,7 @@ export function parseStructuralInput(text: string): StructuralInput {
  * - `research`: needs external/current web info, or deep multi-source research.
  * - `goal`: an explicit "iterate until it works/passes/done" objective.
  * - `explore`: wants SEVERAL alternative approaches compared (best-of-N).
+ * - `schedule`: wants a task to run on a RECURRING cadence (every N / daily at).
  */
 export type TurnIntent =
   | 'chat'
@@ -75,7 +77,8 @@ export type TurnIntent =
   | 'research'
   | 'goal'
   | 'explore'
-  | 'orchestration';
+  | 'orchestration'
+  | 'schedule';
 
 const TURN_INTENTS: readonly TurnIntent[] = [
   'chat',
@@ -86,6 +89,7 @@ const TURN_INTENTS: readonly TurnIntent[] = [
   'goal',
   'explore',
   'orchestration',
+  'schedule',
 ];
 
 export interface IntentContext {
@@ -117,7 +121,8 @@ export function buildIntentPrompt(text: string): string {
     '- goal: an explicit "keep iterating until it works/passes/done" objective.',
     '- explore: explicitly wants SEVERAL alternative approaches compared, best-of-N, "try a few ways and pick the best".',
     '- orchestration: VIEW, PAUSE or RESUME an EXISTING parallel run — its swarm/orchestration/chronogram/timeline (not new work).',
-    'Answer with ONLY the category word (chat, plan, swarm, bg, research, goal, explore, or orchestration).',
+    '- schedule: run a task on a RECURRING cadence ("every morning", "cada 2 horas", "nightly", "daily at 9", "each hour run X").',
+    'Answer with ONLY the category word (chat, plan, swarm, bg, research, goal, explore, orchestration, or schedule).',
     '',
     `Request: ${text}`,
   ].join('\n');
@@ -156,6 +161,7 @@ export function buildDecisionPrompt(text: string): string {
     '- goal: an explicit "keep iterating until it works/passes/done" objective.',
     '- explore: explicitly wants SEVERAL alternative approaches compared, best-of-N, "try a few ways and pick the best".',
     '- orchestration: VIEW, PAUSE or RESUME an EXISTING parallel run — its swarm/orchestration/chronogram/timeline (not new work).',
+    '- schedule: run a task on a RECURRING cadence ("every morning", "cada 2 horas", "nightly", "daily at 9", "each hour run X").',
     'Answer with EXACTLY two words: the category then the confidence (high, medium, or low).',
     'Example: "swarm high" or "chat low".',
     '',
@@ -211,6 +217,10 @@ export function riskOfShape(intent: TurnIntent): ShapeRisk {
     case 'plan':
     case 'swarm':
     case 'bg':
+    case 'schedule':
+      // schedule = add a recurring job: a reversible config write (you can remove
+      // it), but it commits to FUTURE autonomous runs → confirm unless autonomy is
+      // granted, like a build.
       return 'medium';
     case 'goal':
     case 'explore':
@@ -304,6 +314,64 @@ export async function classifyOrchestrationAction(
     return parseOrchestrationAction(await classify(buildOrchestrationActionPrompt(text), signal));
   } catch {
     return 'show';
+  }
+}
+
+/**
+ * AO8-4 — NL → schedule extraction. When a turn routes to `schedule`, this pulls
+ * a normalised cadence + the task out of a free-form request in ANY language
+ * ("every morning run the test sweep", "cada 2 horas haz X", "nightly publish the
+ * report"). The model normalises fuzzy cadences ("every morning" → "at 09:00",
+ * "nightly" → "at 22:00", "hourly" → "every 1h") into a string that
+ * {@link parseScheduleSpec} understands, and strips the scheduling words from the
+ * task. Returns null when no usable cadence + task can be extracted (the caller
+ * then falls back to asking, never silently scheduling the wrong thing).
+ */
+export interface ScheduleExtraction {
+  /** A cadence string for `parseScheduleSpec`: "every 30m" / "2h" / "at 09:00". */
+  cadence: string;
+  /** The task prompt to run when the job fires (scheduling words removed). */
+  task: string;
+}
+
+/** Builds the schedule-extraction prompt (any language → normalised cadence + task). */
+export function buildScheduleExtractionPrompt(text: string): string {
+  return [
+    'The user wants to SCHEDULE a task to run on a recurring cadence (in ANY language).',
+    'Extract exactly two fields:',
+    '- cadence: a normalised schedule string, EXACTLY one of these two shapes —',
+    '    "every <N><s|m|h|d>"  for an interval (e.g. "every 30m", "every 2h", "every 1d"),',
+    '    "at HH:MM"            (24-hour clock) for a once-a-day time (e.g. "at 09:00").',
+    '  Translate fuzzy cadences: "every morning"/"daily"/"each day"/"cada día" → "at 09:00";',
+    '  "nightly"/"every night"/"cada noche" → "at 22:00"; "hourly"/"cada hora" → "every 1h";',
+    '  "twice a day" → "every 12h"; "every other day" → "every 2d". Keep an explicit time as given.',
+    "- task: the task to run, with the scheduling words removed, in the user's own language.",
+    'Respond with ONLY a JSON object: {"cadence":"...","task":"..."} — no prose, no code fence.',
+    '',
+    `Request: ${text}`,
+  ].join('\n');
+}
+
+/** Parses the model answer into a {@link ScheduleExtraction}; null if either field is missing. */
+export function parseScheduleExtraction(modelOutput: string): ScheduleExtraction | null {
+  const obj = firstJsonObject(modelOutput);
+  if (obj === null) return null;
+  const cadence = typeof obj.cadence === 'string' ? obj.cadence.trim() : '';
+  const task = typeof obj.task === 'string' ? obj.task.trim() : '';
+  if (cadence.length === 0 || task.length === 0) return null;
+  return { cadence, task };
+}
+
+/** Extracts the cadence + task via the injected model; null on any fault (caller asks). */
+export async function classifyScheduleExtraction(
+  text: string,
+  classify: IntentModel,
+  signal?: AbortSignal,
+): Promise<ScheduleExtraction | null> {
+  try {
+    return parseScheduleExtraction(await classify(buildScheduleExtractionPrompt(text), signal));
+  } catch {
+    return null;
   }
 }
 
