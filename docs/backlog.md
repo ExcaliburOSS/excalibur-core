@@ -217,6 +217,22 @@ Build order: AO9-1 (engine) → AO9-2 (command, proves it end-to-end vs Kimi) �
 
 ---
 
+## DASH — OSS dashboard improvements (code-grounded gaps, 2026-06-25)
+
+> Found while closing AO4e-3 (#210). The OSS dashboard (`excalibur serve`, Svelte SPA embedded in the CLI) ships D0–D5 + AO4e (orchestrations) + AO6 (chronogram/pause/time-travel) + plan-shaping (D). These are real, observable gaps (NOT Enterprise manager-web E1–E10):
+
+- **DASH1 (#215)** Session view + `/api/sessions` — serve has runs/board/plans/orchestrations but NOT shell sessions (no `/api/sessions`; `SessionStore` unreferenced in serve.ts). Coordinates with **P2.19** (a shared session served read-only via the `--share` token).
+- **DASH2 (#216)** Scheduler UI — the AO8-3 scheduler (`schedule …`, `.excalibur/schedules.json`) has no panel. `/api/schedules` + a Scheduler view (cadence/next/last/enabled) + write add/remove/toggle.
+- **DASH3 (#217)** Background-fleet panel — `/bg` + `/threads` async work is invisible in the web UI. Surface running/done/failed threads + follow-ups + supervisor reactions.
+- **DASH4 (#218)** Richer per-run diff/patch viewer — render the inline per-edit diff stream (AO6 P1, shipped for TTY) as a syntax-highlighted, per-file, collapsible unified diff in the web run view.
+- **DASH5 (#219)** Global search/filters across runs + work-items (text/status/workflow/work-item/date/cost).
+- **DASH6 (#220)** Live budget meter (vs `budget.maxRunUsd`) + notifications (run done / waiting_approval / budget-exhausted), fed by the existing SSE streams.
+- **DASH7 (#221)** Responsive/mobile layout + theme parity (inherit the TUI custom themes / light-dark, #140/#182).
+
+(The Scope/Understand dashboard panel is tracked separately as **AO9-4 (#214)**.)
+
+---
+
 ## DW — Web & docs refresh (cross-cutting; we shipped a LOT that's undocumented)
 
 > Added 2026-06-23: a big body of work landed (the whole dashboard epic, the
