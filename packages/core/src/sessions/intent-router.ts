@@ -67,7 +67,15 @@ export function parseStructuralInput(text: string): StructuralInput {
  * - `goal`: an explicit "iterate until it works/passes/done" objective.
  * - `explore`: wants SEVERAL alternative approaches compared (best-of-N).
  */
-export type TurnIntent = 'chat' | 'plan' | 'swarm' | 'bg' | 'research' | 'goal' | 'explore';
+export type TurnIntent =
+  | 'chat'
+  | 'plan'
+  | 'swarm'
+  | 'bg'
+  | 'research'
+  | 'goal'
+  | 'explore'
+  | 'orchestration';
 
 const TURN_INTENTS: readonly TurnIntent[] = [
   'chat',
@@ -77,6 +85,7 @@ const TURN_INTENTS: readonly TurnIntent[] = [
   'research',
   'goal',
   'explore',
+  'orchestration',
 ];
 
 export interface IntentContext {
@@ -107,7 +116,8 @@ export function buildIntentPrompt(text: string): string {
     '- research: needs external/current information from the web, or deep investigation.',
     '- goal: an explicit "keep iterating until it works/passes/done" objective.',
     '- explore: explicitly wants SEVERAL alternative approaches compared, best-of-N, "try a few ways and pick the best".',
-    'Answer with ONLY the category word (chat, plan, swarm, bg, research, goal, or explore).',
+    '- orchestration: VIEW, PAUSE or RESUME an EXISTING parallel run — its swarm/orchestration/chronogram/timeline (not new work).',
+    'Answer with ONLY the category word (chat, plan, swarm, bg, research, goal, explore, or orchestration).',
     '',
     `Request: ${text}`,
   ].join('\n');
@@ -145,6 +155,7 @@ export function buildDecisionPrompt(text: string): string {
     '- research: needs external/current information from the web, or deep investigation.',
     '- goal: an explicit "keep iterating until it works/passes/done" objective.',
     '- explore: explicitly wants SEVERAL alternative approaches compared, best-of-N, "try a few ways and pick the best".',
+    '- orchestration: VIEW, PAUSE or RESUME an EXISTING parallel run — its swarm/orchestration/chronogram/timeline (not new work).',
     'Answer with EXACTLY two words: the category then the confidence (high, medium, or low).',
     'Example: "swarm high" or "chat low".',
     '',
@@ -194,6 +205,8 @@ export function riskOfShape(intent: TurnIntent): ShapeRisk {
   switch (intent) {
     case 'chat':
     case 'research':
+    case 'orchestration':
+      // orchestration = view/pause/resume an existing run — read-ish + reversible.
       return 'low';
     case 'plan':
     case 'swarm':
@@ -248,6 +261,49 @@ export async function classifyTurnIntent(
     return parseTurnIntent(await classify(buildIntentPrompt(text), signal));
   } catch {
     return 'chat';
+  }
+}
+
+/**
+ * AO6 Pillar 5 — the orchestration CONTROL action (NL, multilingual). When a turn
+ * routed to `orchestration`, this micro-classifies WHICH control the user wants:
+ * `show` the chronogram, `pause`, or `resume`. LLM-based (never keyword/regex) so
+ * it works in any language; the default is the safe read (`show`).
+ */
+export type OrchestrationAction = 'show' | 'pause' | 'resume';
+const ORCHESTRATION_ACTIONS: readonly OrchestrationAction[] = ['show', 'pause', 'resume'];
+
+/** The prompt that picks the orchestration control verb (any language). */
+export function buildOrchestrationActionPrompt(text: string): string {
+  return [
+    'The user is talking about an EXISTING parallel run (a swarm / orchestration /',
+    'chronogram / timeline). In ANY language, decide which action they want:',
+    '- show: view / inspect / open the chronogram or timeline (the default).',
+    '- pause: pause / hold / stop dispatching it for now.',
+    '- resume: resume / continue / unpause it.',
+    'Answer with ONLY the word: show, pause, or resume.',
+    '',
+    `Request: ${text}`,
+  ].join('\n');
+}
+
+/** Maps a model answer to an {@link OrchestrationAction}; unrecognized → `show`. */
+export function parseOrchestrationAction(modelOutput: string): OrchestrationAction {
+  const tokens = modelOutput.toLowerCase().match(/[a-z]+/g) ?? [];
+  const found = tokens.find((t) => (ORCHESTRATION_ACTIONS as readonly string[]).includes(t));
+  return (found as OrchestrationAction | undefined) ?? 'show';
+}
+
+/** Classifies the orchestration control verb via the injected model; `show` on any fault. */
+export async function classifyOrchestrationAction(
+  text: string,
+  classify: IntentModel,
+  signal?: AbortSignal,
+): Promise<OrchestrationAction> {
+  try {
+    return parseOrchestrationAction(await classify(buildOrchestrationActionPrompt(text), signal));
+  } catch {
+    return 'show';
   }
 }
 

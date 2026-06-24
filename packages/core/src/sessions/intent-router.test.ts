@@ -3,7 +3,9 @@ import { DEFAULT_CONFIG, type ExcaliburConfig } from '@excalibur/shared';
 import {
   buildIntentPrompt,
   buildStatusLineModel,
+  classifyOrchestrationAction,
   classifyTurnIntent,
+  parseOrchestrationAction,
   decidePosture,
   parseStructuralInput,
   parseTurnConfidence,
@@ -86,6 +88,24 @@ describe('riskOfShape (AO3d-2, pure)', () => {
     expect(riskOfShape('bg')).toBe('medium');
     expect(riskOfShape('goal')).toBe('high');
     expect(riskOfShape('explore')).toBe('high'); // best-of-N is a cost amplifier
+    expect(riskOfShape('orchestration')).toBe('low'); // view/pause/resume an existing run
+  });
+});
+
+describe('orchestration control action (AO6 Pillar 5, LLM, multi-language)', () => {
+  it('parses the action word; unknown → show (the safe read)', () => {
+    expect(parseOrchestrationAction('pause')).toBe('pause');
+    expect(parseOrchestrationAction('  RESUME it\n')).toBe('resume');
+    expect(parseOrchestrationAction('open the chronogram')).toBe('show');
+    expect(parseOrchestrationAction('no idea')).toBe('show');
+  });
+
+  it('classifies via the injected model regardless of language; defaults to show on error', async () => {
+    const pause = vi.fn().mockResolvedValue('pause');
+    expect(await classifyOrchestrationAction('pausa la orquestación', pause)).toBe('pause');
+    expect(pause.mock.calls[0]?.[0]).toContain('pausa la orquestación');
+    const boom = vi.fn().mockRejectedValue(new Error('down'));
+    expect(await classifyOrchestrationAction('montre le chronogramme', boom)).toBe('show');
   });
 });
 

@@ -832,6 +832,8 @@ export const EN: Catalog = {
   'repl.auto-build-parallel':
     'Auto-orchestrating: {count} independent workstreams → a parallel swarm.',
   'repl.auto-build-sequential': 'Auto-orchestrating: a single workstream → one focused run.',
+  'repl.orchestration-hint':
+    'Tip: ask me to "show the orchestration" or "pause it" anytime — or open its live chronogram in the dashboard.',
   'repl.auto-build-review': 'Adversarial review of the result ({lenses} lens(es))…',
   'repl.auto-build-review-high':
     'A high-severity issue survived review — inspect the changes before relying on them.',

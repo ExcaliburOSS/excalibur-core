@@ -4,6 +4,7 @@ import {
   buildStatusLineModel,
   buildTurnSummary,
   changeGlyph,
+  classifyOrchestrationAction,
   classifyTurnDecision,
   decidePosture,
   riskOfShape,
@@ -48,6 +49,8 @@ import {
 } from '../lib/context';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { chooseBuildShape, decomposeTask, runSwarmFlow } from '../lib/swarm';
+import { renderChronogramView } from '../commands/orchestration';
+import { latestOrchestrationRunId, setOrchestrationPaused } from '../lib/orchestration-manifest';
 import { runExploreFlow } from '../lib/explore';
 import { runConfiguredCommandCheck } from '../lib/verify-command';
 import { runProportionalMesh } from '../lib/verify-mesh';
@@ -720,6 +723,30 @@ export async function runInteractiveSession(
           // focused run). The user already decided at the posture gate — no
           // further prompts; the planner and parallelizer are fused.
           await dispatchAutoBuild(deps, runtime, text, ctrl.signal, seed);
+        } else if (intent === 'orchestration') {
+          // AO6 Pillar 5 — NL control of an EXISTING orchestration (any language):
+          // view the chronogram, or pause/resume it. No command needed; the
+          // dashboard buttons + `orchestration` command are escape hatches.
+          const runId = latestOrchestrationRunId(runtime.repoRoot);
+          if (runId === null) {
+            deps.ui.info(deps.t('orchestration.none'));
+          } else {
+            const action =
+              classifyIntent === undefined
+                ? 'show'
+                : await classifyOrchestrationAction(text, classifyIntent, ctrl.signal);
+            if (action === 'show') {
+              renderChronogramView(deps, runtime.repoRoot, runId, false);
+            } else {
+              const paused = action === 'pause';
+              setOrchestrationPaused(runtime.repoRoot, runId, paused, new Date().toISOString());
+              deps.ui.info(
+                deps.t(paused ? 'orchestration.pause-set' : 'orchestration.resume-set', {
+                  id: runId,
+                }),
+              );
+            }
+          }
         } else if (intent === 'plan') {
           // Plan, posture ASK → the deliberate plan → approve → execute gate.
           await dispatchPlan(deps, runtime, text, ctrl.signal, seed);
@@ -1229,6 +1256,9 @@ async function dispatchAutoBuild(
           },
           { subtasks, yes: true, signal },
         );
+        // AO6 Pillar 5 — proactively surface that this orchestration is now a
+        // first-class, viewable + pausable object (NL or dashboard), no command.
+        deps.ui.info(deps.t('repl.orchestration-hint'));
         return;
       }
     } catch (error) {

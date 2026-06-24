@@ -46,12 +46,18 @@ export function registerOrchestrationCommand(program: Command, deps: CliDeps): v
           );
           return;
         }
-        renderChronogramTo(deps, repoRoot, runId, options.json === true);
+        renderChronogramView(deps, repoRoot, runId, options.json === true);
       },
     );
 }
 
-function renderChronogramTo(deps: CliDeps, repoRoot: string, runId: string, asJson: boolean): void {
+/** Renders a run's chronogram to the UI (shared by the command + the REPL NL route). */
+export function renderChronogramView(
+  deps: CliDeps,
+  repoRoot: string,
+  runId: string,
+  asJson: boolean,
+): void {
   const chronogram = buildChronogramForRun(repoRoot, runId);
   if (chronogram === null) {
     throw new CliUsageError(deps.t('orchestration.notFound', { id: runId }));
