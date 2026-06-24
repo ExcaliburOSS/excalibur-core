@@ -39,15 +39,32 @@ if (!KEY) {
 const BASE = 'https://api.moonshot.ai/v1';
 const MODEL = 'kimi-k2.7-code';
 
-/** One Kimi chat call (temperature OMITTED — Kimi allows only the default). */
-async function ask(prompt) {
+// TOKEN BUDGETS — the AO8-4 review (wb286j6ma) caught that an earlier 1200-token
+// harness FALSE-greened while the REPL fed the extraction through the 6-token intent
+// classifier and truncated it to null. The fix raised the production extraction
+// adapter to a generous ceiling; this harness now mirrors THAT:
+//   - EXTRACT_MAXTOKENS mirrors SCHEDULE_EXTRACT_MAXTOKENS in apps/cli/src/session/
+//     repl.ts (buildCheapModel ceiling for kind:'schedule-extract'). Keep in sync.
+//   - The model under test, kimi-k2.7-code, is a REASONING model: at a 6-token
+//     budget it spends the whole budget thinking and emits empty content, so it
+//     CANNOT emulate production's fast 6-token intent model. We therefore drive the
+//     routing decision with a bounded `reasoning_effort:'low'` + a small budget that
+//     lets it emit the one-word answer. This verifies the PROMPT + PARSER against the
+//     real verify model; production routing uses a separate fast model at 6 tokens.
+const EXTRACT_MAXTOKENS = 1200; // == SCHEDULE_EXTRACT_MAXTOKENS in repl.ts
+const DECISION_MAXTOKENS = 256; // enough for kimi (low effort) to reason + emit 2 words
+
+/** One Kimi chat call at a SPECIFIC token budget (temperature OMITTED — Kimi allows
+ * only the default). `extra` carries per-call knobs (e.g. reasoning_effort). */
+async function ask(prompt, maxTokens, extra = {}) {
   const res = await fetch(`${BASE}/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${KEY}` },
     body: JSON.stringify({
       model: MODEL,
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1200,
+      max_tokens: maxTokens,
+      ...extra,
     }),
   });
   if (!res.ok) throw new Error(`Kimi ${res.status}: ${await res.text()}`);
@@ -81,14 +98,20 @@ console.log(`\n  schedule-routing calibration · ${MATRIX.length} requests vs ${
 
 for (const row of MATRIX) {
   try {
-    const decision = parseTurnDecision(await ask(buildDecisionPrompt(row.req)));
+    const decision = parseTurnDecision(
+      await ask(buildDecisionPrompt(row.req), DECISION_MAXTOKENS, { reasoning_effort: 'low' }),
+    );
     const routedSchedule = decision.intent === 'schedule';
     let ok = routedSchedule === row.schedule;
     let detail = `intent=${decision.intent}`;
 
-    // For rows that SHOULD schedule, also exercise the extractor end-to-end.
+    // For rows that SHOULD schedule, also exercise the extractor end-to-end — at the
+    // SAME ceiling the REPL's extraction adapter uses (EXTRACT_MAXTOKENS), so a
+    // too-small cap (the bug the review caught) would fail loudly here.
     if (row.schedule && routedSchedule) {
-      const extracted = parseScheduleExtraction(await ask(buildScheduleExtractionPrompt(row.req)));
+      const extracted = parseScheduleExtraction(
+        await ask(buildScheduleExtractionPrompt(row.req), EXTRACT_MAXTOKENS),
+      );
       if (extracted === null) {
         ok = false;
         detail += ' · extract=NULL';

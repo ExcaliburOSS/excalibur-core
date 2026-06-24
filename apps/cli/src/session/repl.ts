@@ -776,7 +776,6 @@ export async function runInteractiveSession(
             deps,
             runtime,
             text,
-            classifyIntent,
             posture('schedule'),
             ctrl.signal,
           );
@@ -1554,28 +1553,49 @@ async function handleBgCommand(
   launchBgThread(deps, runtime, chain.task, controllers, chain.followUp ?? undefined);
 }
 
+/** Upper bound on enabled NL-created scheduled jobs — bounds runaway accumulation
+ * from a burst of natural-language turns or a misroute (the explicit `schedule add`
+ * command is unbounded by design; this guards only the auto-triggerable path). */
+const MAX_SCHEDULED_JOBS = 50;
+
 /**
  * AO8-4 — NL → scheduled job. Extracts a cadence + task from a free-form recurring
- * request (any language) via the cheap intent model, parses the cadence, and —
- * honouring the `schedule`-route {@link RoutePosture} (auto/narrate just create it;
- * ask shows the EXACT parsed schedule first) — persists a {@link ScheduledJob} (the
- * OSS analog of cron / ScheduleWakeup). Returns false when no usable cadence/task
- * could be extracted (the caller falls back to a normal turn so the model can still
- * respond / clarify); true once the turn is handled (scheduled, declined, or the
+ * request (any language) and persists a {@link ScheduledJob} (the OSS analog of
+ * cron / ScheduleWakeup). Uses the CHEAP model (a JSON-sized token budget) for the
+ * extraction — NOT the 6-token intent classifier, whose cap would truncate the
+ * `{cadence,task}` object mid-string to unparseable. Honours the `schedule`-route
+ * {@link RoutePosture}: at full autonomy it just creates it (the success line shows
+ * exactly what was scheduled); otherwise it asks, showing the EXACT parsed schedule
+ * first. Returns false ONLY when no usable cadence/task could be extracted (the
+ * caller falls back to a normal turn so the model can still respond / clarify);
+ * true once handled (scheduled, declined, duplicate, capped, cancelled, or the
  * cadence was unparseable). Never throws.
  */
 async function dispatchSchedule(
   deps: CliDeps,
   runtime: SessionRuntime,
   text: string,
-  classify: IntentModel | undefined,
   posture: RoutePosture,
   signal: AbortSignal,
 ): Promise<boolean> {
-  if (classify === undefined) {
-    return false; // no model to extract with → let a normal turn handle it
+  // Extraction needs a JSON-sized budget. The intent classifier caps at 6 tokens
+  // (one word) — far too small; a reasoning model would spend the whole budget
+  // thinking and emit an empty/truncated object. Use the cheap model with the
+  // generous SCHEDULE_EXTRACT_MAXTOKENS ceiling (mirrors shapePlan), gated
+  // identically (router off / non-interactive / mock / unconfigured → null).
+  const classify = buildCheapModel(deps, runtime, {
+    maxTokens: SCHEDULE_EXTRACT_MAXTOKENS,
+    kind: 'schedule-extract',
+  });
+  if (classify === null) {
+    return false; // no usable model to extract with → let a normal turn handle it
   }
   const extracted = await classifyScheduleExtraction(text, classify, signal);
+  // A mid-extraction ESC aborts the signal; the cancel banner already printed, so
+  // treat it as TERMINAL — don't let the caller launch a fresh agent turn.
+  if (signal.aborted) {
+    return true;
+  }
   if (extracted === null) {
     return false;
   }
@@ -1586,25 +1606,42 @@ async function dispatchSchedule(
     deps.ui.warn(deps.t('repl.schedule-unparsed', { cadence: extracted.cadence }));
     return true;
   }
+  // Never persist secrets to .excalibur/schedules.json — the task is re-sent to the
+  // model on EVERY fire, so redact the model-echoed task before it touches disk.
+  const safeTask = redactSecrets(extracted.task);
+  const store = new ScheduleStore(runtime.repoRoot);
+  const existing = store.list();
+  // Dedup: re-phrasing the same recurring request must not pile up duplicate jobs.
+  if (
+    existing.some(
+      (j) => j.enabled && j.task === safeTask && describeSpec(j.spec) === describeSpec(spec),
+    )
+  ) {
+    deps.ui.info(deps.t('repl.schedule-duplicate', { spec: describeSpec(spec) }));
+    return true;
+  }
+  // Cap: bound runaway accumulation from a burst of NL turns / a misclassification.
+  if (existing.filter((j) => j.enabled).length >= MAX_SCHEDULED_JOBS) {
+    deps.ui.warn(deps.t('repl.schedule-cap', { max: MAX_SCHEDULED_JOBS }));
+    return true;
+  }
   // Posture: a `schedule` is medium-risk (commits to FUTURE autonomous runs) — at
-  // full autonomy it just creates it (narrate adds the hint), otherwise it asks,
-  // showing the EXACT parsed schedule so the user confirms what will actually run.
+  // full autonomy it just creates it (the success line below shows exactly what was
+  // scheduled), otherwise it asks, showing the EXACT parsed schedule first.
   if (posture === 'ask') {
     const ok = await deps.ui.confirm(
-      deps.t('repl.schedule-confirm', { spec: describeSpec(spec), task: extracted.task }),
+      deps.t('repl.schedule-confirm', { spec: describeSpec(spec), task: safeTask }),
       { defaultYes: true },
     );
     if (!ok) {
       deps.ui.info(deps.t('repl.schedule-declined'));
       return true;
     }
-  } else if (posture === 'narrate') {
-    deps.ui.info(deps.t('repl.route-narrate-hint'));
   }
   const now = Date.now();
   const job: ScheduledJob = {
     id: generateId('sched'),
-    task: extracted.task,
+    task: safeTask,
     spec,
     createdAtMs: now,
     lastRunMs: null,
@@ -1612,18 +1649,15 @@ async function dispatchSchedule(
     enabled: true,
   };
   try {
-    new ScheduleStore(runtime.repoRoot).add(job);
+    store.add(job);
   } catch (error) {
     deps.ui.error(error instanceof Error ? error.message : String(error));
     return true;
   }
-  runtime.store.appendPromptHistory(
-    `schedule ${describeSpec(spec)} ${redactSecrets(extracted.task)}`,
-  );
   deps.ui.success(
     deps.t('repl.schedule-added', {
       spec: describeSpec(spec),
-      task: extracted.task,
+      task: safeTask,
       next: new Date(job.nextRunMs).toLocaleString(),
     }),
   );
@@ -1632,12 +1666,23 @@ async function dispatchSchedule(
   return true;
 }
 
-/** Builds the cheap-model `classify` adapter used by the AO8 background reactions
- * (chain split + completion supervisor), or null when there is no usable model
- * (router off / non-interactive / mock / unconfigured). Gated like {@link shapePlan}. */
+/**
+ * Builds the cheap-model `classify` adapter used by the AO8 background reactions
+ * (chain split + completion supervisor) and the NL-schedule extraction, or null when
+ * there is no usable model (router off / non-interactive / mock / unconfigured).
+ * Gated like {@link shapePlan}.
+ *
+ * `opts.maxTokens` is a CEILING, not a target — the default 400 suits the tiny
+ * one-line reactions, but JSON extraction (schedule cadence/task) must pass a
+ * GENEROUS budget so a reasoning model's thinking tokens + a verbose-language reply
+ * never truncate the object mid-string (the same trap {@link shapePlan} guards with
+ * its 1200 ceiling; the 6-token intent classifier is far too small for structured
+ * output). Never reuse the intent classifier for JSON.
+ */
 function buildCheapModel(
   deps: CliDeps,
   runtime: SessionRuntime,
+  opts: { maxTokens?: number; kind?: string } = {},
 ): ((prompt: string, signal?: AbortSignal) => Promise<string>) | null {
   if (
     deps.env['EXCALIBUR_ROUTER'] === 'off' ||
@@ -1666,14 +1711,20 @@ function buildCheapModel(
     const output = await gateway.gateway.chat({
       provider,
       messages: [{ role: 'user', content: redactSecrets(prompt) }],
-      maxTokens: 400,
-      timeoutMs: 15000,
-      metadata: { kind: 'bg-react' },
+      maxTokens: opts.maxTokens ?? 400,
+      timeoutMs: 20000,
+      metadata: { kind: opts.kind ?? 'bg-react' },
       ...(sig !== undefined ? { signal: sig } : {}),
     });
     return output.content;
   };
 }
+
+/** The JSON-extraction token ceiling for NL scheduling — generous so a reasoning
+ * model's thinking + a verbose-language reply never truncate the {cadence,task}
+ * object (mirrors {@link shapePlan}'s 1200). MUST stay ≥ what the calibration
+ * harness `scripts/verify-schedule-routing.mjs` asserts the extractor needs. */
+const SCHEDULE_EXTRACT_MAXTOKENS = 1200;
 
 /** AO8-1 — splits a `/bg` request into {task, followUp}; best-effort → no chain. */
 async function parseBgChain(

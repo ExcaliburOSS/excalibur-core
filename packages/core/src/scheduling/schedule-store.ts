@@ -28,12 +28,14 @@ export class ScheduleStore {
   }
 
   /** Overwrites the whole job set ATOMICALLY (temp-write + rename) so a concurrent
-   * daemon + `schedule add/remove` can never observe — or persist — a torn file. */
+   * daemon + `schedule add/remove` can never observe — or persist — a torn file.
+   * The file is 0600: a task prompt can carry sensitive text and is re-sent to the
+   * model on every fire, so it must not be world-readable. */
   replaceAll(jobs: ReadonlyArray<ScheduledJob>): void {
     mkdirSync(dirname(this.path), { recursive: true });
     const tmp = `${this.path}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(jobs, null, 2), 'utf8');
-    renameSync(tmp, this.path); // atomic on the same filesystem
+    writeFileSync(tmp, JSON.stringify(jobs, null, 2), { encoding: 'utf8', mode: 0o600 });
+    renameSync(tmp, this.path); // atomic on the same filesystem (preserves the 0600 mode)
   }
 
   /** Adds a job (returns the new full list). */

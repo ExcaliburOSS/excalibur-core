@@ -920,6 +920,9 @@ export const ES: Catalog = {
   'repl.schedule-unparsed':
     'Entendí que quieres programarlo, pero no pude leer la cadencia «{cadence}». Prueba `schedule add "every 2h" "<tarea>"`.',
   'repl.schedule-added': '✓ Programado «{task}» — {spec} · siguiente {next}',
+  'repl.schedule-duplicate': 'Eso ya está programado ({spec}) — no añado un duplicado.',
+  'repl.schedule-cap':
+    'Ya tienes {max} tareas programadas — elimina algunas con `schedule remove` primero.',
   'repl.schedule-daemon-hint':
     '  (mantén vivo `excalibur schedule run` o `excalibur serve` para que se dispare.)',
   'repl.auto-build-parallel':

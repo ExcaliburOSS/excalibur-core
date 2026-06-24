@@ -110,6 +110,11 @@ describe('schedule extraction (AO8-4, NL → cadence + task, LLM, multi-language
     expect(parseScheduleExtraction('{"cadence":"","task":"x"}')).toBeNull();
     expect(parseScheduleExtraction('{"task":"x"}')).toBeNull();
     expect(parseScheduleExtraction('no json here')).toBeNull();
+    // AO8-4 review #16 — a TRUNCATED object (the exact shape a too-small token cap
+    // produces, e.g. the 6-token intent adapter) has no closing brace → null, NOT a
+    // partial parse. This is the failure mode that made NL scheduling silently no-op.
+    expect(parseScheduleExtraction('{"cadence":"at 0')).toBeNull();
+    expect(parseScheduleExtraction('{"cadence":"every 2h","task":"run the te')).toBeNull();
   });
 
   it('builds a language-agnostic prompt that carries the request verbatim', () => {
