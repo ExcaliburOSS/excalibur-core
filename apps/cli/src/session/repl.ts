@@ -681,6 +681,16 @@ export async function runInteractiveSession(
         !asSwarm &&
         intent === 'research' &&
         (await acceptRoute('repl.route-research-offer', 'repl.route-research-auto'));
+      // AO5 — best-of-N reached by NL (no command): "try a few approaches and pick
+      // the best". High-risk (a cost amplifier) so the posture ASKS unless full
+      // autonomy. Only meaningful in a git repo (lanes need worktrees).
+      const asExplore =
+        !asGoal &&
+        !asSwarm &&
+        !asResearch &&
+        intent === 'explore' &&
+        getGitInfo(runtime.repoRoot).isRepo &&
+        (await acceptRoute('repl.route-explore-offer', 'repl.route-explore-auto'));
       // A plan ACTS (auto-orchestrate) unless the posture says ask → the
       // deliberate plan → approve → execute gate.
       const planActs = intent === 'plan' && posture('plan') !== 'ask';
@@ -693,6 +703,16 @@ export async function runInteractiveSession(
           // F7: the native multi-agent research pipeline (search → fetch →
           // verify → cited synthesis).
           await runResearchFlow(deps, text, {});
+        } else if (asExplore) {
+          // AO5 best-of-N via NL: N candidate approaches in parallel → judge → apply winner.
+          const g = loadGatewayContext(runtime.repoRoot);
+          await runExploreFlow(
+            deps,
+            runtime.repoRoot,
+            text,
+            { gateway: g.gateway, providerName: g.providerName, config: runtime.config },
+            { signal: ctrl.signal },
+          );
         } else if (asSwarm || planActs) {
           // AO2/AO3d-2 — an ACCEPTED build (swarm-intent accepted, or a plan the
           // posture runs) is AUTO-ORCHESTRATED: decompose → DERIVE the shape

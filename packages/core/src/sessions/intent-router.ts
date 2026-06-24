@@ -65,10 +65,19 @@ export function parseStructuralInput(text: string): StructuralInput {
  * - `bg`: a long-running task to run in the background.
  * - `research`: needs external/current web info, or deep multi-source research.
  * - `goal`: an explicit "iterate until it works/passes/done" objective.
+ * - `explore`: wants SEVERAL alternative approaches compared (best-of-N).
  */
-export type TurnIntent = 'chat' | 'plan' | 'swarm' | 'bg' | 'research' | 'goal';
+export type TurnIntent = 'chat' | 'plan' | 'swarm' | 'bg' | 'research' | 'goal' | 'explore';
 
-const TURN_INTENTS: readonly TurnIntent[] = ['chat', 'plan', 'swarm', 'bg', 'research', 'goal'];
+const TURN_INTENTS: readonly TurnIntent[] = [
+  'chat',
+  'plan',
+  'swarm',
+  'bg',
+  'research',
+  'goal',
+  'explore',
+];
 
 export interface IntentContext {
   /** A real human at a TTY who can answer prompts (plan/offers need this). */
@@ -97,7 +106,8 @@ export function buildIntentPrompt(text: string): string {
     '- bg: a long-running task to run in the background.',
     '- research: needs external/current information from the web, or deep investigation.',
     '- goal: an explicit "keep iterating until it works/passes/done" objective.',
-    'Answer with ONLY the category word (chat, plan, swarm, bg, research, or goal).',
+    '- explore: explicitly wants SEVERAL alternative approaches compared, best-of-N, "try a few ways and pick the best".',
+    'Answer with ONLY the category word (chat, plan, swarm, bg, research, goal, or explore).',
     '',
     `Request: ${text}`,
   ].join('\n');
@@ -134,6 +144,7 @@ export function buildDecisionPrompt(text: string): string {
     '- bg: a long-running task to run in the background.',
     '- research: needs external/current information from the web, or deep investigation.',
     '- goal: an explicit "keep iterating until it works/passes/done" objective.',
+    '- explore: explicitly wants SEVERAL alternative approaches compared, best-of-N, "try a few ways and pick the best".',
     'Answer with EXACTLY two words: the category then the confidence (high, medium, or low).',
     'Example: "swarm high" or "chat low".',
     '',
@@ -189,6 +200,9 @@ export function riskOfShape(intent: TurnIntent): ShapeRisk {
     case 'bg':
       return 'medium';
     case 'goal':
+    case 'explore':
+      // explore fans out N candidate agents — a cost amplifier, so it ASKS unless
+      // full autonomy is granted (matches the roadmap's caution on auto-routing it).
       return 'high';
   }
 }

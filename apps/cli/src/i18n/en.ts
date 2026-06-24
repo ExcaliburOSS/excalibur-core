@@ -805,6 +805,10 @@ export const EN: Catalog = {
   'repl.route-bg-auto': 'Auto-routing: running this in the background so you can keep working.',
   'repl.route-swarm-auto': 'Auto-routing: fanning this out to a swarm of parallel agents.',
   'repl.route-research-auto': 'Auto-routing: running deep web research with cited sources.',
+  'repl.route-explore-offer':
+    'This looks worth exploring — run a few candidate approaches in parallel and pick the best (best-of-N)?',
+  'repl.route-explore-auto':
+    'Auto-routing: exploring candidate approaches in parallel (best-of-N).',
   'repl.route-narrate-hint': '  (high-impact — running it now; press Esc to stop.)',
   'repl.auto-build-parallel':
     'Auto-orchestrating: {count} independent workstreams → a parallel swarm.',

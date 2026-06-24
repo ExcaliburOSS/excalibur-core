@@ -85,6 +85,7 @@ describe('riskOfShape (AO3d-2, pure)', () => {
     expect(riskOfShape('swarm')).toBe('medium');
     expect(riskOfShape('bg')).toBe('medium');
     expect(riskOfShape('goal')).toBe('high');
+    expect(riskOfShape('explore')).toBe('high'); // best-of-N is a cost amplifier
   });
 });
 
