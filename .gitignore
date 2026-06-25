@@ -23,3 +23,8 @@ coverage/
 
 # Local Excalibur state generated while testing against the demo repo
 examples/demo-repo/.excalibur/
+
+# Internal planning docs — kept LOCAL, never in the public repo (they reference
+# private/internal context). The user-facing roadmap lives in the CHANGELOG.
+docs/backlog.md
+docs/ROADMAP.md

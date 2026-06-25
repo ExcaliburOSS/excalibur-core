@@ -11,9 +11,9 @@
 > swarm, LSP/MCP, and real pull requests are all live in 1.0.0 — gated by the
 > safety floor and inline approvals, never by a mock. The mock provider survives
 > only as the zero-config offline default and as a deterministic CI test double.
-> For current milestone status and what each milestone delivered, see
-> [docs/ROADMAP.md](ROADMAP.md). Wherever a note says "M1 behavior", read it as
-> "the initial mock-backed scaffold that the real M2/M3 implementation replaced".
+> For the user-facing list of shipped features, see the
+> [CHANGELOG](../CHANGELOG.md). Wherever a note says "M1 behavior", read it as
+> "the initial mock-backed scaffold that the real implementation replaced".
 
 This is the binding engineering contract for everyone (human or agent) building Excalibur Core across milestones M1–M3. Read it fully, plus `docs/spec/oss-spec.md`, `docs/spec/work-items-core.md` and `docs/spec/agentic-agile-core.md`, before writing code. Where this contract pins an API, the pin wins over personal preference; if you believe a pin is wrong, implement it as pinned and flag the concern in your final report.
 
@@ -196,7 +196,7 @@ Everything in `docs/spec/work-items-core.md`, plus pins:
 
 - `EnterpriseConfig { allowedModels?: string[]; workflows?: unknown[]; policies?: unknown[]; teamDefaults?: Record<string, unknown>; sensitivePaths?: string[] }`.
 - `interface EnterpriseSyncClient { pushRun(run: LocalRun): Promise<void>; pushEvent(event: ExcaliburEvent): Promise<void>; pullConfig(repositoryId?: string): Promise<EnterpriseConfig>; }`
-- `class HttpEnterpriseSyncClient implements EnterpriseSyncClient { constructor(opts: { baseUrl: string; apiKey: string }) }` — `fetch` against `POST {base}/api/sync/runs`, `POST {base}/api/sync/events`, `GET {base}/api/sync/config`; treat non-2xx as `ProviderError` code `sync_failed`. Experimental (the Enterprise sync server lands in a later milestone — see [docs/ROADMAP.md](ROADMAP.md)).
+- `class HttpEnterpriseSyncClient implements EnterpriseSyncClient { constructor(opts: { baseUrl: string; apiKey: string }) }` — `fetch` against `POST {base}/api/sync/runs`, `POST {base}/api/sync/events`, `GET {base}/api/sync/config`; treat non-2xx as `ProviderError` code `sync_failed`. Experimental.
 - Credentials helpers: `loadCliCredentials() / saveCliCredentials({ baseUrl, apiKey })` at `~/.config/excalibur/credentials.json`, file mode 0600, `EXCALIBUR_API_KEY`/`EXCALIBUR_BASE_URL` env vars take precedence.
 
 ### 4.9 `@excalibur-oss/excalibur`

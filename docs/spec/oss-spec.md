@@ -7,7 +7,7 @@
 > M2", "commands are simulated") describe the original phasing, not today's
 > behavior — real model calls, real file mutation, real command execution,
 > extension tool execution and opt-in permission enforcement all ship now. For
-> the current shipped status see [docs/ROADMAP.md](../ROADMAP.md); for the
+> the current shipped status see the [CHANGELOG](../../CHANGELOG.md); for the
 > binding contract see [docs/CONTRACT.md](../CONTRACT.md).
 
 Excalibur Core is a separate repository from Excalibur Enterprise, but tightly connected to it through shared schemas, workflow definitions, event formats, agent runtime interfaces, model provider adapters and configuration conventions.
