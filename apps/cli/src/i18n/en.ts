@@ -897,6 +897,9 @@ export const EN: Catalog = {
   'scope.empty': 'Nothing to scope — the model could not map this task to the repository.',
   'scope.summary':
     'Scoped {subsystems} subsystem(s) · {risks} risk(s) · {questions} open question(s).',
+  // AO9-3 proactive pre-plan auto-scope (shown while shaping a large plan)
+  'repl.scope-prescan': '• scoping the codebase first (read-only) to ground the plan…',
+  'repl.scope-grounded': '✓ grounded the plan in {subsystems} subsystem(s) of the codebase',
   'repl.bg-usage':
     'Usage: /bg <task> — runs the task in the background (its own recorded run) while you keep working.',
   'repl.bg-started': '▸ background: {title} — running (use /threads to check on it)',

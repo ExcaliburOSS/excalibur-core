@@ -87,15 +87,12 @@ export async function estimateComplexity(
  * (or null when there is nothing to scope / the model can't decompose). Never
  * throws on a per-angle failure — a partial map still ships (AO9-1 contract).
  */
-export async function computeScope(
-  repoRoot: string,
-  task: string,
-  gw: GatewayContext,
-  options: ScopeComputeOptions = {},
-): Promise<ScopeMap | null> {
+/** The decompose/synthesize/complexity-probe model, backed by the gateway's DEFAULT
+ * (good) provider at the declared reasoning-model ceiling. Shared by `computeScope`
+ * and the pre-plan gate so both drive the identical wired path. */
+export function buildScopeClassifier(gw: GatewayContext): IntentModel {
   const provider = gw.providerName;
-
-  const classify: IntentModel = async (prompt, signal) => {
+  return async (prompt, signal) => {
     const out = await gw.gateway.chat({
       messages: [{ role: 'user', content: prompt }],
       maxTokens: SCOPE_MODEL_MAXTOKENS,
@@ -105,6 +102,16 @@ export async function computeScope(
     });
     return out.content;
   };
+}
+
+export async function computeScope(
+  repoRoot: string,
+  task: string,
+  gw: GatewayContext,
+  options: ScopeComputeOptions = {},
+): Promise<ScopeMap | null> {
+  const provider = gw.providerName;
+  const classify = buildScopeClassifier(gw);
 
   const explore = async (
     t: string,
@@ -213,4 +220,52 @@ export async function runScopeFlow(
       questions: String(map.openQuestions.length),
     }),
   );
+}
+
+/** Pre-plan auto-scope fan-out is bounded tighter than the explicit command — it
+ * runs INLINE before planning, so latency matters more than exhaustive breadth. */
+const PRE_PLAN_SCOPE_ANGLES = 3;
+
+export interface AutoScopeOptions {
+  /** A complexity the caller already computed (e.g. plan-shaping) — skips the probe. */
+  complexity?: ScopeComplexity;
+  /** Bound the pre-plan fan-out (defaults to {@link PRE_PLAN_SCOPE_ANGLES}). */
+  maxAngles?: number;
+  onProgress?: (phase: 'decompose' | 'explore' | 'synthesize', subsystem?: string) => void;
+  signal?: AbortSignal;
+}
+
+/**
+ * AO9-3 — the PROACTIVE pre-plan gate. Determines the task's complexity (reusing a
+ * caller-supplied one, else a cheap one-word probe) and, ONLY for a `large` task,
+ * runs a bounded read-only scope so the result can ground plan-shaping. Returns
+ * null (silent, no fan-out) for small/medium tasks — the asymmetric "don't
+ * interrupt the easy ones" rule, mirroring plan-shaping's own surface gate.
+ * Read-only by construction (it reuses {@link computeScope}); never throws — a
+ * fault yields null so planning proceeds ungrounded.
+ */
+export async function autoScopeForPlanning(
+  repoRoot: string,
+  gw: GatewayContext,
+  task: string,
+  options: AutoScopeOptions = {},
+): Promise<{ markdown: string; map: ScopeMap } | null> {
+  try {
+    // Only the big tasks earn a fan-out. Reuse the caller's complexity when given
+    // (plan-shaping already graded it) so we don't pay for a second probe.
+    const complexity =
+      options.complexity ??
+      (await estimateComplexity(buildScopeClassifier(gw), task, options.signal));
+    if (complexity !== 'large') return null;
+    const map = await computeScope(repoRoot, task, gw, {
+      complexity, // skip the probe inside computeScope (we already have it)
+      angles: options.maxAngles ?? PRE_PLAN_SCOPE_ANGLES,
+      ...(options.onProgress !== undefined ? { onProgress: options.onProgress } : {}),
+      ...(options.signal !== undefined ? { signal: options.signal } : {}),
+    });
+    if (map === null) return null;
+    return { markdown: scopeMapToMarkdown(map), map };
+  } catch {
+    return null; // best-effort grounding — never break the plan turn
+  }
 }

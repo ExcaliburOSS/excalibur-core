@@ -67,6 +67,7 @@ export function parseStructuralInput(text: string): StructuralInput {
  * - `research`: needs external/current web info, or deep multi-source research.
  * - `goal`: an explicit "iterate until it works/passes/done" objective.
  * - `explore`: wants SEVERAL alternative approaches compared (best-of-N).
+ * - `scope`: wants to UNDERSTAND/EVALUATE a task read-only before building (AO9-3).
  * - `schedule`: wants a task to run on a RECURRING cadence (every N / daily at).
  * - `mission`: a BIG, multi-faceted goal that needs SEVERAL capabilities composed
  *   and driven autonomously to completion (understand → plan → build/parallelize →
@@ -80,6 +81,7 @@ export type TurnIntent =
   | 'research'
   | 'goal'
   | 'explore'
+  | 'scope'
   | 'orchestration'
   | 'schedule'
   | 'mission';
@@ -92,6 +94,7 @@ const TURN_INTENTS: readonly TurnIntent[] = [
   'research',
   'goal',
   'explore',
+  'scope',
   'orchestration',
   'schedule',
   'mission',
@@ -125,10 +128,11 @@ export function buildIntentPrompt(text: string): string {
     '- research: needs external/current information from the web, or deep investigation.',
     '- goal: an explicit "keep iterating until it works/passes/done" objective.',
     '- explore: explicitly wants SEVERAL alternative approaches compared, best-of-N, "try a few ways and pick the best".',
+    '- scope: wants to UNDERSTAND or EVALUATE a task read-only BEFORE building — "what is involved in X", "what would it take to", "scope/assess this", "which files/parts does X touch", "what exists vs what is missing for X", "analiza qué haría falta para", "qué implica". NO code is written.',
     '- orchestration: VIEW, PAUSE or RESUME an EXISTING parallel run — its swarm/orchestration/chronogram/timeline (not new work).',
     '- schedule: run a task on a RECURRING cadence ("every morning", "cada 2 horas", "nightly", "daily at 9", "each hour run X").',
     '- mission: a BIG, multi-faceted goal needing SEVERAL kinds of work composed and driven to completion autonomously — e.g. "build feature X end to end (design, implement across modules, test, verify, open a PR)", a large migration, "ship the whole thing". Choose this over plan/swarm/goal when the work needs MULTIPLE different phases, not just one.',
-    'Answer with ONLY the category word (chat, plan, swarm, bg, research, goal, explore, orchestration, schedule, or mission).',
+    'Answer with ONLY the category word (chat, plan, swarm, bg, research, goal, explore, scope, orchestration, schedule, or mission).',
     '',
     `Request: ${text}`,
   ].join('\n');
@@ -166,6 +170,7 @@ export function buildDecisionPrompt(text: string): string {
     '- research: needs external/current information from the web, or deep investigation.',
     '- goal: an explicit "keep iterating until it works/passes/done" objective.',
     '- explore: explicitly wants SEVERAL alternative approaches compared, best-of-N, "try a few ways and pick the best".',
+    '- scope: wants to UNDERSTAND or EVALUATE a task read-only BEFORE building — "what is involved in X", "what would it take to", "scope/assess this", "which files/parts does X touch", "qué implica", "analiza qué haría falta para". NO code is written.',
     '- orchestration: VIEW, PAUSE or RESUME an EXISTING parallel run — its swarm/orchestration/chronogram/timeline (not new work).',
     '- schedule: run a task on a RECURRING cadence ("every morning", "cada 2 horas", "nightly", "daily at 9", "each hour run X").',
     '- mission: a BIG, multi-faceted goal needing SEVERAL kinds of work composed and driven to completion autonomously (design + implement across modules + test + verify + ship, a large migration). Choose over plan/swarm/goal when the work needs MULTIPLE different phases.',
@@ -216,10 +221,12 @@ export async function classifyTurnDecision(
 export type ShapeRisk = 'low' | 'medium' | 'high';
 export function riskOfShape(intent: TurnIntent): ShapeRisk {
   switch (intent) {
+    // low: read-ish + reversible — chat/research, the read-only `scope` understand
+    // pass (no writes), and `orchestration` (view/pause/resume an existing run).
     case 'chat':
     case 'research':
+    case 'scope':
     case 'orchestration':
-      // orchestration = view/pause/resume an existing run — read-ish + reversible.
       return 'low';
     case 'plan':
     case 'swarm':

@@ -65,6 +65,7 @@ describe('parseTurnIntent', () => {
     expect(parseTurnIntent('')).toBe('chat');
     expect(parseTurnIntent('schedule')).toBe('schedule'); // AO8-4
     expect(parseTurnIntent('mission')).toBe('mission'); // meta-orchestrator route (M6)
+    expect(parseTurnIntent('scope')).toBe('scope'); // AO9-3 understand-first route
   });
 });
 
@@ -96,6 +97,7 @@ describe('riskOfShape (AO3d-2, pure)', () => {
     expect(riskOfShape('orchestration')).toBe('low'); // view/pause/resume an existing run
     expect(riskOfShape('schedule')).toBe('medium'); // AO8-4 — reversible but commits future runs
     expect(riskOfShape('mission')).toBe('high'); // M6 — autonomous multi-capability run
+    expect(riskOfShape('scope')).toBe('low'); // AO9-3 — read-only understand-first
   });
 });
 

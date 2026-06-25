@@ -174,6 +174,15 @@ describe('buildPlanShapePrompt', () => {
     expect(p).toContain('SAME LANGUAGE');
     expect(p).toContain('conservative');
   });
+  it('injects the AO9-3 scope grounding when provided (and omits it otherwise)', () => {
+    const withScope = buildPlanShapePrompt('Add MFA', '## auth\n- Missing: totp column');
+    expect(withScope).toContain('--- SCOPE (read-only) ---');
+    expect(withScope).toContain('Missing: totp column');
+    expect(withScope).toContain('GROUND your questions');
+    // no scope context → no grounding block (back-compat)
+    expect(buildPlanShapePrompt('Add MFA')).not.toContain('--- SCOPE');
+    expect(buildPlanShapePrompt('Add MFA', '   ')).not.toContain('--- SCOPE'); // blank ignored
+  });
 });
 
 describe('planShape (gating of the model call itself)', () => {

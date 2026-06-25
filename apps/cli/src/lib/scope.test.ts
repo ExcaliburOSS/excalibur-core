@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { GatewayContext } from './context';
-import { computeScope, estimateComplexity } from './scope';
+import { autoScopeForPlanning, computeScope, estimateComplexity } from './scope';
 
 /**
  * A content-dispatching fake gateway: it answers each scope-engine call (the
@@ -121,5 +121,39 @@ describe('computeScope (AO9-2 wired backing, read-only)', () => {
     );
     expect(exploreCall).toBeDefined();
     expect((exploreCall![0] as ChatInput).maxTokens).toBe(2200);
+  });
+});
+
+describe('autoScopeForPlanning (AO9-3 proactive pre-plan gate)', () => {
+  const NO_REPO = '/nonexistent-scope-test-dir';
+
+  it('returns null (no fan-out) for a non-large task — reuses the given complexity', async () => {
+    const gw = gwContext();
+    const spy = vi.spyOn(gw.gateway as unknown as { chat: () => unknown }, 'chat');
+    const result = await autoScopeForPlanning(NO_REPO, gw, 'rename a var', {
+      complexity: 'small',
+    });
+    expect(result).toBeNull();
+    expect(spy).not.toHaveBeenCalled(); // complexity supplied → no probe, gate fails → no scope
+  });
+
+  it('scopes a LARGE task and returns grounding markdown', async () => {
+    const gw = gwContext();
+    const result = await autoScopeForPlanning(NO_REPO, gw, 'add MFA', { complexity: 'large' });
+    expect(result).not.toBeNull();
+    expect(result!.map.subsystems.length).toBeGreaterThan(0);
+    expect(result!.markdown).toContain('# Scope — add MFA');
+  });
+
+  it('probes complexity when not supplied and stays silent for a non-large verdict', async () => {
+    const gw = gwContext(); // the fake probe answers "medium"
+    const spy = vi.spyOn(gw.gateway as unknown as { chat: () => unknown }, 'chat');
+    const result = await autoScopeForPlanning(NO_REPO, gw, 'add a small thing');
+    expect(result).toBeNull();
+    // Exactly the probe ran — no decompose/explore/synthesize fan-out.
+    const probed = spy.mock.calls.some((c) => JSON.stringify(c).includes('Rate how broad'));
+    const decomposed = spy.mock.calls.some((c) => JSON.stringify(c).includes('exploration angles'));
+    expect(probed).toBe(true);
+    expect(decomposed).toBe(false);
   });
 });

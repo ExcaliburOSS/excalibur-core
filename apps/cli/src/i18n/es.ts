@@ -959,6 +959,9 @@ export const ES: Catalog = {
   'scope.empty': 'Nada que analizar — el modelo no pudo mapear esta tarea al repositorio.',
   'scope.summary':
     'Analizados {subsystems} subsistema(s) · {risks} riesgo(s) · {questions} pregunta(s) abierta(s).',
+  // AO9-3 auto-scope proactivo previo al plan (durante el shaping de un plan grande)
+  'repl.scope-prescan': '• analizando primero el código (solo lectura) para fundamentar el plan…',
+  'repl.scope-grounded': '✓ plan fundamentado en {subsystems} subsistema(s) del código',
   'repl.bg-usage':
     'Uso: /bg <tarea> — ejecuta la tarea en segundo plano (su propia ejecución registrada) mientras sigues trabajando.',
   'repl.bg-started': '▸ segundo plano: {title} — en curso (usa /threads para verlo)',

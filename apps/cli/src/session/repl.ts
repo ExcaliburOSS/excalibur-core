@@ -68,6 +68,7 @@ import { runExploreFlow } from '../lib/explore';
 import { runConfiguredCommandCheck } from '../lib/verify-command';
 import { runProportionalMesh } from '../lib/verify-mesh';
 import { runResearchFlow } from '../lib/research';
+import { autoScopeForPlanning, runScopeFlow } from '../lib/scope';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
 import { buildSessionLog, formatSessionLog } from '../lib/session-log';
 import { buildStartupContext } from '../lib/startup-context';
@@ -786,6 +787,12 @@ export async function runInteractiveSession(
               );
             }
           }
+        } else if (intent === 'scope') {
+          // AO9-3 — NL-routed read-only "Understand-first" scope (any language):
+          // "what's involved in X" / "scope this" / "qué implica" → map the
+          // subsystems, built-vs-missing and risks WITHOUT building. Low-risk
+          // (read-only by construction) so it just runs — no posture gate.
+          await runScopeFlow(deps, text, { signal: ctrl.signal });
         } else if (intent === 'schedule') {
           // AO8-4 — NL-routed scheduling (any language): "every morning run the
           // test sweep" → a persisted ScheduledJob (the OSS analog of cron /
@@ -1052,6 +1059,39 @@ async function shapePlan(
   // silently — planning is unchanged.
   if (!shouldSurfacePlanShape(shape)) {
     return text;
+  }
+
+  // AO9-3 — PROACTIVE auto-scope: for a LARGE plan, FIRST map the relevant code
+  // read-only (what exists vs what's missing, risks) and RE-SHAPE grounded in it,
+  // so the questions + recommendations reference reality instead of guessing. Only
+  // the big tasks pay (the gate is inside autoScopeForPlanning, reusing the
+  // complexity we already graded). Best-effort + opt-out via EXCALIBUR_AUTO_SCOPE=off.
+  if (deps.env['EXCALIBUR_AUTO_SCOPE'] !== 'off') {
+    const scoped = await autoScopeForPlanning(runtime.repoRoot, gateway, text, {
+      complexity: shape.complexity,
+      signal,
+      onProgress: (phase, subsystem) => {
+        if (phase === 'decompose') deps.ui.info(deps.t('repl.scope-prescan'));
+        else if (phase === 'explore')
+          deps.ui.info(deps.t('scope.explored', { subsystem: subsystem ?? '' }));
+      },
+    });
+    if (scoped !== null) {
+      deps.ui.info(
+        deps.t('repl.scope-grounded', { subsystems: String(scoped.map.subsystems.length) }),
+      );
+      const grounded = await planShape(
+        text,
+        { interactive: true, mock: false, level: runtime.autonomyLevel },
+        model,
+        signal,
+        scoped.markdown,
+      );
+      // Keep the grounded shape only when it still has something to act on.
+      if (grounded.recommendations.length > 0 || grounded.questions.length > 0) {
+        shape = grounded;
+      }
+    }
   }
 
   const extras: string[] = [];

@@ -82,11 +82,29 @@ export function shouldAskPlanQuestions(shape: PlanShape): boolean {
   return shape.questions.length > 0 && (shape.complexity === 'large' || !shape.clear);
 }
 
-/** Builds the language-agnostic plan-shaping prompt (the MODEL handles any language). */
-export function buildPlanShapePrompt(request: string): string {
+/** Builds the language-agnostic plan-shaping prompt (the MODEL handles any language).
+ * When `scopeContext` (an AO9 read-only ScopeMap, rendered as markdown) is supplied,
+ * it is injected as grounding so the questions + recommendations reference what the
+ * code ACTUALLY has vs what's missing, instead of guessing. */
+export function buildPlanShapePrompt(request: string, scopeContext?: string): string {
+  const grounding =
+    scopeContext !== undefined && scopeContext.trim().length > 0
+      ? [
+          '',
+          'A READ-ONLY scope of the relevant code is provided below. GROUND your questions and',
+          'recommendations in it — reference what ALREADY EXISTS vs what is MISSING, and turn its',
+          'open questions into clarifying questions where they would change the plan. Do NOT ask',
+          'about things the scope already answers.',
+          '',
+          '--- SCOPE (read-only) ---',
+          scopeContext.trim(),
+          '--- END SCOPE ---',
+        ]
+      : [];
   return [
     'You triage whether a coding agent should SHAPE a plan with the user BEFORE building.',
     'Read the build request in ANY language. Reply IN THE SAME LANGUAGE as the request.',
+    ...grounding,
     '',
     'Return ONLY this JSON object (no prose, no markdown, no code fences):',
     '{',
@@ -228,12 +246,13 @@ export async function planShape(
   ctx: IntentContext,
   classify: IntentModel,
   signal?: AbortSignal,
+  scopeContext?: string,
 ): Promise<PlanShape> {
   if (ctx.mock || !ctx.interactive || ctx.level < 2 || request.trim().length === 0) {
     return EMPTY;
   }
   try {
-    return parsePlanShape(await classify(buildPlanShapePrompt(request), signal));
+    return parsePlanShape(await classify(buildPlanShapePrompt(request, scopeContext), signal));
   } catch {
     return EMPTY;
   }
