@@ -21,7 +21,9 @@ import {
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import { loadGatewayContext, requireConfiguredModel } from '../lib/context';
+import { runExploreFlow } from '../lib/explore';
 import { captureRestorePoint, printRecoveryHint, warnDirtyTree } from '../lib/run-safety';
+import { runSwarmFlow } from '../lib/swarm';
 import { runAgentTurn, type AgentTurnDeps, type ApprovalState } from './agent-turn';
 
 /**
@@ -192,6 +194,47 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
   const executor: CapabilityExecutor = async (step) => {
     const level = capabilityLevel(step.capability, opts.autonomyLevel);
     deps.ui.write(pc.cyan(`▶ ${step.capability}: ${step.objective}`));
+
+    // `parallelize` and `explore` use their REAL dedicated engines (the swarm /
+    // best-of-N) when the step calls for them; on a setup failure (e.g. not a git
+    // repo) they degrade to a single capable run. The subsequent test/verify gates
+    // ground overall correctness via runVerdict.
+    if (step.capability === 'parallelize') {
+      try {
+        await runSwarmFlow(
+          deps,
+          repoRoot,
+          capabilityTask(step, mission),
+          { gateway: gateway.gateway, providerName: gateway.providerName, config: opts.config },
+          { yes: true, apply: true, grade: true, signal },
+        );
+        return {
+          ok: true,
+          summary: `Ran a parallel swarm for: ${step.objective}`,
+          signals: { engine: 'swarm' },
+        };
+      } catch {
+        /* fall through to a single agentic run */
+      }
+    } else if (step.capability === 'explore') {
+      try {
+        await runExploreFlow(
+          deps,
+          repoRoot,
+          capabilityTask(step, mission),
+          { gateway: gateway.gateway, providerName: gateway.providerName, config: opts.config },
+          { yes: true, signal },
+        );
+        return {
+          ok: true,
+          summary: `Explored several approaches and applied the best for: ${step.objective}`,
+          signals: { engine: 'explore' },
+        };
+      } catch {
+        /* fall through to a single agentic run */
+      }
+    }
+
     try {
       const result = await runAgentTurn(baseTurn(level), capabilityTask(step, mission));
       // Ground the outcome in the run's real events (failed tests / refuted claims /
