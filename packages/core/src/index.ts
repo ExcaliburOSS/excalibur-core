@@ -199,6 +199,10 @@ export {
 // Context compaction (plan §"Compactación de contexto") — the M-Shell offline slice
 export * from './compaction';
 
+// Meta-orchestrator (project §"meta-orchestrator") — interpret a goal + compose
+// the capability DAG (planning brain M1–M3; supervisor + trigger follow)
+export * from './orchestrator';
+
 // Knowledge Compounding (plan §"Knowledge Compounding") — project memory (OSS slice)
 export * from './memory';
 
