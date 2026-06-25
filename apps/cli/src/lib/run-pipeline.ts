@@ -49,6 +49,7 @@ import {
   safetyLine,
 } from './context';
 import { diagnosticsContextSource, runDiagnostics } from './diagnostics';
+import { warnDirtyTree } from './run-safety';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { pushLatestRun } from '../commands/login';
 
@@ -597,6 +598,9 @@ export async function runTask(
     noPush: deps.t('rail.noPush'),
     tasks: deps.t('rail.tasks'),
   };
+  // An agentic run mutates the real tree — nudge to a clean, revertible start.
+  warnDirtyTree(deps, repoRoot);
+
   // The live rail renders with Ink (<RunView>) on a TTY; a piped/CI stdout
   // streams plain per-event lines + a static renderRail recap. Both fold the
   // SAME reduceRail, so live = scrub = replay.

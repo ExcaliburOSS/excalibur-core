@@ -20,6 +20,7 @@ import {
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import { loadGatewayContext, requireConfiguredModel } from '../lib/context';
+import { captureRestorePoint, printRecoveryHint, warnDirtyTree } from '../lib/run-safety';
 import { runAgentTurn, type AgentTurnDeps, type ApprovalState } from './agent-turn';
 
 /**
@@ -110,6 +111,11 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
     for (const line of renderRibbon(toRibbon(state), { tier, mode })) deps.ui.write(line);
   };
 
+  // A mission runs autonomously and mutates the real tree — make it recoverable:
+  // nudge to a clean start and snapshot the pre-run state so a failure can roll back.
+  warnDirtyTree(deps, repoRoot);
+  const restorePoint = captureRestorePoint(repoRoot);
+
   // 1) Interpret the need + auto-author the strategy (the brain).
   deps.ui.info('Interpreting your goal and planning the strategy…');
   const mission = await interpretMission(goal, {
@@ -186,5 +192,9 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
         ? pc.yellow(`⏸ Mission paused: ${state.pausedReason ?? ''} — resume to continue.`)
         : pc.red(`Mission ended: ${state.outcome}.`);
   deps.ui.write(label);
+  // On anything but a clean completion, show how to roll the mutations back.
+  if (state.outcome !== 'completed') {
+    printRecoveryHint(deps, restorePoint);
+  }
   return state;
 }
