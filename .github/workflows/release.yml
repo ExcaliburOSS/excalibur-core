@@ -1,0 +1,57 @@
+name: Release
+
+# Publishes the public packages to npm when a version tag is pushed (e.g. v1.3.0).
+# Requires an NPM_TOKEN repository secret (an npm automation token with publish
+# rights to the @excalibur-oss scope). The full CI gate runs first.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: build · verify · publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm provenance (signed build attestation)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Same gate as CI — never publish an unbuilt or failing tree.
+      - name: Build
+        run: pnpm -r build
+      - name: Typecheck
+        run: pnpm -r typecheck
+      - name: Lint
+        run: pnpm lint
+      - name: Format check
+        run: pnpm format:check
+      - name: Test
+        run: pnpm -r test
+
+      # Publish both public packages. `prepublishOnly` rebuilds; `--no-git-checks`
+      # because we publish from a tag. provenance attaches a signed build attestation.
+      - name: Publish @excalibur-oss/extension-sdk
+        run: pnpm --filter @excalibur-oss/extension-sdk publish --access public --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish @excalibur-oss/excalibur
+        run: pnpm --filter @excalibur-oss/excalibur publish --access public --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

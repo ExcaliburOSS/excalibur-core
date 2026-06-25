@@ -22,3 +22,6 @@ examples/demo-repo/
 # app formats/checks its own components via svelte tooling. Its `.ts`/`.css`/
 # `.html` ARE still formatted by the root Prettier.
 **/*.svelte
+
+# GitHub CODEOWNERS has no Prettier parser.
+.github/CODEOWNERS

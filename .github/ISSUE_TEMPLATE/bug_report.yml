@@ -1,0 +1,57 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! For security vulnerabilities, please use private
+        reporting instead — see [SECURITY.md](../../SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what actually happened.
+      placeholder: I ran `excalibur …` and …
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Excalibur version
+      description: Output of `excalibur --version`.
+      placeholder: '1.2.0'
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Linux
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Output of `node --version` (Excalibur needs Node ≥ 22).
+      placeholder: 'v22.x'
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / output
+      description: Relevant output. `excalibur doctor` is helpful too. Redact any secrets.
+      render: shell
