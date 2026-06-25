@@ -733,8 +733,9 @@ export async function runInteractiveSession(
         getGitInfo(runtime.repoRoot).isRepo &&
         (await acceptRoute('repl.route-explore-offer', 'repl.route-explore-auto'));
       // A plan ACTS (auto-orchestrate) unless the posture says ask → the
-      // deliberate plan → approve → execute gate.
-      const planActs = intent === 'plan' && posture('plan') !== 'ask';
+      // deliberate plan → approve → execute gate. A `mission` (the meta-orchestrator
+      // route) is handled by the plan path for now; M8 swaps in the full supervisor.
+      const planActs = (intent === 'plan' || intent === 'mission') && posture(intent) !== 'ask';
 
       const ctrl = beginTurn();
       try {
@@ -801,8 +802,9 @@ export async function runInteractiveSession(
           if (!handled) {
             await dispatchAgentTurn(deps, runtime, text, ctrl.signal, seed);
           }
-        } else if (intent === 'plan') {
+        } else if (intent === 'plan' || intent === 'mission') {
           // Plan, posture ASK → the deliberate plan → approve → execute gate.
+          // `mission` rides the plan path until M8 wires the full meta-orchestrator.
           await dispatchPlan(deps, runtime, text, ctrl.signal, seed);
         } else {
           // chat · research-declined → a direct model-first turn (the model still

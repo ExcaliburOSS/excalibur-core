@@ -68,6 +68,9 @@ export function parseStructuralInput(text: string): StructuralInput {
  * - `goal`: an explicit "iterate until it works/passes/done" objective.
  * - `explore`: wants SEVERAL alternative approaches compared (best-of-N).
  * - `schedule`: wants a task to run on a RECURRING cadence (every N / daily at).
+ * - `mission`: a BIG, multi-faceted goal that needs SEVERAL capabilities composed
+ *   and driven autonomously to completion (understand → plan → build/parallelize →
+ *   verify → ship) — the meta-orchestrator. The proactive route for large work.
  */
 export type TurnIntent =
   | 'chat'
@@ -78,7 +81,8 @@ export type TurnIntent =
   | 'goal'
   | 'explore'
   | 'orchestration'
-  | 'schedule';
+  | 'schedule'
+  | 'mission';
 
 const TURN_INTENTS: readonly TurnIntent[] = [
   'chat',
@@ -90,6 +94,7 @@ const TURN_INTENTS: readonly TurnIntent[] = [
   'explore',
   'orchestration',
   'schedule',
+  'mission',
 ];
 
 export interface IntentContext {
@@ -122,7 +127,8 @@ export function buildIntentPrompt(text: string): string {
     '- explore: explicitly wants SEVERAL alternative approaches compared, best-of-N, "try a few ways and pick the best".',
     '- orchestration: VIEW, PAUSE or RESUME an EXISTING parallel run — its swarm/orchestration/chronogram/timeline (not new work).',
     '- schedule: run a task on a RECURRING cadence ("every morning", "cada 2 horas", "nightly", "daily at 9", "each hour run X").',
-    'Answer with ONLY the category word (chat, plan, swarm, bg, research, goal, explore, orchestration, or schedule).',
+    '- mission: a BIG, multi-faceted goal needing SEVERAL kinds of work composed and driven to completion autonomously — e.g. "build feature X end to end (design, implement across modules, test, verify, open a PR)", a large migration, "ship the whole thing". Choose this over plan/swarm/goal when the work needs MULTIPLE different phases, not just one.',
+    'Answer with ONLY the category word (chat, plan, swarm, bg, research, goal, explore, orchestration, schedule, or mission).',
     '',
     `Request: ${text}`,
   ].join('\n');
@@ -162,8 +168,9 @@ export function buildDecisionPrompt(text: string): string {
     '- explore: explicitly wants SEVERAL alternative approaches compared, best-of-N, "try a few ways and pick the best".',
     '- orchestration: VIEW, PAUSE or RESUME an EXISTING parallel run — its swarm/orchestration/chronogram/timeline (not new work).',
     '- schedule: run a task on a RECURRING cadence ("every morning", "cada 2 horas", "nightly", "daily at 9", "each hour run X").',
+    '- mission: a BIG, multi-faceted goal needing SEVERAL kinds of work composed and driven to completion autonomously (design + implement across modules + test + verify + ship, a large migration). Choose over plan/swarm/goal when the work needs MULTIPLE different phases.',
     'Answer with EXACTLY two words: the category then the confidence (high, medium, or low).',
-    'Example: "swarm high" or "chat low".',
+    'Example: "swarm high" or "mission high" or "chat low".',
     '',
     `Request: ${text}`,
   ].join('\n');
@@ -226,6 +233,11 @@ export function riskOfShape(intent: TurnIntent): ShapeRisk {
     case 'explore':
       // explore fans out N candidate agents — a cost amplifier, so it ASKS unless
       // full autonomy is granted (matches the roadmap's caution on auto-routing it).
+      return 'high';
+    case 'mission':
+      // The meta-orchestrator: an autonomous, multi-capability, potentially long +
+      // costly run. Highest impact → narrate-and-act under full autonomy, ask
+      // otherwise (decidePosture maps high-risk this way).
       return 'high';
   }
 }

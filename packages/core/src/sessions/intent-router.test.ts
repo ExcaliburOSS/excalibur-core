@@ -64,6 +64,7 @@ describe('parseTurnIntent', () => {
     expect(parseTurnIntent('je ne sais pas')).toBe('chat');
     expect(parseTurnIntent('')).toBe('chat');
     expect(parseTurnIntent('schedule')).toBe('schedule'); // AO8-4
+    expect(parseTurnIntent('mission')).toBe('mission'); // meta-orchestrator route (M6)
   });
 });
 
@@ -94,6 +95,7 @@ describe('riskOfShape (AO3d-2, pure)', () => {
     expect(riskOfShape('explore')).toBe('high'); // best-of-N is a cost amplifier
     expect(riskOfShape('orchestration')).toBe('low'); // view/pause/resume an existing run
     expect(riskOfShape('schedule')).toBe('medium'); // AO8-4 — reversible but commits future runs
+    expect(riskOfShape('mission')).toBe('high'); // M6 — autonomous multi-capability run
   });
 });
 
