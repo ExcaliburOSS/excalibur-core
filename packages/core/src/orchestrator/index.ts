@@ -10,3 +10,4 @@ export * from './interpret-mission';
 export * from './plan-strategy';
 export * from './supervisor';
 export * from './reassess';
+export * from './mission-store';

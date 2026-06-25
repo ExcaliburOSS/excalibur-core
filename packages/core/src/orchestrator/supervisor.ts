@@ -34,7 +34,8 @@ export interface StepState {
   result?: StepResult;
 }
 
-export type MissionOutcome = 'pending' | 'completed' | 'failed' | 'aborted';
+/** `paused` is resumable (budget/time ceiling hit), distinct from the terminals. */
+export type MissionOutcome = 'pending' | 'completed' | 'failed' | 'aborted' | 'paused';
 
 export interface MissionEvent {
   kind:
@@ -45,18 +46,25 @@ export interface MissionEvent {
     | 'step_retry'
     | 'step_escalated'
     | 'replan'
+    | 'mission_paused'
     | 'mission_done';
   stepId?: string;
   message: string;
 }
 
 export interface MissionState {
+  /** Stable mission id — the checkpoint directory (`.excalibur/missions/<id>/`). */
+  id: string;
   mission: Mission;
   /** The working step set — escalate/replan mutate this (the live DAG). */
   steps: StepState[];
   log: MissionEvent[];
+  /** Accumulated model spend (cents) across steps — drives the budget ceiling. */
+  spentCents: number;
   done: boolean;
   outcome: MissionOutcome;
+  /** Why a `paused` mission stopped (resume to continue). */
+  pausedReason?: string;
 }
 
 /** Runs ONE capability step against a real (or fake) engine. */
@@ -96,13 +104,26 @@ export interface RunMissionOptions {
   executor: CapabilityExecutor;
   /** Adaptive decisions; without it, a deterministic policy applies. */
   reassess?: Reassessor;
-  /** Progress + checkpoint hook — fired on every state change (M5 persists here). */
+  /** Progress + checkpoint hook — fired on every state change (persist here). */
   onEvent?: (event: MissionEvent, state: Readonly<MissionState>) => void;
   signal?: AbortSignal;
   /** Hard bound on total step executions (runaway guard). Default 50. */
   maxSteps?: number;
   /** Per-step attempt cap (retry/escalate). Default 3. */
   maxAttempts?: number;
+  /** Stable mission id (the checkpoint dir). Ignored when `resumeFrom` is set. */
+  id?: string;
+  /**
+   * Resume a previously checkpointed mission: continue its DAG from where it
+   * stopped (done steps stay done, pending/paused work runs, spend carries over).
+   */
+  resumeFrom?: MissionState;
+  /** Budget ceiling in cents — at/over it the mission PAUSES (resumable). */
+  budgetCents?: number;
+  /** Wall-clock budget in ms — past it the mission PAUSES. Needs `now`. */
+  maxDurationMs?: number;
+  /** Injected clock for the time ceiling (kept out of core for determinism). */
+  now?: () => number;
 }
 
 /** The deterministic fallback policy when no model reassessor is supplied. */
@@ -121,14 +142,26 @@ const isWorkStep = (k: CapabilityKind): boolean =>
   k === 'implement' || k === 'parallelize' || k === 'explore';
 
 /** Initializes the mission state from a plan (every step pending). */
-export function initMissionState(mission: Mission, plan: OrchestrationPlan): MissionState {
+export function initMissionState(
+  mission: Mission,
+  plan: OrchestrationPlan,
+  id = 'mission',
+): MissionState {
   return {
+    id,
     mission,
     steps: plan.steps.map((step) => ({ step, status: 'pending', attempts: 0 })),
     log: [],
+    spentCents: 0,
     done: false,
     outcome: 'pending',
   };
+}
+
+/** The cents this step's executor reported, from `result.signals.costCents`. */
+function stepCost(result: StepResult): number {
+  const c = result.signals?.['costCents'];
+  return typeof c === 'number' && Number.isFinite(c) ? c : 0;
 }
 
 /** Drives the mission's DAG to completion, adapting after each step. Never throws. */
@@ -137,9 +170,15 @@ export async function runMission(
   plan: OrchestrationPlan,
   opts: RunMissionOptions,
 ): Promise<MissionState> {
-  const state = initMissionState(mission, plan);
+  // Fresh run, or RESUME a checkpointed mission from where it stopped.
+  const state = opts.resumeFrom ?? initMissionState(mission, plan, opts.id ?? 'mission');
+  if (opts.resumeFrom !== undefined) {
+    state.done = false;
+    state.pausedReason = undefined as string | undefined;
+  }
   const maxSteps = opts.maxSteps ?? 50;
   const maxAttempts = opts.maxAttempts ?? 3;
+  const startedAt = opts.now?.() ?? 0;
   const byId = (id: string): StepState | undefined => state.steps.find((s) => s.step.id === id);
   const emit = (event: MissionEvent): void => {
     state.log.push(event);
@@ -153,10 +192,24 @@ export async function runMission(
 
   let executed = 0;
   let aborted = false;
+  let paused: string | null = null;
 
   while (!state.done && !aborted && executed < maxSteps) {
     if (opts.signal?.aborted === true) {
       aborted = true;
+      break;
+    }
+    // Long-job governance: a budget/time ceiling PAUSES (resumable), not fails.
+    if (opts.budgetCents !== undefined && state.spentCents >= opts.budgetCents) {
+      paused = `budget ceiling reached (${state.spentCents}¢ ≥ ${opts.budgetCents}¢)`;
+      break;
+    }
+    if (
+      opts.maxDurationMs !== undefined &&
+      opts.now !== undefined &&
+      opts.now() - startedAt >= opts.maxDurationMs
+    ) {
+      paused = `time budget reached (${opts.maxDurationMs}ms)`;
       break;
     }
 
@@ -190,6 +243,7 @@ export async function runMission(
     }
     ready.result = result;
     ready.status = result.ok ? 'done' : 'failed';
+    state.spentCents += stepCost(result);
     emit({
       kind: result.ok ? 'step_done' : 'step_failed',
       stepId: ready.step.id,
@@ -258,6 +312,14 @@ export async function runMission(
     }
   }
 
+  if (paused !== null) {
+    // A paused mission is NOT done — it is resumable from this checkpoint.
+    state.done = false;
+    state.outcome = 'paused';
+    state.pausedReason = paused;
+    emit({ kind: 'mission_paused', message: paused });
+    return state;
+  }
   state.done = true;
   state.outcome = finalOutcome(state, aborted);
   emit({ kind: 'mission_done', message: state.outcome });

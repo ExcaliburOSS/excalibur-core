@@ -245,9 +245,67 @@ describe('reassess decision parsing', () => {
     };
     const reassess = createReassessor({ gateway });
     const d = await reassess(
-      { mission: mission(), steps: [], log: [], done: false, outcome: 'pending' },
+      {
+        id: 'm',
+        mission: mission(),
+        steps: [],
+        log: [],
+        spentCents: 0,
+        done: false,
+        outcome: 'pending',
+      },
       last,
     );
     expect(d.action).toBe('retry');
+  });
+});
+
+describe('long-job governance (M5)', () => {
+  const costed =
+    (cents: number): CapabilityExecutor =>
+    (s) =>
+      Promise.resolve({ ok: true, summary: `${s.id} ok`, signals: { costCents: cents } });
+
+  it('PAUSES (resumable) when the budget ceiling is reached, then RESUMES to completion', async () => {
+    const threeSteps = plan([
+      step('a', 'understand'),
+      step('b', 'implement', ['a']),
+      step('c', 'test', ['b']),
+    ]);
+    // 60¢/step, 100¢ budget: a runs (60), b runs (120), then the ceiling pauses before c.
+    const paused = await runMission(mission(), threeSteps, {
+      executor: costed(60),
+      budgetCents: 100,
+      id: 'mX',
+    });
+    expect(paused.outcome).toBe('paused');
+    expect(paused.done).toBe(false);
+    expect(paused.spentCents).toBe(120);
+    expect(paused.steps.find((s) => s.step.id === 'c')?.status).toBe('pending');
+
+    // Resume with headroom → the remaining step runs and the mission completes.
+    const resumed = await runMission(mission(), threeSteps, {
+      executor: costed(60),
+      budgetCents: 10_000,
+      resumeFrom: paused,
+    });
+    expect(resumed.outcome).toBe('completed');
+    expect(resumed.steps.every((s) => s.status === 'done')).toBe(true);
+  });
+
+  it('PAUSES on the wall-clock ceiling via the injected clock', async () => {
+    let t = 0;
+    const now = (): number => (t += 1000); // each read advances 1s
+    const state = await runMission(
+      mission(),
+      plan([step('a', 'understand'), step('b', 'implement', ['a'])]),
+      {
+        executor: scriptedExecutor({}),
+        maxDurationMs: 1500, // the second loop-top check (t≥2000−start) trips it
+        now,
+      },
+    );
+    expect(state.outcome).toBe('paused');
+    expect(state.pausedReason).toContain('time');
   });
 });
