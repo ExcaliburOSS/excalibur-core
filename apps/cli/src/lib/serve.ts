@@ -17,7 +17,7 @@ import {
   moveWorkItemLane,
   InvalidLaneError,
 } from './dashboard-data';
-import type { PlanShapeView } from '@excalibur/shared';
+import type { PlanShapeView, ScopeMapView } from '@excalibur/shared';
 import { buildChronogramForRun } from './chronogram';
 import { cancelOrchestrationLane, setOrchestrationPaused } from './orchestration-manifest';
 
@@ -57,6 +57,9 @@ export interface ServeWriteHandler {
   approve(runId: string, decision: boolean): boolean;
   /** Plan-shaping proposal for a task (D — dashboard "shape & start" panel). */
   shapePlan(task: string): Promise<PlanShapeView>;
+  /** Read-only "Understand-first" scope of a task (AO9-4 — dashboard Scope view).
+   * A model compute, no writes; null when no model is configured. */
+  scope(task: string): Promise<ScopeMapView | null>;
 }
 
 export interface ServeOptions {
@@ -523,6 +526,19 @@ async function handleWrite(
         return;
       }
       send(200, await options.write.shapePlan(task));
+      return;
+    }
+    // AO9-4: read-only "Understand-first" scope of a task for the dashboard Scope
+    // view — a model compute (no mutation), but it needs the configured model so,
+    // like plan-shape, it lives on the write surface. Returns a ScopeMap | null.
+    if (path === '/api/scope') {
+      const body = await readJsonBody(req);
+      const task = typeof body['task'] === 'string' ? body['task'].trim() : '';
+      if (task.length === 0) {
+        send(400, { error: 'a non-empty "task" is required' });
+        return;
+      }
+      send(200, await options.write.scope(task));
       return;
     }
     // D2: move a work item to another lane (drag-to-change-status).

@@ -15,6 +15,7 @@ import type {
   PlanShapeView,
   PlanSummary,
   RunRecord,
+  ScopeMapView,
   WorkItemDetail,
   WorkItemSummary,
 } from './contracts';
@@ -146,6 +147,11 @@ export const startRun = (input: {
 /** Plan-shaping proposal for a task — clarifying questions + scope recs (D). */
 export const shapePlan = (task: string): Promise<PlanShapeView> =>
   post('/api/plan-shape', { task });
+
+/** Read-only "Understand-first" scope of a task — subsystems, built-vs-missing,
+ * risks (AO9-4). Returns null when no model is configured. */
+export const fetchScope = (task: string): Promise<ScopeMapView | null> =>
+  post('/api/scope', { task });
 
 /** Cancel a run. */
 export const cancelRun = (id: string): Promise<{ cancelled: boolean }> =>

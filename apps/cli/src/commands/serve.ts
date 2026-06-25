@@ -6,12 +6,14 @@ import { executionStyleSchema, isAutonomyLevel, type ExecutionStyle } from '@exc
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
 import { loadConfigContext, loadGatewayContext } from '../lib/context';
+import { computeScope } from '../lib/scope';
 import { createExcaliburServer, type ServeWriteHandler } from '../lib/serve';
 
 /** Builds the control-plane write handler: start/cancel/approve runs via a RunController. */
 function buildWriteHandler(repoRoot: string): ServeWriteHandler {
   const { config } = loadConfigContext(repoRoot);
-  const { gateway, providerName, cheapProviderName, configured } = loadGatewayContext(repoRoot);
+  const gwCtx = loadGatewayContext(repoRoot);
+  const { gateway, providerName, cheapProviderName, configured } = gwCtx;
   const controller = new RunController();
   return {
     startRun: async (input) => {
@@ -77,6 +79,10 @@ function buildWriteHandler(repoRoot: string): ServeWriteHandler {
       const shape = await planShape(task, { interactive: true, mock: false, level: 4 }, model);
       return { ...shape, surface: shouldSurfacePlanShape(shape) };
     },
+    // AO9-4: read-only "Understand-first" scope for the dashboard Scope view — a
+    // model compute (no writes). Reuses the SAME wired computeScope as the CLI.
+    // Unconfigured → null (never the mock; handleWrite turns it into a clean 200/null).
+    scope: async (task) => (configured ? computeScope(repoRoot, task, gwCtx) : null),
   };
 }
 

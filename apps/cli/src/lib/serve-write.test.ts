@@ -50,6 +50,14 @@ function makeHandler(): {
         surface: true,
       });
     },
+    scope: () =>
+      Promise.resolve({
+        task: 'demo',
+        summary: 'demo scope',
+        subsystems: [],
+        risks: [],
+        openQuestions: [],
+      }),
   };
   return { handler, calls };
 }

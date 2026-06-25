@@ -27,6 +27,8 @@ export type {
   PlanShapeRecommendationDto,
   PlanShapeView,
   PlanSummary,
+  ScopeFragmentView,
+  ScopeMapView,
   RunRecord,
   RunSummary,
   WorkItemCommentDto,

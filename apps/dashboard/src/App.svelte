@@ -8,6 +8,7 @@
   import Orchestrations from './pages/Orchestrations.svelte';
   import Chronogram from './pages/Chronogram.svelte';
   import Plans from './pages/Plans.svelte';
+  import Scope from './pages/Scope.svelte';
 
   const router = createRouter();
 
@@ -17,6 +18,7 @@
     { href: '#/orchestrations', key: 'nav.orchestrations', match: ['orchestrations'] },
     { href: '#/insights', key: 'nav.insights', match: ['insights'] },
     { href: '#/plans', key: 'nav.plans', match: ['plans'] },
+    { href: '#/scope', key: 'nav.scope', match: ['scope'] },
   ];
 </script>
 
@@ -52,6 +54,8 @@
       <Chronogram id={router.current.params.id ?? ''} />
     {:else if router.current.name === 'plans'}
       <Plans />
+    {:else if router.current.name === 'scope'}
+      <Scope />
     {:else}
       <div class="empty">{t('common.notFound')}</div>
     {/if}

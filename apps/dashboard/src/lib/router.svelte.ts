@@ -15,6 +15,7 @@ export interface Route {
     | 'orchestrations'
     | 'orchestration'
     | 'plans'
+    | 'scope'
     | 'notFound';
   /** Path params (e.g. `{ key: 'WI-12' }`). */
   params: Record<string, string>;
@@ -29,6 +30,7 @@ const PATTERNS: { name: Route['name']; re: RegExp; keys: string[] }[] = [
   { name: 'orchestration', re: /^\/orchestrations\/([^/]+)$/, keys: ['id'] },
   { name: 'orchestrations', re: /^\/orchestrations$/, keys: [] },
   { name: 'plans', re: /^\/plans$/, keys: [] },
+  { name: 'scope', re: /^\/scope$/, keys: [] },
 ];
 
 /** Parses the current `location.hash` (stripping any `?query`) into a Route. */

@@ -258,6 +258,28 @@ export interface PlanShapeView {
   surface: boolean;
 }
 
+/** One explored subsystem in a {@link ScopeMapView} (AO9-4) — mirrors the core
+ * `ScopeFragment`. The dashboard never imports `@excalibur/core`, so the wire
+ * shape is duplicated here as a plain DTO (JSON-identical to the core type). */
+export interface ScopeFragmentView {
+  subsystem: string;
+  files: string[];
+  whatExists: string;
+  whatsMissing: string;
+  risks: string[];
+}
+
+/** A read-only "Understand-first" scope of a task for the dashboard Scope view
+ * (AO9-4), mirroring the core `ScopeMap`. Computed on demand (a model fan-out),
+ * never persisted — `POST /api/scope` returns this or `null` when unconfigured. */
+export interface ScopeMapView {
+  task: string;
+  summary: string;
+  subsystems: ScopeFragmentView[];
+  risks: string[];
+  openQuestions: string[];
+}
+
 /** A discovery session summary (D3). */
 export interface DiscoverySummary {
   id: string;
