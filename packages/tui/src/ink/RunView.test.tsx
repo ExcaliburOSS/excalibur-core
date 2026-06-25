@@ -257,6 +257,24 @@ describe('createRunViewStore', () => {
     expect(store.getSnapshot().diffsExpanded).toBe(true);
   });
 
+  it('pins a mission ribbon and resets the rail for a new capability (M8 #43)', () => {
+    const store = createRunViewStore();
+    expect(store.getSnapshot().missionRibbon).toBeNull();
+    store.setRibbon({
+      goal: 'g',
+      steps: [
+        { id: 'i', capability: 'implement', objective: 'do', status: 'running', gate: false },
+      ],
+    });
+    expect(store.getSnapshot().missionRibbon?.goal).toBe('g');
+    store.push(createEvent({ runId: 'r', type: 'file_write', payload: { path: 'a.ts' } }));
+    expect(store.getSnapshot().events).toHaveLength(1);
+    // A new capability resets the rail but KEEPS the ribbon pinned.
+    store.resetEvents();
+    expect(store.getSnapshot().events).toHaveLength(0);
+    expect(store.getSnapshot().missionRibbon?.goal).toBe('g');
+  });
+
   it('requestApproval resolves with the answer that resolveApproval supplies', async () => {
     const store = createRunViewStore();
     const promise = store.requestApproval({ question: 'Approve?', options: '[y/N]' });

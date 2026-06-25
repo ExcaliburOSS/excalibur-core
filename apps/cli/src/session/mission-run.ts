@@ -183,8 +183,10 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
   });
   deps.ui.write(pc.dim(plan.rationale));
 
-  // 2) The capability executor — each step is a REAL agentic turn.
-  const baseTurn = (level: AutonomyLevel): AgentTurnDeps => ({
+  // 2) The capability executor — each step is a REAL agentic turn, rendered with
+  // the mission plan ribbon pinned above its rail (M8 #43).
+  const isTty = deps.ui.isOutputTty();
+  const baseTurn = (level: AutonomyLevel, ribbonModel: MissionRibbonModel): AgentTurnDeps => ({
     deps,
     repoRoot,
     config: opts.config,
@@ -194,9 +196,11 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
     approvals: opts.approvals,
     signal,
     adapter,
+    ribbon: ribbonModel,
   });
-  const executor: CapabilityExecutor = async (step) => {
+  const executor: CapabilityExecutor = async (step, state) => {
     const level = capabilityLevel(step.capability, opts.autonomyLevel);
+    const turn = baseTurn(level, toRibbon(state));
     deps.ui.write(pc.cyan(`▶ ${step.capability}: ${step.objective}`));
 
     // `parallelize` and `explore` use their REAL dedicated engines (the swarm /
@@ -281,7 +285,7 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
     }
 
     try {
-      const result = await runAgentTurn(baseTurn(level), capabilityTask(step, mission));
+      const result = await runAgentTurn(turn, capabilityTask(step, mission));
       // Ground the outcome in the run's real events (failed tests / refuted claims /
       // errors) so gates aren't judged on the model's prose alone; the reassessor
       // also sees the structured signals.
@@ -312,7 +316,9 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
     }),
     onEvent: (event, s) => {
       saveMission(repoRoot, s);
-      if (event.kind === 'step_started') ribbon(s);
+      // On a TTY the ribbon is pinned above each capability's rail (via the turn's
+      // `ribbon`); on a pipe/CI, print it as a text header before each step.
+      if (event.kind === 'step_started' && !isTty) ribbon(s);
       if (
         event.kind === 'replan' ||
         event.kind === 'step_escalated' ||

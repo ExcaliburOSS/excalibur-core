@@ -1,5 +1,6 @@
 import type { ExcaliburEvent } from '@excalibur/shared';
 import type { ApprovalPrompt } from '../rail-types.js';
+import type { MissionRibbonModel } from '../mission-ribbon.js';
 
 /**
  * The external store behind `mountRunView`: an event log + spinner frame +
@@ -30,6 +31,12 @@ export interface RunViewSnapshot {
    * the moment the `model_call` event arrives, so it is cleared on that push.
    */
   streamingNarration: string;
+  /**
+   * The meta-orchestrator's plan ribbon (M8 #43), rendered ABOVE the run rail when
+   * set — so the capability DAG stays pinned while the active capability's rail
+   * runs below it. Null for an ordinary run/turn.
+   */
+  missionRibbon: MissionRibbonModel | null;
 }
 
 export interface RunViewStore {
@@ -39,6 +46,10 @@ export interface RunViewStore {
   tick(): void;
   /** Set the live, still-streaming narration buffer for the current turn. */
   streamNarration(text: string): void;
+  /** Set/refresh the mission plan ribbon shown above the rail. */
+  setRibbon(model: MissionRibbonModel): void;
+  /** Clear the rail event log (a new capability starts its own rail below the ribbon). */
+  resetEvents(): void;
   toggleDiffs(): void;
   /** Show an approval and resolve once the user answers (y/n/a). */
   requestApproval(approval: ApprovalPrompt): Promise<ApprovalAnswer>;
@@ -94,6 +105,7 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
     diffsExpanded: false,
     approval: null,
     streamingNarration: '',
+    missionRibbon: null,
   };
   const listeners = new Set<() => void>();
   const escapeListeners = new Set<() => void>();
@@ -132,6 +144,13 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
     },
     streamNarration(text) {
       set({ streamingNarration: text });
+    },
+    setRibbon(model) {
+      set({ missionRibbon: model });
+    },
+    resetEvents() {
+      events.length = 0; // a new capability starts its rail fresh below the ribbon
+      set({ eventsRev: snapshot.eventsRev + 1, streamingNarration: '' });
     },
     toggleDiffs() {
       set({ diffsExpanded: !snapshot.diffsExpanded });

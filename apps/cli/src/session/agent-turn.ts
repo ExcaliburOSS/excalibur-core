@@ -34,7 +34,13 @@ import {
   type ExcaliburEvent,
   type LocalRun,
 } from '@excalibur/shared';
-import { applyCustomColors, detectColorTier, detectThemeSync, paletteFor } from '@excalibur/tui';
+import {
+  applyCustomColors,
+  detectColorTier,
+  detectThemeSync,
+  paletteFor,
+  type MissionRibbonModel,
+} from '@excalibur/tui';
 import type { RunViewHandle } from '@excalibur/tui/ink';
 import type { ChatMessage, ModelGateway } from '@excalibur/model-gateway';
 import { execFileSync } from 'node:child_process';
@@ -138,6 +144,19 @@ export interface AgentTurnDeps {
    * stay hard-denied at the tool-execution layer regardless.
    */
   quiet?: boolean;
+  /**
+   * An EXISTING Ink rail to render this turn INTO, instead of mounting its own
+   * (M8 #43 — the meta-orchestrator pins a plan ribbon and nests each capability's
+   * rail beneath it). When set, runAgentTurn pushes events/narration to this view
+   * and does NOT mount/unmount it or touch stdin — the owner (the mission) manages
+   * its lifecycle. Additive; ordinary turns omit it and mount their own.
+   */
+  view?: RunViewHandle;
+  /**
+   * The meta-orchestrator's plan ribbon to pin ABOVE this turn's rail (M8 #43) —
+   * so each capability runs with the mission DAG shown on top. Additive.
+   */
+  ribbon?: MissionRibbonModel;
 }
 
 /**
@@ -259,8 +278,12 @@ async function driveLoop(
   // uses), or — on a piped/CI stdout — the spinner + per-action renderer. The
   // Ink rail OWNS stdin for the turn, so suspend the REPL's raw editor first and
   // resume it on unmount (in the finally).
-  const useInk = turn.quiet !== true && deps.ui.isOutputTty();
-  let view: RunViewHandle | null = null;
+  // When the caller supplies a view (a mission nesting this capability under its
+  // ribbon), render into it and let the caller own its lifecycle + stdin. Else
+  // mount our own on a TTY.
+  const externalView = turn.view ?? null;
+  const useInk = externalView === null && turn.quiet !== true && deps.ui.isOutputTty();
+  let view: RunViewHandle | null = externalView;
   if (useInk) {
     deps.ui.suspendInput();
     const ink = await loadInkUi();
@@ -285,6 +308,11 @@ async function driveLoop(
       },
     });
     view.onEscape(() => ctrl.abort());
+  }
+  // Pin the mission ribbon above the rail (whether we mounted the view or the
+  // caller supplied one), so each capability runs under the live plan DAG.
+  if (view !== null && turn.ribbon !== undefined) {
+    view.setRibbon(turn.ribbon);
   }
 
   // The breathing indicator + per-action renderer — non-Ink path only, and never
@@ -509,8 +537,12 @@ async function driveLoop(
       }
       // Leaves the final frame (completed phases already in scrollback via
       // <Static>) and fully releases stdin; then re-arm the REPL's raw editor.
-      view.unmount();
-      deps.ui.resumeInput();
+      // An EXTERNAL (mission) view is owned by its caller — don't unmount it or
+      // touch stdin here.
+      if (useInk) {
+        view.unmount();
+        deps.ui.resumeInput();
+      }
     } else {
       spinner?.stop();
     }

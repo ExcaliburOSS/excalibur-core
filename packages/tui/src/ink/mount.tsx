@@ -7,6 +7,8 @@ import { reduceRail, type ReduceRailOptions } from '../rail-reducer.js';
 import type { ApprovalPrompt } from '../rail-types.js';
 import { ThemeProvider } from './ThemeContext.js';
 import { RunView, type RunViewLabels } from './RunView.js';
+import { MissionRibbon } from './MissionRibbon.js';
+import type { MissionRibbonModel } from '../mission-ribbon.js';
 import {
   applyRunViewKey,
   createRunViewStore,
@@ -42,6 +44,10 @@ export interface RunViewHandle {
   push(event: ExcaliburEvent): void;
   /** Feed the live, still-streaming narration for the current turn (typed out). */
   streamNarration(text: string): void;
+  /** Set/refresh the mission plan ribbon pinned above the rail (M8 #43). */
+  setRibbon(model: MissionRibbonModel): void;
+  /** Clear the rail for a new capability (the ribbon stays). */
+  resetEvents(): void;
   /** Show an approval; resolves once the user answers. */
   requestApproval(approval: ApprovalPrompt): Promise<ApprovalAnswer>;
   /** Register an ESC handler (the turn's abort); returns an unsubscribe. */
@@ -82,6 +88,9 @@ function RunViewApp({
   );
   return (
     <ThemeProvider colors={options.palette}>
+      {snapshot.missionRibbon !== null ? (
+        <MissionRibbon model={snapshot.missionRibbon} spinnerFrame={snapshot.frame} />
+      ) : null}
       <RunView
         model={model}
         spinnerFrame={snapshot.frame}
@@ -117,6 +126,8 @@ export function mountRunView(options: MountRunViewOptions): RunViewHandle {
   return {
     push: (event) => store.push(event),
     streamNarration: (text) => store.streamNarration(text),
+    setRibbon: (model) => store.setRibbon(model),
+    resetEvents: () => store.resetEvents(),
     requestApproval: (approval) => store.requestApproval(approval),
     onEscape: (listener) => store.onEscape(listener),
     waitForExit: () => instance.waitUntilExit(),
