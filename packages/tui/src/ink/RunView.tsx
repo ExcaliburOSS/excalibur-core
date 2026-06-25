@@ -73,7 +73,11 @@ function EventRow({ event, colors }: { event: PhaseEvent; colors: Palette }): Re
   if (event.kind === 'narration') {
     return (
       <Box>
-        <Text color={colors.rail}>{` ${glyph.railV}   `}</Text>
+        {/* flexShrink=0 so the rail prefix keeps its full width when the prose
+            wraps (otherwise Yoga steals a space and the wrapped line mis-aligns). */}
+        <Box flexShrink={0}>
+          <Text color={colors.rail}>{` ${glyph.railV}   `}</Text>
+        </Box>
         <Text color={colors.text} italic wrap="wrap">
           {event.text}
         </Text>
@@ -151,11 +155,15 @@ function PhaseNode({
 function StreamingNarration({ text, colors }: { text: string; colors: Palette }): ReactElement {
   return (
     <Box>
-      <Text color={colors.rail}>{` ${glyph.railV}   `}</Text>
+      <Box flexShrink={0}>
+        <Text color={colors.rail}>{` ${glyph.railV}   `}</Text>
+      </Box>
+      {/* The cursor lives INSIDE the wrapping text so it follows the last
+          character onto the final wrapped line, not the end of the first row. */}
       <Text color={colors.text} italic wrap="wrap">
         {text}
+        <Text color={colors.muted}>▌</Text>
       </Text>
-      <Text color={colors.muted}>▌</Text>
     </Box>
   );
 }
