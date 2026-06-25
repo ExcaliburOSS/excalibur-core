@@ -10,6 +10,7 @@ import { computeScope, estimateComplexity } from './scope';
 function fakeGateway(): {
   chat: (input: {
     messages: Array<{ role: string; content: string }>;
+    maxTokens?: number;
   }) => Promise<{ content: string }>;
 } {
   return {
@@ -98,5 +99,27 @@ describe('computeScope (AO9-2 wired backing, read-only)', () => {
     // No "Rate how broad" probe call was made (complexity was supplied).
     const probed = spy.mock.calls.some((c) => JSON.stringify(c).includes('Rate how broad'));
     expect(probed).toBe(false);
+  });
+
+  it('skips the complexity probe when --angles is forced (no wasted round-trip)', async () => {
+    const gw = gwContext();
+    const spy = vi.spyOn(gw.gateway as unknown as { chat: () => unknown }, 'chat');
+    await computeScope(NO_REPO, 'add MFA', gw, { angles: 1 }); // angles but no complexity
+    const probed = spy.mock.calls.some((c) => JSON.stringify(c).includes('Rate how broad'));
+    expect(probed).toBe(false);
+  });
+
+  it('threads the scope budget (2200) into the wired explore call (not askStructured 1500)', async () => {
+    const gw = gwContext();
+    const spy = vi.spyOn(gw.gateway as unknown as { chat: (input: unknown) => unknown }, 'chat');
+    await computeScope(NO_REPO, 'add MFA', gw, { complexity: 'small' });
+    // Find the explore call (its user message carries the explorer prompt) and
+    // assert it ran at the declared 2200 ceiling, not askStructured's 1500 default.
+    type ChatInput = { messages: Array<{ content: string }>; maxTokens?: number };
+    const exploreCall = spy.mock.calls.find((c) =>
+      (c[0] as ChatInput).messages.some((m) => m.content.includes('READ-ONLY code explorer')),
+    );
+    expect(exploreCall).toBeDefined();
+    expect((exploreCall![0] as ChatInput).maxTokens).toBe(2200);
   });
 });

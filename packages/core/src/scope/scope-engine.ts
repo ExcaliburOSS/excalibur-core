@@ -18,11 +18,7 @@
 
 import type { IntentModel } from '../sessions/intent-router';
 import { firstJsonObject } from '../sessions/plan-shaping';
-import {
-  buildSchemaInstruction,
-  type JsonSchema,
-  validateAgainstSchema,
-} from '../structured/structured-output';
+import { buildSchemaInstruction, type JsonSchema } from '../structured/structured-output';
 
 /** How big the task looks — drives the number of exploration angles. */
 export type ScopeComplexity = 'small' | 'medium' | 'large';
@@ -139,33 +135,40 @@ export function buildScopeExplorePrompt(task: string, angle: ScopeAngle): string
   ].join('\n');
 }
 
+/** A fragment that found NOTHING (no exists/missing prose) — dropped, not merged,
+ * so it never inflates the map or defeats scopeTask's all-fail→null guard. A
+ * reasoning model that returns a schema-VALID but empty-string object hits this
+ * too; the check is applied on BOTH the strict and coercion paths so they cannot
+ * diverge. */
+function fragmentIsEmpty(whatExists: string, whatsMissing: string): boolean {
+  return whatExists.trim().length === 0 && whatsMissing.trim().length === 0;
+}
+
 /** Coerces an unknown value into a {@link ScopeFragment} (schema-validated); null on a
- * structurally-invalid value so a bad explorer reply is dropped, not half-merged. */
+ * structurally-invalid OR findings-empty value so a useless explorer reply is dropped,
+ * not half-merged (a schema-valid all-empty object is dropped exactly like a loose one). */
 export function parseScopeFragment(
   modelOutput: string,
   fallbackSubsystem: string,
 ): ScopeFragment | null {
   const obj = firstJsonObject(modelOutput);
   if (obj === null) return null;
-  if (validateAgainstSchema(obj, SCOPE_FRAGMENT_SCHEMA).length > 0) {
-    // Best-effort coerce when the model is close but not strict.
-    const subsystem = typeof obj['subsystem'] === 'string' ? obj['subsystem'] : fallbackSubsystem;
-    const whatExists = typeof obj['whatExists'] === 'string' ? obj['whatExists'] : '';
-    const whatsMissing = typeof obj['whatsMissing'] === 'string' ? obj['whatsMissing'] : '';
-    if (whatExists.length === 0 && whatsMissing.length === 0) return null;
-    return {
-      subsystem,
-      files: toStringArray(obj['files']),
-      whatExists,
-      whatsMissing,
-      risks: toStringArray(obj['risks']),
-    };
-  }
+  // One coercion path for BOTH the schema-valid and close-but-loose cases: a
+  // schema-valid object already carries string fields, so reading them via the
+  // safe `typeof` guard is identical to trusting the schema — and it cannot
+  // diverge from the coercion path on the empty-findings drop.
+  const subsystem =
+    typeof obj['subsystem'] === 'string' && obj['subsystem'].length > 0
+      ? obj['subsystem']
+      : fallbackSubsystem;
+  const whatExists = typeof obj['whatExists'] === 'string' ? obj['whatExists'] : '';
+  const whatsMissing = typeof obj['whatsMissing'] === 'string' ? obj['whatsMissing'] : '';
+  if (fragmentIsEmpty(whatExists, whatsMissing)) return null;
   return {
-    subsystem: obj['subsystem'] as string,
+    subsystem,
     files: toStringArray(obj['files']),
-    whatExists: obj['whatExists'] as string,
-    whatsMissing: obj['whatsMissing'] as string,
+    whatExists,
+    whatsMissing,
     risks: toStringArray(obj['risks']),
   };
 }
@@ -245,7 +248,11 @@ export async function scopeTask(task: string, deps: ScopeDeps): Promise<ScopeMap
   const trimmed = task.trim();
   if (trimmed.length === 0) return null;
 
-  const maxAngles = deps.maxAngles ?? scopeAngleCount({ complexity: deps.complexity ?? 'medium' });
+  // Clamp ALWAYS against ANGLE_HARD_CAP — even an injected `maxAngles` (the docstring
+  // promises "still hard-capped"). Keeps the fan-out bounded for programmatic callers
+  // (AO9-3 proactive, AO9-4 dashboard) that bypass the CLI's own 1-8 validation.
+  const requested = deps.maxAngles ?? scopeAngleCount({ complexity: deps.complexity ?? 'medium' });
+  const maxAngles = Math.max(1, Math.min(requested, ANGLE_HARD_CAP));
 
   let angles: ScopeAngle[];
   try {
@@ -271,8 +278,12 @@ export async function scopeTask(task: string, deps: ScopeDeps): Promise<ScopeMap
         }),
     ),
   );
-  const fragments = settled.filter((f): f is ScopeFragment => f !== null);
-  if (fragments.length === 0) return null;
+  const found = settled.filter((f): f is ScopeFragment => f !== null);
+  if (found.length === 0) return null;
+  // Merge fragments that landed on the same subsystem (two angles can collide) so
+  // the map has ONE section per subsystem and the user-facing count is accurate —
+  // honouring the "deduped/merged" contract on ScopeMap.subsystems.
+  const fragments = mergeFragmentsBySubsystem(found);
   emitProgress(deps, { phase: 'synthesize' });
 
   try {
@@ -285,6 +296,46 @@ export async function scopeTask(task: string, deps: ScopeDeps): Promise<ScopeMap
     // Synthesis fault → a minimal map straight from the fragments (still useful).
     return { task: trimmed, summary: '', subsystems: fragments, risks: [], openQuestions: [] };
   }
+}
+
+/** Merges fragments sharing a subsystem (case-insensitively) into one: unions the
+ * files + risks (dedup, order-preserving) and joins distinct exists/missing prose.
+ * One section per subsystem; the first occurrence's casing/order wins. Pure. */
+export function mergeFragmentsBySubsystem(fragments: ScopeFragment[]): ScopeFragment[] {
+  const byKey = new Map<string, ScopeFragment>();
+  for (const f of fragments) {
+    const key = f.subsystem.trim().toLowerCase();
+    const existing = byKey.get(key);
+    if (existing === undefined) {
+      byKey.set(key, { ...f, files: [...f.files], risks: [...f.risks] });
+      continue;
+    }
+    existing.files = dedupe([...existing.files, ...f.files]);
+    existing.risks = dedupe([...existing.risks, ...f.risks]);
+    existing.whatExists = joinDistinct(existing.whatExists, f.whatExists);
+    existing.whatsMissing = joinDistinct(existing.whatsMissing, f.whatsMissing);
+  }
+  return [...byKey.values()];
+}
+
+function dedupe(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of values) {
+    if (seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
+}
+
+/** Joins two prose blocks, skipping empties and exact duplicates. */
+function joinDistinct(a: string, b: string): string {
+  const left = a.trim();
+  const right = b.trim();
+  if (right.length === 0 || left === right) return left;
+  if (left.length === 0) return right;
+  return `${left}\n\n${right}`;
 }
 
 /** Renders a {@link ScopeMap} as readable Markdown (for the TTY / a report). Pure. */

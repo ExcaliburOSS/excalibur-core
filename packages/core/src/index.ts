@@ -121,6 +121,7 @@ export {
   parseScopeFragment,
   buildScopeSynthesisPrompt,
   parseScopeMap,
+  mergeFragmentsBySubsystem,
   scopeMapToMarkdown,
   SCOPE_FRAGMENT_SCHEMA,
   type ScopeComplexity,

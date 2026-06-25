@@ -43,8 +43,14 @@ export function registerScopeCommand(program: Command, deps: CliDeps): void {
 }
 
 function parseAngles(value: string): number {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 8) {
+  // Reject non-integers explicitly — Number.parseInt would silently truncate
+  // "3.5"→3 / "3abc"→3, contradicting the "must be an integer" error message.
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    throw new CliUsageError(`--angles must be an integer between 1 and 8 (got "${value}").`);
+  }
+  const parsed = Number.parseInt(trimmed, 10);
+  if (parsed < 1 || parsed > 8) {
     throw new CliUsageError(`--angles must be an integer between 1 and 8 (got "${value}").`);
   }
   return parsed;

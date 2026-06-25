@@ -111,6 +111,12 @@ export async function computeScope(
     angle: ScopeAngle,
     signal?: AbortSignal,
   ): Promise<ScopeFragment | null> => {
+    // A fresh read each time — `aborted` flips during the awaited scan, so a
+    // re-evaluated function call avoids TS narrowing the second check to a constant.
+    const aborted = (): boolean => signal?.aborted === true;
+    // Honour an abort BEFORE the (uncancellable) repo scan — retrieval globs the
+    // tree synchronously, so a checked early-return is the only responsive cancel.
+    if (aborted()) return null;
     // READ-ONLY grounding: pull the files most relevant to this angle into the
     // prompt. Retrieval cannot write/patch/run — the safety floor is structural.
     const sources = await buildRepoContextSources({
@@ -118,12 +124,18 @@ export async function computeScope(
       query: `${angle.subsystem} ${angle.question}`,
       maxFiles: EXPLORE_MAX_FILES,
     });
+    if (aborted()) return null; // skip the model call if aborted during the scan
     const systemContext = sources.map((s) => s.content).join('\n\n');
     const res = await askStructured(gw.gateway, {
       question: buildScopeExplorePrompt(t, angle),
       schema: SCOPE_FRAGMENT_SCHEMA,
       ...(systemContext.length > 0 ? { systemContext } : {}),
       provider,
+      // Same ceiling the module declares for the reasoning model — the fragment is
+      // the LARGER shape (files + two prose fields + risks), so it needs the
+      // headroom MOST. Threading it closes the verify-real-wired-path gap where
+      // askStructured's 1500 default silently capped the wired explore budget.
+      maxTokens: SCOPE_MODEL_MAXTOKENS,
       ...(signal !== undefined ? { signal } : {}),
     });
     // askStructured already prefers the schema-valid JSON; re-validate/coerce
@@ -132,8 +144,13 @@ export async function computeScope(
     return parseScopeFragment(raw, angle.subsystem);
   };
 
+  // Skip the complexity probe (a model round-trip) when the angle count is forced —
+  // scopeTask ignores complexity once maxAngles is set, so the probe would be wasted.
   const complexity =
-    options.complexity ?? (await estimateComplexity(classify, task, options.signal));
+    options.complexity ??
+    (options.angles !== undefined
+      ? 'medium'
+      : await estimateComplexity(classify, task, options.signal));
 
   return scopeTask(task, {
     classify,

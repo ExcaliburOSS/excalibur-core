@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildScopeAnglesPrompt,
   buildScopeExplorePrompt,
+  mergeFragmentsBySubsystem,
   parseScopeAngles,
   parseScopeFragment,
   parseScopeMap,
@@ -62,6 +63,52 @@ describe('parseScopeFragment (pure, schema-validated)', () => {
     // nothing useful → null
     expect(parseScopeFragment('{"subsystem":"x"}', 'x')).toBeNull();
     expect(parseScopeFragment('not json', 'x')).toBeNull();
+  });
+  it('drops a SCHEMA-VALID but findings-empty fragment (strict & loose paths agree)', () => {
+    // A reasoning model can return a schema-conforming object with empty strings;
+    // it must be dropped exactly like the loose equivalent (the review HIGH/MED fix).
+    expect(
+      parseScopeFragment(
+        '{"subsystem":"auth","files":[],"whatExists":"","whatsMissing":"","risks":[]}',
+        'auth',
+      ),
+    ).toBeNull();
+    // whitespace-only prose is still empty
+    expect(
+      parseScopeFragment(
+        '{"subsystem":"auth","files":["a.ts"],"whatExists":"  ","whatsMissing":"\\n","risks":["r"]}',
+        'auth',
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('mergeFragmentsBySubsystem (pure dedup/merge)', () => {
+  it('merges same-subsystem fragments: unions files/risks, joins distinct prose', () => {
+    const merged = mergeFragmentsBySubsystem([
+      {
+        subsystem: 'auth',
+        files: ['a.ts'],
+        whatExists: 'oauth',
+        whatsMissing: 'mfa',
+        risks: ['r1'],
+      },
+      {
+        subsystem: 'Auth',
+        files: ['a.ts', 'b.ts'],
+        whatExists: 'oauth',
+        whatsMissing: 'totp',
+        risks: ['r2'],
+      },
+      { subsystem: 'db', files: ['db.ts'], whatExists: 'pg', whatsMissing: 'col', risks: [] },
+    ]);
+    expect(merged).toHaveLength(2); // auth + Auth collapsed (case-insensitive), db separate
+    const auth = merged[0]!;
+    expect(auth.subsystem).toBe('auth'); // first casing wins
+    expect(auth.files).toEqual(['a.ts', 'b.ts']); // unioned, deduped, order-preserving
+    expect(auth.risks).toEqual(['r1', 'r2']);
+    expect(auth.whatExists).toBe('oauth'); // identical prose not duplicated
+    expect(auth.whatsMissing).toBe('mfa\n\ntotp'); // distinct prose joined
   });
 });
 
@@ -196,6 +243,39 @@ describe('scopeTask (AO9-1 orchestration, injected model + explorer)', () => {
     expect(phases[0]).toBe('decompose');
     expect(phases.filter((p) => p === 'explore')).toHaveLength(2); // one per angle
     expect(phases[phases.length - 1]).toBe('synthesize');
+  });
+
+  it('merges explorers that landed on the same subsystem (deduped/merged contract)', async () => {
+    const classify = vi
+      .fn()
+      .mockResolvedValueOnce('{"angles":[{"subsystem":"auth"},{"subsystem":"Auth"}]}')
+      .mockResolvedValueOnce('{"summary":"ok"}');
+    const explore = vi.fn(async (_t, angle) => frag(angle.subsystem));
+    const map = await scopeTask('x', { classify, explore });
+    expect(map!.subsystems).toHaveLength(1); // two 'auth' angles → one merged section
+  });
+
+  it('returns null when every explorer returns a schema-valid but empty fragment', async () => {
+    // The strict-path empty drop must hold the all-fail→null invariant end to end.
+    const classify = vi.fn().mockResolvedValue('{"angles":[{"subsystem":"auth"}]}');
+    const explore = vi.fn(async () =>
+      parseScopeFragment(
+        '{"subsystem":"auth","files":[],"whatExists":"","whatsMissing":"","risks":[]}',
+        'auth',
+      ),
+    );
+    expect(await scopeTask('x', { classify, explore })).toBeNull();
+  });
+
+  it('clamps an injected maxAngles to ANGLE_HARD_CAP (no fan-out bomb)', async () => {
+    const angles = Array.from({ length: 12 }, (_, i) => ({ subsystem: `s${i}` }));
+    const classify = vi
+      .fn()
+      .mockResolvedValueOnce(JSON.stringify({ angles }))
+      .mockResolvedValueOnce('{"summary":"ok"}');
+    const explore = vi.fn(async (_t, angle) => frag(angle.subsystem));
+    await scopeTask('x', { classify, explore, maxAngles: 999 }); // injected, bypasses CLI 1-8
+    expect(explore.mock.calls.length).toBeLessThanOrEqual(8); // hard cap honoured
   });
 
   it('honours maxAngles (caps the fan-out)', async () => {

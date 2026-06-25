@@ -171,6 +171,11 @@ export interface StructuredAskInput {
   /** Extra system context (effective instructions / repo retrieval). */
   systemContext?: string;
   provider?: string;
+  /** Output ceiling for BOTH attempts. Defaults to 1500. Raise it for larger
+   * shapes or reasoning models that need headroom to emit JSON, not just think
+   * (the verify-real-wired-path lesson: don't let an injected default cap below
+   * what the caller's budget declares). */
+  maxTokens?: number;
   signal?: AbortSignal;
 }
 
@@ -205,7 +210,7 @@ export async function askStructured(
   ): Promise<{ value: unknown; errors: string[]; raw: string }> => {
     const out = await gateway.chat({
       messages,
-      maxTokens: 1500,
+      maxTokens: input.maxTokens ?? 1500,
       ...providerOpt,
       ...signalOpt,
       metadata: { kind: 'ask-structured' },
