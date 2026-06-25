@@ -110,6 +110,26 @@ export {
 } from './swarm/concurrency';
 export { topologicalWaves, type DependencyNode } from './swarm/toposort';
 
+// AO9-1 — "Understand-first" read-only scope engine (auto-dimensioned exploration
+// fan-out → ScopeMap; feeds plan-shaping + the planner). Injected model + explorer.
+export {
+  scopeTask,
+  scopeAngleCount,
+  buildScopeAnglesPrompt,
+  parseScopeAngles,
+  buildScopeExplorePrompt,
+  parseScopeFragment,
+  buildScopeSynthesisPrompt,
+  parseScopeMap,
+  scopeMapToMarkdown,
+  SCOPE_FRAGMENT_SCHEMA,
+  type ScopeComplexity,
+  type ScopeAngle,
+  type ScopeFragment,
+  type ScopeMap,
+  type ScopeDeps,
+} from './scope/scope-engine';
+
 // Runs
 export { RunManager, type CreateRunInput, type ModelCallLine } from './runs/run-manager';
 
