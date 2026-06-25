@@ -122,6 +122,15 @@ describe('computeScope (AO9-2 wired backing, read-only)', () => {
     expect(exploreCall).toBeDefined();
     expect((exploreCall![0] as ChatInput).maxTokens).toBe(2200);
   });
+
+  it('redacts a secret in the task before any model call (parity with intent/plan-shape)', async () => {
+    const gw = gwContext();
+    const spy = vi.spyOn(gw.gateway as unknown as { chat: (input: unknown) => unknown }, 'chat');
+    const secret = 'sk-live-ABCDEFGHIJKLMNOPQRSTUVWX';
+    await computeScope(NO_REPO, `wire up billing with key ${secret}`, gw, { complexity: 'small' });
+    const leaked = spy.mock.calls.some((c) => JSON.stringify(c).includes(secret));
+    expect(leaked).toBe(false); // every decompose/explore/synthesize call is redacted
+  });
 });
 
 describe('autoScopeForPlanning (AO9-3 proactive pre-plan gate)', () => {

@@ -1054,6 +1054,7 @@ async function shapePlan(
   } catch {
     return text;
   }
+  if (signal.aborted) return text; // ESC during shaping → back to prompt, no interactive UI
   // The gate: only interrupt the user when shaping genuinely helps (large plan,
   // unclear design, or real optional scope). Small / clear-medium tasks proceed
   // silently — planning is unchanged.
@@ -1093,6 +1094,9 @@ async function shapePlan(
       }
     }
   }
+  // ESC during the (multi-second) scope fan-out must short-circuit BEFORE the
+  // interactive multiSelect/ask, mirroring dispatchSchedule's signal.aborted guard.
+  if (signal.aborted) return text;
 
   const extras: string[] = [];
   if (shape.recommendations.length > 0) {

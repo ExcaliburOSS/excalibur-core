@@ -12,6 +12,7 @@ import {
   type ScopeFragment,
   type ScopeMap,
 } from '@excalibur/core';
+import { redactSecrets } from '@excalibur/model-gateway';
 import type { CliDeps } from '../deps';
 import { loadGatewayContext, requireConfiguredModel, type GatewayContext } from './context';
 
@@ -94,7 +95,10 @@ export function buildScopeClassifier(gw: GatewayContext): IntentModel {
   const provider = gw.providerName;
   return async (prompt, signal) => {
     const out = await gw.gateway.chat({
-      messages: [{ role: 'user', content: prompt }],
+      // Redact before transmit — the decompose/synthesize/complexity prompts embed
+      // the raw user task; parity with the intent/ghost/plan-shape calls in repl.ts
+      // (the gateway does NOT redact; it is a caller-applied transform).
+      messages: [{ role: 'user', content: redactSecrets(prompt) }],
       maxTokens: SCOPE_MODEL_MAXTOKENS,
       provider,
       ...(signal !== undefined ? { signal } : {}),
@@ -134,7 +138,9 @@ export async function computeScope(
     if (aborted()) return null; // skip the model call if aborted during the scan
     const systemContext = sources.map((s) => s.content).join('\n\n');
     const res = await askStructured(gw.gateway, {
-      question: buildScopeExplorePrompt(t, angle),
+      // Redact the task embedded in the explorer prompt before transmit (the
+      // retrieved file context is already redacted at source in repo-context.ts).
+      question: redactSecrets(buildScopeExplorePrompt(t, angle)),
       schema: SCOPE_FRAGMENT_SCHEMA,
       ...(systemContext.length > 0 ? { systemContext } : {}),
       provider,
