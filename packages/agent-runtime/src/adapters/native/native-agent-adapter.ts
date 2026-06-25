@@ -11,7 +11,7 @@ import {
   type ExcaliburEvent,
   type ExcaliburEventType,
 } from '@excalibur/shared';
-import { redactSecrets } from '@excalibur/model-gateway';
+import { estimateTokens, redactSecrets } from '@excalibur/model-gateway';
 import type {
   ChatMessage,
   ChatOutput,
@@ -492,6 +492,26 @@ export class NativeAgentAdapter implements AgentAdapter {
         if (aborted()) {
           wasAborted = true;
           break;
+        }
+
+        // IN-TURN compaction: keep a long agentic turn within the context window.
+        // Best-effort — the compactor returns a provider-VALID (tool-call paired)
+        // array, or null to leave it unchanged; a failure never breaks the loop.
+        if (input.compactContext !== undefined) {
+          try {
+            const compacted = await input.compactContext(messages);
+            if (compacted !== null) {
+              const before = messages.reduce((sum, m) => sum + estimateTokens(m.content), 0);
+              messages.length = 0;
+              messages.push(...compacted);
+              const after = messages.reduce((sum, m) => sum + estimateTokens(m.content), 0);
+              if (after < before) {
+                yield emit('compaction', { before, after, scope: 'in-turn' });
+              }
+            }
+          } catch {
+            // compaction is best-effort; never break the loop on it.
+          }
         }
 
         const chatInput: Parameters<ChatRunner['chat']>[0] = {

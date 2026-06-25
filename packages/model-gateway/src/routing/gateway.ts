@@ -90,6 +90,40 @@ export class ModelGateway {
     return cfg;
   }
 
+  /**
+   * The configured context window (tokens) for a provider (or the resolved
+   * default), or undefined when unset/unresolvable. Read-only — for callers
+   * (e.g. compaction) that need to size the window without touching internals.
+   */
+  contextWindow(provider?: string): number | undefined {
+    try {
+      return this.providerConfig(this.resolveProviderName(provider)).contextWindow;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The `cheap` role's provider name, when configured (the fast pairing model). */
+  cheapProviderName(): string | undefined {
+    const section = this.config.providers as { cheap?: string };
+    return typeof section.cheap === 'string' && section.cheap.length > 0
+      ? section.cheap
+      : undefined;
+  }
+
+  /**
+   * The configured `type` of a provider (or the resolved default), or undefined
+   * when unset/unresolvable. Read-only — lets callers (e.g. compaction) detect the
+   * `mock` test double and skip model-backed work that would yield nonsense.
+   */
+  providerType(provider?: string): string | undefined {
+    try {
+      return this.providerConfig(this.resolveProviderName(provider)).type;
+    } catch {
+      return undefined;
+    }
+  }
+
   private adapterFor(name: string, cfg: ProviderConfig): ModelProviderAdapter {
     const cached = this.adapters.get(name);
     if (cached !== undefined) {

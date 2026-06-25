@@ -11,7 +11,7 @@ import {
   type ExcaliburEvent,
 } from '@excalibur/shared';
 import { ProviderError } from '@excalibur/shared';
-import type { ChatInput, ChatOutput, ToolCall } from '@excalibur/model-gateway';
+import type { ChatInput, ChatMessage, ChatOutput, ToolCall } from '@excalibur/model-gateway';
 import type { AgentRunInput } from '../../types';
 import { NATIVE_TOOL_NAMES } from '../../tools/native-tools';
 import { MAX_ITERATIONS, NativeAgentAdapter } from './native-agent-adapter';
@@ -693,5 +693,96 @@ describe('NativeAgentAdapter — skill progressive disclosure (P1.8b)', () => {
     await collect(new NativeAgentAdapter().run(makeInput(gateway)));
     const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
     expect(system).not.toMatch(/Available skills/i);
+  });
+});
+
+describe('NativeAgentAdapter — in-turn compaction hook', () => {
+  it('compacts the running messages mid-turn, emits the event, and continues with the compacted array', async () => {
+    // Turn 1 calls a tool; turn 2 finishes. The injected compactor truncates the
+    // tool result the second time it is called (once a tool result exists) — the
+    // Tier-1 shape — so the loop carries a SHORTER, still provider-valid array.
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'write_file', { path: 'a.txt', content: 'hello world' })] },
+      { content: 'done' },
+    ]);
+    const seenRoles: string[][] = [];
+    const compactContext = (messages: ChatMessage[]): Promise<ChatMessage[] | null> => {
+      seenRoles.push(messages.map((m) => m.role));
+      const hasToolResult = messages.some((m) => m.role === 'tool');
+      if (!hasToolResult) {
+        return Promise.resolve(null); // under budget on the first turn
+      }
+      // A provider-VALID, shorter copy: truncate the tool output, keep ids/structure.
+      return Promise.resolve(
+        messages.map((m) => (m.role === 'tool' ? { ...m, content: 'SHRUNK' } : m)),
+      );
+    };
+
+    const events = await collect(
+      new NativeAgentAdapter().run(makeInput(gateway, { compactContext })),
+    );
+
+    // Called once per iteration, before each model call.
+    expect(seenRoles.length).toBe(2);
+    expect(seenRoles[0]).not.toContain('tool'); // first turn: no tool result yet
+
+    // A `compaction` event fired with the in-turn scope and a real reduction.
+    const compaction = events.find((e) => e.type === 'compaction');
+    expect(compaction).toBeDefined();
+    expect(compaction?.payload['scope']).toBe('in-turn');
+    expect(Number(compaction?.payload['after'])).toBeLessThan(
+      Number(compaction?.payload['before']),
+    );
+    // The event still validates against the canonical schema.
+    expect(excaliburEventSchema.safeParse(compaction).success).toBe(true);
+
+    // The SECOND model turn received the compacted messages (tool result shrunk),
+    // proving the loop swapped in the compactor's array and kept going.
+    const secondTurn = gateway.received[1];
+    const toolMsg = secondTurn?.messages.find((m) => m.role === 'tool');
+    expect(toolMsg?.content).toBe('SHRUNK');
+    expect(toolMsg?.toolCallId).toBe('c1'); // pairing id preserved
+
+    // The run still completed normally.
+    expect(
+      String(events.filter((e) => e.type === 'assistant_message').at(-1)?.payload['content']),
+    ).toContain('done');
+  });
+
+  it('does nothing when the compactor returns null (no event, unchanged messages)', async () => {
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'write_file', { path: 'a.txt', content: 'x' })] },
+      { content: 'done' },
+    ]);
+    const compactContext = (): Promise<ChatMessage[] | null> => Promise.resolve(null);
+
+    const events = await collect(
+      new NativeAgentAdapter().run(makeInput(gateway, { compactContext })),
+    );
+
+    expect(events.some((e) => e.type === 'compaction')).toBe(false);
+    // Untouched: the second turn still carries the real tool result.
+    const toolMsg = gateway.received[1]?.messages.find((m) => m.role === 'tool');
+    expect(String(toolMsg?.content)).toContain('wrote');
+  });
+
+  it('never breaks the loop when the compactor throws (best-effort)', async () => {
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('c1', 'write_file', { path: 'a.txt', content: 'x' })] },
+      { content: 'done' },
+    ]);
+    const compactContext = (): Promise<ChatMessage[] | null> => {
+      throw new Error('compactor exploded');
+    };
+
+    const events = await collect(
+      new NativeAgentAdapter().run(makeInput(gateway, { compactContext })),
+    );
+
+    // No compaction event, but the run completes unharmed.
+    expect(events.some((e) => e.type === 'compaction')).toBe(false);
+    expect(
+      String(events.filter((e) => e.type === 'assistant_message').at(-1)?.payload['content']),
+    ).toContain('done');
   });
 });

@@ -75,6 +75,13 @@ export interface AgentRunInput {
    */
   seedMessages?: ChatMessage[];
   /**
+   * Optional in-turn context compactor. Called by the loop before each model
+   * call: given the running message array it returns a compacted, PROVIDER-VALID
+   * array when the conversation is over budget (so a single long agentic turn
+   * never overflows the context window), or null to leave it unchanged. Additive.
+   */
+  compactContext?: (messages: ChatMessage[]) => Promise<ChatMessage[] | null>;
+  /**
    * Tools contributed by loaded extensions (extensions-spec.md §5), advertised
    * to the model alongside the native tools and dispatched through their own
    * `execute()` inside the loop. Gated like any other tool by the

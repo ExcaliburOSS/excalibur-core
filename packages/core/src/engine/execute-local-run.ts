@@ -12,6 +12,9 @@ import {
   type ToolExecutionContext,
 } from '@excalibur/agent-runtime';
 import type { ChatMessage, ChatOutput, ModelGateway } from '@excalibur/model-gateway';
+import { compactMessages } from '../compaction/in-turn-compactor';
+import { createModelSummarizer } from '../compaction/model-summarizer';
+import { DEFAULT_COMPACTION_CONFIG } from '../compaction/types';
 import {
   createEvent,
   DEFAULT_LSP_CONFIG,
@@ -323,6 +326,66 @@ class LocalRunExecution {
 
   // --- gateway plumbing ------------------------------------------------------
 
+  /**
+   * Builds the IN-TURN context compactor handed to the native loop (covers every
+   * run mode — interactive + non-interactive). Off when `compaction.enabled` is
+   * false. Routes the Tier-2 summary to the `cheap` role (fast); Tier-1 pruning
+   * needs no model. Returns undefined → the loop runs without in-turn compaction.
+   */
+  private inTurnCompactor():
+    | ((messages: ChatMessage[]) => Promise<ChatMessage[] | null>)
+    | undefined {
+    const compaction = this.input.config.compaction ?? DEFAULT_COMPACTION_CONFIG;
+    if (!compaction.enabled) {
+      return undefined;
+    }
+    // Defensive: a non-standard gateway wrapper (custom host, test double) may not
+    // implement the read-only window/provider getters. If anything is missing or
+    // throws, return undefined — in-turn compaction is purely additive and must
+    // never break a run by its mere construction.
+    try {
+      const gateway = this.input.gateway;
+      if (
+        typeof gateway.contextWindow !== 'function' ||
+        typeof gateway.providerType !== 'function' ||
+        typeof gateway.cheapProviderName !== 'function'
+      ) {
+        return undefined;
+      }
+      const contextWindow = gateway.contextWindow() ?? 128_000;
+
+      // Resolve the Tier-2 summarizer provider exactly as session compaction does:
+      // `cheap` → the fast pairing model (gateway falls back to the main model when
+      // none is set); `active` → the main model; a concrete id → that provider. A
+      // `mock` provider is a test double — skip Tier 2 so it never emits a nonsense
+      // summary; Tier 1 pruning needs no model and still keeps the turn in-window.
+      const summarizerProvider =
+        compaction.summarizerModel === 'cheap'
+          ? gateway.cheapProviderName()
+          : compaction.summarizerModel === 'active'
+            ? undefined
+            : compaction.summarizerModel;
+      const summarize =
+        gateway.providerType(summarizerProvider) === 'mock'
+          ? undefined
+          : createModelSummarizer({
+              chat: gateway,
+              ...(summarizerProvider !== undefined ? { provider: summarizerProvider } : {}),
+              pruneToolOutputs: compaction.pruneToolOutputs,
+            });
+
+      return (messages: ChatMessage[]): Promise<ChatMessage[] | null> =>
+        compactMessages(messages, {
+          contextWindow,
+          reserveTokens: compaction.reserveTokens,
+          keepRecentTokens: compaction.keepRecentTokens,
+          ...(summarize !== undefined ? { summarize } : {}),
+        });
+    } catch {
+      return undefined;
+    }
+  }
+
   private async chat(
     kind: string,
     userContent: string,
@@ -449,12 +512,14 @@ class LocalRunExecution {
         ? `${this.instructionsMarkdown}\n\nTask: ${this.run.record.title}`
         : `Task: ${this.run.record.title}`;
 
+    const compactContext = this.inTurnCompactor();
     const stream = this.input.adapter.run({
       runId: this.run.id,
       sessionId: generateId('sess'),
       workdir: this.input.repoRoot,
       prompt,
       role,
+      ...(compactContext !== undefined ? { compactContext } : {}),
       ...(provider !== undefined ? { provider } : {}),
       // Custom agent (P1.7): a model id, sampling, persona, tool allowlist and
       // permission overrides, each applied only when the agent specifies it.

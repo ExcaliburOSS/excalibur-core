@@ -12,3 +12,4 @@ export * from './transcript';
 export * from './compactor';
 export * from './session-compactor';
 export * from './model-summarizer';
+export * from './in-turn-compactor';
