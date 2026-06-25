@@ -65,6 +65,19 @@ function annotationFor(phase: Phase): string {
 }
 
 function EventRow({ event, colors }: { event: PhaseEvent; colors: Palette }): ReactElement {
+  // Narration is the agent TALKING to the user — flowing, wrapped prose in the
+  // foreground colour (italic), with no tool glyph. It reads like a sentence in
+  // the conversation, distinct from the mechanical glyph+verb action lines.
+  if (event.kind === 'narration') {
+    return (
+      <Box>
+        <Text color={colors.rail}>{` ${glyph.railV}   `}</Text>
+        <Text color={colors.text} italic wrap="wrap">
+          {event.text}
+        </Text>
+      </Box>
+    );
+  }
   const tone = toneColor(event.tone, colors);
   const g = event.kind !== undefined ? eventGlyph[event.kind] : glyph.branch;
   return (

@@ -27,6 +27,10 @@ export type PhaseEventKind =
   | 'verification'
   | 'claim'
   | 'diagnostics'
+  // The model's own conversational prose between actions (the warm pair-programmer
+  // narration). Rendered as flowing text, NOT a glyph+verb line — it is the agent
+  // talking to the user, so the renderers give it a distinct, human treatment.
+  | 'narration'
   | 'error';
 
 export interface PhaseEvent {

@@ -248,6 +248,24 @@ export function reduceRail(
         }
         if (typeof p['inputTokens'] === 'number') inputTokens += p['inputTokens'];
         if (typeof p['outputTokens'] === 'number') outputTokens += p['outputTokens'];
+        // The model's own prose for this turn — the warm interstitial narration.
+        // Surface it as flowing text (a `narration` line) so the user reads what
+        // the agent is thinking BETWEEN actions, not just a mechanical tool log.
+        const said = str(p, 'content').trim();
+        if (said.length > 0) {
+          pushEvent(phaseFor(event), { text: said, tone: 'accent', kind: 'narration' });
+        }
+        break;
+      }
+      case 'assistant_message': {
+        // The FINAL turn's `model_call` carries the same prose as the final answer,
+        // which the post-turn receipt renders. Drop that trailing narration line so
+        // the answer isn't shown twice (mirrors ActionRenderer.dropNarration).
+        const ph = phaseFor(event);
+        const evs = ph?.events;
+        if (evs !== undefined && evs.length > 0 && evs[evs.length - 1]?.kind === 'narration') {
+          evs.pop();
+        }
         break;
       }
       default: {

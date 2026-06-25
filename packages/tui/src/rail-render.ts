@@ -149,6 +149,12 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
     // unless `expandAll` (the inspect/replay surface wants the full history).
     if (isActive || options.expandAll === true) {
       for (const event of phase.events ?? []) {
+        // Narration is the agent's own prose — glyph-less, in the foreground
+        // colour, so it reads as a sentence in the conversation (not an action).
+        if (event.kind === 'narration') {
+          lines.push(` ${c(RAIL, palette.rail)}   ${c(event.text, palette.text)}`.trimEnd());
+          continue;
+        }
         const note = event.note !== undefined && event.note.length > 0 ? `  ${event.note}` : '';
         const hex = toneHex(event.tone, palette);
         const prefix = event.kind !== undefined ? `${c(eventGlyph[event.kind], hex)} ` : '';

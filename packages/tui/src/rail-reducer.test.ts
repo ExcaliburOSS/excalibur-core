@@ -244,4 +244,42 @@ describe('reduceRail', () => {
     const later = reduceRail(full); // B now running
     expect(later.phases.map((p) => `${p.name}:${p.state}`)).toEqual(['A:completed', 'B:running']);
   });
+
+  it('surfaces the model_call prose as a narration line between actions', () => {
+    const events = [
+      ev('run_started', { title: 'Fix the limiter' }),
+      ev('phase_started', { name: 'Working' }, 'turn'),
+      // The model narrates BEFORE its tool call, then acts.
+      ev('model_call', { model: 'kimi', content: 'Let me see how the limiter is wired.' }, 'turn'),
+      ev('file_read', { path: 'src/api/limiter.ts' }, 'turn'),
+      ev('model_call', { model: 'kimi', content: 'Found it — the timeout defaults to 0.' }, 'turn'),
+      ev('file_write', { path: 'src/api/limiter.ts' }, 'turn'),
+    ];
+    const rail = reduceRail(events, { model: 'kimi' });
+    const evs = rail.phases[0]?.events ?? [];
+    // The agent's prose appears as `narration` lines, interleaved with the actions.
+    expect(evs.map((e) => `${e.kind}:${e.text}`)).toEqual([
+      'narration:Let me see how the limiter is wired.',
+      'read:read src/api/limiter.ts',
+      'narration:Found it — the timeout defaults to 0.',
+      'write:write src/api/limiter.ts',
+    ]);
+  });
+
+  it('drops the FINAL narration line — the receipt renders that answer, not the rail', () => {
+    const events = [
+      ev('run_started', { title: 't' }),
+      ev('phase_started', { name: 'Working' }, 'turn'),
+      ev('model_call', { model: 'kimi', content: 'Reading the file.' }, 'turn'),
+      ev('file_read', { path: 'a.ts' }, 'turn'),
+      // Final turn: model_call + assistant_message carry the SAME closing prose.
+      ev('model_call', { model: 'kimi', content: 'Done — fixed the off-by-one.' }, 'turn'),
+      ev('assistant_message', { content: 'Done — fixed the off-by-one.' }, 'turn'),
+      ev('run_completed', { status: 'completed' }),
+    ];
+    const rail = reduceRail(events, { model: 'kimi' });
+    const texts = (rail.phases[0]?.events ?? []).map((e) => `${e.kind}:${e.text}`);
+    // The interstitial narration stays; the final answer is NOT duplicated here.
+    expect(texts).toEqual(['narration:Reading the file.', 'read:read a.ts']);
+  });
 });

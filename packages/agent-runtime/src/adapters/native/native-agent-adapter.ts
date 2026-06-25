@@ -271,9 +271,36 @@ function systemPromptFor(input: AgentRunInput): string {
     'mark exactly one item "in_progress", flip finished items to "completed", and',
     'send the whole list again each time. It is shown to the user as a live to-do',
     'list. Skip it only for trivial one-step tasks.',
-    'When the task is complete, reply with a concise final summary and no further',
-    'tool calls.',
+    ...narrationGuidance(input.role),
+    'When the task is complete, reply with a brief, warm summary — like updating a',
+    'teammate on what you did and why — and no further tool calls.',
   ].join('\n');
+}
+
+/**
+ * Voice & narration — the conversational layer that makes a run feel like a real
+ * pair-programmer thinking out loud, not a mechanical tool log. The model's prose
+ * that accompanies a tool call is surfaced to the user live (before the action),
+ * so this guidance shapes what they actually read between steps.
+ *
+ * Two deliberate dials (per the product decision): a WARM, first-person voice,
+ * and KEY-MOMENT density — talk when it adds something, stay quiet on routine
+ * steps so it never feels chatty. Adversarial reviewer roles keep their strict
+ * issue-list output for the FINAL answer; this only governs the interstitial
+ * narration, so the two coexist.
+ */
+function narrationGuidance(_role: AgentRole): string[] {
+  return [
+    'Narrate your work like a thoughtful pair-programmer thinking out loud: first',
+    'person, warm, and concise. Before a MEANINGFUL action, say in one short',
+    'sentence what you are about to do and why; after a key finding or decision,',
+    'say what you learned and what it changes. Narrate at the moments that matter —',
+    'starting out, finding the cause, choosing an approach, changing direction,',
+    'wrapping up — and stay quiet during routine steps (a run of plain reads or',
+    'lists needs no play-by-play). Keep it human and brief: a sentence or two,',
+    'never a paragraph, and never restate tool output the user already sees.',
+    'Write this narration in the SAME language the user used.',
+  ];
 }
 
 /** The narrowed gateway dependency the loop uses — lets tests inject a fake. */

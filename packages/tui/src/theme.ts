@@ -273,6 +273,7 @@ const unicodeEventGlyph: Record<PhaseEventKind, string> = {
   verification: '⚖',
   claim: '⊨',
   diagnostics: '⚠',
+  narration: '“', // unused (narration renders as glyph-less prose) — type completeness only
   error: '✗',
 };
 
@@ -289,6 +290,7 @@ const asciiEventGlyph: Record<PhaseEventKind, string> = {
   verification: '!',
   claim: '=',
   diagnostics: '!',
+  narration: '"', // unused (narration renders as glyph-less prose) — type completeness only
   error: 'x',
 };
 
