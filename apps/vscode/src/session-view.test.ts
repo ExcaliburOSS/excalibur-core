@@ -37,6 +37,27 @@ describe('toViewMessage', () => {
     ).toEqual({ kind: 'plan', entries: [{ text: 'step', status: 'in_progress' }] });
   });
 
+  it('maps P1.5b file / command / diagnostics kinds', () => {
+    expect(
+      toViewMessage({ sessionUpdate: 'excalibur/file', path: 'src/x.ts', diff: '+a\n-b' }),
+    ).toEqual({ kind: 'file', path: 'src/x.ts', diff: '+a\n-b' });
+    // a file with no path is dropped
+    expect(toViewMessage({ sessionUpdate: 'excalibur/file', path: '' })).toBeNull();
+    expect(
+      toViewMessage({ sessionUpdate: 'excalibur/command', command: 'npm test', exitCode: 0 }),
+    ).toEqual({ kind: 'command', command: 'npm test', exitCode: 0 });
+    // a still-running command carries a null exit code
+    expect(toViewMessage({ sessionUpdate: 'excalibur/command', command: 'npm test' })).toEqual({
+      kind: 'command',
+      command: 'npm test',
+      exitCode: null,
+    });
+    expect(toViewMessage({ sessionUpdate: 'excalibur/diagnostics', count: 3 })).toEqual({
+      kind: 'diagnostics',
+      count: 3,
+    });
+  });
+
   it('ignores unknown update kinds', () => {
     expect(toViewMessage({ sessionUpdate: 'something_else' })).toBeNull();
   });

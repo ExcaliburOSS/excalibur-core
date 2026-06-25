@@ -143,6 +143,33 @@ describe('ACP server', () => {
     expect(done.result?.['stopReason']).toBe('end_turn');
   });
 
+  it('maps file_write / command events to richer session/update kinds (P1.5b)', async () => {
+    const { handle } = fakeHandle((emit, finish) => {
+      emit(ev('file_write', { path: 'src/x.ts', diff: '+a\n-b' }));
+      emit(ev('command_completed', { command: 'npm test', exitCode: 0 }));
+      finish();
+    });
+    const { send, waitFor } = setup(() => Promise.resolve(handle));
+    send({ jsonrpc: '2.0', id: 30, method: 'session/new', params: {} });
+    const created = await waitFor((m) => m.id === 30);
+    send({
+      jsonrpc: '2.0',
+      id: 31,
+      method: 'session/prompt',
+      params: { sessionId: created.result?.['sessionId'], prompt: [{ type: 'text', text: 'go' }] },
+    });
+    const upd = (kind: string): Promise<{ params?: Record<string, unknown> }> =>
+      waitFor(
+        (m) =>
+          m.method === 'session/update' &&
+          (m.params?.['update'] as { sessionUpdate?: string } | undefined)?.sessionUpdate === kind,
+      );
+    const fileUpd = await upd('excalibur/file');
+    expect((fileUpd.params?.['update'] as { path?: string }).path).toBe('src/x.ts');
+    const cmdUpd = await upd('excalibur/command');
+    expect((cmdUpd.params?.['update'] as { command?: string; exitCode?: number }).exitCode).toBe(0);
+  });
+
   it('requests permission and approves the run on an allow outcome', async () => {
     const fake = fakeHandle((emit) => {
       emit(ev('approval_requested', { question: 'Write file?' }));
@@ -162,6 +189,8 @@ describe('ACP server', () => {
     // The agent asks the client for permission.
     const req = await waitFor((m) => m.method === 'session/request_permission');
     expect(req.id).toBeDefined();
+    // P1.5b — the run's question is forwarded so the client knows WHAT to approve.
+    expect((req.params as { question?: string }).question).toBe('Write file?');
     // Client allows.
     send({
       jsonrpc: '2.0',

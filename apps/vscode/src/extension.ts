@@ -261,7 +261,17 @@ async function startRun(prompt: string): Promise<void> {
         if (message !== null) void sessionPanel.webview.postMessage(message);
       }
     },
-    onPermission: (request) => askPermission(request, cfg.get<string>('autoApprove', 'ask')),
+    onPermission: (request) => {
+      // P1.5b — reflect the pending approval in the webview too (the modal is the
+      // actual decision point; this just keeps the panel in sync with what's asked).
+      if (sessionPanel !== undefined && request.question !== undefined) {
+        void sessionPanel.webview.postMessage({
+          kind: 'status',
+          text: `⏸ Approval needed: ${request.question}`,
+        });
+      }
+      return askPermission(request, cfg.get<string>('autoApprove', 'ask'));
+    },
     onLog: (message) => channel.appendLine(`· ${message}`),
   });
   run.client = client;
@@ -412,11 +422,13 @@ async function askPermission(request: PermissionRequest, policy: string): Promis
     return allow.optionId;
   }
   const labels = request.options.map((o) => o.name);
-  const choice = await vscode.window.showInformationMessage(
-    'Excalibur wants to run a tool action. Allow it?',
-    { modal: true },
-    ...labels,
-  );
+  // P1.5b — show WHAT is being approved (threaded from the run's question) instead
+  // of a generic prompt.
+  const message =
+    request.question !== undefined && request.question.length > 0
+      ? `Excalibur: ${request.question}`
+      : 'Excalibur wants to run a tool action. Allow it?';
+  const choice = await vscode.window.showInformationMessage(message, { modal: true }, ...labels);
   if (choice === undefined) {
     return null; // dismissed → decline
   }

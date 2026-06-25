@@ -37,6 +37,14 @@ export interface SessionUpdate {
   title?: string;
   status?: string;
   entries?: Array<{ content: string; status: string; priority?: string }>;
+  // P1.5b — Excalibur-namespaced kinds (`excalibur/file` · `excalibur/command` ·
+  // `excalibur/diagnostics`) carry the agent's edits/commands/problem-count for
+  // the richer webview. Optional; a generic ACP server never sends them.
+  path?: string;
+  diff?: string;
+  command?: string;
+  exitCode?: number | null;
+  count?: number;
   [k: string]: unknown;
 }
 
@@ -50,6 +58,9 @@ export interface PermissionOption {
 export interface PermissionRequest {
   sessionId: string;
   options: PermissionOption[];
+  /** P1.5b — the run's approval question (e.g. "Apply the generated patch?"), so
+   * the client shows WHAT it is approving instead of a generic prompt. */
+  question?: string;
 }
 
 /** Why a prompt finished. */
@@ -266,6 +277,7 @@ export class AcpClient {
         ? await this.handlers.onPermission({
             sessionId: params.sessionId ?? '',
             options: Array.isArray(params.options) ? params.options : [],
+            ...(typeof params.question === 'string' ? { question: params.question } : {}),
           })
         : null;
     } catch (error) {

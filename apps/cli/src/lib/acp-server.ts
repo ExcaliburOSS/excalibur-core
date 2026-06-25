@@ -99,6 +99,32 @@ function toSessionUpdate(event: ExcaliburEvent): Record<string, unknown> | null 
         }),
       };
     }
+    // P1.5b — richer session view: stream the agent's edits, commands and
+    // diagnostics so the webview can render a diff / command / problem count, not
+    // just messages + tool names. These are Excalibur-namespaced kinds the
+    // (Excalibur) ACP client understands; a generic ACP client ignores them.
+    case 'file_write': {
+      const path = typeof payload['path'] === 'string' ? payload['path'] : '';
+      if (path.length === 0) return null;
+      const diff = typeof payload['diff'] === 'string' ? payload['diff'] : '';
+      return { sessionUpdate: 'excalibur/file', path, diff };
+    }
+    case 'command_started': {
+      const command = typeof payload['command'] === 'string' ? payload['command'] : '';
+      return command.length > 0
+        ? { sessionUpdate: 'excalibur/command', command, exitCode: null }
+        : null;
+    }
+    case 'command_completed': {
+      const command = typeof payload['command'] === 'string' ? payload['command'] : '';
+      if (command.length === 0) return null;
+      const exitCode = typeof payload['exitCode'] === 'number' ? payload['exitCode'] : null;
+      return { sessionUpdate: 'excalibur/command', command, exitCode };
+    }
+    case 'diagnostics': {
+      const items = Array.isArray(payload['items']) ? (payload['items'] as unknown[]) : [];
+      return { sessionUpdate: 'excalibur/diagnostics', count: items.length };
+    }
     default:
       return null;
   }
@@ -239,7 +265,8 @@ export class AcpServer {
     session.active = handle;
     const unsubscribe = handle.subscribe((event) => {
       if (event.type === 'approval_requested') {
-        void this.requestPermission(sessionId, handle);
+        const q = event.payload['question'];
+        void this.requestPermission(sessionId, handle, typeof q === 'string' ? q : undefined);
         return;
       }
       const update = toSessionUpdate(event);
@@ -261,8 +288,14 @@ export class AcpServer {
     this.reply(id, { stopReason: cancelled ? 'cancelled' : 'end_turn' });
   }
 
-  /** Asks the client to approve the run's pending action, then answers the run. */
-  private async requestPermission(sessionId: string, handle: RunHandle): Promise<void> {
+  /** Asks the client to approve the run's pending action, then answers the run.
+   * P1.5b: forwards the run's `question` so the client modal shows WHAT it is
+   * approving instead of a generic "wants to run a tool action". */
+  private async requestPermission(
+    sessionId: string,
+    handle: RunHandle,
+    question?: string,
+  ): Promise<void> {
     const id = (this.outCounter += 1);
     const result = await new Promise<unknown>((resolve) => {
       this.pendingOut.set(id, resolve);
@@ -272,6 +305,7 @@ export class AcpServer {
         method: 'session/request_permission',
         params: {
           sessionId,
+          ...(question !== undefined ? { question } : {}),
           options: [
             { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
             { optionId: 'reject', name: 'Reject', kind: 'reject_once' },

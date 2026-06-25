@@ -146,6 +146,29 @@ describe('AcpClient — permission requests (server → client)', () => {
     expect(reply.result).toEqual({ outcome: { outcome: 'selected', optionId: 'allow' } });
   });
 
+  it('forwards the run question to the permission handler (P1.5b)', async () => {
+    const t = new FakeTransport();
+    let seenQuestion: string | undefined;
+    new AcpClient(t, {
+      onPermission: (req) => {
+        seenQuestion = req.question;
+        return Promise.resolve('allow');
+      },
+    });
+    t.emit({
+      jsonrpc: '2.0',
+      id: 7,
+      method: 'session/request_permission',
+      params: {
+        sessionId: 's1',
+        question: 'Apply the generated patch?',
+        options: [{ optionId: 'allow', name: 'Allow' }],
+      },
+    });
+    await flush();
+    expect(seenQuestion).toBe('Apply the generated patch?');
+  });
+
   it('declines (optionId reject) when there is no permission handler', async () => {
     const t = new FakeTransport();
     new AcpClient(t); // no onPermission
