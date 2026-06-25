@@ -74,6 +74,13 @@ export interface ExecuteLocalRunInput {
   ask?: (question: string) => Promise<string>;
   onEvent?: (e: ExcaliburEvent) => void;
   /**
+   * Optional LIVE narration sink, forwarded to the agent adapter so a streaming
+   * provider types the model's prose out token by token (the warm pair-programmer
+   * voice, alive). Live-only — not persisted; omit it and the run is non-streamed.
+   * Additive. The CLI wires this to the Ink rail on a TTY.
+   */
+  onNarration?: (chunk: { delta: string; content: string }) => void;
+  /**
    * Optional abort signal. Aborting ends the run at the next phase boundary
    * (`status: 'cancelled'`) and is forwarded to the agent adapter so an in-flight
    * `agent_work` tool loop / model call is cancelled too. Lets a server or the
@@ -520,6 +527,7 @@ class LocalRunExecution {
       prompt,
       role,
       ...(compactContext !== undefined ? { compactContext } : {}),
+      ...(this.input.onNarration !== undefined ? { onNarration: this.input.onNarration } : {}),
       ...(provider !== undefined ? { provider } : {}),
       // Custom agent (P1.7): a model id, sampling, persona, tool allowlist and
       // permission overrides, each applied only when the agent specifies it.

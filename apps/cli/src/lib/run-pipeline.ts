@@ -618,6 +618,8 @@ export async function runTask(
     return deps.ui.confirm(question, { defaultYes: true });
   };
 
+  // A const snapshot so the narration closure narrows cleanly (inkHandle is a let).
+  const liveInk = inkHandle;
   const record = await executeLocalRun({
     repoRoot,
     runManager,
@@ -655,6 +657,13 @@ export async function runTask(
         deps.ui.write(line);
       }
     },
+    // Live narration: type the model's prose out as it streams, into the Ink rail
+    // (only when the rail is up — a TTY). Piped/non-TTY runs stay non-streamed.
+    ...(liveInk !== null
+      ? {
+          onNarration: ({ content }: { content: string }): void => liveInk.streamNarration(content),
+        }
+      : {}),
   });
 
   if (inkHandle !== null) {
