@@ -7,6 +7,16 @@
  */
 export { reduceRail, type ReduceRailOptions } from './rail-reducer.js';
 export { renderRail, type RenderRailOptions } from './rail-render.js';
+export {
+  renderRibbon,
+  missionStatusChar,
+  missionStatusHex,
+  type RenderRibbonOptions,
+  type MissionRibbonModel,
+  type MissionStepView,
+  type MissionStepStatus,
+  type MissionRibbonOutcome,
+} from './mission-ribbon.js';
 export { renderTodos, type RenderTodosOptions } from './rail-todos.js';
 export type { TodoItem } from './rail-types.js';
 export {

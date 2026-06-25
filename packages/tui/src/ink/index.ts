@@ -10,6 +10,7 @@
  */
 export { ThemeProvider, useColors } from './ThemeContext.js';
 export { RunView, type RunViewProps, type RunViewLabels } from './RunView.js';
+export { MissionRibbon, type MissionRibbonProps } from './MissionRibbon.js';
 export { DiffView, type DiffViewProps } from './DiffView.js';
 export {
   mountLanesView,
