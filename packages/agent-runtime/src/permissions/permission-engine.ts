@@ -99,6 +99,43 @@ export function isNetworkCommand(command: string): boolean {
   return NETWORK_COMMAND_RE.test(command);
 }
 
+/**
+ * Catastrophic, (near-)irreversible shell operations — the destructive-command
+ * SAFETY FLOOR. These are denied by default regardless of the allowlist, and
+ * crucially even under auto-accept / `--yes` / non-interactive (where there is no
+ * human to prompt), protecting the machine and the repo from a model slip or an
+ * injected instruction. The agent has safe, governed tools for legitimate work
+ * (write_file, edit, create_branch, apply_patch), so it never NEEDS these. A user
+ * who genuinely wants one can opt back in by adding it explicitly to
+ * `permissions.allowedCommands` (which lifts the floor for that exact command).
+ *
+ * Matched against the WHOLE normalized command (so a chained `foo && rm -rf x`
+ * still trips). `git push --force-with-lease` is intentionally allowed (safe);
+ * bare `--force`/`-f` is not.
+ */
+const DANGEROUS_COMMAND_RE = new RegExp(
+  [
+    // rm -rf / -fr / --recursive --force (any flag order/casing)
+    'rm\\s+(?:-\\S*r\\S*f|-\\S*f\\S*r|-r\\s+-f|-f\\s+-r|--recursive\\s+--force|--force\\s+--recursive)',
+    // force push (but NOT --force-with-lease)
+    'git\\s+push\\b[^&|;]*(?:--force(?!-with-lease)|\\s-f\\b)',
+    'git\\s+reset\\s+--hard', // discards uncommitted work
+    'git\\s+clean\\s+-\\S*f', // -f / -fd / -fdx — deletes untracked files
+    'git\\s+checkout\\s+--\\s+\\.', // discards all local changes
+    '\\bsudo\\b', // privilege escalation — an agent must never sudo
+    '\\bmkfs\\b',
+    '\\bdd\\b[^&|;]*\\bof=/dev/', // raw disk write
+    '>\\s*/dev/(?:sd|nvme|disk|hd)', // redirect onto a block device
+    'chmod\\s+-R\\s+0?777\\s+/', // recursive 777 from root
+    ':\\(\\)\\s*\\{[^}]*\\|', // fork bomb :(){ :|:& };:
+    '\\b(?:shutdown|reboot|halt|poweroff)\\b',
+  ].join('|'),
+  'i',
+);
+export function isDangerousCommand(command: string): boolean {
+  return DANGEROUS_COMMAND_RE.test(command);
+}
+
 export class PermissionEngine {
   private readonly toolFlags: Readonly<Record<string, ToolFlag>>;
   private readonly blockedPaths: ReadonlyArray<string>;
@@ -115,6 +152,20 @@ export class PermissionEngine {
     this.allowedCommands = permissions?.allowedCommands ?? DEFAULT_ALLOWED_COMMANDS;
     this.deniedCommands = permissions?.deniedCommands ?? [];
     this.network = permissions?.network ?? DEFAULT_NETWORK_POLICY;
+  }
+
+  /**
+   * Whether the user DELIBERATELY opted a dangerous command in: an allowlist entry
+   * that is ITSELF a destructive command (so it trips {@link isDangerousCommand})
+   * and matches `command`. A broad `*`/`**` wildcard is therefore NOT an opt-in —
+   * you must name the dangerous command (e.g. `git reset --hard*`) on purpose.
+   */
+  private dangerousOptIn(command: string): boolean {
+    return this.allowedCommands.some(
+      (entry) =>
+        isDangerousCommand(entry) &&
+        (normalizeCommand(entry) === command || minimatch(command, entry, { dot: true })),
+    );
   }
 
   /** The first deny-glob matching the command, if any (deny beats allow). */
@@ -204,6 +255,19 @@ export class PermissionEngine {
     const flag = this.flagFor('run_command');
     if (flag === false) {
       return deny('Running commands is disabled (run_command: false).');
+    }
+
+    // SAFETY FLOOR: catastrophic/irreversible commands are denied regardless of
+    // approval — even under auto-accept/--yes/non-interactive — UNLESS the user
+    // DELIBERATELY opted this command in (see `dangerousOptIn`). This closes the
+    // "autonomous run wild" gap: a model slip or injected instruction can no longer
+    // auto-approve `rm -rf`, a force push, or `git reset --hard`. A broad `*`
+    // allowlist does NOT lift the floor — the opt-in must name the dangerous command.
+    if (isDangerousCommand(normalized) && !this.dangerousOptIn(normalized)) {
+      return deny(
+        `Command "${normalized}" is blocked by the destructive-command safety floor. ` +
+          `Add the specific command to permissions.allowedCommands to opt in deliberately.`,
+      );
     }
 
     // Deny-globs are a HARD deny that overrides the allowlist (deny beats allow):

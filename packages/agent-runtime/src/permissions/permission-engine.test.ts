@@ -134,9 +134,57 @@ describe('PermissionEngine.checkCommand', () => {
 
   it('asks for commands outside the allowlist even when run_command is true', () => {
     const engine = new PermissionEngine({ tools: { run_command: true } });
-    const decision = engine.checkCommand('rm -rf /tmp/cache');
+    const decision = engine.checkCommand('some-tool --do-thing');
     expectAsk(decision);
     expect(decision.reason).toContain('allowlist');
+  });
+
+  describe('destructive-command safety floor', () => {
+    // run_command allowed AND a permissive allowlist — the floor must still hold,
+    // and it must hold under auto-accept (no human) just the same.
+    const engine = new PermissionEngine({ tools: { run_command: true }, allowedCommands: ['*'] });
+
+    it('HARD-denies catastrophic commands even when run_command + allowlist are permissive', () => {
+      for (const command of [
+        'rm -rf /',
+        'rm -rf node_modules',
+        'rm -fr build',
+        'rm --recursive --force dist',
+        'git push --force origin main',
+        'git push -f',
+        'git reset --hard HEAD~3',
+        'git clean -fd',
+        'git clean -fdx',
+        'sudo rm something',
+        'echo hi && rm -rf /tmp/x', // chained — still trips on the whole command
+        'mkfs.ext4 /dev/sda1',
+        'dd if=/dev/zero of=/dev/sda',
+        'shutdown -h now',
+      ]) {
+        const decision = engine.checkCommand(command);
+        expectDenied(decision);
+        expect(decision.reason).toContain('safety floor');
+      }
+    });
+
+    it('allows the SAFE variants the floor deliberately spares', () => {
+      // force-with-lease is safe; a plain push is fine; reset (soft) is fine.
+      expectAllowed(engine.checkCommand('git push --force-with-lease origin main'));
+      expectAllowed(engine.checkCommand('git push origin main'));
+      expectAllowed(engine.checkCommand('git reset HEAD~1')); // soft reset, not --hard
+      expectAllowed(engine.checkCommand('rm file.txt')); // non-recursive single file
+    });
+
+    it('lets a user opt back in by allowlisting the EXACT dangerous command', () => {
+      const optedIn = new PermissionEngine({
+        tools: { run_command: true },
+        allowedCommands: ['git reset --hard*'],
+      });
+      // Explicitly allowlisted → the floor steps aside and the allowlist governs.
+      expectAllowed(optedIn.checkCommand('git reset --hard HEAD'));
+      // ...but OTHER dangerous commands are still floored.
+      expectDenied(optedIn.checkCommand('rm -rf /'));
+    });
   });
 
   it('denies every command when run_command is false', () => {
