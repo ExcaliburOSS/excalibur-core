@@ -888,6 +888,15 @@ export const EN: Catalog = {
   'research.summary': 'Researched {sources} source(s) · {verified}/{claims} claims verified.',
   'research.ledger-blocked':
     '⚠ Some claims were NOT supported by the cited sources (research.ledger is on).',
+  // AO9 "Understand-first" scope (read-only)
+  'scope.taskEmpty': 'The task to scope must not be empty.',
+  'scope.starting': 'Scoping (read-only): {task}',
+  'scope.decomposed': '• decomposed into exploration angles',
+  'scope.explored': '• explored {subsystem}',
+  'scope.synthesizing': '• synthesizing the scope map…',
+  'scope.empty': 'Nothing to scope — the model could not map this task to the repository.',
+  'scope.summary':
+    'Scoped {subsystems} subsystem(s) · {risks} risk(s) · {questions} open question(s).',
   'repl.bg-usage':
     'Usage: /bg <task> — runs the task in the background (its own recorded run) while you keep working.',
   'repl.bg-started': '▸ background: {title} — running (use /threads to check on it)',

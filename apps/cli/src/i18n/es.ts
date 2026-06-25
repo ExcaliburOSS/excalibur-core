@@ -950,6 +950,15 @@ export const ES: Catalog = {
     'Investigadas {sources} fuente(s) · {verified}/{claims} afirmaciones verificadas.',
   'research.ledger-blocked':
     '⚠ Algunas afirmaciones NO estaban respaldadas por las fuentes citadas (research.ledger activo).',
+  // AO9 alcance "Entender primero" (solo lectura)
+  'scope.taskEmpty': 'La tarea a analizar no puede estar vacía.',
+  'scope.starting': 'Analizando (solo lectura): {task}',
+  'scope.decomposed': '• descompuesto en ángulos de exploración',
+  'scope.explored': '• explorado {subsystem}',
+  'scope.synthesizing': '• sintetizando el mapa de alcance…',
+  'scope.empty': 'Nada que analizar — el modelo no pudo mapear esta tarea al repositorio.',
+  'scope.summary':
+    'Analizados {subsystems} subsistema(s) · {risks} riesgo(s) · {questions} pregunta(s) abierta(s).',
   'repl.bg-usage':
     'Uso: /bg <tarea> — ejecuta la tarea en segundo plano (su propia ejecución registrada) mientras sigues trabajando.',
   'repl.bg-started': '▸ segundo plano: {title} — en curso (usa /threads para verlo)',

@@ -177,6 +177,27 @@ describe('scopeTask (AO9-1 orchestration, injected model + explorer)', () => {
     expect(map).toMatchObject({ task: 'x', summary: '', subsystems: [frag('auth')] });
   });
 
+  it('emits decompose → explore×N → synthesize progress (a throwing sink is non-fatal)', async () => {
+    const classify = vi
+      .fn()
+      .mockResolvedValueOnce('{"angles":[{"subsystem":"auth"},{"subsystem":"db"}]}')
+      .mockResolvedValueOnce('{"summary":"ok"}');
+    const explore = vi.fn(async (_t, angle) => frag(angle.subsystem));
+    const phases: string[] = [];
+    const map = await scopeTask('x', {
+      classify,
+      explore,
+      onProgress: (p) => {
+        phases.push(p.phase);
+        throw new Error('sink blew up'); // must NOT break the flow
+      },
+    });
+    expect(map).not.toBeNull(); // a throwing sink did not abort scoping
+    expect(phases[0]).toBe('decompose');
+    expect(phases.filter((p) => p === 'explore')).toHaveLength(2); // one per angle
+    expect(phases[phases.length - 1]).toBe('synthesize');
+  });
+
   it('honours maxAngles (caps the fan-out)', async () => {
     const classify = vi
       .fn()

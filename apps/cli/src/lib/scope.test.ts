@@ -1,0 +1,102 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { GatewayContext } from './context';
+import { computeScope, estimateComplexity } from './scope';
+
+/**
+ * A content-dispatching fake gateway: it answers each scope-engine call (the
+ * complexity probe, decompose, per-angle explore, synthesize) by inspecting the
+ * user message, so the test is order-independent (explorers run in parallel).
+ */
+function fakeGateway(): {
+  chat: (input: {
+    messages: Array<{ role: string; content: string }>;
+  }) => Promise<{ content: string }>;
+} {
+  return {
+    chat: async (input) => {
+      const user = input.messages
+        .filter((m) => m.role === 'user')
+        .map((m) => m.content)
+        .join('\n');
+      if (user.includes('Rate how broad')) return { content: 'medium' };
+      if (user.includes('exploration angles')) {
+        return {
+          content:
+            '{"angles":[{"subsystem":"auth","question":"how is login done?"},{"subsystem":"db","question":"what store?"}]}',
+        };
+      }
+      if (user.includes('READ-ONLY code explorer')) {
+        const subsystem = /subsystem: "([^"]+)"/.exec(user)?.[1] ?? 'unknown';
+        return {
+          content: JSON.stringify({
+            subsystem,
+            files: [`${subsystem}.ts`],
+            whatExists: `${subsystem} exists`,
+            whatsMissing: `${subsystem} gap`,
+            risks: [],
+          }),
+        };
+      }
+      if (user.includes('Synthesize these')) {
+        return {
+          content:
+            '{"summary":"auth + db","risks":["migration"],"openQuestions":["which provider?"]}',
+        };
+      }
+      return { content: '{}' };
+    },
+  };
+}
+
+function gwContext(): GatewayContext {
+  return { gateway: fakeGateway(), providerName: 'kimi' } as unknown as GatewayContext;
+}
+
+describe('estimateComplexity (multilingual one-word probe)', () => {
+  it('maps the probe answer to a complexity, defaulting to medium', async () => {
+    expect(await estimateComplexity(async () => 'large', 'x')).toBe('large');
+    expect(await estimateComplexity(async () => 'SMALL change', 'x')).toBe('small');
+    expect(await estimateComplexity(async () => 'medium', 'x')).toBe('medium');
+    expect(await estimateComplexity(async () => 'who knows', 'x')).toBe('medium');
+  });
+
+  it('defaults to medium when the probe throws', async () => {
+    expect(
+      await estimateComplexity(async () => {
+        throw new Error('probe down');
+      }, 'x'),
+    ).toBe('medium');
+  });
+});
+
+describe('computeScope (AO9-2 wired backing, read-only)', () => {
+  // A path with no repo → buildRepoContextSources returns [] (best-effort, never
+  // throws); the explorers still run, grounded only on the prompt.
+  const NO_REPO = '/nonexistent-scope-test-dir';
+
+  it('decomposes → explores each angle → synthesizes a ScopeMap', async () => {
+    const phases: string[] = [];
+    const map = await computeScope(NO_REPO, 'add MFA', gwContext(), {
+      onProgress: (phase) => phases.push(phase),
+    });
+    expect(map).not.toBeNull();
+    expect(map!.summary).toBe('auth + db');
+    expect(map!.subsystems.map((s) => s.subsystem).sort()).toEqual(['auth', 'db']);
+    expect(map!.risks).toEqual(['migration']);
+    expect(map!.openQuestions).toEqual(['which provider?']);
+    expect(phases[0]).toBe('decompose');
+    expect(phases.filter((p) => p === 'explore')).toHaveLength(2);
+    expect(phases[phases.length - 1]).toBe('synthesize');
+  });
+
+  it('honours an explicit complexity (skips the probe) and an angle cap', async () => {
+    const gw = gwContext();
+    const spy = vi.spyOn(gw.gateway as unknown as { chat: () => unknown }, 'chat');
+    const map = await computeScope(NO_REPO, 'add MFA', gw, { complexity: 'small', angles: 1 });
+    expect(map).not.toBeNull();
+    expect(map!.subsystems).toHaveLength(1); // capped to 1 even though 2 were proposed
+    // No "Rate how broad" probe call was made (complexity was supplied).
+    const probed = spy.mock.calls.some((c) => JSON.stringify(c).includes('Rate how broad'));
+    expect(probed).toBe(false);
+  });
+});

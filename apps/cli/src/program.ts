@@ -43,6 +43,7 @@ import { registerMissionCommand } from './commands/mission';
 import { registerRunCommand } from './commands/run';
 import { registerSwarmCommand } from './commands/swarm';
 import { registerExploreCommand } from './commands/explore';
+import { registerScopeCommand } from './commands/scope';
 import { registerOrchestrateCommand } from './commands/orchestrate';
 import { registerScheduleCommand } from './commands/schedule';
 import { registerOrchestrationCommand } from './commands/orchestration';
@@ -101,6 +102,7 @@ export function buildProgram(overrides: Partial<CliDeps> = {}): Command {
   registerMissionCommand(program, deps);
   registerSwarmCommand(program, deps);
   registerExploreCommand(program, deps);
+  registerScopeCommand(program, deps);
   registerOrchestrateCommand(program, deps);
   registerOrchestrationCommand(program, deps);
   registerScheduleCommand(program, deps);

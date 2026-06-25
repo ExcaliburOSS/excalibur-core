@@ -170,17 +170,27 @@ export function parseScopeFragment(
   };
 }
 
-/** Builds the synthesis prompt: merge the per-angle fragments into one ScopeMap. */
+/** Builds the synthesis prompt: merge the per-angle fragments into one ScopeMap.
+ * Sends a COMPACT projection of each fragment (subsystem + what exists/missing +
+ * risks — NOT the verbose `files` lists) so a reasoning model has the headroom to
+ * actually emit the JSON instead of spending its whole budget reading file paths. */
 export function buildScopeSynthesisPrompt(task: string, fragments: ScopeFragment[]): string {
+  const compact = fragments.map((f) => ({
+    subsystem: f.subsystem,
+    whatExists: f.whatExists,
+    whatsMissing: f.whatsMissing,
+    risks: f.risks,
+  }));
   return [
     'Synthesize these read-only exploration fragments into ONE scope map for the task.',
-    'Merge overlapping subsystems, write a 1-2 sentence summary, list the TOP cross-cutting risks,',
-    'and the open questions that would still change the plan. Respond with ONLY JSON:',
-    '{"summary":"...","risks":["..."],"openQuestions":["..."]} — no prose, no fence.',
+    'FIRST write a concise 1-2 sentence summary of the territory (this field is REQUIRED and',
+    'must never be empty), then merge overlapping concerns into the TOP cross-cutting risks,',
+    'and the open questions that would still change the plan. Respond with ONLY compact JSON:',
+    '{"summary":"...","risks":["..."],"openQuestions":["..."]} — no prose, no fence, no markdown.',
     '',
     `Task: ${task}`,
     '',
-    `Fragments: ${JSON.stringify(fragments)}`,
+    `Fragments: ${JSON.stringify(compact)}`,
   ].join('\n');
 }
 
@@ -200,6 +210,15 @@ export function parseScopeMap(
   };
 }
 
+/** A progress beat from {@link scopeTask} (for a live TTY / dashboard / SSE). */
+export interface ScopeProgress {
+  phase: 'decompose' | 'explore' | 'synthesize';
+  /** On 'decompose': how many angles will be explored. */
+  angleCount?: number;
+  /** On 'explore': the subsystem whose explorer just finished. */
+  subsystem?: string;
+}
+
 /** Injected dependencies for {@link scopeTask}. */
 export interface ScopeDeps {
   /** The model for decompose + synthesize (multilingual; never keyword logic). */
@@ -211,6 +230,8 @@ export interface ScopeDeps {
   complexity?: ScopeComplexity;
   /** Override the auto-dimensioned angle count (still hard-capped). */
   maxAngles?: number;
+  /** Optional progress sink (decompose → explore×N → synthesize). Never throws the flow. */
+  onProgress?: (progress: ScopeProgress) => void;
   signal?: AbortSignal;
 }
 
@@ -236,13 +257,23 @@ export async function scopeTask(task: string, deps: ScopeDeps): Promise<ScopeMap
   }
   angles = angles.slice(0, maxAngles);
   if (angles.length === 0) return null;
+  emitProgress(deps, { phase: 'decompose', angleCount: angles.length });
 
   // Fan out the read-only explorers in parallel; a thrown/failed explorer → null.
   const settled = await Promise.all(
-    angles.map((a) => deps.explore(trimmed, a, deps.signal).catch(() => null)),
+    angles.map((a) =>
+      deps
+        .explore(trimmed, a, deps.signal)
+        .catch(() => null)
+        .then((fragment) => {
+          emitProgress(deps, { phase: 'explore', subsystem: a.subsystem });
+          return fragment;
+        }),
+    ),
   );
   const fragments = settled.filter((f): f is ScopeFragment => f !== null);
   if (fragments.length === 0) return null;
+  emitProgress(deps, { phase: 'synthesize' });
 
   try {
     return parseScopeMap(
@@ -279,4 +310,14 @@ export function scopeMapToMarkdown(map: ScopeMap): string {
 
 function toStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((x): x is string => typeof x === 'string') : [];
+}
+
+/** Emits a progress beat; a throwing sink must never break the read-only flow. */
+function emitProgress(deps: ScopeDeps, progress: ScopeProgress): void {
+  if (deps.onProgress === undefined) return;
+  try {
+    deps.onProgress(progress);
+  } catch {
+    // A misbehaving progress sink is non-fatal — scoping continues.
+  }
 }

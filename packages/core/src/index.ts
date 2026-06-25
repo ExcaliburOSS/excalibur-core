@@ -128,6 +128,7 @@ export {
   type ScopeFragment,
   type ScopeMap,
   type ScopeDeps,
+  type ScopeProgress,
 } from './scope/scope-engine';
 
 // Runs
