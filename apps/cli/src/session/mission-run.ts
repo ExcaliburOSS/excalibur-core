@@ -1,10 +1,14 @@
 import { resolveAgentAdapter } from '@excalibur/agent-runtime';
 import {
+  commitAll,
   createReassessor,
+  getLocalDiff,
   interpretMission,
+  MESH_LENSES,
   planStrategy,
   RunManager,
   runMission,
+  runVerificationMesh,
   saveMission,
   type CapabilityExecutor,
   type Mission,
@@ -233,6 +237,47 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
       } catch {
         /* fall through to a single agentic run */
       }
+    } else if (step.capability === 'verify') {
+      // The real adversarial gate: the verification mesh refutes the change across
+      // lenses. A surviving HIGH issue BLOCKS → ok=false (the supervisor reassesses).
+      const diff = getLocalDiff(repoRoot);
+      if (diff.trim().length > 0) {
+        try {
+          const result = await runVerificationMesh({
+            diff,
+            lenses: Object.keys(MESH_LENSES) as (keyof typeof MESH_LENSES)[],
+            gateway: gateway.gateway,
+            ...(planProvider !== null ? { provider: planProvider } : {}),
+            signal,
+          });
+          deps.ui.write(
+            result.blocked ? pc.red(`  ⚖ ${result.summary}`) : pc.green(`  ⚖ ${result.summary}`),
+          );
+          return {
+            ok: !result.blocked,
+            summary: result.summary,
+            signals: { engine: 'mesh', blocked: result.blocked, issues: result.issues.length },
+          };
+        } catch {
+          /* fall through to a single agentic verify run */
+        }
+      }
+    } else if (step.capability === 'ship') {
+      // A real local "ship": commit the work (PR creation needs a gh remote — a
+      // further follow-up). Nothing changed → a no-op, still ok.
+      if (getLocalDiff(repoRoot).trim().length > 0) {
+        const committed = commitAll(repoRoot, `Excalibur: ${mission.goal.slice(0, 72)}`);
+        return {
+          ok: true,
+          summary: committed ? 'Committed the change.' : 'Nothing to commit.',
+          signals: { engine: 'commit', committed },
+        };
+      }
+      return {
+        ok: true,
+        summary: 'Nothing to commit.',
+        signals: { engine: 'commit', committed: false },
+      };
     }
 
     try {
