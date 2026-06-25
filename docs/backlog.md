@@ -245,13 +245,18 @@ Build order: AO9-1 (engine) → AO9-2 (command, proves it end-to-end vs Kimi) �
   reality (dashboard, F1–F8, MCP, IDE ext, custom agents, extension SDK, LSP,
   providers, …); kill stale "M1/mock/coming-soon" claims + outdated screenshots;
   fold in the pending site Phases 2–5.
-- **DW2 (task #185) — Docs full review + update** [Core, `docs/`]. NEW docs (the
-  web dashboard + its `/api` + `--write`/`--share`, an extension-authoring guide,
-  a work-items/kanban guide) + UPDATE existing (getting-started, providers,
-  security, autonomy-levels, CONTRACT, ROADMAP). **Reframe the README around the
-  M-SHELL** — the interactive shell (welcome screen + REPL + `/` commands) is the
-  PRIMARY experience, not a flat command list. Reconcile backlog/ROADMAP with the
-  live task list; kill dead links + drifted command examples; en (+es where bilingual).
+- **DW2 (task #185) — Docs full review + update** ✅ DONE 2026-06-25. The big gap was the
+  whole **orchestration epic (AO1–AO8) + scheduler**, shipped after the P0.4 docs pass and
+  undocumented. Added/updated, all grounded in the real `--help` + config schema (not memory):
+  NEW `docs/orchestration.md` (swarm/explore/orchestrate, authored specs, chronogram,
+  verified fan-in/self-heal, `orchestration.*` keys), NEW `docs/scheduling.md` (`/bg`+`/threads`,
+  supervisor, the `schedule` daemon, NL scheduling), NEW `docs/interactive-shell.md` (the M-shell
+  command catalog + intent routing); updated `dashboard.md` (`/api/orchestrations`+streams, pause,
+  per-lane cancel, plan-shape), `configuration.md` (orchestration section), `cmux.md` (parallelism
+  is native now), `agents.md` (cross-link), README + `apps/cli/README` (new commands + index links).
+  Minor remaining polish (optional): a `docs/web-and-research.md` consolidating the web/search/research
+  COMMANDS (the tools are already covered in security.md/agents.md), a `docs/README.md` TOC, and a
+  getting-started §6 pointer.
 
 ## P0 — Foundational, autonomous, unblock adoption
 
