@@ -82,6 +82,9 @@ export function buildReassessQuestion(
     '',
     `The step that just finished: ${lastStep.step.id} (${lastStep.step.capability}) — ${lastStep.status}.`,
     `Result: ${lastStep.result?.summary ?? '(no summary)'}`,
+    ...(lastStep.result?.signals !== undefined && Object.keys(lastStep.result.signals).length > 0
+      ? [`Signals (ground truth from the run): ${JSON.stringify(lastStep.result.signals)}`]
+      : []),
     `Attempts so far: ${lastStep.attempts}.`,
     '',
     'Choose ONE action:',

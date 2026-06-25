@@ -3,6 +3,7 @@ import {
   createReassessor,
   interpretMission,
   planStrategy,
+  RunManager,
   runMission,
   saveMission,
   type CapabilityExecutor,
@@ -60,6 +61,52 @@ function capabilityTask(step: PlanStep, mission: Mission): string {
     ship: 'Summarize the completed change for a pull request (title + body). Do NOT push or open the PR.',
   };
   return `${framing[step.capability] ?? 'Do the objective.'}\n\nObjective: ${step.objective}\nOverall goal: ${mission.goal}`;
+}
+
+/**
+ * A GROUND-TRUTH verdict for a capability's run, read from its persisted events —
+ * so a gate (test/verify) is judged on real signals, not only the model's prose.
+ * `ok` is false on a hard failure signal (a graceful `error`, a failed
+ * `test_result`, a refuted `claim`, a blocked `verification`); the structured
+ * signals are also fed to the reassessor. Absent signals → ok (the model judges).
+ */
+export function runVerdict(
+  repoRoot: string,
+  runId: string,
+): { ok: boolean; signals: Record<string, unknown> } {
+  let events;
+  try {
+    events = new RunManager(repoRoot).readEvents(runId);
+  } catch {
+    return { ok: true, signals: {} };
+  }
+  let testsPassed: boolean | undefined;
+  let hardFail = false;
+  let errorCount = 0;
+  const exitCodes: number[] = [];
+  for (const e of events) {
+    const p = e.payload;
+    if (e.type === 'error') {
+      hardFail = true;
+      errorCount += 1;
+    } else if (e.type === 'test_result') {
+      const s = String(p['status'] ?? '');
+      testsPassed = s === 'passed' || s === 'green' || s === 'ok';
+      if (!testsPassed) hardFail = true;
+    } else if (e.type === 'claim' && p['status'] === 'refuted') {
+      hardFail = true;
+    } else if (e.type === 'verification' && p['blocked'] === true) {
+      hardFail = true;
+    } else if (e.type === 'command_completed' && typeof p['exitCode'] === 'number') {
+      exitCodes.push(p['exitCode'] as number);
+    }
+  }
+  const signals: Record<string, unknown> = {
+    ...(testsPassed !== undefined ? { testsPassed } : {}),
+    ...(errorCount > 0 ? { errorCount } : {}),
+    ...(exitCodes.length > 0 ? { exitCodes } : {}),
+  };
+  return { ok: !hardFail, signals };
 }
 
 /** Projects the live supervisor state into the ribbon view-model. */
@@ -147,12 +194,19 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
     deps.ui.write(pc.cyan(`▶ ${step.capability}: ${step.objective}`));
     try {
       const result = await runAgentTurn(baseTurn(level), capabilityTask(step, mission));
-      // The turn ran: the model's summary carries the real outcome, which the
-      // reassessor reads to judge gate steps (test/verify) and adapt.
+      // Ground the outcome in the run's real events (failed tests / refuted claims /
+      // errors) so gates aren't judged on the model's prose alone; the reassessor
+      // also sees the structured signals.
+      const verdict = runVerdict(repoRoot, result.runId);
       return {
-        ok: true,
+        ok: verdict.ok,
         summary: result.text.slice(0, 600),
-        signals: { costCents: result.costCents ?? 0, runId: result.runId, mutated: result.mutated },
+        signals: {
+          costCents: result.costCents ?? 0,
+          runId: result.runId,
+          mutated: result.mutated,
+          ...verdict.signals,
+        },
       };
     } catch (error) {
       return { ok: false, summary: error instanceof Error ? error.message : String(error) };
