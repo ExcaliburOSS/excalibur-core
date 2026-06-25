@@ -358,6 +358,9 @@ async function driveLoop(
   // agent doesn't pin them; the rest (systemPrompt/temperature/allowedTools/
   // permissions) apply only when set. Mirrors execute-local-run's agent overrides.
   const agent = turn.agent;
+  // A const snapshot of the live view so the narration closure narrows cleanly
+  // (the `view` binding is a reassignable `let`).
+  const liveView = view;
   const stream = adapter.run({
     runId: run.id,
     sessionId,
@@ -379,6 +382,15 @@ async function driveLoop(
     // which the tool reads as "no answer → proceed autonomously".
     ask: (question: string): Promise<string> => deps.ui.ask(question),
     ...(options.seedMessages !== undefined ? { seedMessages: options.seedMessages } : {}),
+    // Live narration: when the Ink rail is up, type the model's prose out as it
+    // streams (the warm pair-programmer voice, alive). The non-Ink/quiet paths
+    // omit the sink → the loop runs a plain non-streamed turn.
+    ...(liveView !== null
+      ? {
+          onNarration: ({ content }: { content: string }): void =>
+            liveView.streamNarration(content),
+        }
+      : {}),
   });
 
   // Show the indicator during the FIRST wait (the opening model call). The loop

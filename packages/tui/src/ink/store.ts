@@ -23,6 +23,13 @@ export interface RunViewSnapshot {
   diffsExpanded: boolean;
   /** The pending interactive approval, or null. */
   approval: ApprovalPrompt | null;
+  /**
+   * The agent's prose for the CURRENT turn as it streams in, typed out live
+   * before the turn's `model_call` event lands. Empty when no turn is streaming.
+   * Live-only (never persisted) — it is replaced by the folded `narration` line
+   * the moment the `model_call` event arrives, so it is cleared on that push.
+   */
+  streamingNarration: string;
 }
 
 export interface RunViewStore {
@@ -30,6 +37,8 @@ export interface RunViewStore {
   subscribe(listener: () => void): () => void;
   push(event: ExcaliburEvent): void;
   tick(): void;
+  /** Set the live, still-streaming narration buffer for the current turn. */
+  streamNarration(text: string): void;
   toggleDiffs(): void;
   /** Show an approval and resolve once the user answers (y/n/a). */
   requestApproval(approval: ApprovalPrompt): Promise<ApprovalAnswer>;
@@ -84,6 +93,7 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
     frame: 0,
     diffsExpanded: false,
     approval: null,
+    streamingNarration: '',
   };
   const listeners = new Set<() => void>();
   const escapeListeners = new Set<() => void>();
@@ -108,10 +118,20 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
     },
     push(event) {
       events.push(event); // O(1) append in place
-      set({ eventsRev: snapshot.eventsRev + 1 });
+      // The model_call event carries the full turn prose, which the fold renders
+      // as a committed `narration` line — so retire the live streaming buffer the
+      // instant it lands (otherwise the same prose would show twice).
+      const patch: Partial<RunViewSnapshot> = { eventsRev: snapshot.eventsRev + 1 };
+      if (event.type === 'model_call' && snapshot.streamingNarration.length > 0) {
+        patch.streamingNarration = '';
+      }
+      set(patch);
     },
     tick() {
       set({ frame: snapshot.frame + 1 });
+    },
+    streamNarration(text) {
+      set({ streamingNarration: text });
     },
     toggleDiffs() {
       set({ diffsExpanded: !snapshot.diffsExpanded });

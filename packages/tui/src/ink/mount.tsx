@@ -40,6 +40,8 @@ export interface MountRunViewOptions {
 
 export interface RunViewHandle {
   push(event: ExcaliburEvent): void;
+  /** Feed the live, still-streaming narration for the current turn (typed out). */
+  streamNarration(text: string): void;
   /** Show an approval; resolves once the user answers. */
   requestApproval(approval: ApprovalPrompt): Promise<ApprovalAnswer>;
   /** Register an ESC handler (the turn's abort); returns an unsubscribe. */
@@ -85,6 +87,7 @@ function RunViewApp({
         spinnerFrame={snapshot.frame}
         approval={snapshot.approval}
         diffsExpanded={snapshot.diffsExpanded}
+        streamingNarration={snapshot.streamingNarration}
         tier={options.tier}
         width={stdout?.columns ?? 80}
         {...(options.mode !== undefined ? { mode: options.mode } : {})}
@@ -113,6 +116,7 @@ export function mountRunView(options: MountRunViewOptions): RunViewHandle {
   }
   return {
     push: (event) => store.push(event),
+    streamNarration: (text) => store.streamNarration(text),
     requestApproval: (approval) => store.requestApproval(approval),
     onEscape: (listener) => store.onEscape(listener),
     waitForExit: () => instance.waitUntilExit(),

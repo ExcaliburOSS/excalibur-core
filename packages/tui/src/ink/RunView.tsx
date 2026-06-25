@@ -52,6 +52,8 @@ export interface RunViewProps {
   width?: number;
   /** Route completed phases through `<Static>` (default true; off for tests). */
   useStatic?: boolean;
+  /** The current turn's prose as it streams in (typed out live), or ''. */
+  streamingNarration?: string;
 }
 
 /** The trailing annotation: detail · duration · cost (cost only when ≥ 0.5¢). */
@@ -145,6 +147,19 @@ function PhaseNode({
   );
 }
 
+/** The current turn's prose as it streams in — typed out with a soft cursor. */
+function StreamingNarration({ text, colors }: { text: string; colors: Palette }): ReactElement {
+  return (
+    <Box>
+      <Text color={colors.rail}>{` ${glyph.railV}   `}</Text>
+      <Text color={colors.text} italic wrap="wrap">
+        {text}
+      </Text>
+      <Text color={colors.muted}>▌</Text>
+    </Box>
+  );
+}
+
 function StatusLine({
   model,
   colors,
@@ -215,6 +230,7 @@ export function RunView(props: RunViewProps): ReactElement {
   const diffsExpanded = props.diffsExpanded ?? false;
   const width = props.width ?? 80;
   const approval = props.approval ?? model.approval ?? null;
+  const streamingNarration = props.streamingNarration ?? '';
 
   const done = (phase: Phase): boolean => phase.state === 'completed' || phase.state === 'failed';
   const completed = model.phases.filter(done);
@@ -252,6 +268,9 @@ export function RunView(props: RunViewProps): ReactElement {
         completed.map(renderPhase)
       )}
       {liveTail.map(renderPhase)}
+      {streamingNarration.length > 0 ? (
+        <StreamingNarration text={streamingNarration} colors={colors} />
+      ) : null}
       {todoLines.length > 0 ? (
         <Box flexDirection="column">
           {todoLines.map((line, index) => (

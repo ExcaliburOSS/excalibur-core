@@ -287,6 +287,24 @@ describe('createRunViewStore', () => {
     store.fireEscape();
     expect(fired).toBe(1);
   });
+
+  it('streams live narration and retires the buffer when the model_call lands', () => {
+    const store = createRunViewStore();
+    expect(store.getSnapshot().streamingNarration).toBe('');
+    // Prose types out live, fragment by fragment.
+    store.streamNarration('Let me');
+    store.streamNarration('Let me read the file.');
+    expect(store.getSnapshot().streamingNarration).toBe('Let me read the file.');
+    // The turn's model_call commits that prose (the fold renders it) → buffer clears.
+    store.push(
+      createEvent({
+        runId: 'r',
+        type: 'model_call',
+        payload: { content: 'Let me read the file.' },
+      }),
+    );
+    expect(store.getSnapshot().streamingNarration).toBe('');
+  });
 });
 
 describe('applyRunViewKey', () => {

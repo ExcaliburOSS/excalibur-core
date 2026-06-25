@@ -58,6 +58,18 @@ class FakeGateway {
   }
 }
 
+/** A gateway that also STREAMS: `streamChat` emits the turn prose word by word
+ *  through `onContent`, then returns the same complete output as `chat`. */
+class FakeStreamingGateway extends FakeGateway {
+  async streamChat(input: ChatInput, onContent: (delta: string) => void): Promise<ChatOutput> {
+    const output = await this.chat(input); // consumes one scripted output
+    for (const piece of output.content.split(/(\s+)/).filter((w) => w.length > 0)) {
+      onContent(piece);
+    }
+    return output;
+  }
+}
+
 /** A gateway that ALWAYS asks for a tool — used to prove the loop is bounded. */
 class AlwaysToolGateway {
   calls = 0;
@@ -784,5 +796,42 @@ describe('NativeAgentAdapter — in-turn compaction hook', () => {
     expect(
       String(events.filter((e) => e.type === 'assistant_message').at(-1)?.payload['content']),
     ).toContain('done');
+  });
+});
+
+describe('NativeAgentAdapter — live narration streaming', () => {
+  it('streams each turn prose to onNarration (accumulating) when the gateway can streamChat', async () => {
+    const gateway = new FakeStreamingGateway([
+      {
+        content: 'Let me read the file.',
+        toolCalls: [toolCall('c1', 'write_file', { path: 'a.txt', content: 'hi' })],
+      },
+      { content: 'All done — file written.' },
+    ]);
+    const chunks: { delta: string; content: string }[] = [];
+    const events = await collect(
+      new NativeAgentAdapter().run(makeInput(gateway, { onNarration: (c) => chunks.push(c) })),
+    );
+
+    // The prose arrived in MULTIPLE fragments (typed out), accumulating per turn.
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks[0]?.content.startsWith('Let')).toBe(true);
+    const turn1 = chunks.filter((c) => c.content.startsWith('Let')).at(-1);
+    expect(turn1?.content).toBe('Let me read the file.');
+    expect(chunks.at(-1)?.content).toBe('All done — file written.');
+    // Streaming did not change the loop: the tool ran and the run completed.
+    expect(events.some((e) => e.type === 'file_write')).toBe(true);
+    expect(
+      String(events.filter((e) => e.type === 'assistant_message').at(-1)?.payload['content']),
+    ).toContain('All done');
+  });
+
+  it('does NOT stream (no onNarration calls) when the gateway lacks streamChat', async () => {
+    const gateway = new FakeGateway([{ content: 'done' }]); // chat-only
+    const chunks: unknown[] = [];
+    await collect(
+      new NativeAgentAdapter().run(makeInput(gateway, { onNarration: () => chunks.push(1) })),
+    );
+    expect(chunks).toHaveLength(0); // fell back to a plain non-streamed chat()
   });
 });

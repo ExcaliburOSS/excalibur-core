@@ -82,6 +82,15 @@ export interface AgentRunInput {
    */
   compactContext?: (messages: ChatMessage[]) => Promise<ChatMessage[] | null>;
   /**
+   * Optional LIVE narration sink. When the gateway can stream a turn, the loop
+   * calls this with the model's prose AS IT ARRIVES (`delta` is the new fragment,
+   * `content` the accumulated prose so far) so the UI can type it out token by
+   * token. Live-only — it is NOT persisted (the per-turn `model_call` event still
+   * carries the full content); omitting it just means the loop does not stream.
+   * Additive.
+   */
+  onNarration?: (chunk: { delta: string; content: string }) => void;
+  /**
    * Tools contributed by loaded extensions (extensions-spec.md §5), advertised
    * to the model alongside the native tools and dispatched through their own
    * `execute()` inside the loop. Gated like any other tool by the

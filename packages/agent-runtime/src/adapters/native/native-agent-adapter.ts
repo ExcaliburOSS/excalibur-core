@@ -573,7 +573,23 @@ export class NativeAgentAdapter implements AgentAdapter {
         // cleanly so consumers always see a final completion turn.
         let output: ChatOutput;
         try {
-          output = await input.gateway.chat(chatInput);
+          // Stream the turn when a live narration sink is present AND the gateway
+          // can stream tool-call-bearing turns — the model's prose types out as it
+          // arrives. `streamChat` returns the SAME complete output as `chat` (and
+          // itself falls back to a non-streamed call for providers that cannot
+          // stream tool calls), so the loop is identical downstream. Without a sink
+          // (or on a fake/narrow gateway) it is a plain `chat`.
+          const gateway = input.gateway;
+          if (input.onNarration !== undefined && typeof gateway.streamChat === 'function') {
+            const sink = input.onNarration;
+            let acc = '';
+            output = await gateway.streamChat(chatInput, (delta) => {
+              acc += delta;
+              sink({ delta, content: acc });
+            });
+          } else {
+            output = await gateway.chat(chatInput);
+          }
         } catch (error) {
           wasErrored = true;
           const code =
