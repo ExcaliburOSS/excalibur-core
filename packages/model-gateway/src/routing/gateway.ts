@@ -1,9 +1,18 @@
 import { ProviderError } from '@excalibur/shared';
 import { computeCostCents, estimateTokens } from '../cost/cost';
+import { parseToolArguments } from '../errors/provider-errors';
 import { createProvider, type CreateProviderDeps } from '../providers/create-provider';
 import { RESERVED_PROVIDER_KEYS } from '../providers/providers-file';
 import type { ProviderConfig, ProvidersFileConfig } from '../providers/providers-file';
-import type { ChatDelta, ChatInput, ChatOutput, ChatUsage, ModelProviderAdapter } from '../types';
+import type {
+  ChatDelta,
+  ChatFinishReason,
+  ChatInput,
+  ChatOutput,
+  ChatUsage,
+  ModelProviderAdapter,
+  ToolCall,
+} from '../types';
 
 /**
  * Model gateway (Build Contract §4.3): resolves the provider by explicit name
@@ -157,6 +166,81 @@ export class ModelGateway {
   async *stream(input: GatewayChatInput): AsyncIterable<ChatDelta> {
     const { adapter, chatInput } = this.prepare(input);
     yield* adapter.stream(chatInput);
+  }
+
+  /** Provider types whose streaming carries tool-call fragments (assembled here). */
+  private streamsToolCalls(name: string): boolean {
+    try {
+      return this.providerConfig(name).type === 'openai-compatible';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Runs a chat turn and STREAMS its content to `onContent` as it arrives — the
+   * "alive, typing" path for the agentic loop — while returning the SAME complete
+   * {@link ChatOutput} as {@link chat} (content + assembled `toolCalls` +
+   * `finishReason`). For providers whose stream does NOT carry tool-call deltas
+   * it transparently falls back to a single non-streamed {@link chat} call, so a
+   * tool call is NEVER lost to streaming. `onContent` receives incremental text
+   * (it is not called on the fallback path).
+   */
+  async streamChat(
+    input: GatewayChatInput,
+    onContent: (delta: string) => void,
+  ): Promise<ChatOutput> {
+    const name = this.resolveProviderName(input.provider);
+    if (!this.streamsToolCalls(name)) {
+      return this.chat(input); // graceful: full turn, just not streamed
+    }
+    const { cfg, adapter, chatInput } = this.prepare(input);
+    const chunks: string[] = [];
+    const reported: Partial<ChatUsage> = {};
+    const parts = new Map<number, { id?: string; name?: string; args: string }>();
+    let finishReason: ChatFinishReason = 'stop';
+    for await (const delta of adapter.stream(chatInput)) {
+      if (delta.content.length > 0) {
+        chunks.push(delta.content);
+        onContent(delta.content);
+      }
+      if (delta.usage?.inputTokens !== undefined) reported.inputTokens = delta.usage.inputTokens;
+      if (delta.usage?.outputTokens !== undefined) reported.outputTokens = delta.usage.outputTokens;
+      if (delta.finishReason !== undefined) finishReason = delta.finishReason;
+      for (const tc of delta.toolCallDeltas ?? []) {
+        const cur = parts.get(tc.index) ?? { args: '' };
+        if (tc.id !== undefined) cur.id = tc.id;
+        if (tc.name !== undefined) cur.name = tc.name;
+        if (tc.argumentsFragment !== undefined) cur.args += tc.argumentsFragment;
+        parts.set(tc.index, cur);
+      }
+    }
+    const content = chunks.join('');
+    const toolCalls: ToolCall[] = [...parts.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([index, p]) => ({
+        id: p.id !== undefined && p.id.length > 0 ? p.id : `call_${index}`,
+        name: p.name ?? '',
+        arguments: parseToolArguments(p.name ?? '', p.args.length > 0 ? p.args : undefined),
+      }));
+    // A streamed tool turn may report no finish_reason; presence of tool calls
+    // makes it a tool turn regardless.
+    if (toolCalls.length > 0 && finishReason === 'stop') finishReason = 'tool_calls';
+    const usage: ChatUsage = {
+      inputTokens:
+        reported.inputTokens ??
+        estimateTokens(chatInput.messages.map((message) => message.content).join('\n')),
+      outputTokens: reported.outputTokens ?? estimateTokens(content),
+    };
+    const computed = computeCostCents(usage, cfg);
+    return {
+      content,
+      model: chatInput.model ?? cfg.model ?? 'unknown',
+      usage,
+      costCents: computed,
+      finishReason,
+      ...(toolCalls.length > 0 ? { toolCalls } : {}),
+    };
   }
 
   /**

@@ -119,6 +119,19 @@ export interface ChatOutput {
   toolCalls?: ToolCall[];
 }
 
+/**
+ * A streamed fragment of one tool call. Providers (OpenAI-compatible) stream tool
+ * calls incrementally: the `id`/`name` arrive once, and the JSON `arguments`
+ * string arrives as `argumentsFragment` pieces that CONCATENATE across deltas.
+ * Consumers assemble by `index` (its position in the turn's tool-call array).
+ */
+export interface ToolCallDelta {
+  index: number;
+  id?: string;
+  name?: string;
+  argumentsFragment?: string;
+}
+
 export interface ChatDelta {
   content: string;
   done: boolean;
@@ -129,6 +142,14 @@ export interface ChatDelta {
    * deltas. Consumers prefer this over estimating from text.
    */
   usage?: Partial<ChatUsage>;
+  /**
+   * Streamed tool-call fragments for this delta (OpenAI-compatible streaming).
+   * Absent on text-only deltas. Assembled into full {@link ToolCall}s by the
+   * gateway so a STREAMED turn can still drive the tool loop, not just prose.
+   */
+  toolCallDeltas?: ToolCallDelta[];
+  /** Provider finish reason, carried on the final delta when the stream reports it. */
+  finishReason?: ChatFinishReason;
 }
 
 export interface ModelProviderAdapter {

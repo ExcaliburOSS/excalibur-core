@@ -19,7 +19,14 @@ import { ConfigValidationError, ProviderError } from '@excalibur/shared';
 import { parseToolArguments } from '../errors/provider-errors';
 import { parseSSE } from '../transport/sse';
 import type { TransportRequest, TransportResponse } from '../transport/transport';
-import type { ChatFinishReason, ChatInput, ChatMessage, ChatUsage, ToolCall } from '../types';
+import type {
+  ChatFinishReason,
+  ChatInput,
+  ChatMessage,
+  ChatUsage,
+  ToolCall,
+  ToolCallDelta,
+} from '../types';
 import {
   BaseHttpProvider,
   type BaseHttpProviderOptions,
@@ -274,7 +281,17 @@ export class OpenAICompatibleAdapter extends BaseHttpProvider {
         return;
       }
       let chunk: {
-        choices?: Array<{ delta?: { content?: string } }>;
+        choices?: Array<{
+          delta?: {
+            content?: string;
+            tool_calls?: Array<{
+              index?: number;
+              id?: string;
+              function?: { name?: string; arguments?: string };
+            }>;
+          };
+          finish_reason?: unknown;
+        }>;
         usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
       };
       try {
@@ -282,9 +299,33 @@ export class OpenAICompatibleAdapter extends BaseHttpProvider {
       } catch {
         continue;
       }
-      const delta = chunk.choices?.[0]?.delta?.content;
-      if (typeof delta === 'string' && delta.length > 0) {
-        yield { content: delta };
+      const choice = chunk.choices?.[0];
+      const delta = choice?.delta?.content;
+      // Tool calls stream as per-index fragments: `id`/`name` once, then the JSON
+      // `arguments` string in pieces. Forward each fragment for the gateway to
+      // assemble, so a STREAMED turn can still drive the tool loop.
+      const toolCallDeltas: ToolCallDelta[] = (choice?.delta?.tool_calls ?? []).map((tc, i) => ({
+        index: typeof tc.index === 'number' ? tc.index : i,
+        ...(typeof tc.id === 'string' ? { id: tc.id } : {}),
+        ...(typeof tc.function?.name === 'string' ? { name: tc.function.name } : {}),
+        ...(typeof tc.function?.arguments === 'string'
+          ? { argumentsFragment: tc.function.arguments }
+          : {}),
+      }));
+      const finish =
+        choice?.finish_reason !== undefined && choice.finish_reason !== null
+          ? mapFinishReason(choice.finish_reason)
+          : undefined;
+      if (
+        (typeof delta === 'string' && delta.length > 0) ||
+        toolCallDeltas.length > 0 ||
+        finish !== undefined
+      ) {
+        yield {
+          content: typeof delta === 'string' ? delta : '',
+          ...(toolCallDeltas.length > 0 ? { toolCallDeltas } : {}),
+          ...(finish !== undefined ? { finishReason: finish } : {}),
+        };
       }
       if (chunk.usage !== undefined && chunk.usage !== null) {
         const usage: Partial<ChatUsage> = {};

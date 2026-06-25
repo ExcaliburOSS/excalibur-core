@@ -31,6 +31,7 @@ import type {
   ChatUsage,
   ModelProviderAdapter,
   ToolCall,
+  ToolCallDelta,
 } from '../types';
 import type { ProviderConfig } from './providers-file';
 import { resolveApiKey } from './providers-file';
@@ -207,13 +208,21 @@ export abstract class BaseHttpProvider implements ModelProviderAdapter {
 
     for await (const event of this.decodeStream(response, input, model)) {
       // Forward content chunks AND provider-reported usage (which previously was
-      // dropped here, forcing the gateway to estimate). A usage-only event still
-      // surfaces so streamWithUsage can prefer exact provider numbers.
-      if (event.content.length > 0 || event.usage !== undefined) {
+      // dropped here, forcing the gateway to estimate), plus any tool-call
+      // fragments / finish reason so a streamed turn can drive the tool loop. A
+      // usage- or tool-only event still surfaces (empty content).
+      if (
+        event.content.length > 0 ||
+        event.usage !== undefined ||
+        event.toolCallDeltas !== undefined ||
+        event.finishReason !== undefined
+      ) {
         yield {
           content: event.content,
           done: false,
           ...(event.usage !== undefined ? { usage: event.usage } : {}),
+          ...(event.toolCallDeltas !== undefined ? { toolCallDeltas: event.toolCallDeltas } : {}),
+          ...(event.finishReason !== undefined ? { finishReason: event.finishReason } : {}),
         };
       }
     }
@@ -295,6 +304,10 @@ export abstract class BaseHttpProvider implements ModelProviderAdapter {
 export interface StreamEvent {
   content: string;
   usage?: Partial<ChatUsage>;
+  /** Tool-call fragments decoded from this chunk (OpenAI-compatible streaming). */
+  toolCallDeltas?: ToolCallDelta[];
+  /** Provider finish reason, when this chunk reports it. */
+  finishReason?: ChatFinishReason;
 }
 
 function isAbortError(error: unknown): boolean {
