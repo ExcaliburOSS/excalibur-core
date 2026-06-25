@@ -191,6 +191,7 @@ runners and compliance. Everything stays local unless you explicitly connect
 ## Documentation
 
 - [Getting started](docs/getting-started.md)
+- [Interactive shell](docs/interactive-shell.md)
 - [Configuration (`.excalibur/`)](docs/configuration.md)
 - [Autonomy levels](docs/autonomy-levels.md)
 - [Work items & kanban](docs/work-items.md)

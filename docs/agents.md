@@ -61,6 +61,8 @@ Run several agents in parallel and pick the best result. `excalibur swarm` (or `
 
 **You rarely invoke this yourself.** In the interactive shell the intent router decides when work is parallelizable and Excalibur **auto-orchestrates** it: under autonomy a build is decomposed and, when it has ≥2 independent workstreams, executed as an auto-sized swarm (merged + applied) with no command and no prompt — otherwise as a single focused run. The `swarm`/`bg`/`threads` commands remain as explicit escape hatches.
 
+For the full picture — verified fan-in, best-of-N (`explore`), authored DAG specs, the live chronogram, pause/resume, and the scheduler — see **[orchestration.md](orchestration.md)** and **[scheduling.md](scheduling.md)**.
+
 ## Agent roles
 
 Workflow phases declare roles, which drive prompts and model routing: `planner`, `architect`, `implementer`, `reviewer`, `tester`, `security`, `release`, plus the Discovery roles (`product_strategist`, `customer_researcher`, `discovery_reviewer`, `ux_reviewer`, `growth_reviewer`, `scope_guardian`).
