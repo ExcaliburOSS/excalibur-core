@@ -8,3 +8,5 @@ export * from './types';
 export * from './capability-catalog';
 export * from './interpret-mission';
 export * from './plan-strategy';
+export * from './supervisor';
+export * from './reassess';
