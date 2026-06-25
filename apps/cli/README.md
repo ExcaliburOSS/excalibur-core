@@ -59,6 +59,9 @@ excalibur status && excalibur logs
 | `excalibur`                                | The interactive shell — describe what you want; onboards on first run |
 | `excalibur run "…"`                        | Run an agentic workflow phase by phase (autonomy L3/L4)               |
 | `excalibur swarm "…"`                      | Fan out independent subtasks as parallel agents in git worktrees      |
+| `excalibur explore "…"`                    | Best-of-N — run N candidate approaches in parallel, keep the winner   |
+| `excalibur orchestrate` · `orchestration`  | Re-run/resume a parallel run · watch its live wave/DAG chronogram     |
+| `excalibur schedule add "…" "…"`           | Autonomous scheduled jobs (every N / daily at)                        |
 | `excalibur ask "…"` / `explain`            | Ask questions about the repo (L1)                                     |
 | `excalibur review [--diff]`                | Review working changes (L0)                                           |
 | `excalibur patch "…"` → `apply` / `branch` | Propose a diff, then apply it (L2)                                    |
