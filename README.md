@@ -195,6 +195,7 @@ runners and compliance. Everything stays local unless you explicitly connect
 - [Autonomy levels](docs/autonomy-levels.md)
 - [Work items & kanban](docs/work-items.md)
 - [Web dashboard](docs/dashboard.md)
+- [Orchestration](docs/orchestration.md) · [Scheduling & background](docs/scheduling.md)
 - [Workflows](docs/workflows.md) · [Methodologies](docs/methodologies.md)
 - [Model providers](docs/providers.md) · [Agents](docs/agents.md)
 - [Security defaults](docs/security.md)

@@ -83,6 +83,13 @@ approvals:
     commands: ['npm run migrate']
     phases: ['plan', 'before_pr']
 
+orchestration: # caps + verification gates for the autonomous loops (all opt-in)
+  goalMaxIterations: 6 # hard cap for the `/goal` loop
+  verifyMerge: true # run `commands.test` on a swarm's MERGED tree before keeping it; a red run reverts
+  verifyWaves: true # verify each wave of a staged swarm before its dependents; roll back a red wave
+  selfHeal: true # one bounded heal attempt when a swarm lane exhausts its retries
+  superviseBackground: true # supervise `/bg` completions (proactive by default at full autonomy)
+
 context:
   include: ['instructions/general.md', 'README.md', 'docs/**/*.md']
   exclude: ['**/.env', '**/node_modules/**']

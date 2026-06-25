@@ -65,19 +65,30 @@ Two complementary ways to share, neither requiring Excalibur-hosted infra:
 
 The dashboard is a thin client over a small JSON + SSE API (same token):
 
-| Method | Path                                                           | Returns                                       |
-| ------ | -------------------------------------------------------------- | --------------------------------------------- |
-| GET    | `/health`                                                      | `{ ok, service, repoRoot, write }`            |
-| GET    | `/api/board`                                                   | the kanban board (lanes + cards)              |
-| GET    | `/api/board/stream`                                            | SSE: a board snapshot pushed on every change  |
-| GET    | `/api/work-items/:key`                                         | one work item + its runs/links/comments/plans |
-| GET    | `/api/runs` · `/api/runs/:id`                                  | run records · one run's record + reduced rail |
-| GET    | `/api/runs/:id/events` · `/stream`                             | the event log (cursor-paged) · live SSE       |
-| GET    | `/api/insights`                                                | cross-run cost/token/outcome aggregate        |
-| GET    | `/api/plans` · `/api/plans/:id` · `/api/discovery`             | plans + discovery                             |
-| POST   | `/api/runs` (+`workItemId`) · `/api/runs/:id/{cancel,approve}` | run control (write)                           |
-| POST   | `/api/work-items/:key/move`                                    | change a work item's lane (write)             |
+| Method | Path                                                           | Returns                                                   |
+| ------ | -------------------------------------------------------------- | --------------------------------------------------------- |
+| GET    | `/health`                                                      | `{ ok, service, repoRoot, write }`                        |
+| GET    | `/api/board`                                                   | the kanban board (lanes + cards)                          |
+| GET    | `/api/board/stream`                                            | SSE: a board snapshot pushed on every change              |
+| GET    | `/api/work-items/:key`                                         | one work item + its runs/links/comments/plans             |
+| GET    | `/api/runs` · `/api/runs/:id`                                  | run records · one run's record + reduced rail             |
+| GET    | `/api/runs/:id/events` · `/stream`                             | the event log (cursor-paged) · live SSE                   |
+| GET    | `/api/insights`                                                | cross-run cost/token/outcome aggregate                    |
+| GET    | `/api/plans` · `/api/plans/:id` · `/api/discovery`             | plans + discovery                                         |
+| GET    | `/api/orchestrations` · `/stream`                              | parallel runs (parent + per-lane child runs) · live SSE   |
+| GET    | `/api/orchestrations/:id` · `/stream`                          | one orchestration's wave/DAG chronogram · live SSE        |
+| POST   | `/api/runs` (+`workItemId`) · `/api/runs/:id/{cancel,approve}` | run control (write)                                       |
+| POST   | `/api/work-items/:key/move`                                    | change a work item's lane (write)                         |
+| POST   | `/api/orchestrations/:id/pause`                                | pause/resume a live orchestration (write)                 |
+| POST   | `/api/orchestrations/:id/lanes/:laneRunId/cancel`              | cancel one lane of a live orchestration (write)           |
+| POST   | `/api/plan-shape`                                              | clarifying questions + recommendations for a task (write) |
 
 POST routes require `--write` (else `403`); a share-token request is refused all
 POSTs. It is single-user and localhost by default — keep the token secret and the
 bind local.
+
+The dashboard also surfaces the **Orchestrations** page (parallel swarms with their
+per-lane child runs, the work item each lane advances, pause/resume + per-lane
+cancel), a live **chronogram** (wave/DAG timeline with a time-travel scrubber), and
+a **plan-shaping** panel that co-creates a plan before starting a build. See
+[orchestration.md](orchestration.md).

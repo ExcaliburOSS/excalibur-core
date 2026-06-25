@@ -1,6 +1,6 @@
 # CMUX integration
 
-> **Arrives in milestone OSS-10.** `excalibur cmux` currently prints an honest notice. CMUX is an _interface_, never a hard dependency — every workflow works in a single terminal without it.
+> **CMUX is an optional convenience, not a dependency.** Parallelism is already **native** today — see [orchestration.md](orchestration.md): `swarm`, `explore`, the live chronogram, and background `/bg` threads all run from a single terminal. The `excalibur cmux` _pane‑integration_ command is still a stub (it prints an honest notice and lands in milestone OSS‑10); nothing about parallel agents waits on it.
 
 [CMUX](https://github.com/wandb/cmux) is a terminal multiplexer for agentic coding sessions. The planned integration:
 
