@@ -4,6 +4,44 @@ All notable changes to Excalibur Core are documented here. The format is based o
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to
 follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Conversational narration** — the agent now narrates its work like a
+  pair-programmer: warm, first-person, concise prose between actions, surfaced
+  live in the run rail and **streamed token-by-token** as the model thinks
+  (openai-compatible providers), with a graceful non-streamed fallback. Narrates
+  in the user's own language.
+- **Destructive-command safety floor** — catastrophic/irreversible shell
+  operations (`rm -rf`, force push, `git reset --hard`, `git clean -f*`, `sudo`,
+  `mkfs`, `dd of=/dev/*`, …) are hard-denied regardless of allowlist or approval,
+  even under auto-accept/`--yes`. A deliberate per-command allowlist opt-in lifts
+  it; a broad `*` does not.
+
+### Changed
+
+- **Context compaction overhaul** — fast-model default, background + silent
+  auto-compaction, real-token trigger with reactive overflow→compact→retry, a
+  `ctx NN%` status indicator, and a deterministic fidelity guard. Plus **in-turn
+  compaction** so a single long agentic turn never overflows the context window.
+
+## [1.2.0] - 2026-06-21
+
+### Added
+
+- **External access (F1–F8)** — free, governed web access by default:
+  `web_fetch`, `web_search` (local SearXNG → DuckDuckGo), a native multi-source
+  research pipeline with cited/verified sources, an opt-in local browser for
+  JS-heavy pages, hosted readers (BYOK), and first-class MCP (stdio + Streamable
+  HTTP, OAuth/DCR, an Ed25519-signed server registry). All behind a network
+  policy, an always-on SSRF floor, and prompt-injection scanning with provenance.
+- **Onboarding overhaul** — arrow-key + type-ahead model picker (Kimi / MiniMax /
+  GLM lead), paste-the-API-key (masked) into a `0600`
+  `~/.config/excalibur/secrets.env`, zero-friction first run with an automatic
+  connection test, and smart project-location handling (`excalibur new`,
+  create-or-use-here when run anywhere).
+
 ## [1.1.0] - 2026-06-20
 
 ### Added
@@ -72,5 +110,6 @@ The first public release. Highlights of what Excalibur Core does today:
 
 ### Notes
 
-- The full milestone roadmap (M1–M8) lives in [docs/ROADMAP.md](docs/ROADMAP.md).
-- Not yet published to npm; install from source (see [README](README.md)).
+- Published to npm as
+  [`@excalibur-oss/excalibur`](https://www.npmjs.com/package/@excalibur-oss/excalibur)
+  — `npx @excalibur-oss/excalibur` (see [README](README.md)).
