@@ -23,18 +23,18 @@ cd your-repo && excalibur                  # detects your stack, connects a mode
 
 ---
 
-## Five things only Excalibur does
+## What sets Excalibur apart
 
-Built right into the engine — the ones you won't find in any other AI coding tool. All five, free and open-source.
+Five capabilities built into the engine — free and open-source.
 
 ### ⏳ Time Travel
 
-**Scrub any run like a video — and branch a new one from any step.**
-Every run is a deterministic event stream, so you can rewind it and fork from any moment.
+**Every run is an immutable, append-only event log — so you can scrub it like a video and branch from any step.**
+This isn't a "rewind button" bolted on: the deterministic event stream _is_ the run. One source of truth renders the live TUI, the replay, the web dashboard and the audit trail — byte-identical. Nobody else is built this way.
 
-- **Fork from cache** — the good prefix replays for free; only what changed re-runs
+- **Fork from cache** — branch a new run from any checkpoint; the good prefix replays for free, only what changed re-runs
 - **Live rewind** mid-session (`Esc` `Esc`)
-- The replay _is_ your audit trail
+- Live = replay = dashboard = audit — one immutable stream, every angle
 
 ### 🧭 Discovery
 
@@ -45,33 +45,36 @@ Discovery weighs scope, evidence and risk, then recommends _build_, _validate_, 
 - Turns a vague idea into a scoped work item
 - Kills bad work before it costs you
 
-### 🐝 Self-Sizing Swarm
+### 🖥️ Command Center
 
-**Hand over a big task; Excalibur sizes the agent team and explores rival approaches at once.**
-You never pick a number.
+**Your repo on a board — runs, cost and a live swarm chronogram, in one local process.**
+`excalibur serve` ships a token-gated, **task-first** web dashboard embedded in the CLI. No SaaS, no account — it's that same event log, rendered for the browser. Terminal-only tools don't have this.
 
-- One agent per independent subtask, in isolated worktrees, merged on fan-in
-- **Explore (best-of-N)** — run rival approaches, compare diffs, tests & cost, keep the winner
-- Native to the run engine — no CMUX, no glue
+- Kanban work items → drill into a run's live checklist, patches, PRs and plans
+- Cost/token insights + a live wave/DAG **chronogram** you can pause, resume and time-travel
+- `--write` to drive runs from the browser; `--share` mints a read-only link for the team
 
-### 🛡️ Adversarial Review
+### 🧠 Any model, no lock-in
 
-**Before work reaches you, a skeptical agent tries to refute it.**
-Every typed claim must check out — a run can't reach "done" on an unverified one.
+**Bring your own — OpenAI-compatible (incl. Azure OpenAI), Anthropic, Ollama, and more.**
+Excalibur isn't wired to a single vendor. Pick a good + fast pair with one key, switch anytime with `/models`.
 
-- Claims: `tests_passed` · `type_safe` · `no_secrets`
-- An independent reviewer hunts for holes first
-- An adversarial **verification mesh** blocks a change that fails its own claims
+- A frontier model for the hard parts, a cheap one for ghost-text — automatically
+- Keys live in an env file, never in the repo
 
-### 📦 Isolated Sandbox
+### 🔄 The whole product cycle
 
-**Agents run boxed — no network by default, in dedicated branches, with secrets walled off.**
+**Most agents write code. Excalibur owns the bookends too.**
 
-- No network access unless you grant it
-- Work lands in isolated branches, never your working tree
-- Secrets blocked & redacted; risky ops need your approval
+```text
+Discover → Plan → Build → Test → Document → Review → Ship → Audit
+```
 
-> _Nothing leaves the box — and nothing changes — without your yes._
+- Decide before you build (Discovery); **prove it after** — an adversarial _verification mesh_ + typed claims (`tests_passed` · `type_safe` · `no_secrets`) gate the finish
+- A big task **auto-sizes into a swarm** of agents in isolated worktrees — you never pick the shape
+- Tests and serious docs are phases, not afterthoughts; 14 workflows ship in the box, all overridable in YAML
+
+> All five — built into the engine, free and open-source, one `npm install` away.
 
 ---
 
@@ -103,18 +106,6 @@ excalibur swarm "…"    excalibur discovery      excalibur verify
 
 ---
 
-## The whole product cycle
-
-Chatbots autocomplete. Coding agents build and ship. **Excalibur runs the entire cycle** — and owns the bookends other tools skip:
-
-```text
-Discover → Plan → Build → Test → Document → Review → Ship → Audit
-```
-
-Tests and serious docs aren't an afterthought — they're **gates**. 14 workflows and methodologies ship in the box (Standard Feature, Safe Refactor, Security First, Migration, Explore Alternatives, Discovery…), all overridable in YAML.
-
----
-
 ## Safe by default
 
 `standard-safe` is on from the very first command:
@@ -123,12 +114,6 @@ Tests and serious docs aren't an afterthought — they're **gates**. 14 workflow
 - **Sandboxed** — no network by default; work isolated in branches, never your tree
 - **Secrets never leak** — blocked from sensitive paths, redacted from prompts and logs
 - **Inspectable trail** — every action is a plain file you can read
-
----
-
-## Bring your own model
-
-OpenAI-compatible providers (incl. Azure OpenAI), Anthropic, Ollama and more — pick a good + fast pair with a single key, switch anytime with `/models`. Keys live in an env file, never in the repo.
 
 ---
 
@@ -146,12 +131,6 @@ Everything lives under `.excalibur/` as plain, Git-versionable files — and it 
 ```
 
 `excalibur init` detects your stack, your commands, and your existing AI instructions — `CLAUDE.md`, `AGENTS.md`, Cursor rules, Copilot instructions, `SKILL.md` — and uses them without rewriting them.
-
----
-
-## The web dashboard
-
-`excalibur serve` ships a local, token-gated, **task-first** board embedded in the CLI — kanban work items, live run checklists, patches / PRs / plans, cost charts, and a live wave/DAG **chronogram** of a swarm you can pause, resume and time-travel through. `--write` makes it interactive; `--share` mints a read-only link. One process, no extra setup.
 
 ---
 
