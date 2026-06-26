@@ -307,3 +307,48 @@ export function planInterrupt(
   }
   return { action, reaskAfter, ack: buildInterruptAck(action, decision, ctx, reaskAfter) };
 }
+
+// --- Composition: the full triage → route (INT-1 wiring) ---------------------
+
+export interface InterruptDecisionContext extends InterruptContext {
+  /** Files the current work has touched — only consulted for a `new` request. */
+  touchedPaths?: readonly string[];
+}
+
+export interface InterruptOutcome {
+  /** The triage decision (class + confidence). */
+  decision: InterruptDecision;
+  /** The independence verdict — only computed for a `new` request, else null. */
+  independence: IndependenceVerdict | null;
+  /** The routing plan (action + re-ask + ack). */
+  plan: InterruptPlan;
+}
+
+/**
+ * The end-to-end interrupt brain: classify the typed input, judge independence
+ * (only when it is NEW work — the only case where parallel-vs-pause matters),
+ * and route it to an action with an instant acknowledgment. ONE call the shell
+ * makes per submitted interrupt; the executor then acts on `plan.action`.
+ *
+ * Total + safe: every step has a conservative fallback (never throws), so a
+ * model hiccup degrades to "treat as new, pause" rather than losing the run.
+ */
+export async function decideInterrupt(
+  input: string,
+  ctx: InterruptDecisionContext,
+  model: InterruptModel,
+  signal?: AbortSignal,
+): Promise<InterruptOutcome> {
+  const decision = await classifyInterrupt(input, ctx, model, signal);
+  const independence =
+    decision.cls === 'new'
+      ? await assessIndependence(
+          input,
+          { currentWork: ctx.currentWork, touchedPaths: ctx.touchedPaths ?? [] },
+          model,
+          signal,
+        )
+      : null;
+  const plan = planInterrupt(decision, independence, ctx);
+  return { decision, independence, plan };
+}

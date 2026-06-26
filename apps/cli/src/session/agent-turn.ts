@@ -157,6 +157,30 @@ export interface AgentTurnDeps {
    * so each capability runs with the mission DAG shown on top. Additive.
    */
   ribbon?: MissionRibbonModel;
+  /**
+   * The interrupt handler (INT-1): invoked when the user types a message WHILE
+   * this turn streams (Ink path only). It receives the raw input plus a live
+   * {@link InterruptControl} over the running turn (abort, the rail ack sink, the
+   * current-work context) so it can triage + route the interruption without
+   * losing the work. Absent → the live view does not arm its typing channel.
+   */
+  onInterrupt?: (input: string, control: InterruptControl) => void | Promise<void>;
+}
+
+/** A live handle on the in-flight turn, handed to the interrupt handler (INT-1). */
+export interface InterruptControl {
+  /** A one-line description of what this turn is doing (triage context). */
+  currentWork: string;
+  /** True while the turn is blocked awaiting a user answer (an approval/question). */
+  awaitingAnswer: boolean;
+  /** The exact question being awaited, when `awaitingAnswer`. */
+  pendingQuestion?: string;
+  /** Files this turn has read/written so far (independence judgement input). */
+  touchedPaths: string[];
+  /** Abort the in-flight turn (an explicit stop, or before a pause+switch). */
+  abort(): void;
+  /** Show the instant acknowledgment line in the live rail. */
+  say(text: string): void;
 }
 
 /**
@@ -263,6 +287,14 @@ async function driveLoop(
   const turnStart = Date.now();
   const unicode = deps.env['EXCALIBUR_ASCII'] === undefined;
 
+  // Interrupt channel (INT-1) state: what this turn is doing, whether it is
+  // currently blocked awaiting a user answer (so a typed line can be read AS that
+  // answer), and the files it has touched (independence input) — all handed to the
+  // interrupt handler so it can triage a mid-run message without losing the work.
+  const touchedPaths = new Set<string>();
+  let awaitingAnswer = false;
+  let pendingQuestion: string | undefined;
+
   // Own a local AbortController: it lets the Ink view's ESC/Ctrl-C cancel the
   // turn (Ink owns stdin while mounted, so the REPL's editor.onEscape is dormant)
   // while STILL honouring an upstream abort (a non-Ink Ctrl-C). One signal feeds
@@ -315,6 +347,29 @@ async function driveLoop(
     view.setRibbon(turn.ribbon);
   }
 
+  // Arm the interrupt channel (INT-1): each message the user types while this
+  // turn streams is handed to the handler with a live control over the run. Only
+  // on the Ink path (it owns stdin); disarmed in the finally.
+  let interruptOff: (() => void) | null = null;
+  if (view !== null && turn.onInterrupt !== undefined) {
+    const interruptView = view;
+    const handler = turn.onInterrupt;
+    interruptOff = interruptView.onInterrupt((text) => {
+      void Promise.resolve(
+        handler(text, {
+          currentWork: options.prompt,
+          awaitingAnswer,
+          ...(pendingQuestion !== undefined ? { pendingQuestion } : {}),
+          touchedPaths: [...touchedPaths],
+          abort: () => ctrl.abort(),
+          say: (s) => interruptView.noticeInterrupt(s),
+        }),
+      ).catch(() => {
+        /* triage is best-effort — a handler error never breaks the turn */
+      });
+    });
+  }
+
   // The breathing indicator + per-action renderer — non-Ink path only, and never
   // in quiet/background mode (the run records silently, nothing hits the prompt).
   const quiet = turn.quiet === true;
@@ -347,18 +402,27 @@ async function driveLoop(
       detail,
     });
     let choice: 'yes' | 'no' | 'auto';
-    if (view !== null) {
-      // The approval renders inline in the rail; y/Return → yes, a → auto, n → no.
-      choice = await view.requestApproval({
-        question,
-        options: options.approvalDefaultYes ? '[Y/n/a]' : '[y/N/a]',
-      });
-    } else {
-      spinner!.stop(); // clear the transient line before the (permanent) prompt
-      deps.ui.write(pc.yellow(question));
-      choice = await deps.ui.confirmTool(deps.t('agent-turn.allow_action'), {
-        defaultYes: options.approvalDefaultYes,
-      });
+    // Mark the turn as awaiting an answer so a typed interrupt during the gate is
+    // read in that light (the answer feeds it; a side-question re-asks after).
+    awaitingAnswer = true;
+    pendingQuestion = question;
+    try {
+      if (view !== null) {
+        // The approval renders inline in the rail; y/Return → yes, a → auto, n → no.
+        choice = await view.requestApproval({
+          question,
+          options: options.approvalDefaultYes ? '[Y/n/a]' : '[y/N/a]',
+        });
+      } else {
+        spinner!.stop(); // clear the transient line before the (permanent) prompt
+        deps.ui.write(pc.yellow(question));
+        choice = await deps.ui.confirmTool(deps.t('agent-turn.allow_action'), {
+          defaultYes: options.approvalDefaultYes,
+        });
+      }
+    } finally {
+      awaitingAnswer = false;
+      pendingQuestion = undefined;
     }
     // "Auto mode" (a): flip on session-wide auto-accept AND persist it, so this
     // is the LAST prompt — unified with the `/auto` mode (one concept). Counts
@@ -407,8 +471,18 @@ async function driveLoop(
     ...(options.allowConfirm ? { confirm } : {}),
     // Free-text human channel for the `question` tool (P1.8b): the interactive
     // shell IS a human at a prompt. deps.ui.ask returns '' when non-interactive,
-    // which the tool reads as "no answer → proceed autonomously".
-    ask: (question: string): Promise<string> => deps.ui.ask(question),
+    // which the tool reads as "no answer → proceed autonomously". Wrapped to flag
+    // the turn as awaiting an answer (INT-1) so a typed interrupt is read as it.
+    ask: async (question: string): Promise<string> => {
+      awaitingAnswer = true;
+      pendingQuestion = question;
+      try {
+        return await deps.ui.ask(question);
+      } finally {
+        awaitingAnswer = false;
+        pendingQuestion = undefined;
+      }
+    },
     ...(options.seedMessages !== undefined ? { seedMessages: options.seedMessages } : {}),
     // Live narration: when the Ink rail is up, type the model's prose out as it
     // streams (the warm pair-programmer voice, alive). The non-Ink/quiet paths
@@ -456,6 +530,17 @@ async function driveLoop(
         renderer.onEvent(event);
       }
       runManager.appendEvent(run.id, event);
+
+      // Track the files this turn touches (interrupt independence input, INT-1).
+      if (event.type === 'file_read' || event.type === 'file_write') {
+        const p = event.payload['path'];
+        if (typeof p === 'string' && p.length > 0) touchedPaths.add(p);
+      } else if (event.type === 'patch_generated') {
+        const affected = event.payload['filesAffected'];
+        if (Array.isArray(affected)) {
+          for (const p of affected) if (typeof p === 'string' && p.length > 0) touchedPaths.add(p);
+        }
+      }
 
       if (event.type === 'model_call') {
         const m = event.payload['model'];
@@ -516,6 +601,7 @@ async function driveLoop(
     if (turn.signal !== undefined) {
       turn.signal.removeEventListener('abort', onUpstreamAbort);
     }
+    interruptOff?.(); // disarm the interrupt channel for this turn
     if (view !== null) {
       // CLOSE the synthetic working node here — runs exactly once on a clean exit,
       // an abort, OR a mid-loop throw (e.g. a persist error), so the persisted /

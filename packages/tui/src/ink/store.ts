@@ -37,6 +37,28 @@ export interface RunViewSnapshot {
    * runs below it. Null for an ordinary run/turn.
    */
   missionRibbon: MissionRibbonModel | null;
+  /**
+   * The interrupt channel (INT-1): the message the user is typing WHILE the run
+   * streams, shown as a composing line at the foot of the rail. Empty when not
+   * composing. Submitted (Enter) it is handed to the interrupt handler — which
+   * triages it (steer/quick/new/stop/answer) without losing the running work —
+   * then cleared. ESC still cancels the run; this never steals that.
+   */
+  interruptDraft: string;
+  /**
+   * Whether the interrupt channel is live — true only once a handler is wired
+   * (the interactive turn loop). When false, keystrokes are NOT captured into a
+   * draft (a plain run with nowhere to deliver an interrupt keeps the old Space =
+   * toggle-diffs binding), so we never swallow input that would go nowhere.
+   */
+  interruptEnabled: boolean;
+  /**
+   * The instant acknowledgment after an interrupt is submitted — "▶ Running that
+   * in parallel…", "⏸ Pausing X and switching…". Transient (never recorded into
+   * the event stream, so it can't perturb the live==replay invariant); cleared
+   * when the rail resets or the channel disarms. Empty when there is none.
+   */
+  interruptNotice: string;
 }
 
 export interface RunViewStore {
@@ -57,6 +79,21 @@ export interface RunViewStore {
   /** Register an ESC handler (the turn's AbortController). */
   onEscape(listener: () => void): () => void;
   fireEscape(): void;
+  /** Append typed text to the interrupt draft (INT-1). */
+  appendInterrupt(text: string): void;
+  /** Delete the last character of the interrupt draft. */
+  backspaceInterrupt(): void;
+  /** Discard the in-progress interrupt draft without submitting. */
+  clearInterrupt(): void;
+  /** Submit the trimmed draft to the interrupt handler and clear it (no-op if blank). */
+  submitInterrupt(): void;
+  /** Show the instant acknowledgment line after an interrupt is routed (transient). */
+  noticeInterrupt(text: string): void;
+  /**
+   * Register the interrupt handler — the turn loop's triage+route. Registering
+   * arms the channel (`interruptEnabled`); the last unsubscribe disarms it.
+   */
+  onInterrupt(listener: (text: string) => void): () => void;
 }
 
 /** The Ink `Key` flags this view cares about (a subset, for testability). */
@@ -64,32 +101,74 @@ export interface KeyFlags {
   escape?: boolean;
   return?: boolean;
   ctrl?: boolean;
+  meta?: boolean;
+  backspace?: boolean;
+  delete?: boolean;
 }
 
 /**
  * Maps ONE keystroke onto the store — the single source of the live-view key
- * bindings (single keys only, per the project rule): ESC or Ctrl-C aborts (when
- * Ink owns stdin these are the only ways to interrupt); while an approval is
- * pending y/Return → yes, a → auto, n → no; otherwise Space toggles the inline
- * diff. Pure (no Ink) so it is unit-testable on its own; `<Keys>` just forwards
- * Ink's `useInput` to it.
+ * bindings (single keys only, per the project rule):
+ * - ESC / Ctrl-C always aborts (when Ink owns stdin these are the only ways to
+ *   interrupt the run); this is never overridden by the typing channel.
+ * - While an approval is pending: y/Return → yes, a → auto, n → no.
+ * - Otherwise, when the interrupt channel is armed (INT-1): printable keys build
+ *   a draft message, Backspace edits, Enter submits it to the interrupt handler
+ *   (which triages it WITHOUT losing the running work). Space toggles the inline
+ *   diff only when the draft is empty — once you are composing, Space is a space.
+ * - When the channel is NOT armed (a plain run with no interrupt handler), Space
+ *   keeps its legacy diff-toggle binding and other keys are inert.
+ *
+ * Pure (no Ink) so it is unit-testable on its own; `<Keys>` just forwards Ink's
+ * `useInput` to it.
  */
 export function applyRunViewKey(store: RunViewStore, input: string, key: KeyFlags): void {
   if (key.escape === true || (key.ctrl === true && input.toLowerCase() === 'c')) {
     store.fireEscape();
     return;
   }
-  const { approval } = store.getSnapshot();
-  if (approval !== null) {
+  const snapshot = store.getSnapshot();
+  if (snapshot.approval !== null) {
     const ch = input.toLowerCase();
     if (key.return === true || ch === 'y') store.resolveApproval('yes');
     else if (ch === 'a') store.resolveApproval('auto');
     else if (ch === 'n') store.resolveApproval('no');
     return;
   }
-  if (input === ' ') {
-    store.toggleDiffs();
+  if (snapshot.interruptEnabled !== true) {
+    // No interrupt handler wired → keep the legacy Space = toggle-diffs binding.
+    if (input === ' ') store.toggleDiffs();
+    return;
   }
+  // --- Interrupt typing channel ---
+  if (key.return === true) {
+    store.submitInterrupt();
+    return;
+  }
+  if (key.backspace === true || key.delete === true) {
+    store.backspaceInterrupt();
+    return;
+  }
+  if (input === ' ') {
+    // Space is the diff toggle when idle, a typed space once composing.
+    if (snapshot.interruptDraft.length === 0) store.toggleDiffs();
+    else store.appendInterrupt(' ');
+    return;
+  }
+  // Printable text (supports paste of multiple chars); skip modifier combos and
+  // control sequences (arrows/fn come through as empty input + key flags).
+  if (key.ctrl !== true && key.meta !== true && input.length > 0 && !isControl(input)) {
+    store.appendInterrupt(input);
+  }
+}
+
+/** True when the string contains any C0 control character (so it is not typed text). */
+function isControl(s: string): boolean {
+  for (let i = 0; i < s.length; i += 1) {
+    const code = s.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
 }
 
 export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunViewStore {
@@ -106,9 +185,13 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
     approval: null,
     streamingNarration: '',
     missionRibbon: null,
+    interruptDraft: '',
+    interruptEnabled: false,
+    interruptNotice: '',
   };
   const listeners = new Set<() => void>();
   const escapeListeners = new Set<() => void>();
+  const interruptListeners = new Set<(text: string) => void>();
   let resolver: ((answer: ApprovalAnswer) => void) | null = null;
 
   const emit = (): void => {
@@ -150,7 +233,7 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
     },
     resetEvents() {
       events.length = 0; // a new capability starts its rail fresh below the ribbon
-      set({ eventsRev: snapshot.eventsRev + 1, streamingNarration: '' });
+      set({ eventsRev: snapshot.eventsRev + 1, streamingNarration: '', interruptNotice: '' });
     },
     toggleDiffs() {
       set({ diffsExpanded: !snapshot.diffsExpanded });
@@ -183,6 +266,36 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
     },
     fireEscape() {
       for (const listener of escapeListeners) listener();
+    },
+    appendInterrupt(text) {
+      set({ interruptDraft: snapshot.interruptDraft + text });
+    },
+    backspaceInterrupt() {
+      if (snapshot.interruptDraft.length === 0) return;
+      set({ interruptDraft: snapshot.interruptDraft.slice(0, -1) });
+    },
+    clearInterrupt() {
+      if (snapshot.interruptDraft.length === 0) return;
+      set({ interruptDraft: '' });
+    },
+    submitInterrupt() {
+      const text = snapshot.interruptDraft.trim();
+      if (text.length === 0) return;
+      set({ interruptDraft: '' });
+      for (const listener of interruptListeners) listener(text);
+    },
+    noticeInterrupt(text) {
+      set({ interruptNotice: text });
+    },
+    onInterrupt(listener) {
+      interruptListeners.add(listener);
+      if (snapshot.interruptEnabled !== true) set({ interruptEnabled: true });
+      return () => {
+        interruptListeners.delete(listener);
+        if (interruptListeners.size === 0 && snapshot.interruptEnabled === true) {
+          set({ interruptEnabled: false, interruptDraft: '', interruptNotice: '' });
+        }
+      };
     },
   };
 }

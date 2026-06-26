@@ -38,8 +38,10 @@ import {
   loadReplay,
   MemoryStore,
   parseStructuralInput,
+  decideInterrupt,
   type AsyncSummarizer,
   type IntentModel,
+  type InterruptModel,
   type LocalSession,
   type RoutePosture,
   type TurnDecision,
@@ -89,6 +91,7 @@ import {
   type AgentTurnResult,
   type ApprovalState,
 } from './agent-turn';
+import { executeInterrupt, type InterruptOps } from './interrupt-exec';
 import { runMissionTurn } from './mission-run';
 import { runGoalLoop } from './goal-loop';
 import { runIntervalLoop } from './interval-loop';
@@ -177,6 +180,13 @@ interface SessionRuntime {
    * (falls back to a chars/4 estimate when unknown, e.g. the offline mock).
    */
   lastInputTokens?: number;
+  /**
+   * INT-1 — the interrupt handler for a message typed WHILE a turn streams, set
+   * once per interactive session and threaded into each turn's AgentTurnDeps so
+   * the live rail's typing channel reaches the session lifecycle (abort / parallel
+   * thread / queued foreground turn). Undefined outside the interactive REPL.
+   */
+  onInterrupt?: AgentTurnDeps['onInterrupt'];
 }
 
 /**
@@ -415,6 +425,69 @@ export async function runInteractiveSession(
   const offEscape = editor.onEscape(() => {
     cancelInFlight();
   });
+
+  // INT-1 — the interrupt channel. A message the user types WHILE a turn streams
+  // is triaged (steer/quick/new/stop/answer) and routed WITHOUT losing the work:
+  // a steer folds in after, an independent request runs as a parallel `/bg`
+  // thread, a conflicting one pauses + switches, a stop aborts. Foreground
+  // re-dispatches are queued here and drained after the current turn unwinds (the
+  // REPL is single-threaded), so there is never a concurrency race on the editor.
+  const interruptModel = buildInterruptModel(deps, runtime);
+  const pendingForeground: { text: string; reaskAfter?: string }[] = [];
+  if (interruptModel !== undefined) {
+    runtime.onInterrupt = async (input, control): Promise<void> => {
+      const ops: InterruptOps = {
+        say: (t) => control.say(t),
+        abort: () => control.abort(),
+        runParallel: (t) => launchBgThread(deps, runtime, t, bgControllers),
+        queueForeground: (t, o) => {
+          pendingForeground.push({
+            text: t,
+            ...(o.reaskAfter !== undefined ? { reaskAfter: o.reaskAfter } : {}),
+          });
+          if (o.abortCurrent) control.abort();
+        },
+        recordMessage: (t) =>
+          runtime.store.appendTurn(runtime.session.id, { role: 'user', kind: 'message', text: t }),
+      };
+      const outcome = await decideInterrupt(
+        input,
+        {
+          currentWork: control.currentWork,
+          awaitingAnswer: control.awaitingAnswer,
+          ...(control.pendingQuestion !== undefined
+            ? { pendingQuestion: control.pendingQuestion }
+            : {}),
+          touchedPaths: control.touchedPaths,
+        },
+        interruptModel,
+      );
+      executeInterrupt(outcome, input, ops, control.pendingQuestion);
+    };
+  }
+
+  /** Drains foreground interrupts (folded steer / pause+switch) queued during the
+   * just-finished turn — they run automatically, in order, then re-ask anything
+   * the interrupted turn was waiting on. */
+  const drainForegroundInterrupts = async (): Promise<void> => {
+    while (pendingForeground.length > 0 && !runtime.shuttingDown) {
+      const next = pendingForeground.shift()!;
+      const fctrl = beginTurn();
+      try {
+        const seed = await sessionSeedSettled(runtime);
+        await dispatchAgentTurn(deps, runtime, next.text, fctrl.signal, seed);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        deps.ui.error(reason);
+      } finally {
+        endTurn();
+      }
+      if (next.reaskAfter !== undefined && next.reaskAfter.length > 0) {
+        // Never lose the question the interrupted turn was awaiting.
+        deps.ui.info(deps.t('repl.interrupt-reask', { question: next.reaskAfter }));
+      }
+    }
+  };
 
   try {
     for (;;) {
@@ -834,10 +907,14 @@ export async function runInteractiveSession(
         const reason = error instanceof Error ? error.message : String(error);
         deps.ui.error(reason);
         store.appendTurn(session.id, { role: 'system', kind: 'status', text: `error: ${reason}` });
+        await drainForegroundInterrupts(); // a steer/switch queued before the error still runs
         printStatusLine(deps, runtime);
         continue;
       }
       endTurn();
+      // INT-1 — run any foreground interrupt (folded steer / pause+switch) queued
+      // while this turn streamed, now that it has unwound.
+      await drainForegroundInterrupts();
       printStatusLine(deps, runtime);
     }
   } finally {
@@ -978,6 +1055,38 @@ function buildIntentClassifier(deps: CliDeps, runtime: SessionRuntime): IntentMo
       messages: [{ role: 'user', content: redactSecrets(prompt) }],
       maxTokens: 6,
       timeoutMs: 2500,
+      metadata: { kind: 'intent' },
+      ...(signal !== undefined ? { signal } : {}),
+    });
+    return output.content;
+  };
+}
+
+/**
+ * The model that backs the interrupt triage (INT-1) — the same FAST/cheap model
+ * as the intent classifier, but with a more generous token budget: the triage
+ * answers in two words, yet the independence judge needs room for "OVERLAP — <a
+ * one-sentence reason>" (a 6-token cap truncates the reason mid-word and a
+ * reasoning model needs headroom). Returns undefined when there is no real/fast
+ * model (the channel then simply never arms — a typed line does nothing).
+ */
+function buildInterruptModel(deps: CliDeps, runtime: SessionRuntime): InterruptModel | undefined {
+  const gateway = loadGatewayContext(runtime.repoRoot);
+  const provider = gateway.cheapProviderName;
+  if (!gateway.configured || provider == null) {
+    return undefined;
+  }
+  const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[provider]
+    ?.type;
+  if (providerType === 'mock') {
+    return undefined;
+  }
+  return async (prompt: string, signal?: AbortSignal): Promise<string> => {
+    const output = await gateway.gateway.chat({
+      provider,
+      messages: [{ role: 'user', content: redactSecrets(prompt) }],
+      maxTokens: 48,
+      timeoutMs: 4000,
       metadata: { kind: 'intent' },
       ...(signal !== undefined ? { signal } : {}),
     });
@@ -1169,6 +1278,9 @@ function agentTurnDeps(deps: CliDeps, runtime: SessionRuntime, signal: AbortSign
     // Active custom agent (P1.7b /agent): its persona/model/sampling/guardrails
     // override this turn's defaults. Maps CustomAgent → the turn-deps override shape.
     ...(runtime.activeAgent !== null ? { agent: agentTurnOverride(runtime.activeAgent) } : {}),
+    // INT-1 — the interrupt handler (set once per interactive session), so a
+    // message typed while this turn streams is triaged + routed live.
+    ...(runtime.onInterrupt !== undefined ? { onInterrupt: runtime.onInterrupt } : {}),
   };
 }
 

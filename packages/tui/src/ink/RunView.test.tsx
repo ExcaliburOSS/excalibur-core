@@ -356,6 +356,82 @@ describe('applyRunViewKey', () => {
   });
 });
 
+describe('interrupt channel (INT-1)', () => {
+  it('is inert until a handler arms it — keystrokes are not captured into a draft', () => {
+    const store = createRunViewStore();
+    expect(store.getSnapshot().interruptEnabled).toBe(false);
+    applyRunViewKey(store, 'h', {});
+    applyRunViewKey(store, 'i', {});
+    expect(store.getSnapshot().interruptDraft).toBe(''); // nowhere to deliver → not captured
+    // Space keeps its legacy diff-toggle binding while unarmed.
+    applyRunViewKey(store, ' ', {});
+    expect(store.getSnapshot().diffsExpanded).toBe(true);
+  });
+
+  it('arming via onInterrupt enables capture; disarming on the last unsubscribe clears the draft', () => {
+    const store = createRunViewStore();
+    const off = store.onInterrupt(() => {});
+    expect(store.getSnapshot().interruptEnabled).toBe(true);
+    store.appendInterrupt('hey');
+    expect(store.getSnapshot().interruptDraft).toBe('hey');
+    off();
+    expect(store.getSnapshot().interruptEnabled).toBe(false);
+    expect(store.getSnapshot().interruptDraft).toBe(''); // disarm wipes the half-typed draft
+  });
+
+  it('types a draft, backspaces, and submits the trimmed text to the handler on Enter', () => {
+    const store = createRunViewStore();
+    const seen: string[] = [];
+    store.onInterrupt((text) => seen.push(text));
+    for (const ch of 'also add tests') applyRunViewKey(store, ch, {});
+    expect(store.getSnapshot().interruptDraft).toBe('also add tests');
+    applyRunViewKey(store, '', { backspace: true });
+    expect(store.getSnapshot().interruptDraft).toBe('also add test');
+    applyRunViewKey(store, '', { return: true });
+    expect(seen).toEqual(['also add test']);
+    expect(store.getSnapshot().interruptDraft).toBe(''); // cleared after submit
+  });
+
+  it('once composing, Space is a typed space — but toggles diffs while the draft is empty', () => {
+    const store = createRunViewStore();
+    store.onInterrupt(() => {});
+    applyRunViewKey(store, ' ', {}); // empty draft → diff toggle
+    expect(store.getSnapshot().diffsExpanded).toBe(true);
+    expect(store.getSnapshot().interruptDraft).toBe('');
+    applyRunViewKey(store, 'a', {});
+    applyRunViewKey(store, ' ', {}); // now composing → real space
+    applyRunViewKey(store, 'b', {});
+    expect(store.getSnapshot().interruptDraft).toBe('a b');
+  });
+
+  it('ignores control/modifier keys and an empty submit; ESC still cancels mid-compose', () => {
+    const store = createRunViewStore();
+    let escaped = 0;
+    const fired: string[] = [];
+    store.onEscape(() => (escaped += 1));
+    store.onInterrupt((t) => fired.push(t));
+    applyRunViewKey(store, 'k', { ctrl: true }); // Ctrl-combo, not text (and not Ctrl-C)
+    applyRunViewKey(store, '', { meta: true });
+    expect(store.getSnapshot().interruptDraft).toBe('');
+    applyRunViewKey(store, '', { return: true }); // blank submit → no-op
+    expect(fired).toHaveLength(0);
+    // Type, then ESC: cancels the run, does not submit the draft.
+    applyRunViewKey(store, 'x', {});
+    applyRunViewKey(store, '', { escape: true });
+    expect(escaped).toBe(1);
+    expect(fired).toHaveLength(0);
+  });
+
+  it('an approval gate still answers with y/n/a even while the channel is armed', async () => {
+    const store = createRunViewStore();
+    store.onInterrupt(() => {});
+    const promise = store.requestApproval({ question: 'Approve?', options: '[y/N/a]' });
+    applyRunViewKey(store, 'y', {});
+    await expect(promise).resolves.toBe('yes');
+    expect(store.getSnapshot().interruptDraft).toBe(''); // not captured as text
+  });
+});
+
 // NOTE: the key→store contract is fully covered by `applyRunViewKey` above, and
 // `<Keys>` (mount.tsx) is a one-line `useInput` forward to it. End-to-end RAW
 // keystroke handling (raw mode + Ink's stdin parsing) is validated by the pty

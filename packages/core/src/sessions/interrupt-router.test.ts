@@ -9,6 +9,7 @@ import {
   parseInterruptConfidence,
   parseInterruptDecision,
   planInterrupt,
+  decideInterrupt,
   type IndependenceContext,
   type InterruptClass,
   type InterruptContext,
@@ -175,5 +176,52 @@ describe('planInterrupt (routing + ack, INT-4)', () => {
     expect(lowNew.ack.toLowerCase()).toContain('separate'); // correction hint
     const highNew = planInterrupt(dec('new', 'high'), { independent: true, reason: '' }, busy);
     expect(highNew.ack.toLowerCase()).not.toContain('say "no'); // no hint at high confidence
+  });
+});
+
+describe('decideInterrupt (full triage → route, INT-1 wiring)', () => {
+  it('steer: classifies and folds WITHOUT an independence call', async () => {
+    const model = vi.fn().mockResolvedValue('steer high');
+    const out = await decideInterrupt('also handle the null case', busy, model);
+    expect(out.decision.cls).toBe('steer');
+    expect(out.independence).toBeNull(); // independence is only judged for NEW work
+    expect(out.plan.action).toBe('fold');
+    expect(model).toHaveBeenCalledTimes(1); // classify only — no second (independence) call
+  });
+
+  it('new + independent → parallel (two model calls: classify then independence)', async () => {
+    const model = vi
+      .fn()
+      .mockResolvedValueOnce('new high')
+      .mockResolvedValueOnce('INDEPENDENT — the docs site does not touch the limiter');
+    const out = await decideInterrupt('update the README badges', busy, model);
+    expect(out.decision.cls).toBe('new');
+    expect(out.independence?.independent).toBe(true);
+    expect(out.plan.action).toBe('parallel');
+    expect(model).toHaveBeenCalledTimes(2);
+  });
+
+  it('new + overlapping → pause_switch', async () => {
+    const model = vi
+      .fn()
+      .mockResolvedValueOnce('new medium')
+      .mockResolvedValueOnce('OVERLAP — both edit the rate limiter');
+    const out = await decideInterrupt('rewrite the refill window', busy, model);
+    expect(out.plan.action).toBe('pause_switch');
+  });
+
+  it('while awaiting: the answer feeds it (no independence call, no re-ask)', async () => {
+    const model = vi.fn().mockResolvedValue('answer high');
+    const out = await decideInterrupt('yes, overwrite it', asking, model);
+    expect(out.plan.action).toBe('feed_answer');
+    expect(out.plan.reaskAfter).toBe(false);
+    expect(model).toHaveBeenCalledTimes(1);
+  });
+
+  it('degrades safely when the model throws — treat as new, pause (never lose the run)', async () => {
+    const model = vi.fn().mockRejectedValue(new Error('down'));
+    const out = await decideInterrupt('do something', busy, model);
+    expect(out.decision.cls).toBe('new'); // classify fell back to new
+    expect(out.plan.action).toBe('pause_switch'); // independence also failed → conservative pause
   });
 });

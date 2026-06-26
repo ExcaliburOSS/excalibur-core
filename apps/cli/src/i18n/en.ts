@@ -904,6 +904,7 @@ export const EN: Catalog = {
     'Usage: /bg <task> — runs the task in the background (its own recorded run) while you keep working.',
   'repl.bg-started': '▸ background: {title} — running (use /threads to check on it)',
   'repl.bg-followup': '↳ chaining follow-up: {title}',
+  'repl.interrupt-reask': '↩ Back to what I was asking: {question}',
   'repl.bg-supervise-continue': '↳ supervisor: continuing with {title}',
   'repl.bg-supervise-suggest': '↳ supervisor suggests next: {title} (run it with /bg)',
   'repl.bg-supervise-escalate': '⚠ supervisor: {note}',

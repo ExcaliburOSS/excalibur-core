@@ -54,6 +54,10 @@ export interface RunViewProps {
   useStatic?: boolean;
   /** The current turn's prose as it streams in (typed out live), or ''. */
   streamingNarration?: string;
+  /** The interrupt message the user is composing WHILE the run streams (INT-1), or ''. */
+  interruptDraft?: string;
+  /** The instant acknowledgment line after an interrupt is routed (INT-1), or ''. */
+  interruptNotice?: string;
 }
 
 /** The trailing annotation: detail · duration · cost (cost only when ≥ 0.5¢). */
@@ -168,6 +172,40 @@ function StreamingNarration({ text, colors }: { text: string; colors: Palette })
   );
 }
 
+/**
+ * The interrupt composing line (INT-1): what the user is typing WHILE the run
+ * streams. A distinct accent prompt (`›`) at the foot of the rail with a soft
+ * cursor — so it reads as "you, mid-run" without disturbing the agent's prose
+ * above. Rendered only while composing; ESC still cancels the run, Enter sends.
+ */
+function InterruptDraft({ text, colors }: { text: string; colors: Palette }): ReactElement {
+  return (
+    <Box marginTop={1}>
+      <Box flexShrink={0}>
+        <Text color={colors.accent} bold>{` › `}</Text>
+      </Box>
+      <Text color={colors.text} wrap="wrap">
+        {text}
+        <Text color={colors.muted}>▌</Text>
+      </Text>
+    </Box>
+  );
+}
+
+/** The instant acknowledgment after an interrupt is routed (INT-1) — a quiet, accented line. */
+function InterruptNotice({ text, colors }: { text: string; colors: Palette }): ReactElement {
+  return (
+    <Box marginTop={1}>
+      <Box flexShrink={0}>
+        <Text color={colors.rail}>{` ${glyph.railV}   `}</Text>
+      </Box>
+      <Text color={colors.accent} wrap="wrap">
+        {text}
+      </Text>
+    </Box>
+  );
+}
+
 function StatusLine({
   model,
   colors,
@@ -239,6 +277,8 @@ export function RunView(props: RunViewProps): ReactElement {
   const width = props.width ?? 80;
   const approval = props.approval ?? model.approval ?? null;
   const streamingNarration = props.streamingNarration ?? '';
+  const interruptDraft = props.interruptDraft ?? '';
+  const interruptNotice = props.interruptNotice ?? '';
 
   const done = (phase: Phase): boolean => phase.state === 'completed' || phase.state === 'failed';
   const completed = model.phases.filter(done);
@@ -286,7 +326,11 @@ export function RunView(props: RunViewProps): ReactElement {
           ))}
         </Box>
       ) : null}
+      {interruptNotice.length > 0 ? (
+        <InterruptNotice text={interruptNotice} colors={colors} />
+      ) : null}
       {approval !== null ? <ApprovalRow approval={approval} colors={colors} /> : null}
+      {interruptDraft.length > 0 ? <InterruptDraft text={interruptDraft} colors={colors} /> : null}
       <StatusLine model={model} colors={colors} labels={labels} />
     </Box>
   );

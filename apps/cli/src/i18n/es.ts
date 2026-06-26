@@ -966,6 +966,7 @@ export const ES: Catalog = {
     'Uso: /bg <tarea> — ejecuta la tarea en segundo plano (su propia ejecución registrada) mientras sigues trabajando.',
   'repl.bg-started': '▸ segundo plano: {title} — en curso (usa /threads para verlo)',
   'repl.bg-followup': '↳ encadenando seguimiento: {title}',
+  'repl.interrupt-reask': '↩ Volviendo a lo que te preguntaba: {question}',
   'repl.bg-supervise-continue': '↳ supervisor: continuando con {title}',
   'repl.bg-supervise-suggest': '↳ el supervisor sugiere: {title} (lánzalo con /bg)',
   'repl.bg-supervise-escalate': '⚠ supervisor: {note}',

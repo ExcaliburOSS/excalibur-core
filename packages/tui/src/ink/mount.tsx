@@ -52,6 +52,15 @@ export interface RunViewHandle {
   requestApproval(approval: ApprovalPrompt): Promise<ApprovalAnswer>;
   /** Register an ESC handler (the turn's abort); returns an unsubscribe. */
   onEscape(listener: () => void): () => void;
+  /**
+   * Arm the interrupt channel (INT-1): the listener receives a message the user
+   * typed WHILE the run streamed (submitted with Enter). Registering it lets the
+   * live view capture typed keys into a draft; returns an unsubscribe that
+   * disarms the channel when the last handler goes.
+   */
+  onInterrupt(listener: (text: string) => void): () => void;
+  /** Show the instant acknowledgment after an interrupt is routed (INT-1). */
+  noticeInterrupt(text: string): void;
   waitForExit(): Promise<void>;
   unmount(): void;
 }
@@ -97,6 +106,8 @@ function RunViewApp({
         approval={snapshot.approval}
         diffsExpanded={snapshot.diffsExpanded}
         streamingNarration={snapshot.streamingNarration}
+        interruptDraft={snapshot.interruptDraft}
+        interruptNotice={snapshot.interruptNotice}
         tier={options.tier}
         width={stdout?.columns ?? 80}
         {...(options.mode !== undefined ? { mode: options.mode } : {})}
@@ -130,6 +141,8 @@ export function mountRunView(options: MountRunViewOptions): RunViewHandle {
     resetEvents: () => store.resetEvents(),
     requestApproval: (approval) => store.requestApproval(approval),
     onEscape: (listener) => store.onEscape(listener),
+    onInterrupt: (listener) => store.onInterrupt(listener),
+    noticeInterrupt: (text) => store.noticeInterrupt(text),
     waitForExit: () => instance.waitUntilExit(),
     unmount: () => {
       if (timer !== null) clearInterval(timer);
