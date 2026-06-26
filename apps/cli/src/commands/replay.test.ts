@@ -132,13 +132,13 @@ describe('excalibur replay — non-interactive (--print / --at)', () => {
     expect(stdout).toContain('Fix duplicated release');
     expect(stdout).toContain('structured-feature');
     // A step per event, with summaries.
-    expect(stdout).toContain('run started');
+    expect(stdout).toContain('task started');
     expect(stdout).toContain('phase Implement started');
     expect(stdout).toContain('model call (1.2k in / 340 out)');
     expect(stdout).toContain('wrote src/release.ts');
     expect(stdout).toContain('tests → failed');
     expect(stdout).toContain('patch generated → src/release.ts');
-    expect(stdout).toContain('run completed');
+    expect(stdout).toContain('task completed');
     // Cumulative cost ($0.05 from the one 5-cent model call).
     expect(stdout).toContain('Total cost: $0.05');
   });

@@ -97,7 +97,7 @@ describe('extensions create (scaffold generators, extensions spec §9)', () => {
     // The plan card renders the scaffolded workflow's name + id.
     expect(cli.stdout()).toContain('Safe Hotfix');
     expect(cli.stdout()).toContain('safe-hotfix');
-    expect(cli.stdout()).toContain('run completed');
+    expect(cli.stdout()).toContain('task completed');
   });
 
   it('rejects unknown types and duplicate names (usage errors)', async () => {

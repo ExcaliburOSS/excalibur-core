@@ -30,7 +30,7 @@ describe('run --output-format (headless / scripting, Build Contract §4.9)', () 
     const stdout = cli.stdout();
     expect(stdout).toContain('Fast Fix');
     expect(stdout).toContain('fast-fix');
-    expect(stdout).toContain('run completed');
+    expect(stdout).toContain('task completed');
     // No top-level JSON object/array document.
     expect(stdout.trimStart().startsWith('{')).toBe(false);
     expect(stdout.trimStart().startsWith('[')).toBe(false);
@@ -46,7 +46,7 @@ describe('run --output-format (headless / scripting, Build Contract §4.9)', () 
     // the workflow name in a `workflow_selected` event — so we key on chrome-only
     // markers instead.)
     expect(stdout).not.toContain('┌─');
-    expect(stdout).not.toContain('run completed');
+    expect(stdout).not.toContain('task completed');
 
     const parsed = JSON.parse(stdout) as {
       run: { id: string; status: string; workflow: string };

@@ -125,10 +125,10 @@ describe('interactive session (M-Shell, model-first)', () => {
 
     const stdout = cli.stdout();
     // The conversational turn leads with narration + the answer — it does NOT leak
-    // the internal "→ agent · act · L4" header or the "run completed" jargon (the
-    // run still exists on disk; it's just not user-facing chrome).
+    // the internal "→ agent · act · L4" header or the completion-line jargon (the
+    // task still exists on disk; it's just not user-facing chrome).
     expect(stdout).not.toContain('→ agent');
-    expect(stdout).not.toContain('run completed');
+    expect(stdout).not.toContain('task completed');
     // The mock degraded answer is its templated banner.
     expect(stdout).toContain('Mock provider (M1)');
 

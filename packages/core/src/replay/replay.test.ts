@@ -178,7 +178,7 @@ describe('replay time-machine model', () => {
   it('produces concise per-event summaries', () => {
     const model = loadReplay(repoRoot, runId);
     const summaries = model.steps.map((step) => step.summary);
-    expect(summaries[0]).toContain('run started');
+    expect(summaries[0]).toContain('task started');
     expect(summaries[1]).toBe('phase Implement started');
     expect(summaries[2]).toBe('model call (1.2k in / 340 out)');
     expect(summaries[3]).toBe('wrote src/release.ts');
@@ -186,7 +186,7 @@ describe('replay time-machine model', () => {
     expect(summaries[7]).toBe('tests → failed');
     expect(summaries[9]).toBe('patch generated → src/release.ts');
     expect(summaries[10]).toContain('approval requested');
-    expect(summaries[12]).toBe('run completed');
+    expect(summaries[12]).toBe('task completed');
   });
 
   it('reconstructs the state at a cursor: phase, diff, cost, window', () => {

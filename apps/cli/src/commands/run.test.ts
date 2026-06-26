@@ -31,7 +31,7 @@ describe('run (local mock loop, Build Contract §4.9)', () => {
     expect(stdout).toContain('Fast Fix');
     expect(stdout).toContain('fast-fix');
     expect(stdout).toContain('Safety: standard-safe');
-    expect(stdout).toContain('run completed');
+    expect(stdout).toContain('task completed');
 
     const dirs = runDirs();
     expect(dirs.length).toBe(1);

@@ -136,9 +136,9 @@ function compactCount(value: number): string {
 function summarize(event: ExcaliburEvent): string {
   switch (event.type) {
     case 'run_started':
-      return `run started: ${str(event, 'title') ?? '(untitled)'}`;
+      return `task started: ${str(event, 'title') ?? '(untitled)'}`;
     case 'run_completed':
-      return `run ${str(event, 'status') ?? 'completed'}`;
+      return `task ${str(event, 'status') ?? 'completed'}`;
     case 'workflow_selected':
       return `workflow ${str(event, 'name') ?? str(event, 'workflowId') ?? '(unknown)'} selected`;
     case 'methodology_selected':

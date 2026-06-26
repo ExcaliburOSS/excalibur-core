@@ -158,10 +158,10 @@ describe('runAgentTurn — the real agentic loop (fake gateway)', () => {
 
     const stdout = h.stdout();
     // The conversational turn no longer prints the technical "→ agent" header or
-    // the internal "run completed" line — narration + the action rail lead, and
-    // the warm receipt is the closure. The run_completed EVENT is still recorded.
+    // the internal completion line — narration + the action rail lead, and the
+    // warm receipt is the closure. The run_completed EVENT is still recorded.
     expect(stdout).not.toContain('→ agent');
-    expect(stdout).not.toContain('run completed');
+    expect(stdout).not.toContain('task completed');
     // The live action renderer shows a `Read` block targeting the file.
     expect(stdout).toContain('Read');
     expect(stdout).toContain('README.md');
