@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 /**
@@ -7,23 +7,43 @@ import { dirname, join } from 'node:path';
  * copies it to `dist/dashboard.html` next to the bundle, and this resolves it at
  * runtime so `excalibur serve` can return it at `/`.
  *
- * Resolution avoids `__dirname`/`import.meta` (the bundle is CJS, the tests run
- * the source) by walking a list of plausible locations relative to the running
- * entry script and the cwd. Returns null when no built asset is found — the
- * caller then falls back to the legacy inline dashboard, so `serve` always works
- * even before the dashboard has been built.
+ * Resolution walks plausible locations relative to the bundle's `__dirname`, the
+ * (symlink-resolved) entry script, and the cwd — covering a global install
+ * (symlinked bin), a local link, and monorepo dev/tests. Returns null only when
+ * no built asset exists anywhere; the caller then shows an honest "not built"
+ * page rather than a misleading legacy one.
  */
 
 let cached: string | undefined;
 
 function candidatePaths(): string[] {
   const paths: string[] = [];
+  // The published bundle is CJS, so `__dirname` is the REAL `dist/` even when the
+  // CLI is launched through a symlinked global bin — which is exactly the case a
+  // plain `process.argv[1]` gets wrong (see below). Guarded so the source/ESM/test
+  // path (no `__dirname`) just skips it. `typeof` never throws on an undeclared id.
+  if (typeof __dirname === 'string' && __dirname.length > 0) {
+    paths.push(join(__dirname, 'dashboard.html'));
+    paths.push(join(__dirname, '..', 'dashboard.html'));
+  }
   const entry = process.argv[1];
   if (typeof entry === 'string' && entry.length > 0) {
-    const entryDir = dirname(entry);
-    // Published / built: dashboard.html sits next to dist/main.js.
-    paths.push(join(entryDir, 'dashboard.html'));
-    paths.push(join(entryDir, '..', 'dashboard.html'));
+    // A global install runs `…/bin/excalibur` → a SYMLINK to `…/dist/main.js`, so a
+    // raw `dirname(argv[1])` is `/usr/local/bin` (no dashboard.html there) and the
+    // dashboard is never found → every global user fell back to the legacy page.
+    // Resolve the symlink so `dirname` lands in the real `dist/`.
+    let resolved = entry;
+    try {
+      resolved = realpathSync(entry);
+    } catch {
+      /* keep the raw entry */
+    }
+    for (const e of new Set([resolved, entry])) {
+      const entryDir = dirname(e);
+      // Published / built: dashboard.html sits next to dist/main.js.
+      paths.push(join(entryDir, 'dashboard.html'));
+      paths.push(join(entryDir, '..', 'dashboard.html'));
+    }
   }
   // Monorepo dev / tests: read straight from the build outputs.
   const cwd = process.cwd();
@@ -60,4 +80,25 @@ export function dashboardAppHtml(): string | null {
 /** Test-only: reset the memoized lookup. */
 export function resetDashboardAppCache(): void {
   cached = undefined;
+}
+
+/**
+ * A minimal, HONEST page for the rare case the Svelte dashboard genuinely hasn't
+ * been built (dev, before `pnpm -r build`). Replaces the old behaviour of silently
+ * serving a different, misleading dashboard.
+ */
+export function dashboardNotBuiltHtml(): string {
+  return [
+    '<!doctype html><html lang="en"><head><meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width,initial-scale=1">',
+    '<title>Excalibur dashboard</title><style>',
+    'body{font:15px/1.65 system-ui,sans-serif;max-width:40rem;margin:4rem auto;padding:0 1.5rem;color:#1f2733}',
+    'code{background:#eef2ff;color:#2368d0;padding:.15rem .45rem;border-radius:5px;font-size:.9em}',
+    'h1{font-size:1.4rem}.m{color:#697586}</style></head><body>',
+    '<h1>⚔ Excalibur dashboard</h1>',
+    "<p>The web dashboard hasn't been built yet. From the repository root run:</p>",
+    '<p><code>pnpm -r build</code></p>',
+    '<p class="m">then restart <code>excalibur serve</code>. A published <code>npm</code> install already bundles it.</p>',
+    '</body></html>',
+  ].join('');
 }

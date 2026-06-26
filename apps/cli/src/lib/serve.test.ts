@@ -5,7 +5,7 @@ import { LocalWorkItemProvider } from '@excalibur/work-items';
 import { createEvent } from '@excalibur/shared';
 import type { Server } from 'node:http';
 import { createExcaliburServer } from './serve';
-import { dashboardHtml } from './dashboard';
+import { dashboardAppHtml } from './dashboard-app';
 import { loadOrchestrationControl } from './orchestration-manifest';
 import { makeTempDir, removeDir } from '../test-utils';
 
@@ -90,25 +90,18 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
     const html = await res.text();
-    // Invariants true of BOTH the embedded Svelte app and the legacy fallback
-    // (which one serves depends on whether the dashboard has been built).
+    // Either the built Svelte work-item app (which calls the JSON API) or the
+    // honest "not built" page — both are branded, and the run-centric legacy page
+    // is gone for good.
     expect(html.toLowerCase()).toContain('excalibur');
-    expect(html).toContain('/api/'); // the client calls the JSON API
+    expect(html).not.toContain('local run dashboard'); // the legacy page is removed
+    if (dashboardAppHtml() !== null) {
+      expect(html).toContain('/api/'); // the Svelte client calls the JSON API
+    } else {
+      expect(html.toLowerCase()).toContain('not been built');
+    }
     // The dashboard is behind the token too.
     expect((await fetch(`${base}/`)).status).toBe(401);
-  });
-
-  it('the legacy fallback dashboard escapes untrusted fields + sets a CSP', () => {
-    // The inline page is the fallback when the Svelte build is absent; its
-    // stored-XSS guards (escape untrusted run titles / agent text) + CSP are
-    // verified directly so the assertion is independent of build state.
-    const html = dashboardHtml();
-    expect(html).toContain('const esc=');
-    expect(html).toContain('esc(record.title)');
-    expect(html).toContain('esc(e.text');
-    expect(html).toContain('esc(r.workflow)');
-    expect(html).toContain('Content-Security-Policy');
-    expect(html).not.toContain("'<p class=title>'+record.title");
   });
 
   it('rejects a request with no/invalid token (401)', async () => {

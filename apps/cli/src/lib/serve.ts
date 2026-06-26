@@ -5,8 +5,7 @@ import { StringDecoder } from 'node:string_decoder';
 import { join } from 'node:path';
 import { collectInsights, RunManager } from '@excalibur/core';
 import { reduceRail } from '@excalibur/tui';
-import { dashboardHtml } from './dashboard';
-import { dashboardAppHtml } from './dashboard-app';
+import { dashboardAppHtml, dashboardNotBuiltHtml } from './dashboard-app';
 import {
   buildBoard,
   buildOrchestrations,
@@ -154,9 +153,10 @@ function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
   const path = url.pathname.replace(/\/+$/, '') || '/';
 
   if (path === '/') {
-    // Prefer the embedded Svelte dashboard (D0); fall back to the legacy inline
-    // page when the dashboard hasn't been built (e.g. dev/tests).
-    return { status: 200, html: dashboardAppHtml() ?? dashboardHtml() };
+    // Serve the embedded Svelte work-item dashboard. If it genuinely isn't built
+    // (dev before `pnpm -r build`), show an honest "not built" page — never a
+    // different, misleading dashboard.
+    return { status: 200, html: dashboardAppHtml() ?? dashboardNotBuiltHtml() };
   }
   if (path === '/health') {
     // `write` lets the dashboard enable/disable its interactive actions (D2).
