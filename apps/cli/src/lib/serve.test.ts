@@ -393,6 +393,9 @@ describe('excalibur serve — interactive write surface (D2)', () => {
           surface: false,
         }),
       scope: () => Promise.resolve(null),
+      scheduleAdd: () => null,
+      scheduleRemove: () => false,
+      scheduleSetEnabled: () => false,
     };
     server = createExcaliburServer({ repoRoot, token: TOKEN, pollMs: 50, write });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -481,6 +484,9 @@ describe('excalibur serve — live board SSE + read-only share token (D5)', () =
           surface: false,
         }),
       scope: () => Promise.resolve(null),
+      scheduleAdd: () => null,
+      scheduleRemove: () => false,
+      scheduleSetEnabled: () => false,
     };
     server = createExcaliburServer({
       repoRoot,

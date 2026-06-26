@@ -29,6 +29,7 @@ export type {
   PlanSummary,
   ScopeFragmentView,
   ScopeMapView,
+  ScheduleJobView,
   SessionSummary,
   SessionDetail,
   SessionTurnDto,

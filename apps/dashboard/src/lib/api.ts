@@ -15,6 +15,7 @@ import type {
   PlanShapeView,
   PlanSummary,
   RunRecord,
+  ScheduleJobView,
   ScopeMapView,
   SessionDetail,
   SessionSummary,
@@ -140,6 +141,24 @@ export const fetchSessions = (): Promise<{ sessions: SessionSummary[] }> => get(
 /** One session with its full transcript (DASH1 drill-in). */
 export const fetchSession = (id: string): Promise<SessionDetail> =>
   get(`/api/sessions/${encodeURIComponent(id)}`);
+
+/** Scheduled autonomous jobs (DASH2) — read-only list, soonest-next first. */
+export const fetchSchedules = (): Promise<{ schedules: ScheduleJobView[] }> =>
+  get('/api/schedules');
+
+/** Add a scheduled job from a human cadence + task (DASH2; write surface). */
+export const addSchedule = (
+  cadence: string,
+  task: string,
+): Promise<{ schedules: ScheduleJobView[] }> => post('/api/schedules', { cadence, task });
+
+/** Enable / disable a scheduled job (DASH2; write surface). */
+export const toggleSchedule = (id: string, enabled: boolean): Promise<{ ok: boolean }> =>
+  post(`/api/schedules/${encodeURIComponent(id)}/toggle`, { enabled });
+
+/** Remove a scheduled job (DASH2; write surface). */
+export const removeSchedule = (id: string): Promise<{ ok: boolean }> =>
+  post(`/api/schedules/${encodeURIComponent(id)}/remove`, {});
 
 // ---- meta-orchestrator missions (M8 #43) — read-only view of .excalibur/missions/ ----
 

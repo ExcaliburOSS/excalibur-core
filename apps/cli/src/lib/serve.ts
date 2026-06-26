@@ -16,10 +16,11 @@ import {
   buildDiscovery,
   buildSessions,
   buildSessionDetail,
+  buildSchedules,
   moveWorkItemLane,
   InvalidLaneError,
 } from './dashboard-data';
-import type { PlanShapeView, ScopeMapView } from '@excalibur/shared';
+import type { PlanShapeView, ScheduleJobView, ScopeMapView } from '@excalibur/shared';
 import { buildChronogramForRun } from './chronogram';
 import { missionsList, missionDetail } from './missions-serve';
 import { cancelOrchestrationLane, setOrchestrationPaused } from './orchestration-manifest';
@@ -63,6 +64,13 @@ export interface ServeWriteHandler {
   /** Read-only "Understand-first" scope of a task (AO9-4 — dashboard Scope view).
    * A model compute, no writes; null when no model is configured. */
   scope(task: string): Promise<ScopeMapView | null>;
+  /** DASH2 — add a scheduled job from a human cadence + task; the new list, or
+   * null when the cadence can't be parsed. */
+  scheduleAdd(cadence: string, task: string): ScheduleJobView[] | null;
+  /** DASH2 — remove a scheduled job by id; false if unknown. */
+  scheduleRemove(id: string): boolean;
+  /** DASH2 — enable/disable a scheduled job by id; false if unknown. */
+  scheduleSetEnabled(id: string, enabled: boolean): boolean;
 }
 
 export interface ServeOptions {
@@ -200,6 +208,10 @@ function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
     return detail === null
       ? { status: 404, body: { error: 'session not found' } }
       : { status: 200, body: detail };
+  }
+  if (path === '/api/schedules') {
+    // DASH2: scheduled autonomous jobs (AO8-3) — read-only from .excalibur/schedules.json.
+    return { status: 200, body: { schedules: buildSchedules(repoRoot) } };
   }
   if (path === '/api/missions') {
     // The meta-orchestrator's missions (M8 #43) — read-only from .excalibur/missions/.
@@ -564,6 +576,40 @@ async function handleWrite(
         return;
       }
       send(200, await options.write.scope(task));
+      return;
+    }
+    // DASH2: scheduler CRUD on the write surface (store-only; no model needed).
+    if (path === '/api/schedules') {
+      const body = await readJsonBody(req);
+      const cadence = typeof body['cadence'] === 'string' ? body['cadence'].trim() : '';
+      const task = typeof body['task'] === 'string' ? body['task'].trim() : '';
+      if (cadence.length === 0 || task.length === 0) {
+        send(400, { error: 'both "cadence" and "task" are required' });
+        return;
+      }
+      const schedules = options.write.scheduleAdd(cadence, task);
+      if (schedules === null) {
+        send(400, { error: `could not parse cadence "${cadence}"` });
+        return;
+      }
+      send(201, { schedules });
+      return;
+    }
+    const schedToggle = /^\/api\/schedules\/([^/]+)\/toggle$/.exec(path);
+    if (schedToggle !== null) {
+      const body = await readJsonBody(req);
+      const enabled = body['enabled'] === true;
+      const ok = options.write.scheduleSetEnabled(
+        decodeURIComponent(schedToggle[1] as string),
+        enabled,
+      );
+      send(ok ? 200 : 404, ok ? { ok: true, enabled } : { error: 'schedule not found' });
+      return;
+    }
+    const schedRemove = /^\/api\/schedules\/([^/]+)\/remove$/.exec(path);
+    if (schedRemove !== null) {
+      const ok = options.write.scheduleRemove(decodeURIComponent(schedRemove[1] as string));
+      send(ok ? 200 : 404, ok ? { ok: true } : { error: 'schedule not found' });
       return;
     }
     // D2: move a work item to another lane (drag-to-change-status).

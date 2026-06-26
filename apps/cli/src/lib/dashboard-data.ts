@@ -1,4 +1,12 @@
-import { RunManager, listPlans, readPlan, DiscoveryManager, SessionStore } from '@excalibur/core';
+import {
+  RunManager,
+  listPlans,
+  readPlan,
+  DiscoveryManager,
+  SessionStore,
+  ScheduleStore,
+  describeSpec,
+} from '@excalibur/core';
 import type { LocalRun } from '@excalibur/shared';
 import {
   LocalWorkItemProvider,
@@ -21,6 +29,7 @@ import {
   type PlanDetail,
   type PlanSummary,
   type RunSummary,
+  type ScheduleJobView,
   type SessionDetail,
   type SessionSummary,
   type WorkItemDetail,
@@ -379,6 +388,22 @@ export function buildSessionDetail(repoRoot: string, id: string): SessionDetail 
       at: turn.at,
     })),
   };
+}
+
+/** Scheduled autonomous jobs for the dashboard Scheduler view (DASH2), soonest-next first. */
+export function buildSchedules(repoRoot: string): ScheduleJobView[] {
+  return new ScheduleStore(repoRoot)
+    .list()
+    .map((j) => ({
+      id: j.id,
+      task: j.task,
+      cadence: describeSpec(j.spec),
+      createdAtMs: j.createdAtMs,
+      lastRunMs: j.lastRunMs,
+      nextRunMs: j.nextRunMs,
+      enabled: j.enabled,
+    }))
+    .sort((a, b) => a.nextRunMs - b.nextRunMs);
 }
 
 /** Projects core SessionMetadata onto the wire SessionSummary. */

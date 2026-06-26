@@ -58,6 +58,9 @@ function makeHandler(): {
         risks: [],
         openQuestions: [],
       }),
+    scheduleAdd: () => [],
+    scheduleRemove: () => true,
+    scheduleSetEnabled: () => true,
   };
   return { handler, calls };
 }

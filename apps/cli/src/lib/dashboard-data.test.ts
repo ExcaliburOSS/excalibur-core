@@ -1,10 +1,11 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { RunManager, SessionStore } from '@excalibur/core';
+import { RunManager, SessionStore, ScheduleStore } from '@excalibur/core';
 import { createEvent } from '@excalibur/shared';
 import { LocalWorkItemProvider } from '@excalibur/work-items';
 import {
   buildBoard,
   buildOrchestrations,
+  buildSchedules,
   buildSessions,
   buildSessionDetail,
   buildWorkItemDetail,
@@ -46,6 +47,32 @@ describe('dashboard-data (store → DTO mappers)', () => {
     expect(detail!.turns[1]).toMatchObject({ role: 'assistant', model: 'kimi', costCents: 12 });
     // unknown id → null (never throws)
     expect(buildSessionDetail(repoRoot, 'sess_nope')).toBeNull();
+  });
+
+  it('maps scheduled jobs with a human cadence, soonest-next first (DASH2)', () => {
+    const store = new ScheduleStore(repoRoot);
+    store.add({
+      id: 'sched_later',
+      task: 'nightly coverage',
+      spec: { type: 'dailyAt', minutesOfDay: 540 }, // 09:00
+      createdAtMs: 1000,
+      lastRunMs: null,
+      nextRunMs: 5000,
+      enabled: true,
+    });
+    store.add({
+      id: 'sched_soon',
+      task: 'lint sweep',
+      spec: { type: 'interval', everyMs: 7_200_000 }, // every 2h
+      createdAtMs: 1000,
+      lastRunMs: 2000,
+      nextRunMs: 3000,
+      enabled: false,
+    });
+    const list = buildSchedules(repoRoot);
+    expect(list.map((j) => j.id)).toEqual(['sched_soon', 'sched_later']); // sorted by nextRunMs
+    expect(list[0]).toMatchObject({ task: 'lint sweep', enabled: false, lastRunMs: 2000 });
+    expect(list[0]!.cadence.length).toBeGreaterThan(0); // describeSpec rendered a cadence
   });
 
   it('groups parent + child runs into a parallel orchestration (AO4e)', () => {

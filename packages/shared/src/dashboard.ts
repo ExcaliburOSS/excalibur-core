@@ -312,6 +312,19 @@ export interface SessionDetail extends SessionSummary {
   turns: SessionTurnDto[];
 }
 
+/** One scheduled autonomous job for the dashboard Scheduler view (DASH2) —
+ * mirrors the core `ScheduledJob` with the spec pre-rendered to a human cadence. */
+export interface ScheduleJobView {
+  id: string;
+  task: string;
+  /** Human cadence (e.g. "every 2h", "daily at 09:00") — `describeSpec(spec)`. */
+  cadence: string;
+  createdAtMs: number;
+  lastRunMs: number | null;
+  nextRunMs: number;
+  enabled: boolean;
+}
+
 /** A discovery session summary (D3). */
 export interface DiscoverySummary {
   id: string;

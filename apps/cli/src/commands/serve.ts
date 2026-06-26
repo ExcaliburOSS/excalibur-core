@@ -1,11 +1,25 @@
 import { randomBytes } from 'node:crypto';
 import type { Command } from 'commander';
-import { planShape, RunController, shouldSurfacePlanShape } from '@excalibur/core';
+import {
+  planShape,
+  RunController,
+  shouldSurfacePlanShape,
+  ScheduleStore,
+  parseScheduleSpec,
+  nextRun,
+  type ScheduledJob,
+} from '@excalibur/core';
 import { redactSecrets } from '@excalibur/model-gateway';
-import { executionStyleSchema, isAutonomyLevel, type ExecutionStyle } from '@excalibur/shared';
+import {
+  executionStyleSchema,
+  generateId,
+  isAutonomyLevel,
+  type ExecutionStyle,
+} from '@excalibur/shared';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
 import { loadConfigContext, loadGatewayContext } from '../lib/context';
+import { buildSchedules } from '../lib/dashboard-data';
 import { computeScope } from '../lib/scope';
 import { createExcaliburServer, type ServeWriteHandler } from '../lib/serve';
 
@@ -83,6 +97,32 @@ function buildWriteHandler(repoRoot: string): ServeWriteHandler {
     // model compute (no writes). Reuses the SAME wired computeScope as the CLI.
     // Unconfigured → null (never the mock; handleWrite turns it into a clean 200/null).
     scope: async (task) => (configured ? computeScope(repoRoot, task, gwCtx) : null),
+    // DASH2: scheduler CRUD — pure store ops (no model), so they work even
+    // unconfigured. Mirrors the `schedule add/remove` command exactly.
+    scheduleAdd: (cadence, task) => {
+      const spec = parseScheduleSpec(cadence);
+      if (spec === null) return null; // handleWrite turns this into a 400
+      const now = Date.now();
+      const job: ScheduledJob = {
+        id: generateId('sched'),
+        task,
+        spec,
+        createdAtMs: now,
+        lastRunMs: null,
+        nextRunMs: nextRun(spec, now),
+        enabled: true,
+      };
+      new ScheduleStore(repoRoot).add(job);
+      return buildSchedules(repoRoot);
+    },
+    scheduleRemove: (id) => new ScheduleStore(repoRoot).remove(id),
+    scheduleSetEnabled: (id, enabled) => {
+      const store = new ScheduleStore(repoRoot);
+      const job = store.list().find((j) => j.id === id);
+      if (job === undefined) return false;
+      store.update({ ...job, enabled });
+      return true;
+    },
   };
 }
 
