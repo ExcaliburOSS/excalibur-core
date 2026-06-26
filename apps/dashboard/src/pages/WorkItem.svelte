@@ -6,9 +6,12 @@
     startRun,
     cancelRun,
     approveRun,
+    updateWorkItem,
+    deleteWorkItem,
+    addComment,
     ApiError,
   } from '../lib/api';
-  import { type WorkItemDetail } from '../lib/contracts';
+  import { LANES, type DashboardLane, type WorkItemDetail } from '../lib/contracts';
   import { navigate } from '../lib/router.svelte';
   import { t } from '../lib/i18n';
 
@@ -19,6 +22,77 @@
   let loading = $state(true);
   let writable = $state(false);
   let actionError = $state<string | null>(null);
+
+  // Edit form + comment box.
+  let editing = $state(false);
+  let eTitle = $state('');
+  let eDesc = $state('');
+  let eLabels = $state('');
+  let ePriority = $state('');
+  let eAssignee = $state('');
+  let eLane = $state<DashboardLane>('todo');
+  let newComment = $state('');
+  let busy = $state(false);
+
+  function startEdit(): void {
+    if (item === null) return;
+    eTitle = item.title;
+    eDesc = item.description ?? '';
+    eLabels = item.labels.join(', ');
+    ePriority = item.priority ?? '';
+    eAssignee = item.assignee ?? '';
+    eLane = item.lane;
+    editing = true;
+  }
+
+  async function saveEdit(): Promise<void> {
+    if (item === null || busy || eTitle.trim().length === 0) return;
+    busy = true;
+    actionError = null;
+    try {
+      item = await updateWorkItem(item.key, {
+        title: eTitle.trim(),
+        description: eDesc.trim().length > 0 ? eDesc : null,
+        labels: eLabels
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+        priority: ePriority.trim().length > 0 ? ePriority.trim() : null,
+        assignee: eAssignee.trim().length > 0 ? eAssignee.trim() : null,
+        lane: eLane,
+      });
+      editing = false;
+    } catch (e) {
+      actionError = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function submitComment(): Promise<void> {
+    if (item === null || newComment.trim().length === 0 || busy) return;
+    busy = true;
+    actionError = null;
+    try {
+      item = await addComment(item.key, newComment.trim());
+      newComment = '';
+    } catch (e) {
+      actionError = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function removeItem(): Promise<void> {
+    if (item === null) return;
+    if (!window.confirm(t('board.deleteConfirm', { key: item.key }))) return;
+    try {
+      await deleteWorkItem(item.key);
+      navigate('/');
+    } catch (e) {
+      actionError = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
+    }
+  }
 
   onMount(() => {
     fetchHealth()
@@ -107,6 +181,8 @@
     {#if writable}
       <div class="actions">
         <button class="act go" onclick={onStartRun}>▸ {t('workItem.startRun')}</button>
+        <button class="act" onclick={startEdit}>✎ {t('common.edit')}</button>
+        <button class="act no" onclick={removeItem}>🗑 {t('board.delete')}</button>
       </div>
     {/if}
   </header>
@@ -115,7 +191,52 @@
     <div class="action-error" role="status">{t('workItem.actionFailed')}: {actionError}</div>
   {/if}
 
-  {#if item.description}
+  {#if editing}
+    <form
+      class="edit"
+      onsubmit={(e) => {
+        e.preventDefault();
+        void saveEdit();
+      }}
+    >
+      <label
+        >{t('workItem.title')}
+        <input bind:value={eTitle} />
+      </label>
+      <label
+        >{t('workItem.description')}
+        <textarea rows="3" bind:value={eDesc}></textarea>
+      </label>
+      <div class="row">
+        <label
+          >{t('board.lane')}
+          <select bind:value={eLane}>
+            {#each LANES as l (l)}<option value={l}>{t('lane.' + l)}</option>{/each}
+          </select>
+        </label>
+        <label
+          >{t('workItem.priority')}
+          <input bind:value={ePriority} placeholder="—" />
+        </label>
+        <label
+          >{t('workItem.assignee')}
+          <input bind:value={eAssignee} placeholder="—" />
+        </label>
+      </div>
+      <label
+        >{t('board.newLabels')}
+        <input bind:value={eLabels} />
+      </label>
+      <div class="row">
+        <button type="submit" class="primary" disabled={busy || eTitle.trim().length === 0}
+          >{t('common.save')}</button
+        >
+        <button type="button" class="ghost" onclick={() => (editing = false)}
+          >{t('common.cancel')}</button
+        >
+      </div>
+    </form>
+  {:else if item.description}
     <p class="desc">{item.description}</p>
   {/if}
 
@@ -160,14 +281,30 @@
     </section>
   {/if}
 
-  {#if item.comments.length > 0}
+  {#if item.comments.length > 0 || writable}
     <section>
       <h2>{t('workItem.comments')}</h2>
-      <ul class="comments">
-        {#each item.comments as c, i (i)}
-          <li><span class="faint">{c.author ?? '—'}</span> {c.body}</li>
-        {/each}
-      </ul>
+      {#if item.comments.length > 0}
+        <ul class="comments">
+          {#each item.comments as c, i (i)}
+            <li><span class="faint">{c.author ?? '—'}</span> {c.body}</li>
+          {/each}
+        </ul>
+      {/if}
+      {#if writable}
+        <form
+          class="addc"
+          onsubmit={(e) => {
+            e.preventDefault();
+            void submitComment();
+          }}
+        >
+          <input bind:value={newComment} placeholder={t('workItem.addComment')} />
+          <button type="submit" class="act" disabled={busy || newComment.trim().length === 0}
+            >{t('workItem.comment')}</button
+          >
+        </form>
+      {/if}
     </section>
   {/if}
 {/if}
@@ -279,5 +416,78 @@
   }
   .small {
     font-size: 12px;
+  }
+  .edit {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 16px 0;
+    padding: 16px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    max-width: 70ch;
+  }
+  .edit label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--muted);
+    flex: 1;
+  }
+  .edit .row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .edit input,
+  .edit textarea,
+  .edit select {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    font: inherit;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .edit textarea {
+    resize: vertical;
+  }
+  .primary {
+    background: var(--accent);
+    color: #fff;
+    border: 1px solid var(--accent);
+    padding: 7px 16px;
+    border-radius: var(--radius-sm);
+  }
+  .primary:disabled {
+    opacity: 0.5;
+  }
+  .ghost {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    padding: 7px 14px;
+    border-radius: var(--radius-sm);
+  }
+  .ghost:hover {
+    color: var(--text);
+  }
+  .addc {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .addc input {
+    flex: 1;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    font: inherit;
   }
 </style>
