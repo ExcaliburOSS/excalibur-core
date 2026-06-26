@@ -696,6 +696,9 @@ function changedFiles(repoRoot: string): string[] {
       cwd: repoRoot,
       encoding: 'utf8',
       timeout: 2000,
+      // Discard the child's stderr — a commit-less repo makes `HEAD` invalid and
+      // git prints "fatal: ambiguous argument 'HEAD'" to the inherited terminal.
+      stdio: ['ignore', 'pipe', 'ignore'],
     })
       .split('\n')
       .map((line) => line.trim())
@@ -753,18 +756,10 @@ export async function runAgentTurn(
   );
   runManager.updateRecord(run.id, { status: 'running' });
 
-  if (turn.quiet !== true) {
-    turn.deps.ui.info(
-      turn.deps.t('agent-turn.agent_header', {
-        mode:
-          role === 'planner'
-            ? turn.deps.t('agent-turn.mode_answer')
-            : turn.deps.t('agent-turn.mode_act'),
-        level: turn.autonomyLevel,
-      }),
-    );
-    turn.deps.ui.info(turn.deps.t('agent-turn.run_dir', { id: run.id, dir: run.dir }));
-  }
+  // No technical header / run-dir line here: the conversational shell leads with
+  // the agent's warm narration (streamed in the live rail) — the user should never
+  // see "→ agent · act · L4" or an internal run id/path. (The `run`/`patch` CLI
+  // commands keep their own run-dir line; they never call runAgentTurn.)
 
   // Knowledge-compounding: prepend relevant project memory as a leading system
   // message so prior decisions actually influence the turn (gated; null → nothing).
@@ -781,7 +776,10 @@ export async function runAgentTurn(
     ...(seed.length > 0 ? { seedMessages: seed } : {}),
   });
 
-  finishRun(turn.deps, runManager, run, result.aborted, turn.quiet === true);
+  // Suppress the internal "■ run completed" line in the conversational shell —
+  // the warm receipt below is the user-facing closure (we never expose "run").
+  // The run_completed EVENT is still recorded for replay/time-machine.
+  finishRun(turn.deps, runManager, run, result.aborted, true);
   if (turn.quiet !== true) {
     emitReceipt(turn, runManager, run.id, result.model || turn.providerName);
   }
@@ -828,8 +826,7 @@ export async function runPlanTurn(
   // --- 1. Plan pass (planner role, read-only) ------------------------------
   const planRun = createTurnRun(runManager, task, turn.autonomyLevel, turn.providerName, 'plan');
   runManager.updateRecord(planRun.id, { status: 'running' });
-  turn.deps.ui.info(turn.deps.t('agent-turn.plan_header', { level: turn.autonomyLevel }));
-  turn.deps.ui.info(turn.deps.t('agent-turn.run_dir', { id: planRun.id, dir: planRun.dir }));
+  turn.deps.ui.info(turn.deps.t('agent-turn.plan_header'));
 
   const planResult = await driveLoop(turn, adapter, runManager, planRun, generateId('sess'), {
     role: 'planner',
@@ -838,7 +835,7 @@ export async function runPlanTurn(
     allowConfirm: false,
     ...seed,
   });
-  finishRun(turn.deps, runManager, planRun, planResult.aborted);
+  finishRun(turn.deps, runManager, planRun, planResult.aborted, true); // no "run completed" chrome
 
   // Present the plan.
   turn.deps.ui.write();
@@ -898,8 +895,7 @@ export async function runPlanTurn(
   );
   runManager.updateRecord(execRun.id, { status: 'running' });
   turn.deps.ui.write();
-  turn.deps.ui.info(turn.deps.t('agent-turn.execute_header', { level: turn.autonomyLevel }));
-  turn.deps.ui.info(turn.deps.t('agent-turn.run_dir', { id: execRun.id, dir: execRun.dir }));
+  turn.deps.ui.info(turn.deps.t('agent-turn.execute_header'));
 
   const execResult = await driveLoop(turn, adapter, runManager, execRun, generateId('sess'), {
     role: 'implementer',
@@ -908,7 +904,7 @@ export async function runPlanTurn(
     allowConfirm: true,
     ...seed,
   });
-  finishRun(turn.deps, runManager, execRun, execResult.aborted);
+  finishRun(turn.deps, runManager, execRun, execResult.aborted, true); // receipt below is the closure
   emitReceipt(turn, runManager, execRun.id, execResult.model || turn.providerName);
 
   // Persist the approved plan to the PLANS folder (portable, re-runnable .md) and

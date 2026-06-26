@@ -157,11 +157,14 @@ describe('runAgentTurn — the real agentic loop (fake gateway)', () => {
     expect(result.runId).toMatch(/^run_/);
 
     const stdout = h.stdout();
-    expect(stdout).toContain('→ agent');
+    // The conversational turn no longer prints the technical "→ agent" header or
+    // the internal "run completed" line — narration + the action rail lead, and
+    // the warm receipt is the closure. The run_completed EVENT is still recorded.
+    expect(stdout).not.toContain('→ agent');
+    expect(stdout).not.toContain('run completed');
     // The live action renderer shows a `Read` block targeting the file.
     expect(stdout).toContain('Read');
     expect(stdout).toContain('README.md');
-    expect(stdout).toContain('run completed');
 
     // The run recorded its events.jsonl (replayable).
     const eventsFile = join(repo, '.excalibur', 'runs', result.runId, 'events.jsonl');
@@ -262,7 +265,8 @@ describe('runAgentTurn — the real agentic loop (fake gateway)', () => {
     const gw = fakeGateway([output('A read-only analysis of the repo.')]);
     const result = await runAgentTurn(turnDeps(h.deps, gw, 0), 'analyze the repo');
     expect(result.text).toContain('read-only analysis');
-    expect(h.stdout()).toContain('answer (read-only)');
+    // The read-only turn answers cleanly — no technical "→ agent · …" header.
+    expect(h.stdout()).not.toContain('→ agent');
   });
 });
 
@@ -296,9 +300,11 @@ describe('runPlanTurn — plan-mode (plan → gate → execute)', () => {
     expect(result.execution).not.toBeNull();
 
     const stdout = h.stdout();
-    expect(stdout).toContain('→ plan · planner (read-only)');
+    // Warm, user-facing PHASE markers (the user thinks in plans/phases) — no
+    // internal "planner (read-only) · L0" / "implementer · L4" role/level jargon.
+    expect(stdout).toContain('Planning…');
     expect(stdout).toContain('Plan');
-    expect(stdout).toContain('→ execute · implementer');
+    expect(stdout).toContain('Making the changes…');
     // The execution actually wrote the file (after approval).
     expect(existsSync(join(repo, 'planned.txt'))).toBe(true);
   });

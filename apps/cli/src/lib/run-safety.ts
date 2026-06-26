@@ -21,7 +21,13 @@ import type { CliDeps } from '../deps';
 
 function git(repoRoot: string, args: string[]): string | null {
   try {
-    return execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8' }).trim();
+    // Discard child stderr so a commit-less repo's "fatal: ambiguous argument
+    // 'HEAD'" (from rev-parse HEAD) never leaks onto the user's terminal.
+    return execFileSync('git', args, {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
   } catch {
     return null;
   }

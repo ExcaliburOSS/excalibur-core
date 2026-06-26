@@ -124,10 +124,11 @@ describe('interactive session (M-Shell, model-first)', () => {
     await runInteractiveSession(cli.deps, {});
 
     const stdout = cli.stdout();
-    // The model-driven turn renders the agent loop (a run dir, a model call, a
-    // completion) — not a keyword lane label.
-    expect(stdout).toContain('→ agent');
-    expect(stdout).toContain('run completed');
+    // The conversational turn leads with narration + the answer — it does NOT leak
+    // the internal "→ agent · act · L4" header or the "run completed" jargon (the
+    // run still exists on disk; it's just not user-facing chrome).
+    expect(stdout).not.toContain('→ agent');
+    expect(stdout).not.toContain('run completed');
     // The mock degraded answer is its templated banner.
     expect(stdout).toContain('Mock provider (M1)');
 

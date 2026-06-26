@@ -52,6 +52,14 @@ export function parseStructuralInput(text: string): StructuralInput {
     return { kind: 'shell', command: trimmed.slice(1).trim() };
   }
 
+  // Universal terminal convention: a bare `exit` / `quit` as the WHOLE line leaves
+  // the shell, even without a leading slash — every REPL (node, python, psql, …)
+  // honours it, and someone typing only "exit" means "get me out", never a task.
+  const bare = trimmed.toLowerCase();
+  if (bare === 'exit' || bare === 'quit') {
+    return { kind: 'command', name: bare, argv: [] };
+  }
+
   return { kind: 'natural', text: trimmed };
 }
 

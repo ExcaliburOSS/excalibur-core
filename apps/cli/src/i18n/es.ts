@@ -762,11 +762,7 @@ export const ES: Catalog = {
   'agent-turn.tool_needs_approval': '  ⚠ {tool} necesita aprobación: {reason}{detail}',
   'agent-turn.allow_action':
     '  ¿Permitir esta acción?  (s = sí · n = no · a = modo Auto, deja de preguntar)',
-  'agent-turn.agent_header': '→ agente · {mode} · L{level}',
-  'agent-turn.mode_answer': 'responder (solo lectura)',
-  'agent-turn.mode_act': 'actuar',
-  'agent-turn.run_dir': 'Ejecución {id} → {dir}',
-  'agent-turn.plan_header': '→ plan · planificador (solo lectura) · L{level}',
+  'agent-turn.plan_header': '◇ Planificando…',
   'agent-turn.plan_heading': 'Plan',
   'agent-turn.plan_non_interactive':
     'Plan listo. Vuelve a ejecutar con aprobación para ejecutarlo (no interactivo: no se ejecuta).',
@@ -774,7 +770,7 @@ export const ES: Catalog = {
   'agent-turn.plan_edit': 'Edita la tarea y vuelve a planificar.',
   'agent-turn.plan_cancelled': 'Plan cancelado. No se cambió nada.',
   'agent-turn.plan_saved': 'Plan guardado en .excalibur/plans/{file} y registrado en memoria.',
-  'agent-turn.execute_header': '→ ejecutar · implementador · L{level}',
+  'agent-turn.execute_header': '◆ Aplicando los cambios…',
   'agent-turn.fork_redacted':
     'La base reconstruida contiene [REDACTED] donde se ocultó un secreto al capturarlo — complétalos antes de confiar en el árbol de trabajo bifurcado.',
   'agent-turn.fork_header': '⑂ bifurcación de {runId} @ paso {step}/{total}',

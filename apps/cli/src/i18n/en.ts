@@ -707,11 +707,7 @@ export const EN: Catalog = {
   'agent-turn.tool_needs_approval': '  ⚠ {tool} needs approval: {reason}{detail}',
   'agent-turn.allow_action':
     '  Allow this action?  (y = yes · n = no · a = Auto mode, stop asking)',
-  'agent-turn.agent_header': '→ agent · {mode} · L{level}',
-  'agent-turn.mode_answer': 'answer (read-only)',
-  'agent-turn.mode_act': 'act',
-  'agent-turn.run_dir': 'Run {id} → {dir}',
-  'agent-turn.plan_header': '→ plan · planner (read-only) · L{level}',
+  'agent-turn.plan_header': '◇ Planning…',
   'agent-turn.plan_heading': 'Plan',
   'agent-turn.plan_non_interactive':
     'Plan ready. Re-run with approval to execute (non-interactive: not executing).',
@@ -719,7 +715,7 @@ export const EN: Catalog = {
   'agent-turn.plan_edit': 'Edit the task and re-plan.',
   'agent-turn.plan_cancelled': 'Plan cancelled. Nothing was changed.',
   'agent-turn.plan_saved': 'Plan saved to .excalibur/plans/{file} and recorded in memory.',
-  'agent-turn.execute_header': '→ execute · implementer · L{level}',
+  'agent-turn.execute_header': '◆ Making the changes…',
   'agent-turn.fork_redacted':
     'The reconstructed base contains [REDACTED] where a secret was scrubbed at capture — fill those in before relying on the forked worktree.',
   'agent-turn.fork_header': '⑂ fork of {runId} @ step {step}/{total}',

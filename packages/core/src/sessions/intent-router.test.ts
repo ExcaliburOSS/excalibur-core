@@ -221,6 +221,18 @@ describe('parseStructuralInput — structural recognition only (model-first)', (
     expect(decision).toEqual({ kind: 'shell', command: 'ls -la' });
   });
 
+  it('treats a bare `exit` / `quit` as the exit command (universal terminal convention)', () => {
+    for (const word of ['exit', 'quit', 'EXIT', 'Quit', '  exit  ']) {
+      expect(parseStructuralInput(word)).toEqual({
+        kind: 'command',
+        name: word.trim().toLowerCase(),
+        argv: [],
+      });
+    }
+    // But only as the WHOLE line — "exit the loop in foo.ts" is still a real task.
+    expect(parseStructuralInput('exit the loop early in foo.ts').kind).toBe('natural');
+  });
+
   it('treats everything else as a natural-language turn (handed to the model)', () => {
     // No keyword classification — a question, a task and an idea are all just
     // `natural` turns; the MODEL (the agent loop) decides what to do with them.
