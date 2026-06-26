@@ -15,15 +15,28 @@
 
   $effect(() => {
     const sessionId = id;
+    let cancelled = false; // a fast id-change must not let a stale response clobber state
     loading = true;
     error = null;
     detail = null;
-    const load = sessionId.length > 0 ? fetchSession(sessionId).then((d) => (detail = d)) : fetchSessions().then((r) => (list = r.sessions));
+    const load =
+      sessionId.length > 0
+        ? fetchSession(sessionId).then((d) => {
+            if (!cancelled) detail = d;
+          })
+        : fetchSessions().then((r) => {
+            if (!cancelled) list = r.sessions;
+          });
     load
       .catch((e) => {
-        error = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
+        if (!cancelled) error = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
       })
-      .finally(() => (loading = false));
+      .finally(() => {
+        if (!cancelled) loading = false;
+      });
+    return () => {
+      cancelled = true;
+    };
   });
 
   const when = (iso: string): string => {

@@ -105,6 +105,18 @@ const RUN_ID = /^run_\d{8}_\d{6}(?:_[a-z0-9]+)?$/;
 const WORK_ITEM_PATH = /^\/api\/work-items\/([^/]+)$/;
 const WORK_ITEM_KEY = /^WI-\d+$/;
 
+/**
+ * Rejects an id that, used as a directory name, could traverse out of its store
+ * folder. The WHATWG URL parser leaves `%2F` / `%2e%2e` percent-encoded in
+ * `pathname`, so a `([^/]+)` route capture matches `..%2F..%2Fsecret`, which
+ * `decodeURIComponent` then turns into `../../secret`. Any id reaching the
+ * filesystem (sessions / plans / missions detail readers) is checked through
+ * this first — a stored id never legitimately contains a separator or `..`.
+ */
+function isTraversalId(id: string): boolean {
+  return id.includes('..') || id.includes('/') || id.includes('\\') || id.includes('\0');
+}
+
 /** Extracts the bearer/query token from a request. */
 function tokenOf(req: IncomingMessage, url: URL): string | null {
   const auth = req.headers['authorization'];
@@ -194,7 +206,11 @@ function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
   }
   const planMatch = /^\/api\/plans\/([^/]+)$/.exec(path);
   if (planMatch !== null) {
-    const detail = buildPlanDetail(repoRoot, decodeURIComponent(planMatch[1] as string));
+    const id = decodeURIComponent(planMatch[1] as string);
+    if (isTraversalId(id)) {
+      return { status: 400, body: { error: 'invalid plan id' } };
+    }
+    const detail = buildPlanDetail(repoRoot, id);
     return detail === null
       ? { status: 404, body: { error: 'plan not found' } }
       : { status: 200, body: detail };
@@ -205,7 +221,11 @@ function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
   }
   const sessionMatch = /^\/api\/sessions\/([^/]+)$/.exec(path);
   if (sessionMatch !== null) {
-    const detail = buildSessionDetail(repoRoot, decodeURIComponent(sessionMatch[1] as string));
+    const id = decodeURIComponent(sessionMatch[1] as string);
+    if (isTraversalId(id)) {
+      return { status: 400, body: { error: 'invalid session id' } };
+    }
+    const detail = buildSessionDetail(repoRoot, id);
     return detail === null
       ? { status: 404, body: { error: 'session not found' } }
       : { status: 200, body: detail };
@@ -224,7 +244,11 @@ function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
   }
   const missionMatch = /^\/api\/missions\/([^/]+)$/.exec(path);
   if (missionMatch !== null) {
-    const detail = missionDetail(repoRoot, decodeURIComponent(missionMatch[1] as string));
+    const id = decodeURIComponent(missionMatch[1] as string);
+    if (isTraversalId(id)) {
+      return { status: 400, body: { error: 'invalid mission id' } };
+    }
+    const detail = missionDetail(repoRoot, id);
     return detail === null
       ? { status: 404, body: { error: 'mission not found' } }
       : { status: 200, body: detail };

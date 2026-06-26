@@ -156,6 +156,16 @@ describe('excalibur serve (HTTP/SSE over the event stream)', () => {
     expect((await get('/api/runs/not-a-run')).status).toBe(400);
   });
 
+  it('400s a path-traversal id on the sessions/plans/missions detail routes (DASH review fix)', async () => {
+    // The WHATWG URL parser keeps %2F/%2e%2e encoded, so the `[^/]+` capture matches
+    // — the isTraversalId guard must reject it before any filesystem join.
+    expect((await get('/api/sessions/..%2F..%2F..%2Fsecret')).status).toBe(400);
+    expect((await get('/api/plans/..%2Fx')).status).toBe(400);
+    expect((await get('/api/missions/..%2Fx')).status).toBe(400);
+    // A legit-shaped but unknown id still 404s (the guard does not over-reject).
+    expect((await get('/api/sessions/sess_20990101_000000')).status).toBe(404);
+  });
+
   it('serves the task-first kanban board (work items projected onto lanes)', async () => {
     const res = await get('/api/board');
     expect(res.status).toBe(200);

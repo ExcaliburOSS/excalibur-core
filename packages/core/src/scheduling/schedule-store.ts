@@ -58,6 +58,22 @@ export class ScheduleStore {
   update(job: ScheduledJob): void {
     this.replaceAll(this.list().map((j) => (j.id === job.id ? job : j)));
   }
+
+  /** Atomically flips a job's `enabled` flag inside ONE read→write so a concurrent
+   * daemon `advanceJob` write is not clobbered by a stale snapshot from an earlier
+   * read (the lost-update window of read-then-`update`). Returns false if unknown. */
+  setEnabled(id: string, enabled: boolean): boolean {
+    const jobs = this.list();
+    let found = false;
+    const next = jobs.map((j) => {
+      if (j.id !== id) return j;
+      found = true;
+      return { ...j, enabled };
+    });
+    if (!found) return false;
+    this.replaceAll(next);
+    return true;
+  }
 }
 
 /** Structural guard for a persisted job (tolerates hand-edits / older files). */

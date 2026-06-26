@@ -48,6 +48,18 @@ describe('ScheduleStore (AO8-3)', () => {
     expect(new ScheduleStore(dir).list()).toEqual([]); // no file yet
   });
 
+  it('setEnabled atomically flips one job and preserves the rest (DASH2 review fix)', () => {
+    const store = new ScheduleStore(dir);
+    store.add({ ...job('a'), enabled: true });
+    store.add({ ...job('b'), enabled: true, nextRunMs: 7000 });
+    expect(store.setEnabled('a', false)).toBe(true);
+    const reloaded = new ScheduleStore(dir).list();
+    expect(reloaded.find((j) => j.id === 'a')?.enabled).toBe(false);
+    expect(reloaded.find((j) => j.id === 'b')?.enabled).toBe(true); // untouched
+    expect(reloaded.find((j) => j.id === 'b')?.nextRunMs).toBe(7000); // timing preserved
+    expect(store.setEnabled('nope', true)).toBe(false); // unknown id
+  });
+
   it('drops jobs with a malformed spec payload (NaN/out-of-range), keeps valid ones', () => {
     const store = new ScheduleStore(dir);
     // A hand-edited file: one good job + bad ones (NaN everyMs, out-of-range minute).

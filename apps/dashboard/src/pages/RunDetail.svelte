@@ -16,24 +16,32 @@
 
   $effect(() => {
     const runId = id;
+    let cancelled = false; // a fast id-change must not let a stale response clobber state
     loading = true;
     error = null;
     record = null;
     events = [];
     Promise.all([fetchRunDetail(runId), fetchRunEvents(runId)])
       .then(([detail, ev]) => {
+        if (cancelled) return;
         record = detail.record;
         events = ev.events;
       })
       .catch((e) => {
+        if (cancelled) return;
         error = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
       })
-      .finally(() => (loading = false));
+      .finally(() => {
+        if (!cancelled) loading = false;
+      });
+    return () => {
+      cancelled = true;
+    };
   });
 
   interface FileChange {
     path: string;
-    diff: string;
+    lines: string[];
     add: number;
     del: number;
   }
@@ -44,11 +52,11 @@
       .filter((e) => e.type === 'file_write' && typeof (e.payload as { diff?: unknown }).diff === 'string')
       .map((e) => {
         const p = e.payload as { path?: string; diff?: string };
-        const diff = p.diff ?? '';
-        const lines = diff.split('\n');
+        // Drop a single trailing newline so split() doesn't yield a phantom empty line.
+        const lines = (p.diff ?? '').replace(/\n$/, '').split('\n');
         return {
           path: p.path ?? '?',
-          diff,
+          lines,
           add: lines.filter((l) => l.startsWith('+') && !l.startsWith('+++')).length,
           del: lines.filter((l) => l.startsWith('-') && !l.startsWith('---')).length,
         };
@@ -102,8 +110,7 @@
           <span class="fpath mono">{c.path}</span>
           <span class="fstat"><span class="plus">+{c.add}</span> <span class="minus">−{c.del}</span></span>
         </div>
-        <pre class="diff">{#each c.diff.split('\n') as line, li (li)}<span class="dl {lineClass(line)}">{line}
-</span>{/each}</pre>
+        <pre class="diff">{#each c.lines as line, li (li)}<span class="dl {lineClass(line)}">{line}</span>{/each}</pre>
       </div>
     {/each}
   {/if}
@@ -199,6 +206,7 @@
     display: block;
     padding: 0 12px;
     white-space: pre;
+    min-height: 1.45em; /* keep blank diff lines (now newline-free spans) at row height */
   }
   .dl.add {
     background: color-mix(in srgb, var(--ok) 14%, transparent);

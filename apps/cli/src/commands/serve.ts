@@ -116,13 +116,8 @@ function buildWriteHandler(repoRoot: string): ServeWriteHandler {
       return buildSchedules(repoRoot);
     },
     scheduleRemove: (id) => new ScheduleStore(repoRoot).remove(id),
-    scheduleSetEnabled: (id, enabled) => {
-      const store = new ScheduleStore(repoRoot);
-      const job = store.list().find((j) => j.id === id);
-      if (job === undefined) return false;
-      store.update({ ...job, enabled });
-      return true;
-    },
+    // Atomic single read→write (no stale-snapshot clobber of a concurrent daemon advance).
+    scheduleSetEnabled: (id, enabled) => new ScheduleStore(repoRoot).setEnabled(id, enabled),
   };
 }
 
