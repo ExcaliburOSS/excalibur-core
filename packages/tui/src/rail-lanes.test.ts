@@ -68,7 +68,7 @@ describe('renderLanes', () => {
         mode: 'dark',
       },
     ).join('\n');
-    // accent #5BC8FF → 91;200;255 marks the in-flight lane (distinct from done/green).
-    expect(coloured).toContain('\x1b[38;2;91;200;255m');
+    // accent #4DA3FF → 77;163;255 marks the in-flight lane (distinct from done/teal).
+    expect(coloured).toContain('\x1b[38;2;77;163;255m');
   });
 });

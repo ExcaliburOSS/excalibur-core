@@ -561,7 +561,7 @@ const hexColorSchema = z
   .regex(/^#[0-9a-fA-F]{6}$/, 'must be a 6-digit hex color like "#5BC8FF"');
 
 /**
- * Custom theme overrides (P1.13): any subset of the palette's 14 colors, merged
+ * Custom theme overrides (P1.13): any subset of the palette's 16 colors, merged
  * OVER the resolved base theme (`ui.theme`). Lets a user tweak one accent or
  * author a full palette without forking — `mode` still comes from the base.
  */
@@ -569,6 +569,8 @@ const customThemeSchema = z
   .object({
     accent: hexColorSchema.optional(),
     accentDim: hexColorSchema.optional(),
+    accentBright: hexColorSchema.optional(),
+    accentDeep: hexColorSchema.optional(),
     success: hexColorSchema.optional(),
     warn: hexColorSchema.optional(),
     danger: hexColorSchema.optional(),

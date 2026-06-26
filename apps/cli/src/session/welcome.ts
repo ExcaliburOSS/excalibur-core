@@ -1,4 +1,11 @@
-import { detectColorTier, paint, type ColorTier } from '@excalibur/tui';
+import {
+  detectColorTier,
+  detectThemeSync,
+  getColors,
+  paint,
+  type ColorTier,
+  type Palette,
+} from '@excalibur/tui';
 
 /**
  * The M-Shell welcome screen.
@@ -34,11 +41,30 @@ export interface WelcomeContext {
   unicode: boolean;
 }
 
-const BLADE = '#2368d0';
-const GUARD = '#686464';
-const ACCENT = '#5bc8ff';
-const DIMHEX = '#8b949e';
-const WHITEHEX = '#e6edf3';
+// The sword + frame are themed from the canonical Cobalt palette (following the
+// terminal's light/dark) instead of hardcoded constants, so the welcome screen
+// re-colours with the active theme: blade = the deep sword-blue, frame/title =
+// the primary accent, with a cool-grey crossguard.
+const PALETTE: Palette = getColors(detectThemeSync() ?? 'dark');
+const BLADE = PALETTE.accentDeep; // sword-blade blue
+const GUARD = '#5a6678'; // cool neutral crossguard
+const ACCENT = PALETTE.accent; // border + title + tips
+const DIMHEX = PALETTE.muted;
+const WHITEHEX = PALETTE.text;
+
+/** RGB channel (0=r,1=g,2=b) of a `#rrggbb` hex. */
+const chan = (hex: string, i: number): number => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+// Sword/title gradient endpoints: deep blade → bright glow (palette-derived).
+const GRAD_FROM: readonly [number, number, number] = [
+  chan(BLADE, 0),
+  chan(BLADE, 1),
+  chan(BLADE, 2),
+];
+const GRAD_TO: readonly [number, number, number] = [
+  chan(PALETTE.accentBright, 0),
+  chan(PALETTE.accentBright, 1),
+  chan(PALETTE.accentBright, 2),
+];
 
 /** Visible width (strips full ANSI SGR; the glyphs we use are all width-1). */
 function vlen(s: string): number {
@@ -69,7 +95,7 @@ function wrap(text: string, w: number): string[] {
 const dim = (s: string, tier: ColorTier): string => paint(s, DIMHEX, tier);
 const accentText = (s: string, tier: ColorTier): string => paint(s, ACCENT, tier);
 
-/** Per-character blue→cyan gradient (#2368d0 → #78d2ff; plain at tier `none`). */
+/** Per-character deep-blade→bright-glow gradient (palette-derived; plain at tier `none`). */
 function gradient(text: string, tier: ColorTier): string {
   const lerp = (c1: number, c2: number, t: number): string =>
     Math.round(c1 + (c2 - c1) * t)
@@ -79,7 +105,11 @@ function gradient(text: string, tier: ColorTier): string {
   let out = '';
   for (let i = 0; i < chars.length; i++) {
     const t = chars.length > 1 ? i / (chars.length - 1) : 0;
-    const hex = `#${lerp(35, 120, t)}${lerp(104, 210, t)}${lerp(208, 255, t)}`;
+    const hex = `#${lerp(GRAD_FROM[0], GRAD_TO[0], t)}${lerp(GRAD_FROM[1], GRAD_TO[1], t)}${lerp(
+      GRAD_FROM[2],
+      GRAD_TO[2],
+      t,
+    )}`;
     out += paint(chars[i] ?? '', hex, tier);
   }
   return out;

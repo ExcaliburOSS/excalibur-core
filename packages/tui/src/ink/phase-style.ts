@@ -1,4 +1,4 @@
-import { glyph, spinnerFrames, type Palette } from '../theme.js';
+import { glyph, pulseColor, spinnerFrames, type Palette } from '../theme.js';
 import type { PhaseEvent, PhaseState } from '../rail-types.js';
 
 /**
@@ -15,9 +15,10 @@ export function stateGlyph(
     case 'completed':
       return { char: glyph.done, color: colors.success };
     case 'running':
+      // Breathes: the live node glows along the accent ramp as it spins.
       return {
         char: spinnerFrames[spinnerFrame % spinnerFrames.length] ?? glyph.running,
-        color: colors.accent,
+        color: pulseColor(colors, spinnerFrame),
       };
     case 'waiting':
       return { char: glyph.waiting, color: colors.warn };

@@ -145,9 +145,9 @@ describe('renderDiff', () => {
     const colored = renderDiff(MOD_DIFF, { tier: 'truecolor', mode: 'dark', width: 60 }).join('\n');
     expect(colored).toContain('\x1b[48;2;'); // a background (row tint / word highlight)
     expect(colored).toContain('\x1b[38;2;'); // a foreground
-    // dark add row bg (#12351F → 18;53;31) and add word bg (#1F6F3D → 31;111;61).
-    expect(colored).toContain('\x1b[48;2;18;53;31m');
-    expect(colored).toContain('\x1b[48;2;31;111;61m');
+    // Cobalt add row bg (#10302A → 16;48;42) and cobalt word-level bg (#1D4E82 → 29;78;130).
+    expect(colored).toContain('\x1b[48;2;16;48;42m');
+    expect(colored).toContain('\x1b[48;2;29;78;130m');
   });
 
   it('downsamples to ansi16 (background = fg code + 10)', () => {

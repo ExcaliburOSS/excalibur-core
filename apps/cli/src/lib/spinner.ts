@@ -1,4 +1,4 @@
-import pc from 'picocolors';
+import { accent } from './accent';
 
 /**
  * A transient single-line "thinking/working" indicator (the M-Shell
@@ -102,7 +102,7 @@ export class Spinner {
     const glyph = this.frames[this.frame % this.frames.length] as string;
     this.frame += 1;
     const text = this.render !== null ? this.render() : '';
-    this.stdout.write(`${CLEAR_LINE} ${pc.cyan(glyph)} ${text}`);
+    this.stdout.write(`${CLEAR_LINE} ${accent(glyph)} ${text}`);
     this.active = true;
   }
 }

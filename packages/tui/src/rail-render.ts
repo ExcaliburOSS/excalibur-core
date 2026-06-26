@@ -9,6 +9,7 @@ import {
   formatTokens,
   getColors,
   glyph,
+  pulseColor,
   spinnerFrames,
   type Palette,
   type ThemeMode,
@@ -32,13 +33,17 @@ import type { Phase, PhaseEvent, RailModel } from './rail-types.js';
 const RAIL = ascii ? '|' : '│';
 const NAME_WIDTH = 18;
 
-/** Maps a phase state to its palette colour. */
-function stateHex(state: Phase['state'], palette: Palette): string {
+/**
+ * Maps a phase state to its palette colour. The running node BREATHES: its colour
+ * is the pulse ramp at the current animation tick (deep → accent → bright), so the
+ * live node doesn't just spin, it glows — Excalibur's signature blue heartbeat.
+ */
+function stateHex(state: Phase['state'], palette: Palette, frame = 0): string {
   switch (state) {
     case 'completed':
       return palette.success;
     case 'running':
-      return palette.accent;
+      return pulseColor(palette, frame);
     case 'waiting':
       return palette.warn;
     case 'failed':
@@ -136,7 +141,7 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
     }
     const annotation = parts.length > 0 ? `  ${parts.join(' · ')}` : '';
     const isActive = index === active;
-    const glyphCol = c(stateChar(phase, frame), stateHex(phase.state, palette));
+    const glyphCol = c(stateChar(phase, frame), stateHex(phase.state, palette, frame));
     // One accent, lots of dim: the active phase name reads in normal text, the
     // rest dim back so the live node pops. Pad only when an annotation follows
     // (otherwise trailing padding would be trapped inside the colour wrap and
@@ -218,7 +223,9 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
     s.inputTokens + s.outputTokens > 0
       ? `${c(`${formatTokens(s.inputTokens)}↑ ${formatTokens(s.outputTokens)}↓`, palette.muted)} · `
       : '';
-  lines.push(` ${c('─'.repeat(48), palette.rail)}`);
+  // Hairline with an accent tick: a short bright segment at the head fading into
+  // the rail tone — a modern divider rather than a flat rule.
+  lines.push(` ${c('─'.repeat(3), palette.accent)}${c('─'.repeat(45), palette.rail)}`);
   lines.push(
     `  ${autonomy}${c(s.safety, palette.muted)} · ${c(formatCents(s.costCents), palette.muted)} · ${tokens}${c(
       formatElapsed(s.elapsedMs),

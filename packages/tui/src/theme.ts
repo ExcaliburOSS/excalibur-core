@@ -13,8 +13,14 @@ export type ThemeMode = 'light' | 'dark';
 
 export interface Palette {
   mode: ThemeMode;
+  /** Primary brand accent — the electric "sword blue" (cursor, prompt, live glyphs). */
   accent: string;
+  /** Subdued accent for chrome (hunk headers, connectors, secondary marks). */
   accentDim: string;
+  /** Glow peak — the brightest accent stop (pulse crest, word-level diff highlight). */
+  accentBright: string;
+  /** Deepest accent — the sword-blade blue (pulse trough, active borders). */
+  accentDeep: string;
   success: string;
   warn: string;
   danger: string;
@@ -30,24 +36,34 @@ export interface Palette {
   diffDelWordBg: string;
 }
 
-/** Tuned for dark backgrounds (bright text, vivid accents). */
+/**
+ * "Cobalt" — Excalibur's canonical dark theme. A futuristic blue/grey identity:
+ * a single electric sword-blue accent on a 3-stop rampa (deep → accent → bright)
+ * so live elements can pulse and glow, blue-tinted cool greys, and semantic
+ * states cooled toward the palette (teal "good", coral "bad", amber the lone warm
+ * pop). Diffs stay legible (teal vs coral) but the word-level highlight glows
+ * cobalt — the precise changed characters light up blue.
+ */
 export const darkColors: Palette = {
   mode: 'dark',
-  accent: '#5BC8FF',
-  accentDim: '#3A7CA0',
-  success: '#5AD18A',
-  warn: '#F2C94C',
-  danger: '#EB5757',
+  accent: '#4DA3FF', // electric azure
+  accentDim: '#2F6FB5', // subdued accent for chrome
+  accentBright: '#7FD4FF', // glow peak
+  accentDeep: '#2368D0', // sword-blade blue
+  success: '#3DD6A8', // cool teal "good"
+  warn: '#F2C94C', // the single warm pop
+  danger: '#FF6B7A', // coral "bad"
   text: '#E6EDF3',
-  muted: '#8B949E',
-  rail: '#3A4048',
-  // GitHub-dark-like diff tints: faint row bg + a brighter word-level bg.
-  diffAddFg: '#7EE2A8',
-  diffDelFg: '#FF8A8A',
-  diffAddBg: '#12351F',
-  diffDelBg: '#3A1414',
-  diffAddWordBg: '#1F6F3D',
-  diffDelWordBg: '#7A2222',
+  muted: '#8B98AB', // blue-tinted cool grey
+  rail: '#34415A', // blue-tinted connector lines
+  // Cooled diff tints: teal/coral foregrounds + faint row bg; the word-level
+  // highlight is COBALT (accentDeep family) so changed tokens glow blue.
+  diffAddFg: '#3DD6A8',
+  diffDelFg: '#FF7A8A',
+  diffAddBg: '#10302A',
+  diffDelBg: '#351A20',
+  diffAddWordBg: '#1D4E82',
+  diffDelWordBg: '#1D4E82',
 };
 
 /** Tuned for light backgrounds (dark text, deeper accents — GitHub-light-like). */
@@ -55,6 +71,8 @@ export const lightColors: Palette = {
   mode: 'light',
   accent: '#0969DA',
   accentDim: '#0a4b9c',
+  accentBright: '#1F6FEB',
+  accentDeep: '#0550AE',
   success: '#1A7F37',
   warn: '#9A6700',
   danger: '#CF222E',
@@ -79,6 +97,8 @@ export const daltonizedDark: Palette = {
   mode: 'dark',
   accent: '#5BC8FF',
   accentDim: '#3A7CA0',
+  accentBright: '#9FE0FF',
+  accentDeep: '#2E8FD0',
   success: '#56B4E9', // blue = "good/added" (not green)
   warn: '#E69F00',
   danger: '#E69F00', // amber = "bad/removed" (not red)
@@ -97,6 +117,8 @@ export const daltonizedLight: Palette = {
   mode: 'light',
   accent: '#0969DA',
   accentDim: '#0a4b9c',
+  accentBright: '#1F6FEB',
+  accentDeep: '#0550AE',
   success: '#0072B2',
   warn: '#B35900',
   danger: '#B35900',
@@ -116,6 +138,8 @@ export const highContrastDark: Palette = {
   mode: 'dark',
   accent: '#00D7FF',
   accentDim: '#00AFD7',
+  accentBright: '#5CF0FF',
+  accentDeep: '#008CB0',
   success: '#00FF5F',
   warn: '#FFD700',
   danger: '#FF5F5F',
@@ -303,6 +327,51 @@ export const eventGlyph: Record<PhaseEventKind, string> = ascii
 export const spinnerFrames = ascii
   ? ['-', '\\', '|', '/']
   : ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+// ── Motion vocabulary (the "Cobalt" futuristic accents) ─────────────────────
+
+/** The pulsing "live" dot — Excalibur's signature beat. Degrades to ASCII. */
+export const pulseGlyph = ascii ? '*' : '●';
+
+/**
+ * One "breath" of the accent: a smooth ramp up to the bright crest and back.
+ * Indexed by an animation tick, it makes any live element pulse in blue. The
+ * sequence is deliberately asymmetric-free (palindromic) so it reads as a calm
+ * inhale/exhale rather than a strobe.
+ */
+export function pulseStops(p: Palette): readonly string[] {
+  return [p.accentDeep, p.accentDim, p.accent, p.accentBright, p.accent, p.accentDim];
+}
+
+/** The accent hex for a breathing "live" element at the given animation tick. */
+export function pulseColor(p: Palette, tick: number): string {
+  const stops = pulseStops(p);
+  const i = ((Math.floor(tick) % stops.length) + stops.length) % stops.length;
+  return stops[i] ?? p.accent;
+}
+
+/** Sub-cell rising blocks (empty → full) for the status micro-gauge. */
+const GAUGE_CELLS = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+
+/**
+ * A compact N-cell gauge for a ratio in [0,1]: cells rise as the value fills, so
+ * the status line shows context/token pressure as a futuristic micro-equalizer
+ * instead of a bare percentage. Returns the per-cell glyphs (the renderer colors
+ * filled cells with the accent ramp and empties with the rail tone); ASCII gets
+ * `#`/`.`. The boolean parallels which cells are "live" so callers can paint.
+ */
+export function gaugeCells(ratio: number, cells: number): { glyph: string; filled: boolean }[] {
+  const r = Math.max(0, Math.min(1, ratio));
+  const out: { glyph: string; filled: boolean }[] = [];
+  for (let i = 0; i < cells; i++) {
+    const fill = Math.max(0, Math.min(1, r * cells - i));
+    out.push({
+      glyph: ascii ? (fill > 0 ? '#' : '.') : (GAUGE_CELLS[Math.round(fill * 8)] ?? ' '),
+      filled: fill > 0,
+    });
+  }
+  return out;
+}
 
 export function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
