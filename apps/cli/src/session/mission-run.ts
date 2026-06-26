@@ -1,7 +1,7 @@
 import { resolveAgentAdapter } from '@excalibur/agent-runtime';
 import {
-  commitAll,
   createReassessor,
+  getGitInfo,
   getLocalDiff,
   interpretMission,
   MESH_LENSES,
@@ -28,6 +28,7 @@ import { loadGatewayContext, requireConfiguredModel } from '../lib/context';
 import { runExploreFlow } from '../lib/explore';
 import { captureRestorePoint, printRecoveryHint, warnDirtyTree } from '../lib/run-safety';
 import { runSwarmFlow } from '../lib/swarm';
+import { shipChange } from '../lib/ship-pr';
 import { runAgentTurn, type AgentTurnDeps, type ApprovalState } from './agent-turn';
 
 /**
@@ -40,9 +41,11 @@ import { runAgentTurn, type AgentTurnDeps, type ApprovalState } from './agent-tu
  * mission is checkpointed so a long job is resumable.
  */
 
-/** Read-only capabilities run at a planner level (read tools only); the rest mutate. */
+/** Read-only capabilities run at a planner level (read tools only); the rest
+ * mutate. `ship` is read-only too — its agentic turn only SUMMARIZES the change
+ * for the PR; the deterministic ship step does the commit/push/PR. */
 function capabilityLevel(capability: string, sessionLevel: AutonomyLevel): AutonomyLevel {
-  const readOnly = ['understand', 'plan', 'discover', 'verify', 'review'];
+  const readOnly = ['understand', 'plan', 'discover', 'verify', 'review', 'ship'];
   return (readOnly.includes(capability) ? 1 : Math.max(2, sessionLevel)) as AutonomyLevel;
 }
 
@@ -142,6 +145,13 @@ export interface MissionRunOptions {
   signal: AbortSignal;
   /** Hard budget ceiling in cents — the mission PAUSES when reached (resumable). */
   budgetCents?: number;
+  /**
+   * Open a real pull request at the `ship` step (M8 follow-up): branch off the
+   * default, commit, push, and `gh pr create`. Opt-in — pushing to a remote is
+   * outward-facing, so it is OFF unless the user asked for it (`mission --pr`).
+   * Without it (or without `gh`/a remote) `ship` just commits locally.
+   */
+  openPr?: boolean;
 }
 
 /**
@@ -267,20 +277,41 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
         }
       }
     } else if (step.capability === 'ship') {
-      // A real local "ship": commit the work (PR creation needs a gh remote — a
-      // further follow-up). Nothing changed → a no-op, still ok.
-      if (getLocalDiff(repoRoot).trim().length > 0) {
-        const committed = commitAll(repoRoot, `Excalibur: ${mission.goal.slice(0, 72)}`);
+      // A real "ship": let the agentic turn WRITE the PR summary (read-only), then
+      // commit — and, when the user opted in (`--pr`) and a gh remote is reachable,
+      // branch + push + open the PR. Nothing changed → a no-op, still ok.
+      if (getLocalDiff(repoRoot).trim().length === 0) {
         return {
           ok: true,
-          summary: committed ? 'Committed the change.' : 'Nothing to commit.',
-          signals: { engine: 'commit', committed },
+          summary: 'Nothing to ship.',
+          signals: { engine: 'ship', committed: false },
         };
       }
+      let body = '';
+      try {
+        const summary = await runAgentTurn(turn, capabilityTask(step, mission));
+        body = summary.text;
+      } catch {
+        /* the PR body is best-effort — fall back to the goal as the title/body */
+      }
+      const result = shipChange(repoRoot, {
+        goal: mission.goal,
+        body,
+        openPr: opts.openPr === true,
+        gitInfo: getGitInfo(repoRoot),
+      });
+      deps.ui.write(
+        result.prUrl !== undefined ? pc.green(`  ⇪ ${result.note}`) : pc.dim(`  ⇪ ${result.note}`),
+      );
       return {
         ok: true,
-        summary: 'Nothing to commit.',
-        signals: { engine: 'commit', committed: false },
+        summary: result.note,
+        signals: {
+          engine: result.prUrl !== undefined ? 'pr' : 'commit',
+          committed: result.committed,
+          ...(result.branch !== undefined ? { branch: result.branch } : {}),
+          ...(result.prUrl !== undefined ? { prUrl: result.prUrl } : {}),
+        },
       };
     }
 

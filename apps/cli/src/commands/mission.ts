@@ -21,7 +21,11 @@ export function registerMissionCommand(program: Command, deps: CliDeps): void {
       '--budget <usd>',
       'hard budget ceiling in USD; the mission pauses (resumable) when reached',
     )
-    .action(async (goal: string[], options: { budget?: string }) => {
+    .option(
+      '--pr',
+      'open a real pull request at the ship step (branch, push, gh pr create) instead of committing locally',
+    )
+    .action(async (goal: string[], options: { budget?: string; pr?: boolean }) => {
       const repoRoot = deps.cwd();
       const { config } = loadConfigContext(repoRoot);
       const ctrl = new AbortController();
@@ -37,6 +41,7 @@ export function registerMissionCommand(program: Command, deps: CliDeps): void {
           autonomyLevel: (config.autonomy?.default ?? 4) as AutonomyLevel,
           approvals: { auto: true }, // a direct command runs unattended (like run --yes)
           signal: ctrl.signal,
+          ...(options.pr === true ? { openPr: true } : {}),
           ...(budgetUsd !== undefined && Number.isFinite(budgetUsd)
             ? { budgetCents: Math.round(budgetUsd * 100) }
             : {}),
