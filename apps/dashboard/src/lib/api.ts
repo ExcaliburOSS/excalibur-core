@@ -8,6 +8,7 @@ import type {
   BackgroundThreadView,
   BoardResponse,
   ChronogramDto,
+  ExcaliburEvent,
   DashboardLane,
   DiscoverySummary,
   InsightsReportDto,
@@ -113,6 +114,16 @@ export const fetchWorkItem = (key: string): Promise<WorkItemDetail> =>
 /** All runs (the runs explorer). `/api/runs` returns full RunRecords today; the
  * explorer reads a subset. D4 will switch this to rolled-up RunSummary objects. */
 export const fetchRuns = (): Promise<{ runs: RunRecord[] }> => get('/api/runs');
+
+/** One run's record + reduced rail (DASH4 run detail). */
+export const fetchRunDetail = (id: string): Promise<{ record: RunRecord; rail: unknown }> =>
+  get(`/api/runs/${encodeURIComponent(id)}`);
+
+/** One run's raw event log (DASH4 — diff/patch viewer reads file_write diffs). */
+export const fetchRunEvents = (
+  id: string,
+): Promise<{ events: ExcaliburEvent[]; total: number; nextCursor: number }> =>
+  get(`/api/runs/${encodeURIComponent(id)}/events`);
 
 /** Aggregate insights for the analytics view (D4). */
 export const fetchInsights = (): Promise<InsightsReportDto> => get('/api/insights');

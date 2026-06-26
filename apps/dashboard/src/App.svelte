@@ -13,6 +13,7 @@
   import Sessions from './pages/Sessions.svelte';
   import Scheduler from './pages/Scheduler.svelte';
   import Threads from './pages/Threads.svelte';
+  import RunDetail from './pages/RunDetail.svelte';
 
   const router = createRouter();
 
@@ -52,7 +53,9 @@
       <Board />
     {:else if router.current.name === 'workItem'}
       <WorkItem key={router.current.params.key ?? ''} />
-    {:else if router.current.name === 'runs' || router.current.name === 'run'}
+    {:else if router.current.name === 'run'}
+      <RunDetail id={router.current.params.id ?? ''} />
+    {:else if router.current.name === 'runs'}
       <Runs />
     {:else if router.current.name === 'insights'}
       <Insights />

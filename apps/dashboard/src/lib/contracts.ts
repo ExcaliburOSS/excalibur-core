@@ -20,6 +20,7 @@ export type {
   CountCostDto,
   DayBucketDto,
   DiscoverySummary,
+  ExcaliburEvent,
   InsightsReportDto,
   OrchestrationLaneDto,
   OrchestrationSummary,
