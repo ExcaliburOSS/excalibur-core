@@ -54,17 +54,15 @@
             : '○';
 </script>
 
-<h1>Missions</h1>
-<p class="sub faint">
-  The meta-orchestrator interprets a goal, composes a capability plan, and drives it.
-</p>
+<h1>{t('nav.missions')}</h1>
+<p class="sub faint">{t('missions.subtitle')}</p>
 
 {#if loading}
   <div class="state muted">{t('common.loading')}</div>
 {:else if error !== null}
   <div class="state bad">{t('common.error')}: {error}</div>
 {:else if missions.length === 0}
-  <div class="state muted">No missions yet — run <code>excalibur mission "&lt;goal&gt;"</code>.</div>
+  <div class="state muted">{t('missions.empty')}</div>
 {:else}
   <ul class="list">
     {#each missions as m (m.id)}
@@ -100,7 +98,7 @@
               </ul>
               {#if openBody.successCriteria.length > 0}
                 <div class="crit">
-                  <span class="clabel faint">Success criteria</span>
+                  <span class="clabel faint">{t('missions.criteria')}</span>
                   <ul>
                     {#each openBody.successCriteria as c (c)}
                       <li>{c}</li>
@@ -257,10 +255,6 @@
     padding-left: 18px;
   }
   .small {
-    font-size: 12px;
-  }
-  code {
-    font-family: var(--mono);
     font-size: 12px;
   }
 </style>

@@ -14,6 +14,10 @@
   let error = $state<string | null>(null);
 
   onMount(async () => {
+    // Seed from the top-bar search (`#/search?q=…`) so a query typed up there
+    // lands here pre-filled instead of an empty box.
+    const seeded = new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('q');
+    if (seeded !== null && seeded.length > 0) query = seeded;
     try {
       const [r, b] = await Promise.all([fetchRuns(), fetchBoard()]);
       runs = r.runs;

@@ -1,30 +1,57 @@
 /*
- * Excalibur dashboard design tokens (D0). Dark-first, editorial, monospace
- * accents — consistent with the CLI's cyberpunk-sword identity. A single token
- * layer here so D1–D5 views stay visually coherent without re-deciding colors.
+ * Excalibur dashboard design system.
+ *
+ * Aesthetic: a "cobalt instrument panel" — a terminal-native command center.
+ * Deep near-black canvas with an atmospheric sword-blue glow and a faint
+ * blueprint grid; monospace for keys/labels/data (the terminal DNA) paired with
+ * a refined sans for prose; depth from layered panels, hairline borders and
+ * inset highlights; restrained glow on accents and live elements.
+ *
+ * One token + component layer here keeps every view (the board, activity, plans,
+ * insights) visually coherent without re-deciding colors per page. Parity with
+ * the Ink TUI's Cobalt palette so the two surfaces read as one product.
  */
 :root {
-  --bg: #0a0e16;
-  --panel: #141a24;
-  --panel-2: #1a2230;
-  --line: #212a3a;
-  --line-strong: #34415a;
-  --text: #e6edf3;
-  --muted: #8b98ab;
-  --faint: #5a6678;
-  /* Parity with the live TUI Cobalt palette (sword-blue accent #4DA3FF, teal
-   * success #3DD6A8, amber warn #F2C94C, coral danger #FF6B7A on near-black),
-   * so the web view reads as the same product as the Ink rail. */
+  /* Canvas & surfaces — deepened for more contrast/depth than a flat panel. */
+  --bg: #070b12;
+  --bg-2: #0a0f18;
+  --panel: #0f1722;
+  --panel-2: #15202f;
+  --panel-3: #1b2738;
+  --line: #1d2737;
+  --line-strong: #33415a;
+
+  /* Ink */
+  --text: #e8eef6;
+  --muted: #93a1b5;
+  --faint: #5d6b80;
+
+  /* Cobalt accent + a cyan twin for gradients/glow, plus status hues. */
   --accent: #4da3ff;
-  --accent-dim: #2f6fb5;
+  --accent-2: #67d9ff;
+  --accent-dim: #2a5c8f;
+  --accent-soft: rgba(77, 163, 255, 0.13);
   --ok: #3dd6a8;
   --warn: #f2c94c;
   --bad: #ff6b7a;
-  --radius: 10px;
-  --radius-sm: 6px;
-  --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;
-  --sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Inter, Helvetica, Arial, sans-serif;
+
+  /* Geometry */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+
+  /* Elevation & light */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 6px 24px -8px rgba(0, 0, 0, 0.6);
+  --shadow-3: 0 20px 48px -16px rgba(0, 0, 0, 0.7);
+  --glow: 0 0 0 1px rgba(77, 163, 255, 0.35), 0 8px 28px -10px rgba(77, 163, 255, 0.4);
+  --inset-top: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --ring: 0 0 0 3px rgba(77, 163, 255, 0.28);
+
+  --transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Fira Code', Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
 * {
@@ -43,8 +70,31 @@ body {
   color: var(--text);
   font-family: var(--sans);
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Atmosphere: a fixed cobalt glow at the top plus a faint blueprint grid that
+ * fades downward. Sits behind everything; never intercepts pointer events. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(900px 460px at 50% -8%, rgba(77, 163, 255, 0.12), transparent 62%),
+    radial-gradient(700px 380px at 92% 0%, rgba(103, 217, 255, 0.06), transparent 60%),
+    linear-gradient(rgba(120, 150, 190, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 150, 190, 0.05) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    100% 100%,
+    52px 52px,
+    52px 52px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 22%, transparent 70%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 22%, transparent 70%);
 }
 
 #app {
@@ -54,27 +104,46 @@ body {
 a {
   color: var(--accent);
   text-decoration: none;
+  transition: color var(--transition);
 }
 a:hover {
-  text-decoration: underline;
+  color: var(--accent-2);
+  text-decoration: none;
+}
+
+::selection {
+  background: rgba(77, 163, 255, 0.3);
+  color: #fff;
 }
 
 code,
 .mono {
   font-family: var(--mono);
+  font-feature-settings: 'liga' 0;
 }
 
 h1,
 h2,
 h3 {
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+  margin: 0;
+}
+
+p {
   margin: 0;
 }
 
 button {
   font: inherit;
   cursor: pointer;
+  color: inherit;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
 }
 
 .muted {
@@ -84,17 +153,244 @@ button {
   color: var(--faint);
 }
 
-/* DASH7 — mobile/responsive base. Pages opt their own grids into a single
- * column via the shared `.cols` helper; tables/wide content scroll. */
+/* Keyboard focus: a crisp cobalt ring everywhere, but never on mouse click. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--radius-sm);
+}
+
+/* --- Custom scrollbars (instrument feel) ------------------------------------ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #44557a;
+  background-clip: content-box;
+}
+
+/* --- Shared component vocabulary -------------------------------------------- */
+
+/* Surface card with inset top highlight + hover lift. */
+.card {
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1), var(--inset-top);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--panel-2);
+  color: var(--text);
+  font-weight: 550;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    box-shadow var(--transition),
+    transform var(--transition);
+}
+.btn:hover {
+  border-color: var(--accent-dim);
+  background: var(--panel-3);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+}
+.btn--primary {
+  border-color: transparent;
+  background: linear-gradient(180deg, var(--accent), var(--accent-dim));
+  color: #04101e;
+  font-weight: 650;
+  box-shadow: 0 6px 18px -8px rgba(77, 163, 255, 0.7);
+}
+.btn--primary:hover {
+  filter: brightness(1.07);
+  border-color: transparent;
+}
+.btn--ghost {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--muted);
+}
+.btn--ghost:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+.btn--danger {
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+  background: color-mix(in srgb, var(--bad) 14%, transparent);
+  color: var(--bad);
+}
+.btn--danger:hover {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: #1a0508;
+}
+.btn--sm {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+/* Inputs */
+.input {
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 9px 12px;
+  transition:
+    border-color var(--transition),
+    box-shadow var(--transition);
+}
+.input::placeholder {
+  color: var(--faint);
+}
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+/* Native selects styled to match: custom chevron, no OS chrome. */
+select.input {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  padding-right: 34px;
+  background-color: var(--bg-2);
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2393a1b5' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+}
+select.input option {
+  background: var(--panel);
+  color: var(--text);
+}
+
+/* Pills / chips */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  border: 1px solid rgba(77, 163, 255, 0.2);
+}
+
+/* A small keyboard cap / code token. */
+.kbd {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel-2);
+  color: var(--muted);
+}
+
+/* Tab bar — used by the Activity hub and any in-page tabs. */
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+.tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  padding: 10px 14px;
+  font-weight: 550;
+  white-space: nowrap;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
+}
+.tab:hover {
+  color: var(--text);
+}
+.tab[aria-selected='true'] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* Live status dot (re-used; the pulse animation is opt-in per page). */
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 8px var(--ok);
+}
+
+/* Page-enter: a single staggered reveal on view mount (high-impact, cheap). */
+.page {
+  animation: page-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Layout helpers (kept from D0 so existing pages stay coherent). */
 .cols {
   display: grid;
   gap: 24px;
   align-items: start;
 }
-/* Wrap a wide table/element so it scrolls instead of overflowing the viewport. */
 .scroll-x {
   overflow-x: auto;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .page {
+    animation: none;
+  }
+  * {
+    scroll-behavior: auto;
+  }
+}
+
 @media (max-width: 720px) {
   body {
     font-size: 13px;

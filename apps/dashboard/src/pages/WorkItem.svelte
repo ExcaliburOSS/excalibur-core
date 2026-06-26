@@ -15,6 +15,7 @@
   import { LANES, type DashboardLane, type WorkItemDetail } from '../lib/contracts';
   import { navigate } from '../lib/router.svelte';
   import { t } from '../lib/i18n';
+  import Modal from '../lib/Modal.svelte';
 
   const { key }: { key: string } = $props();
 
@@ -24,8 +25,9 @@
   let writable = $state(false);
   let actionError = $state<string | null>(null);
 
-  // Edit form + comment box.
+  // Edit modal + delete confirm + inline add boxes.
   let editing = $state(false);
+  let confirmingDelete = $state(false);
   let eTitle = $state('');
   let eDesc = $state('');
   let eLabels = $state('');
@@ -35,6 +37,10 @@
   let newComment = $state('');
   let newCheck = $state('');
   let busy = $state(false);
+
+  const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
+  /** Show a known priority via its localized label; fall back to the raw value. */
+  const prettyPriority = (p: string): string => (PRIORITIES.includes(p) ? t('priority.' + p) : p);
 
   async function mutateCheck(
     op:
@@ -107,9 +113,9 @@
     }
   }
 
-  async function removeItem(): Promise<void> {
+  async function doDelete(): Promise<void> {
     if (item === null) return;
-    if (!window.confirm(t('board.deleteConfirm', { key: item.key }))) return;
+    confirmingDelete = false;
     try {
       await deleteWorkItem(item.key);
       navigate('/');
@@ -178,7 +184,7 @@
   // Defense in depth: the server already sanitizes link URLs, but guard the href
   // here too so a script-bearing scheme can never reach the DOM.
   const safeHref = (url: string): string => {
-    const c = url.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim();
+    const c = Array.from(url).filter((ch) => { const n = ch.charCodeAt(0); return n > 0x1f && (n < 0x7f || n > 0x9f); }).join('').trim();
     if (/^(https?:|mailto:)/i.test(c)) return c;
     if (c.startsWith('#')) return c;
     if (c.startsWith('/') && !c.startsWith('//')) return c;
@@ -198,69 +204,29 @@
     <h1>{item.title}</h1>
     <div class="badges">
       <span class="lane">{t('lane.' + item.lane)}</span>
-      {#if item.priority}<span class="badge">{item.priority}</span>{/if}
+      {#if item.priority}<span class="badge prio-{item.priority}">{prettyPriority(item.priority)}</span
+        >{/if}
       {#if item.assignee}<span class="badge">@{item.assignee}</span>{/if}
-      {#each item.labels as label (label)}<span class="badge">{label}</span>{/each}
+      {#each item.labels as label (label)}<span class="badge label">{label}</span>{/each}
     </div>
     {#if writable}
       <div class="actions">
-        <button class="act go" onclick={onStartRun}>▸ {t('workItem.startRun')}</button>
-        <button class="act" onclick={startEdit}>✎ {t('common.edit')}</button>
-        <button class="act no" onclick={removeItem}>🗑 {t('board.delete')}</button>
+        <button class="btn btn--primary btn--sm" onclick={onStartRun}
+          >▸ {t('workItem.startRun')}</button
+        >
+        <button class="btn btn--sm" onclick={startEdit}>{t('common.edit')}</button>
+        <button class="btn btn--danger btn--sm" onclick={() => (confirmingDelete = true)}
+          >{t('board.delete')}</button
+        >
       </div>
     {/if}
   </header>
 
   {#if actionError !== null}
-    <div class="action-error" role="status">{t('workItem.actionFailed')}: {actionError}</div>
+    <div class="action-error" role="alert">{t('workItem.actionFailed')}: {actionError}</div>
   {/if}
 
-  {#if editing}
-    <form
-      class="edit"
-      onsubmit={(e) => {
-        e.preventDefault();
-        void saveEdit();
-      }}
-    >
-      <label
-        >{t('workItem.title')}
-        <input bind:value={eTitle} />
-      </label>
-      <label
-        >{t('workItem.description')}
-        <textarea rows="3" bind:value={eDesc}></textarea>
-      </label>
-      <div class="row">
-        <label
-          >{t('board.lane')}
-          <select bind:value={eLane}>
-            {#each LANES as l (l)}<option value={l}>{t('lane.' + l)}</option>{/each}
-          </select>
-        </label>
-        <label
-          >{t('workItem.priority')}
-          <input bind:value={ePriority} placeholder="—" />
-        </label>
-        <label
-          >{t('workItem.assignee')}
-          <input bind:value={eAssignee} placeholder="—" />
-        </label>
-      </div>
-      <label
-        >{t('board.newLabels')}
-        <input bind:value={eLabels} />
-      </label>
-      <div class="row">
-        <button type="submit" class="primary" disabled={busy || eTitle.trim().length === 0}
-          >{t('common.save')}</button
-        >
-        <button type="button" class="ghost" onclick={() => (editing = false)}
-          >{t('common.cancel')}</button
-        >
-      </div>
-    </form>
-  {:else if item.description}
+  {#if item.description}
     <p class="desc">{item.description}</p>
   {/if}
 
@@ -307,8 +273,8 @@
             void addCheck();
           }}
         >
-          <input bind:value={newCheck} placeholder={t('workItem.addCheck')} />
-          <button type="submit" class="act" disabled={newCheck.trim().length === 0}
+          <input class="input" bind:value={newCheck} placeholder={t('workItem.addCheck')} />
+          <button type="submit" class="btn btn--sm" disabled={newCheck.trim().length === 0}
             >{t('board.add')}</button
           >
         </form>
@@ -319,23 +285,24 @@
   <section>
     <h2>{t('workItem.runs')} <span class="faint">({item.runs.length})</span></h2>
     {#if item.runs.length === 0}
-      <div class="muted small">—</div>
+      <div class="muted small empty">{t('workItem.noRuns')}</div>
     {:else}
       <ul class="runs">
         {#each item.runs as run (run.id)}
           <li>
-            <a class="mono" href={`#/runs/${run.id}`}>{run.id}</a>
             <span class="st st-{run.status}">{t('status.' + run.status)}</span>
-            <span class="faint">{run.workflow}{run.model ? ` · ${run.model}` : ''}</span>
+            <a class="rlink" href={`#/runs/${run.id}`}>{run.title || t('workItem.runs')}</a>
+            {#if run.model}<span class="faint small">{run.model}</span>{/if}
+            <span class="grow"></span>
             {#if writable && run.status === 'running'}
-              <button class="act" onclick={() => act(() => cancelRun(run.id))}>
+              <button class="btn btn--sm" onclick={() => act(() => cancelRun(run.id))}>
                 {t('workItem.cancelRun')}
               </button>
             {:else if writable && run.status === 'waiting_approval'}
-              <button class="act go" onclick={() => act(() => approveRun(run.id, true))}>
+              <button class="btn btn--primary btn--sm" onclick={() => act(() => approveRun(run.id, true))}>
                 {t('workItem.approve')}
               </button>
-              <button class="act no" onclick={() => act(() => approveRun(run.id, false))}>
+              <button class="btn btn--danger btn--sm" onclick={() => act(() => approveRun(run.id, false))}>
                 {t('workItem.reject')}
               </button>
             {/if}
@@ -350,8 +317,10 @@
       <h2>{t('workItem.links')}</h2>
       <ul class="links">
         {#each item.links as link (link.url)}
-          <li><a href={safeHref(link.url)} target="_blank" rel="noreferrer">{link.title ?? link.url}</a>
-            <span class="faint small">{link.type}</span></li>
+          <li>
+            <a href={safeHref(link.url)} target="_blank" rel="noreferrer">{link.title ?? link.url}</a>
+            <span class="faint small">{link.type}</span>
+          </li>
         {/each}
       </ul>
     </section>
@@ -363,7 +332,7 @@
       {#if item.comments.length > 0}
         <ul class="comments">
           {#each item.comments as c, i (i)}
-            <li><span class="faint">{c.author ?? '—'}</span> {c.body}</li>
+            <li><span class="cauthor faint">{c.author ?? '—'}</span> {c.body}</li>
           {/each}
         </ul>
       {/if}
@@ -375,13 +344,90 @@
             void submitComment();
           }}
         >
-          <input bind:value={newComment} placeholder={t('workItem.addComment')} />
-          <button type="submit" class="act" disabled={busy || newComment.trim().length === 0}
+          <input class="input" bind:value={newComment} placeholder={t('workItem.addComment')} />
+          <button type="submit" class="btn btn--sm" disabled={busy || newComment.trim().length === 0}
             >{t('workItem.comment')}</button
           >
         </form>
       {/if}
     </section>
+  {/if}
+
+  <!-- Edit task -->
+  {#if editing}
+    <Modal title={t('workItem.editTitle')} onclose={() => (editing = false)}>
+      <form
+        class="mform"
+        onsubmit={(e) => {
+          e.preventDefault();
+          void saveEdit();
+        }}
+      >
+        <label class="field">
+          <span>{t('workItem.title')}</span>
+          <input class="input" bind:value={eTitle} />
+        </label>
+        <label class="field">
+          <span>{t('workItem.description')}</span>
+          <textarea class="input" rows="3" bind:value={eDesc}></textarea>
+        </label>
+        <div class="row2">
+          <label class="field">
+            <span>{t('board.lane')}</span>
+            <select class="input" bind:value={eLane}>
+              {#each LANES as l (l)}<option value={l}>{t('lane.' + l)}</option>{/each}
+            </select>
+          </label>
+          <label class="field">
+            <span>{t('workItem.priority')}</span>
+            <select class="input" bind:value={ePriority}>
+              <option value="">{t('priority.none')}</option>
+              {#each PRIORITIES as p (p)}<option value={p}>{t('priority.' + p)}</option>{/each}
+            </select>
+          </label>
+        </div>
+        <div class="row2">
+          <label class="field">
+            <span>{t('workItem.assignee')}</span>
+            <input class="input" bind:value={eAssignee} placeholder="@user" />
+          </label>
+          <label class="field">
+            <span>{t('board.labels')}</span>
+            <input class="input" bind:value={eLabels} placeholder={t('board.newLabels')} />
+          </label>
+        </div>
+        <button type="submit" class="hidden-submit" tabindex="-1" aria-hidden="true"></button>
+      </form>
+      {#snippet footer()}
+        <button type="button" class="btn btn--ghost" onclick={() => (editing = false)}
+          >{t('common.cancel')}</button
+        >
+        <button
+          type="button"
+          class="btn btn--primary"
+          disabled={busy || eTitle.trim().length === 0}
+          onclick={() => void saveEdit()}>{t('common.save')}</button
+        >
+      {/snippet}
+    </Modal>
+  {/if}
+
+  <!-- Delete confirm -->
+  {#if confirmingDelete}
+    <Modal title={t('board.deleteTitle')} onclose={() => (confirmingDelete = false)}>
+      <p class="confirm-body">
+        {t('board.deleteBody', { key: item.key })}
+        <strong>{item.title}</strong>
+      </p>
+      {#snippet footer()}
+        <button type="button" class="btn btn--ghost" onclick={() => (confirmingDelete = false)}
+          >{t('common.cancel')}</button
+        >
+        <button type="button" class="btn btn--danger" onclick={() => void doDelete()}
+          >{t('board.delete')}</button
+        >
+      {/snippet}
+    </Modal>
   {/if}
 {/if}
 
@@ -401,36 +447,63 @@
   }
   .head h1 {
     margin: 4px 0 12px;
-    font-size: 24px;
+    font-size: 26px;
   }
   .badges {
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
+    align-items: center;
   }
   .lane,
   .badge {
     font-size: 11px;
-    padding: 2px 8px;
+    padding: 2px 9px;
     border-radius: 999px;
     background: var(--panel-2);
     border: 1px solid var(--line);
   }
   .lane {
-    background: var(--accent-dim);
+    background: var(--accent-soft);
+    border-color: rgba(77, 163, 255, 0.25);
+    color: var(--accent-2);
+  }
+  .label {
+    background: var(--accent-soft);
+    border-color: rgba(77, 163, 255, 0.2);
+    color: var(--accent-2);
+  }
+  .prio-high,
+  .prio-urgent {
+    background: color-mix(in srgb, var(--bad) 14%, transparent);
+    border-color: color-mix(in srgb, var(--bad) 35%, var(--line));
+    color: var(--bad);
+  }
+  .prio-medium {
+    background: color-mix(in srgb, var(--warn) 14%, transparent);
+    border-color: color-mix(in srgb, var(--warn) 35%, var(--line));
+    color: var(--warn);
   }
   .desc {
     color: var(--muted);
-    max-width: 70ch;
+    max-width: 72ch;
     white-space: pre-wrap;
+    margin-top: 14px;
+    line-height: 1.6;
+  }
+  .actions {
+    margin-top: 16px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
   }
   section {
-    margin-top: 28px;
+    margin-top: 30px;
   }
   h2 {
     font-size: 15px;
-    margin-bottom: 10px;
-    padding-bottom: 6px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
     border-bottom: 1px solid var(--line);
   }
   ul {
@@ -441,37 +514,30 @@
     flex-direction: column;
     gap: 6px;
   }
+  .empty {
+    padding: 8px 0;
+  }
   .runs li {
     display: flex;
     gap: 10px;
     align-items: center;
-  }
-  .actions {
-    margin-top: 12px;
-  }
-  .act {
-    font-size: 11px;
-    padding: 3px 10px;
-    border-radius: var(--radius-sm);
-    background: var(--panel-2);
+    background: var(--panel);
     border: 1px solid var(--line);
-    color: var(--muted);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
   }
-  .act:hover {
+  .rlink {
     color: var(--text);
-    border-color: var(--line-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .act.go {
-    color: var(--ok);
-    border-color: color-mix(in srgb, var(--ok) 40%, var(--line));
-  }
-  .act.no {
-    color: var(--bad);
-    border-color: color-mix(in srgb, var(--bad) 40%, var(--line));
+  .grow {
+    flex: 1;
   }
   .action-error {
     margin: 12px 0;
-    padding: 6px 12px;
+    padding: 8px 12px;
     border: 1px solid color-mix(in srgb, var(--bad) 40%, var(--line));
     background: color-mix(in srgb, var(--bad) 10%, transparent);
     color: var(--bad);
@@ -479,10 +545,11 @@
     font-size: 12px;
   }
   .st {
-    font-size: 11px;
-    padding: 1px 7px;
+    font-size: 10px;
+    padding: 2px 8px;
     border-radius: 999px;
     background: var(--panel-2);
+    white-space: nowrap;
   }
   .st-completed {
     color: var(--ok);
@@ -490,81 +557,72 @@
   .st-failed {
     color: var(--bad);
   }
+  .st-running,
+  .st-waiting_approval {
+    color: var(--accent);
+  }
   .small {
     font-size: 12px;
   }
-  .edit {
+  /* Modal form (shared shape with the board's create modal). */
+  .mform {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    margin: 16px 0;
-    padding: 16px;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    max-width: 70ch;
+    gap: 15px;
   }
-  .edit label {
+  .field {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
+  }
+  .field > span {
     font-size: 12px;
+    font-weight: 550;
     color: var(--muted);
-    flex: 1;
   }
-  .edit .row {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
+  .row2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
   }
-  .edit input,
-  .edit textarea,
-  .edit select {
-    background: var(--panel-2);
-    border: 1px solid var(--line);
-    color: var(--text);
-    padding: 7px 10px;
-    border-radius: var(--radius-sm);
-    font: inherit;
-    width: 100%;
-    box-sizing: border-box;
-  }
-  .edit textarea {
+  .mform :global(textarea.input) {
     resize: vertical;
+    min-height: 64px;
+    line-height: 1.5;
   }
-  .primary {
-    background: var(--accent);
-    color: #fff;
-    border: 1px solid var(--accent);
-    padding: 7px 16px;
-    border-radius: var(--radius-sm);
+  .hidden-submit {
+    display: none;
   }
-  .primary:disabled {
-    opacity: 0.5;
-  }
-  .ghost {
-    background: transparent;
-    border: 1px solid var(--line);
+  .confirm-body {
     color: var(--muted);
-    padding: 7px 14px;
-    border-radius: var(--radius-sm);
+    line-height: 1.6;
   }
-  .ghost:hover {
+  .confirm-body strong {
     color: var(--text);
   }
   .addc {
     display: flex;
     gap: 8px;
-    margin-top: 10px;
+    margin-top: 12px;
   }
-  .addc input {
+  .addc .input {
     flex: 1;
-    background: var(--panel-2);
+  }
+  .links li {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .comments li {
+    background: var(--panel);
     border: 1px solid var(--line);
-    color: var(--text);
-    padding: 7px 10px;
     border-radius: var(--radius-sm);
-    font: inherit;
+    padding: 9px 12px;
+    line-height: 1.5;
+  }
+  .cauthor {
+    font-weight: 550;
+    margin-right: 4px;
   }
   .check li {
     display: flex;
@@ -580,14 +638,17 @@
     height: 18px;
     flex-shrink: 0;
     border: 1px solid var(--line-strong);
-    border-radius: 4px;
-    background: var(--panel-2);
-    color: #fff;
+    border-radius: 5px;
+    background: var(--bg-2);
+    color: #04101e;
     font-size: 11px;
     line-height: 1;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    transition:
+      background var(--transition),
+      border-color var(--transition);
   }
   .cbox.on {
     background: var(--ok);
@@ -610,5 +671,10 @@
   }
   .cdel:hover {
     color: var(--bad);
+  }
+  @media (max-width: 560px) {
+    .row2 {
+      grid-template-columns: 1fr;
+    }
   }
 </style>

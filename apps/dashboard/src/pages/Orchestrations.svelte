@@ -143,7 +143,7 @@
               class="chrono-link faint"
               href={`#/orchestrations/${encodeURIComponent(o.parentRunId)}`}>{t('orch.chronogram')}</a
             >
-            <span class="status {statusClass(o.status)}">{o.status}</span>
+            <span class="status {statusClass(o.status)}">{t('status.' + o.status)}</span>
           </header>
           <ul class="lanes">
             {#each o.lanes as lane (lane.runId)}
@@ -164,7 +164,7 @@
                     >{t('orch.cancel-lane')}</button
                   >
                 {/if}
-                <span class="lane-status {statusClass(lane.status)}">{lane.status}</span>
+                <span class="lane-status {statusClass(lane.status)}">{t('status.' + lane.status)}</span>
               </li>
             {/each}
           </ul>

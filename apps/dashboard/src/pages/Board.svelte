@@ -19,6 +19,7 @@
   } from '../lib/contracts';
   import { navigate } from '../lib/router.svelte';
   import { t } from '../lib/i18n';
+  import Modal from '../lib/Modal.svelte';
 
   let board = $state<BoardResponse | null>(null);
   let error = $state<string | null>(null);
@@ -29,12 +30,16 @@
   let writable = $state(false); // interactive actions enabled (serve --write)
   let dragKey = $state<string | null>(null);
   let dropLane = $state<DashboardLane | null>(null);
-  let copied = $state(false);
-  // Create work item (the "+ New" panel + per-lane quick-add).
+  // Create work item (the "+ New" modal + per-lane quick-add).
   let creating = $state(false);
   let newTitle = $state('');
   let newLane = $state<DashboardLane>('todo');
   let newLabels = $state('');
+  let newDesc = $state('');
+  let newPriority = $state('');
+  let newAssignee = $state('');
+  // Styled confirm dialog (replaces the native window.confirm for deletes).
+  let confirmItem = $state<WorkItemSummary | null>(null);
   let quickLane = $state<DashboardLane | null>(null);
   let quickTitle = $state('');
   let busy = $state(false);
@@ -113,22 +118,6 @@
     }
   }
 
-  function goLive(on: boolean): void {
-    live = on;
-    if (on) {
-      void load(true);
-      connect();
-    } else {
-      es?.close();
-      es = null;
-      stopPoll();
-      if (reconnect !== null) {
-        clearTimeout(reconnect);
-        reconnect = null;
-      }
-    }
-  }
-
   onMount(() => {
     void load();
     fetchHealth()
@@ -185,18 +174,6 @@
     if (key.length > 0) void moveTo(key, lane);
   }
 
-  async function copyLink(): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      copied = true;
-      setTimeout(() => (copied = false), 1500);
-    } catch {
-      // Clipboard blocked (no permission / insecure context) — surface the URL
-      // so the user can copy it by hand instead of failing silently.
-      staleError = `${t('board.copyFailed')} ${window.location.href}`;
-    }
-  }
-
   async function onStartRun(e: MouseEvent, item: WorkItemSummary): Promise<void> {
     e.preventDefault();
     e.stopPropagation();
@@ -229,14 +206,34 @@
   }
 
   async function submitCreate(): Promise<void> {
+    const title = newTitle.trim();
+    if (title.length === 0 || busy) return;
     const labels = newLabels
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-    await create(newLane, newTitle, labels);
-    newTitle = '';
-    newLabels = '';
-    creating = false;
+    busy = true;
+    try {
+      await createWorkItem({
+        title,
+        lane: newLane,
+        ...(newDesc.trim().length > 0 ? { description: newDesc.trim() } : {}),
+        ...(labels.length > 0 ? { labels } : {}),
+        ...(newPriority.length > 0 ? { priority: newPriority } : {}),
+        ...(newAssignee.trim().length > 0 ? { assignee: newAssignee.trim() } : {}),
+      });
+      await load(true);
+      newTitle = '';
+      newLabels = '';
+      newDesc = '';
+      newPriority = '';
+      newAssignee = '';
+      creating = false;
+    } catch (e) {
+      staleError = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
+    } finally {
+      busy = false;
+    }
   }
 
   async function submitQuick(lane: DashboardLane): Promise<void> {
@@ -246,11 +243,18 @@
     await create(lane, title);
   }
 
-  /** Delete a card (optimistic), with a confirm. */
-  async function removeCard(e: MouseEvent, item: WorkItemSummary): Promise<void> {
+  /** A card's 🗑 opens a styled confirm dialog (no native window.confirm). */
+  function removeCard(e: MouseEvent, item: WorkItemSummary): void {
     e.preventDefault();
     e.stopPropagation();
-    if (!window.confirm(t('board.deleteConfirm', { key: item.key }))) return;
+    confirmItem = item;
+  }
+
+  /** Confirmed delete (optimistic), with a revert on failure. */
+  async function confirmDelete(): Promise<void> {
+    const item = confirmItem;
+    confirmItem = null;
+    if (item === null) return;
     if (board !== null) {
       for (const col of board.lanes) {
         const i = col.items.findIndex((x) => x.key === item.key);
@@ -281,29 +285,20 @@
   <div class="left">
     <h1>{t('nav.board')}</h1>
     {#if total > 0}<span class="faint count">{total}</span>{/if}
+    <span class="live" title={t('board.liveUpdates')}>
+      <span class="live-dot" class:breathe={live}></span>{t('board.live')}
+    </span>
     {#if activeCount > 0}
       <span class="active-pill"><span class="pulse"></span>{activeCount} {t('board.active')}</span>
     {/if}
   </div>
-  <div class="right">
-    {#if writable}
-      <button class="new" onclick={() => (creating = !creating)} aria-expanded={creating}
+  {#if writable}
+    <div class="right">
+      <button class="new" onclick={() => (creating = true)} aria-haspopup="dialog"
         >+ {t('board.new')}</button
       >
-    {/if}
-    <button
-      class="toggle"
-      class:on={live}
-      onclick={() => goLive(!live)}
-      title={t('board.liveUpdates')}
-      aria-pressed={live}
-    >
-      <span class="dot" class:pulse={live}></span>
-      {live ? t('board.live') : t('board.paused')}
-    </button>
-    <button class="refresh" onclick={() => load()}>{t('board.refresh')}</button>
-    <button class="refresh" onclick={copyLink}>{copied ? t('board.copied') : t('board.share')}</button>
-  </div>
+    </div>
+  {/if}
 </header>
 
 {#if staleError !== null}
@@ -311,29 +306,91 @@
 {/if}
 
 {#if creating && writable}
-  <form
-    class="create"
-    onsubmit={(e) => {
-      e.preventDefault();
-      void submitCreate();
-    }}
-  >
-    <input
-      class="ci title"
-      placeholder={t('board.newTitle')}
-      bind:value={newTitle}
-      use:autofocusEl
-    />
-    <select class="ci" bind:value={newLane} aria-label={t('board.lane')}>
-      {#each LANES as lane (lane)}<option value={lane}>{laneLabel(lane)}</option>{/each}
-    </select>
-    <input class="ci labels" placeholder={t('board.newLabels')} bind:value={newLabels} />
-    <button type="submit" class="primary" disabled={busy || newTitle.trim().length === 0}
-      >{t('board.create')}</button
+  <Modal title={t('board.newFirst')} onclose={() => (creating = false)}>
+    <form
+      class="mform"
+      onsubmit={(e) => {
+        e.preventDefault();
+        void submitCreate();
+      }}
     >
-    <button type="button" class="ghost" onclick={() => (creating = false)}>{t('common.cancel')}</button
-    >
-  </form>
+      <label class="field">
+        <span>{t('workItem.title')}</span>
+        <input
+          class="input"
+          placeholder={t('board.newTitle')}
+          bind:value={newTitle}
+          use:autofocusEl
+        />
+      </label>
+      <label class="field">
+        <span>{t('workItem.description')}</span>
+        <textarea
+          class="input"
+          rows="3"
+          placeholder={t('board.descPlaceholder')}
+          bind:value={newDesc}
+        ></textarea>
+      </label>
+      <div class="row2">
+        <label class="field">
+          <span>{t('board.lane')}</span>
+          <select class="input" bind:value={newLane}>
+            {#each LANES as lane (lane)}<option value={lane}>{laneLabel(lane)}</option>{/each}
+          </select>
+        </label>
+        <label class="field">
+          <span>{t('workItem.priority')}</span>
+          <select class="input" bind:value={newPriority}>
+            <option value="">{t('priority.none')}</option>
+            <option value="low">{t('priority.low')}</option>
+            <option value="medium">{t('priority.medium')}</option>
+            <option value="high">{t('priority.high')}</option>
+            <option value="urgent">{t('priority.urgent')}</option>
+          </select>
+        </label>
+      </div>
+      <div class="row2">
+        <label class="field">
+          <span>{t('workItem.assignee')}</span>
+          <input class="input" placeholder="@user" bind:value={newAssignee} />
+        </label>
+        <label class="field">
+          <span>{t('board.labels')}</span>
+          <input class="input" placeholder={t('board.newLabels')} bind:value={newLabels} />
+        </label>
+      </div>
+      <button type="submit" class="hidden-submit" tabindex="-1" aria-hidden="true"></button>
+    </form>
+    {#snippet footer()}
+      <button type="button" class="btn btn--ghost" onclick={() => (creating = false)}
+        >{t('common.cancel')}</button
+      >
+      <button
+        type="button"
+        class="btn btn--primary"
+        disabled={busy || newTitle.trim().length === 0}
+        onclick={() => void submitCreate()}>{t('board.create')}</button
+      >
+    {/snippet}
+  </Modal>
+{/if}
+
+{#if confirmItem !== null}
+  <Modal title={t('board.deleteTitle')} onclose={() => (confirmItem = null)}>
+    <p class="confirm-body">
+      {t('board.deleteBody', { key: confirmItem.key })}
+      <strong>{confirmItem.title}</strong>
+    </p>
+    {#snippet footer()}
+      <button type="button" class="btn btn--ghost" onclick={() => (confirmItem = null)}
+        >{t('common.cancel')}</button
+      >
+      <button type="button" class="btn btn--danger" onclick={() => void confirmDelete()}
+        >{t('board.delete')}</button
+      >
+    {/snippet}
+  </Modal>
 {/if}
 
 {#if loading && board === null}
@@ -524,10 +581,12 @@
     gap: 10px;
   }
   h1 {
-    font-size: 22px;
+    font-size: 24px;
   }
   .count {
     font-size: 14px;
+    font-family: var(--mono);
+    color: var(--muted);
   }
   .active-pill {
     display: inline-flex;
@@ -543,33 +602,26 @@
     display: flex;
     gap: 8px;
   }
-  .toggle,
-  .refresh {
+  .live {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    color: var(--muted);
-    padding: 6px 12px;
-    border-radius: var(--radius-sm);
-  }
-  .toggle:hover,
-  .refresh:hover {
-    color: var(--text);
-    border-color: var(--line-strong);
-  }
-  .toggle.on {
+    font-size: 12px;
     color: var(--ok);
   }
-  .dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--faint);
+  .live-dot.breathe {
+    animation: breathe 2.4s ease-in-out infinite;
   }
-  .toggle.on .dot {
-    background: var(--ok);
+  @keyframes breathe {
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 8px var(--ok);
+    }
+    50% {
+      opacity: 0.55;
+      box-shadow: 0 0 2px var(--ok);
+    }
   }
   .pulse {
     width: 7px;
@@ -615,7 +667,7 @@
   .board {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 14px;
+    gap: 16px;
     align-items: start;
   }
   /* DASH7 — on a phone the 5 lanes become horizontally-scrollable columns
@@ -634,17 +686,29 @@
     }
   }
   .lane {
-    background: var(--panel);
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
     border: 1px solid var(--line);
     border-radius: var(--radius);
     min-height: 120px;
+    overflow: hidden;
+    box-shadow: var(--shadow-1), var(--inset-top);
   }
   .lane > header {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px 14px;
+    padding: 13px 14px 12px;
     border-bottom: 1px solid var(--line);
+  }
+  /* A colored accent strip at the top of each lane (uses the lane's hue). */
+  .lane > header::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 2px;
+    background: var(--lane);
+    opacity: 0.85;
   }
   .ldot {
     width: 8px;
@@ -667,18 +731,28 @@
   }
   .card {
     display: block;
-    background: var(--panel-2);
+    background: linear-gradient(180deg, var(--panel-3), var(--panel-2));
     border: 1px solid var(--line);
     border-radius: var(--radius-sm);
-    padding: 10px 12px;
+    padding: 11px 12px;
     color: var(--text);
+    box-shadow: var(--shadow-1);
+    transition:
+      border-color var(--transition),
+      box-shadow var(--transition),
+      transform var(--transition);
   }
   .card:hover {
-    border-color: var(--line-strong);
+    border-color: var(--accent-dim);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-2);
     text-decoration: none;
   }
   .card.active {
-    border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+    box-shadow:
+      0 0 0 1px rgba(77, 163, 255, 0.22),
+      0 10px 26px -14px rgba(77, 163, 255, 0.6);
   }
   .card[draggable='true'] {
     cursor: grab;
@@ -719,58 +793,72 @@
     cursor: default;
   }
   .new {
-    background: var(--accent);
-    color: #fff;
-    border: 1px solid var(--accent);
-    padding: 6px 12px;
+    background: linear-gradient(180deg, var(--accent), var(--accent-dim));
+    color: #04101e;
+    border: 1px solid transparent;
+    padding: 6px 14px;
     border-radius: var(--radius-sm);
-    font-weight: 500;
+    font-weight: 650;
+    box-shadow: 0 6px 18px -8px rgba(77, 163, 255, 0.7);
   }
   .new:hover {
-    filter: brightness(1.08);
+    filter: brightness(1.07);
   }
-  .create {
+  /* Create-work-item modal form. */
+  .mform {
     display: flex;
-    gap: 8px;
-    margin-bottom: 14px;
-    flex-wrap: wrap;
-    align-items: center;
+    flex-direction: column;
+    gap: 15px;
   }
-  .ci {
-    background: var(--panel-2);
-    border: 1px solid var(--line);
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .field > span {
+    font-size: 12px;
+    font-weight: 550;
+    color: var(--muted);
+  }
+  .row2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .mform :global(textarea.input) {
+    resize: vertical;
+    min-height: 64px;
+    line-height: 1.5;
+  }
+  .hidden-submit {
+    display: none;
+  }
+  .confirm-body {
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .confirm-body strong {
     color: var(--text);
-    padding: 7px 10px;
-    border-radius: var(--radius-sm);
-    font: inherit;
   }
-  .ci.title {
-    flex: 2;
-    min-width: 200px;
-  }
-  .ci.labels {
-    flex: 1;
-    min-width: 120px;
+  @media (max-width: 560px) {
+    .row2 {
+      grid-template-columns: 1fr;
+    }
   }
   .primary {
-    background: var(--accent);
-    color: #fff;
-    border: 1px solid var(--accent);
-    padding: 7px 14px;
+    background: linear-gradient(180deg, var(--accent), var(--accent-dim));
+    color: #04101e;
+    border: 1px solid transparent;
+    padding: 7px 16px;
     border-radius: var(--radius-sm);
+    font-weight: 650;
+    box-shadow: 0 6px 18px -8px rgba(77, 163, 255, 0.7);
+  }
+  .primary:hover {
+    filter: brightness(1.07);
   }
   .primary:disabled {
     opacity: 0.5;
-  }
-  .ghost {
-    background: transparent;
-    border: 1px solid var(--line);
-    color: var(--muted);
-    padding: 7px 12px;
-    border-radius: var(--radius-sm);
-  }
-  .ghost:hover {
-    color: var(--text);
   }
   .quick input {
     width: 100%;
@@ -847,7 +935,7 @@
   }
   .fill {
     height: 100%;
-    background: var(--ok);
+    background: linear-gradient(90deg, var(--accent), var(--ok));
     transition: width 0.3s ease;
   }
   .ptext {
@@ -910,9 +998,10 @@
   }
   .label {
     font-size: 10px;
-    background: var(--accent-dim);
-    color: var(--text);
-    padding: 1px 6px;
+    background: var(--accent-soft);
+    color: var(--accent-2);
+    border: 1px solid rgba(77, 163, 255, 0.2);
+    padding: 1px 7px;
     border-radius: 999px;
   }
   .who,

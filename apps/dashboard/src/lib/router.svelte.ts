@@ -9,12 +9,14 @@ export interface Route {
   name:
     | 'board'
     | 'workItem'
+    | 'activity'
     | 'runs'
     | 'run'
     | 'insights'
     | 'orchestrations'
     | 'orchestration'
     | 'plans'
+    | 'plan'
     | 'scope'
     | 'missions'
     | 'sessions'
@@ -30,11 +32,13 @@ export interface Route {
 const PATTERNS: { name: Route['name']; re: RegExp; keys: string[] }[] = [
   { name: 'board', re: /^\/?$/, keys: [] },
   { name: 'workItem', re: /^\/work-items\/([^/]+)$/, keys: ['key'] },
+  { name: 'activity', re: /^\/activity$/, keys: [] },
   { name: 'run', re: /^\/runs\/([^/]+)$/, keys: ['id'] },
   { name: 'runs', re: /^\/runs$/, keys: [] },
   { name: 'insights', re: /^\/insights$/, keys: [] },
   { name: 'orchestration', re: /^\/orchestrations\/([^/]+)$/, keys: ['id'] },
   { name: 'orchestrations', re: /^\/orchestrations$/, keys: [] },
+  { name: 'plan', re: /^\/plans\/([^/]+)$/, keys: ['id'] },
   { name: 'plans', re: /^\/plans$/, keys: [] },
   { name: 'scope', re: /^\/scope$/, keys: [] },
   { name: 'missions', re: /^\/missions$/, keys: [] },

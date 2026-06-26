@@ -52,7 +52,7 @@
 <header class="bar">
   <h1>{t('runs.title')} <span class="faint">({filtered.length})</span></h1>
   {#if runs.length > 0}
-    <input class="filter" type="search" placeholder={t('runs.filter')} bind:value={filter} />
+    <input class="input filter" type="search" placeholder={t('runs.filter')} bind:value={filter} />
   {/if}
 </header>
 

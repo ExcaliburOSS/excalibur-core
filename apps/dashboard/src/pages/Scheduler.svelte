@@ -10,9 +10,10 @@
   } from '../lib/api';
   import type { ScheduleJobView } from '../lib/contracts';
   import { t } from '../lib/i18n';
+  import Modal from '../lib/Modal.svelte';
 
-  // DASH2 — Scheduler view over the AO8-3 store. Read the job list; under
-  // `serve --write`, add / toggle / remove jobs.
+  // Scheduled tasks: list them, and (when actions are enabled) add, pause or
+  // remove them. Removal is confirmed through a styled dialog.
   let jobs = $state<ScheduleJobView[]>([]);
   let writable = $state(false);
   let loading = $state(true);
@@ -20,6 +21,7 @@
   let cadence = $state('');
   let task = $state('');
   let adding = $state(false);
+  let confirmJob = $state<ScheduleJobView | null>(null);
 
   async function reload(): Promise<void> {
     try {
@@ -61,9 +63,12 @@
     }
   }
 
-  async function doRemove(id: string): Promise<void> {
+  async function doRemove(): Promise<void> {
+    const job = confirmJob;
+    confirmJob = null;
+    if (job === null) return;
     try {
-      await removeSchedule(id);
+      await removeSchedule(job.id);
       await reload();
     } catch (e) {
       error = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
@@ -104,10 +109,10 @@
           </div>
           {#if writable}
             <div class="actions">
-              <button class="btn" onclick={() => doToggle(job)}>
+              <button class="btn btn--sm" onclick={() => doToggle(job)}>
                 {job.enabled ? t('scheduler.disable') : t('scheduler.enable')}
               </button>
-              <button class="btn danger" onclick={() => doRemove(job.id)}>
+              <button class="btn btn--danger btn--sm" onclick={() => (confirmJob = job)}>
                 {t('scheduler.remove')}
               </button>
             </div>
@@ -118,20 +123,44 @@
   {/if}
 
   {#if writable}
-    <section class="adder">
-      <input class="cad" bind:value={cadence} placeholder={t('scheduler.cadencePlaceholder')} />
-      <input class="tsk" bind:value={task} placeholder={t('scheduler.taskPlaceholder')} />
-      <button
-        class="btn primary"
-        onclick={doAdd}
-        disabled={adding || cadence.trim().length === 0 || task.trim().length === 0}
-      >
-        {adding ? t('scheduler.adding') : t('scheduler.add')}
-      </button>
+    <section class="adder card">
+      <span class="adder-label">{t('scheduler.add')}</span>
+      <div class="adder-row">
+        <input
+          class="input cad"
+          bind:value={cadence}
+          placeholder={t('scheduler.cadencePlaceholder')}
+        />
+        <input class="input tsk" bind:value={task} placeholder={t('scheduler.taskPlaceholder')} />
+        <button
+          class="btn btn--primary"
+          onclick={doAdd}
+          disabled={adding || cadence.trim().length === 0 || task.trim().length === 0}
+        >
+          {adding ? t('scheduler.adding') : t('scheduler.add')}
+        </button>
+      </div>
     </section>
   {:else}
     <div class="muted small needwrite">{t('scheduler.needWrite')}</div>
   {/if}
+{/if}
+
+{#if confirmJob !== null}
+  <Modal title={t('scheduler.remove')} onclose={() => (confirmJob = null)}>
+    <p class="confirm-body">
+      {t('scheduler.removeConfirm')}
+      <strong>{confirmJob.task}</strong>
+    </p>
+    {#snippet footer()}
+      <button type="button" class="btn btn--ghost" onclick={() => (confirmJob = null)}
+        >{t('common.cancel')}</button
+      >
+      <button type="button" class="btn btn--danger" onclick={() => void doRemove()}
+        >{t('scheduler.remove')}</button
+      >
+    {/snippet}
+  </Modal>
 {/if}
 
 <style>
@@ -201,6 +230,18 @@
     gap: 6px;
   }
   .adder {
+    margin-top: 4px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .adder-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .adder-row {
     display: flex;
     gap: 8px;
     align-items: stretch;
@@ -208,42 +249,18 @@
   }
   .cad {
     width: 220px;
+    flex: none;
   }
   .tsk {
     flex: 1;
     min-width: 200px;
   }
-  input {
-    background: var(--panel-2);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-sm);
+  .confirm-body {
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .confirm-body strong {
     color: var(--text);
-    padding: 8px 10px;
-    font: inherit;
-  }
-  .btn {
-    background: var(--panel-2);
-    border: 1px solid var(--line-strong);
-    border-radius: var(--radius-sm);
-    color: var(--text);
-    padding: 6px 12px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .btn:hover:not(:disabled) {
-    border-color: var(--accent);
-  }
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-  .btn.primary {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-  .btn.danger:hover {
-    border-color: var(--bad);
-    color: var(--bad);
   }
   .small {
     font-size: 12px;

@@ -140,13 +140,15 @@
       </ul>
     {/if}
 
-    <button
-      class="btn primary"
-      onclick={doStartRun}
-      disabled={starting || taskInput.trim().length === 0}
-    >
-      {starting ? t('planShape.starting') : t('scope.startRun')}
-    </button>
+    {#if writable}
+      <button
+        class="btn primary"
+        onclick={doStartRun}
+        disabled={starting || taskInput.trim().length === 0}
+      >
+        {starting ? t('planShape.starting') : t('scope.startRun')}
+      </button>
+    {/if}
   </section>
 {/if}
 

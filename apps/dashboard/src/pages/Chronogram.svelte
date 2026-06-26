@@ -202,10 +202,9 @@
           <span class="badge paused">{t('chrono.paused')}</span>
         {:else}
           <span class="badge {stateClass(chronogram.status as ChronogramLaneState)}"
-            >{chronogram.status}</span
+            >{t('status.' + chronogram.status)}</span
           >
         {/if}
-        <span class="mode">{chronogram.mode}</span>
         {#if chronogram.totalCostCents !== null}<span>{dollars(chronogram.totalCostCents)}</span>{/if}
         {#if live}<span class="livedot" title={t('chrono.live')}></span>{/if}
         {#if writable}
