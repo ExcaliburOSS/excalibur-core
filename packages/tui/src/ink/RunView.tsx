@@ -58,6 +58,12 @@ export interface RunViewProps {
   interruptDraft?: string;
   /** The instant acknowledgment line after an interrupt is routed (INT-1), or ''. */
   interruptNotice?: string;
+  /**
+   * Slim the telemetry footer to just time · tokens · cost, dropping the internal
+   * level/safety/push/model jargon. The conversational m-shell sets this;
+   * `excalibur run`/`patch` leave it off to keep the full status footer.
+   */
+  compactStatus?: boolean;
 }
 
 /** The trailing annotation: detail · duration · cost (cost only when ≥ 0.5¢). */
@@ -210,13 +216,46 @@ function StatusLine({
   model,
   colors,
   labels,
+  compact,
 }: {
   model: RailModel;
   colors: Palette;
   labels?: RunViewLabels;
+  /** Conversational shell: show only time · tokens · cost (drop level/safety/push/model). */
+  compact?: boolean;
 }): ReactElement {
   const s = model.status;
   const hasTokens = s.inputTokens + s.outputTokens > 0;
+  const doneMark = model.done ? (
+    <Text color={colors.success} bold>{`  ${glyph.done} done`}</Text>
+  ) : null;
+  const errMark = model.errored ? (
+    <Text color={colors.danger} bold>{`  ${glyph.failed}`}</Text>
+  ) : null;
+
+  if (compact === true) {
+    // The metrics worth seeing mid-conversation: elapsed · tokens · cost. The
+    // internal level/safety/push/model jargon stays out of the user's way.
+    const metrics = [
+      formatElapsed(s.elapsedMs),
+      hasTokens ? `${formatTokens(s.inputTokens)}↑ ${formatTokens(s.outputTokens)}↓` : null,
+      formatCents(s.costCents),
+    ]
+      .filter((part): part is string => part !== null && part.length > 0)
+      .join(' · ');
+    return (
+      <Box flexDirection="column">
+        <Text color={colors.rail}>{` ${'─'.repeat(48)}`}</Text>
+        <Box>
+          <Text>{'  '}</Text>
+          <Text color={colors.muted}>{metrics}</Text>
+          {doneMark}
+          {errMark}
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column">
       <Text color={colors.rail}>{` ${'─'.repeat(48)}`}</Text>
@@ -235,8 +274,8 @@ function StatusLine({
           {`${formatElapsed(s.elapsedMs)} · ${s.push ? (labels?.push ?? 'push') : (labels?.noPush ?? 'no push')} · `}
         </Text>
         <Text color={colors.accent}>{s.model}</Text>
-        {model.done ? <Text color={colors.success} bold>{`  ${glyph.done} done`}</Text> : null}
-        {model.errored ? <Text color={colors.danger} bold>{`  ${glyph.failed}`}</Text> : null}
+        {doneMark}
+        {errMark}
       </Box>
     </Box>
   );
@@ -279,6 +318,7 @@ export function RunView(props: RunViewProps): ReactElement {
   const streamingNarration = props.streamingNarration ?? '';
   const interruptDraft = props.interruptDraft ?? '';
   const interruptNotice = props.interruptNotice ?? '';
+  const compactStatus = props.compactStatus ?? false;
 
   const done = (phase: Phase): boolean => phase.state === 'completed' || phase.state === 'failed';
   const completed = model.phases.filter(done);
@@ -331,7 +371,7 @@ export function RunView(props: RunViewProps): ReactElement {
       ) : null}
       {approval !== null ? <ApprovalRow approval={approval} colors={colors} /> : null}
       {interruptDraft.length > 0 ? <InterruptDraft text={interruptDraft} colors={colors} /> : null}
-      <StatusLine model={model} colors={colors} labels={labels} />
+      <StatusLine model={model} colors={colors} labels={labels} compact={compactStatus} />
     </Box>
   );
 }

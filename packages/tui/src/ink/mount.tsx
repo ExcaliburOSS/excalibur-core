@@ -32,6 +32,8 @@ export interface MountRunViewOptions {
   /** Status-line context (autonomy/safety/model/push) folded into the model. */
   reduce?: ReduceRailOptions;
   labels?: RunViewLabels;
+  /** Slim the footer to time · tokens · cost (conversational m-shell sets this). */
+  compactStatus?: boolean;
   /** Wall-clock source (injectable for tests). */
   now?: () => number;
   stdin?: NodeJS.ReadStream;
@@ -112,6 +114,7 @@ function RunViewApp({
         width={stdout?.columns ?? 80}
         {...(options.mode !== undefined ? { mode: options.mode } : {})}
         {...(options.labels !== undefined ? { labels: options.labels } : {})}
+        {...(options.compactStatus !== undefined ? { compactStatus: options.compactStatus } : {})}
       />
       <Keys store={store} />
     </ThemeProvider>

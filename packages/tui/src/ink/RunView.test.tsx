@@ -76,6 +76,33 @@ describe('<RunView>', () => {
     expect(frame).toContain('no push');
   });
 
+  it('compactStatus slims the footer to time · tokens · cost (drops level/safety/push/model)', () => {
+    const frame = frameOf({
+      model: model({
+        status: {
+          elapsedMs: 5000,
+          costCents: 12,
+          safety: 'standard-safe',
+          push: false,
+          model: 'kimi',
+          inputTokens: 1200,
+          outputTokens: 340,
+        },
+      }),
+      spinnerFrame: 0,
+      useStatic: false,
+      compactStatus: true,
+    });
+    // Kept: the metrics worth seeing mid-conversation.
+    expect(frame).toContain('↑');
+    expect(frame).toContain('↓');
+    // Dropped: the internal jargon.
+    expect(frame).not.toContain('standard-safe');
+    expect(frame).not.toContain('no push');
+    expect(frame).not.toContain('L3');
+    expect(frame).not.toContain('kimi');
+  });
+
   it('renders an interactive approval (question + options)', () => {
     const frame = frameOf({
       model: model(),

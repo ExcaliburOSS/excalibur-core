@@ -327,6 +327,10 @@ async function driveLoop(
       ),
       tier: detectColorTier(),
       mode,
+      // The conversational shell slims the telemetry footer to time · tokens ·
+      // cost (drops the internal level/safety/push/model jargon). `excalibur run`/
+      // `patch` keep the full footer (they mount their own view).
+      compactStatus: true,
       reduce: {
         autonomyLabel: AUTONOMY_LEVEL_LABELS[turn.autonomyLevel],
         safety: turn.config.safety?.preset ?? 'standard-safe',
