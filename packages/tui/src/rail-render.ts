@@ -1,4 +1,4 @@
-import { paint, type ColorTier } from './color.js';
+import { mix, paint, type ColorTier } from './color.js';
 import { renderDiff } from './diff-view.js';
 import { renderTodos } from './rail-todos.js';
 import {
@@ -153,19 +153,28 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
     // The active phase expands its event stream; completed ones collapse —
     // unless `expandAll` (the inspect/replay surface wants the full history).
     if (isActive || options.expandAll === true) {
-      for (const event of phase.events ?? []) {
+      const evs = phase.events ?? [];
+      // The live phase's connector fades from the accent at the node down into
+      // the rail tone — a sense of energy flowing down the active timeline. The
+      // full-history surface (`expandAll`) has no single live node, so it stays
+      // flat.
+      const flowing = isActive && options.expandAll !== true;
+      evs.forEach((event, ei) => {
+        const railHex = flowing
+          ? mix(palette.accentDim, palette.rail, evs.length > 1 ? ei / (evs.length - 1) : 0)
+          : palette.rail;
         // Narration is the agent's own prose — glyph-less, in the foreground
         // colour, so it reads as a sentence in the conversation (not an action).
         if (event.kind === 'narration') {
-          lines.push(` ${c(RAIL, palette.rail)}   ${c(event.text, palette.text)}`.trimEnd());
-          continue;
+          lines.push(` ${c(RAIL, railHex)}   ${c(event.text, palette.text)}`.trimEnd());
+          return;
         }
         const note = event.note !== undefined && event.note.length > 0 ? `  ${event.note}` : '';
         const hex = toneHex(event.tone, palette);
         const prefix = event.kind !== undefined ? `${c(eventGlyph[event.kind], hex)} ` : '';
         const text = c(event.text, hex);
         const noteCol = note.length > 0 ? c(note, palette.muted) : '';
-        lines.push(` ${c(RAIL, palette.rail)}   ${prefix}${text}${noteCol}`.trimEnd());
+        lines.push(` ${c(RAIL, railHex)}   ${prefix}${text}${noteCol}`.trimEnd());
         // AO6 Pillar 1: under the full-history surface (`logs`/replay), expand a
         // carried per-edit diff into a highlighted body nested on the rail. The
         // live fallback stays lean — the `+N −M` note already conveys the change.
@@ -188,7 +197,7 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
             );
           }
         }
-      }
+      });
     }
   });
 

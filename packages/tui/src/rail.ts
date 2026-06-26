@@ -25,7 +25,7 @@ export {
   type PlanPhase,
   type RenderPlanCardOptions,
 } from './rail-plan.js';
-export { detectColorTier, paint, paintBg, stripAnsi, type ColorTier } from './color.js';
+export { detectColorTier, mix, paint, paintBg, stripAnsi, type ColorTier } from './color.js';
 export { parseDiffStat, formatDiffStat, type DiffStat } from './diff-stat.js';
 export {
   parseUnifiedDiff,

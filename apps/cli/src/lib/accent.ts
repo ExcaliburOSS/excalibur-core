@@ -44,3 +44,20 @@ export const accentDim = (text: string): string => brand(text, palette.accentDim
 /** The resolved palette + colour tier, for callers that paint directly. */
 export const shellPalette: Palette = palette;
 export const shellTier: ColorTier = tier;
+
+/**
+ * Paint the terminal's native block cursor in the sword-blue accent via OSC 12,
+ * so the thing you type against glows the brand colour (modern terminals honour
+ * it; older ones ignore the sequence). No-op when colour is off. ALWAYS pair
+ * with {@link resetCursorColor} on exit so the user's cursor is restored.
+ */
+export function setCursorAccent(stream: NodeJS.WritableStream): void {
+  if (tier === 'none') return;
+  stream.write(`\x1b]12;${palette.accent}\x07`);
+}
+
+/** Restore the terminal's cursor colour to its default (OSC 112). */
+export function resetCursorColor(stream: NodeJS.WritableStream): void {
+  if (tier === 'none') return;
+  stream.write('\x1b]112\x07');
+}

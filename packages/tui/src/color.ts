@@ -34,6 +34,23 @@ export function hexToRgb(hex: string): Rgb | null {
 }
 
 /**
+ * Linear blend of two `#rrggbb` colours at t∈[0,1] (0 = a, 1 = b), returned as
+ * `#rrggbb`. Used for subtle gradients (e.g. the rail connector fading from the
+ * accent at the live node to the rail tone below). Bad inputs fall back to `a`.
+ */
+export function mix(a: string, b: string, t: number): string {
+  const ca = hexToRgb(a);
+  const cb = hexToRgb(b);
+  if (ca === null || cb === null) return a;
+  const k = Math.max(0, Math.min(1, t));
+  const ch = (x: number, y: number): string =>
+    Math.round(x + (y - x) * k)
+      .toString(16)
+      .padStart(2, '0');
+  return `#${ch(ca.r, cb.r)}${ch(ca.g, cb.g)}${ch(ca.b, cb.b)}`;
+}
+
+/**
  * Resolves the terminal's colour capability. Order: NO_COLOR forces off;
  * FORCE_COLOR / EXCALIBUR_FORCE_COLOR force a level (handy for tests and piped
  * output); otherwise sniff COLORTERM/TERM, defaulting a TTY to 16 colours and a

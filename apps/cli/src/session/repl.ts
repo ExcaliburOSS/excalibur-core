@@ -53,7 +53,9 @@ import { estimateTokens, redactSecrets, type ChatMessage } from '@excalibur/mode
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { generateId, type AutonomyLevel, type ExcaliburConfig } from '@excalibur/shared';
+import { gaugeCells, paint } from '@excalibur/tui';
 import pc from 'picocolors';
+import { accent, resetCursorColor, setCursorAccent, shellPalette, shellTier } from '../lib/accent';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
 import {
@@ -315,6 +317,13 @@ export async function runInteractiveSession(
   // Welcome banner (two-column frame + cyberpunk sword) + status line.
   deps.ui.write(renderWelcome(buildWelcomeContext(deps, repoRoot, runtime.model)));
   deps.ui.write();
+
+  // Paint the terminal's native cursor in the sword-blue accent for the whole
+  // session (restored in the finally below) — the thing you type against glows
+  // the brand colour. Only on a real output TTY; honours NO_COLOR via the helper.
+  if (deps.ui.isOutputTty()) {
+    setCursorAccent(process.stdout);
+  }
 
   // Proactively surface what Excalibur already knows about this repo, and OFFER
   // to resume the last session (no `--continue` needed). Only when this is a
@@ -579,7 +588,7 @@ export async function runInteractiveSession(
           live.length === 1 ? (live[0]?.title ?? '') : deps.t('repl.bg-active', { n: live.length });
         deps.ui.write(renderRunRule(label, process.stdout.columns ?? 80));
       }
-      const line = await editor.question(pc.cyan('› '));
+      const line = await editor.question(accent('› '));
       if (line === null) {
         break; // EOF / Ctrl-D
       }
@@ -993,6 +1002,10 @@ export async function runInteractiveSession(
     offEscape();
     editor.close();
     dashboard?.stop();
+    // Restore the user's terminal cursor colour (paired with setCursorAccent).
+    if (deps.ui.isOutputTty()) {
+      resetCursorColor(process.stdout);
+    }
     // Cancel any still-running background threads so the process can exit cleanly.
     for (const ctrl of bgControllers.values()) {
       ctrl.abort();
@@ -2215,7 +2228,7 @@ function handleThreadsCommand(deps: CliDeps, runtime: SessionRuntime): void {
             ? pc.yellow('⚑')
             : thread.status === 'paused'
               ? pc.yellow('⏸')
-              : pc.cyan('◐');
+              : accent('◐');
     // A paused thread is interrupted work the user can come back to — flag it as
     // resumable so the surface is self-explanatory.
     const tail =
@@ -2769,7 +2782,7 @@ async function handleLogCommand(
     if (entries.length === 0) {
       return;
     }
-    const answer = await question(pc.cyan(deps.t('session-log.prompt')));
+    const answer = await question(accent(deps.t('session-log.prompt')));
     if (answer === null) {
       return; // EOF / Ctrl-D
     }
@@ -2935,7 +2948,7 @@ export function renderRunRule(label: string, width: number): string {
   const max = Math.max(8, W - 10);
   const text = label.length > max ? `${label.slice(0, max - 1)}…` : label;
   const dashes = Math.max(2, W - text.length - 5); // dashes + ' ▶ ' + text + ' ─'
-  return `${pc.cyan('─'.repeat(dashes))} ${pc.cyan('▶')} ${pc.bold(text)} ${pc.cyan('─')}`;
+  return `${accent('─'.repeat(dashes))} ${accent('▶')} ${pc.bold(text)} ${accent('─')}`;
 }
 
 function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
@@ -2948,7 +2961,7 @@ function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
   const cost = `$${(status.costCents / 100).toFixed(2)}`;
   const counts = fleetCounts(runtime.fleet);
   const bg =
-    counts.active > 0 ? ` · ${pc.cyan(deps.t('repl.bg-active', { n: counts.active }))}` : '';
+    counts.active > 0 ? ` · ${accent(deps.t('repl.bg-active', { n: counts.active }))}` : '';
   // INT-5 — surface paused (interrupted) work so it is never silently forgotten.
   const paused =
     counts.paused > 0 ? ` · ${pc.yellow(deps.t('repl.paused-count', { n: counts.paused }))}` : '';
@@ -2958,9 +2971,11 @@ function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
 }
 
 /**
- * Ambient context-usage indicator for the status line — `· ctx 62%` from the
- * provider's real last prompt-token count vs the model's window. Shown only once
- * it starts to matter (≥50%), dim, amber past 80% (compaction keeps it down).
+ * Ambient context-usage indicator for the status line — `· ctx ▃▄▅ 62%` from the
+ * provider's real last prompt-token count vs the model's window. A small accent
+ * micro-gauge (rising cells, painted with the Cobalt palette) makes the pressure
+ * legible at a glance. Shown only once it starts to matter (≥50%); the gauge +
+ * number turn amber past 80% (compaction keeps it down).
  */
 function contextUsageLabel(runtime: SessionRuntime): string {
   const used = runtime.lastInputTokens;
@@ -2975,8 +2990,13 @@ function contextUsageLabel(runtime: SessionRuntime): string {
   if (pct < 50) {
     return '';
   }
-  const text = `ctx ${pct}%`;
-  return ` · ${pct >= 80 ? pc.yellow(text) : pc.dim(text)}`;
+  const danger = pct >= 80;
+  const fillHex = danger ? shellPalette.warn : shellPalette.accent;
+  const gauge = gaugeCells(pct / 100, 5)
+    .map((cell) => paint(cell.glyph, cell.filled ? fillHex : shellPalette.rail, shellTier))
+    .join('');
+  const numHex = danger ? shellPalette.warn : shellPalette.muted;
+  return ` · ${paint('ctx', shellPalette.muted, shellTier)} ${gauge} ${paint(`${pct}%`, numHex, shellTier)}`;
 }
 
 /** Replays a compact transcript summary when resuming a session. */
@@ -2985,7 +3005,7 @@ function replayTranscript(deps: CliDeps, store: SessionStore, session: LocalSess
   deps.ui.info(deps.t('repl.resuming', { id: session.id, turns: turns.length }));
   const recent = turns.slice(-6);
   for (const turn of recent) {
-    const who = turn.role === 'user' ? pc.cyan('you') : pc.green('ai ');
+    const who = turn.role === 'user' ? accent('you') : pc.green('ai ');
     const snippet = turn.text.replace(/\s+/g, ' ').slice(0, 100);
     deps.ui.write(`  ${who} ${pc.dim(snippet)}`);
   }
