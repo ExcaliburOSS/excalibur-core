@@ -451,12 +451,17 @@ export {
   parseInterruptClass,
   parseInterruptConfidence,
   parseInterruptDecision,
+  assessIndependence,
+  buildIndependencePrompt,
+  parseIndependence,
   INTERRUPT_CLASSES,
   type InterruptClass,
   type InterruptConfidence,
   type InterruptDecision,
   type InterruptContext,
   type InterruptModel,
+  type IndependenceContext,
+  type IndependenceVerdict,
 } from './sessions/interrupt-router';
 
 // Core-local errors

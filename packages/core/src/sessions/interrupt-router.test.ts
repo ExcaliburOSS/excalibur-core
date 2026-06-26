@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  assessIndependence,
+  buildIndependencePrompt,
   buildInterruptPrompt,
   classifyInterrupt,
+  parseIndependence,
   parseInterruptClass,
   parseInterruptConfidence,
   parseInterruptDecision,
+  type IndependenceContext,
   type InterruptContext,
 } from './interrupt-router';
 
@@ -86,5 +90,45 @@ describe('classifyInterrupt (injected model)', () => {
       cls: 'answer',
       confidence: 'low',
     });
+  });
+});
+
+const indepCtx: IndependenceContext = {
+  currentWork: 'refactoring the rate limiter',
+  touchedPaths: ['src/api/limiter.ts', 'src/api/refill.ts'],
+};
+
+describe('parseIndependence', () => {
+  it('reads INDEPENDENT vs OVERLAP, defaulting to NOT independent', () => {
+    expect(
+      parseIndependence('INDEPENDENT — the navbar is unrelated to the limiter').independent,
+    ).toBe(true);
+    expect(parseIndependence('OVERLAP — both edit src/api/limiter.ts').independent).toBe(false);
+    // "not independent" must NOT read as independent despite the substring.
+    expect(parseIndependence('Not independent: same module').independent).toBe(false);
+    // Unknown → conservative (pause).
+    expect(parseIndependence('hmm, unsure').independent).toBe(false);
+  });
+});
+
+describe('assessIndependence (injected model)', () => {
+  it('carries the touched paths + the new request into the prompt', () => {
+    const p = buildIndependencePrompt('add a dark-mode toggle to the navbar', indepCtx);
+    expect(p).toContain('src/api/limiter.ts');
+    expect(p).toContain('dark-mode toggle');
+  });
+
+  it('judges via the model; conservative (pause) on error or empty', async () => {
+    const indep = vi.fn().mockResolvedValue('INDEPENDENT — the navbar does not touch the limiter');
+    expect((await assessIndependence('add a navbar toggle', indepCtx, indep)).independent).toBe(
+      true,
+    );
+    const overlap = vi.fn().mockResolvedValue('OVERLAP — both change the refill window');
+    expect((await assessIndependence('fix the refill window', indepCtx, overlap)).independent).toBe(
+      false,
+    );
+    const boom = vi.fn().mockRejectedValue(new Error('down'));
+    expect((await assessIndependence('do X', indepCtx, boom)).independent).toBe(false);
+    expect((await assessIndependence('   ', indepCtx, indep)).independent).toBe(false);
   });
 });

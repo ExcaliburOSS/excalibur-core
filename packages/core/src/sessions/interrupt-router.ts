@@ -131,3 +131,78 @@ export async function classifyInterrupt(
     return { cls: ctx.awaitingAnswer ? 'answer' : 'new', confidence: 'low' };
   }
 }
+
+// --- Independence check (INT-3) ---------------------------------------------
+//
+// For a NEW interruption: would it be INDEPENDENT of the current work (different
+// files/subsystems → safe to run in PARALLEL), or would it OVERLAP/conflict (same
+// area → must pause the current and switch)? The chosen default behaviour:
+// independent → parallel background thread, conflicting → pause + switch.
+
+export interface IndependenceContext {
+  /** A one-line description of the current work. */
+  currentWork: string;
+  /** Files the current work has already read/written (from its run events). */
+  touchedPaths: readonly string[];
+}
+
+export interface IndependenceVerdict {
+  independent: boolean;
+  reason: string;
+}
+
+/** Builds the independence-judgement prompt. */
+export function buildIndependencePrompt(newRequest: string, ctx: IndependenceContext): string {
+  const files = ctx.touchedPaths.length > 0 ? ctx.touchedPaths.join(', ') : '(none touched yet)';
+  return [
+    'An AI coding agent is busy with one task and a NEW, separate request just arrived. Decide',
+    'whether the NEW request can run IN PARALLEL with the current work, or would COLLIDE with it',
+    '(touch the same files/subsystem) and must wait.',
+    '',
+    `Current work: ${ctx.currentWork}`,
+    `Files the current work is touching: ${files}`,
+    `New request: ${newRequest}`,
+    '',
+    'Answer with INDEPENDENT (different files/area, safe to run at the same time) or OVERLAP',
+    '(same files/area, must run after) as the FIRST word, then a one-sentence reason.',
+  ].join('\n');
+}
+
+/** Parses the verdict; defaults to NOT independent (pause is the safe default). */
+export function parseIndependence(output: string): IndependenceVerdict {
+  const lower = output.toLowerCase();
+  const reason =
+    output
+      .trim()
+      .replace(/^(independent|overlap|conflict)[:.\s-]*/i, '')
+      .split('\n')[0]
+      ?.slice(0, 200) || 'assessed';
+  // Check the collision signals FIRST so "not independent" never reads as independent.
+  const conflicting = /overlap|conflict|not\s+independent|same\s+(file|area|module)|depends/.test(
+    lower,
+  );
+  const independent = !conflicting && /independent|parallel|separate|unrelated/.test(lower);
+  return { independent, reason };
+}
+
+/**
+ * Judges whether a new request is independent of the current work (→ parallel) or
+ * overlaps (→ pause). Conservative: any model error/empty → NOT independent (pause),
+ * since running two agents over the same files is the dangerous case. Never throws.
+ */
+export async function assessIndependence(
+  newRequest: string,
+  ctx: IndependenceContext,
+  model: InterruptModel,
+  signal?: AbortSignal,
+): Promise<IndependenceVerdict> {
+  if (newRequest.trim().length === 0) {
+    return { independent: false, reason: 'no request' };
+  }
+  try {
+    const out = await model(buildIndependencePrompt(newRequest, ctx), signal);
+    return parseIndependence(out);
+  } catch {
+    return { independent: false, reason: 'could not assess — pausing is the safe default' };
+  }
+}
