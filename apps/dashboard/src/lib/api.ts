@@ -224,6 +224,33 @@ export const fetchMission = (id: string): Promise<MissionDetailView> =>
 export const moveWorkItem = (key: string, lane: DashboardLane): Promise<WorkItemSummary> =>
   post(`/api/work-items/${encodeURIComponent(key)}/move`, { lane });
 
+/** Fields the create/edit forms can send. */
+export interface WorkItemWrite {
+  title?: string;
+  description?: string | null;
+  labels?: string[];
+  priority?: string | null;
+  lane?: DashboardLane;
+  assignee?: string | null;
+}
+
+/** Create a work item (the board "+ New" / quick-add). Returns the new card. */
+export const createWorkItem = (
+  input: WorkItemWrite & { title: string },
+): Promise<WorkItemSummary> => post('/api/work-items', input);
+
+/** Edit a work item's fields. Returns the updated detail. */
+export const updateWorkItem = (key: string, patch: WorkItemWrite): Promise<WorkItemDetail> =>
+  post(`/api/work-items/${encodeURIComponent(key)}`, patch);
+
+/** Delete a work item. */
+export const deleteWorkItem = (key: string): Promise<{ deleted: boolean }> =>
+  post(`/api/work-items/${encodeURIComponent(key)}/delete`, {});
+
+/** Add a comment to a work item. Returns the updated detail. */
+export const addComment = (key: string, body: string): Promise<WorkItemDetail> =>
+  post(`/api/work-items/${encodeURIComponent(key)}/comment`, { body });
+
 /** Start a run, optionally linked to a work item. */
 export const startRun = (input: {
   task: string;

@@ -1,6 +1,15 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { fetchBoard, fetchHealth, moveWorkItem, startRun, authToken, ApiError } from '../lib/api';
+  import {
+    fetchBoard,
+    fetchHealth,
+    moveWorkItem,
+    startRun,
+    createWorkItem,
+    deleteWorkItem,
+    authToken,
+    ApiError,
+  } from '../lib/api';
   import {
     LANES,
     LANE_COLORS,
@@ -21,6 +30,14 @@
   let dragKey = $state<string | null>(null);
   let dropLane = $state<DashboardLane | null>(null);
   let copied = $state(false);
+  // Create work item (the "+ New" panel + per-lane quick-add).
+  let creating = $state(false);
+  let newTitle = $state('');
+  let newLane = $state<DashboardLane>('todo');
+  let newLabels = $state('');
+  let quickLane = $state<DashboardLane | null>(null);
+  let quickTitle = $state('');
+  let busy = $state(false);
   let inFlight = false; // guards against overlapping/clobbering polls
   let timer: ReturnType<typeof setInterval> | null = null;
   let es: EventSource | null = null;
@@ -191,6 +208,63 @@
     }
   }
 
+  /** Focus an input as soon as it appears (quick-add / create), sans a11y autofocus warning. */
+  function autofocusEl(node: HTMLElement): void {
+    node.focus();
+  }
+
+  /** Create a work item in a lane, then refresh so the new card appears. */
+  async function create(lane: DashboardLane, title: string, labels: string[] = []): Promise<void> {
+    const text = title.trim();
+    if (text.length === 0 || busy) return;
+    busy = true;
+    try {
+      await createWorkItem({ title: text, lane, ...(labels.length > 0 ? { labels } : {}) });
+      await load(true);
+    } catch (e) {
+      staleError = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function submitCreate(): Promise<void> {
+    const labels = newLabels
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    await create(newLane, newTitle, labels);
+    newTitle = '';
+    newLabels = '';
+    creating = false;
+  }
+
+  async function submitQuick(lane: DashboardLane): Promise<void> {
+    const title = quickTitle;
+    quickTitle = '';
+    quickLane = null;
+    await create(lane, title);
+  }
+
+  /** Delete a card (optimistic), with a confirm. */
+  async function removeCard(e: MouseEvent, item: WorkItemSummary): Promise<void> {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!window.confirm(t('board.deleteConfirm', { key: item.key }))) return;
+    if (board !== null) {
+      for (const col of board.lanes) {
+        const i = col.items.findIndex((x) => x.key === item.key);
+        if (i >= 0) col.items.splice(i, 1);
+      }
+    }
+    try {
+      await deleteWorkItem(item.key);
+    } catch (err) {
+      staleError = err instanceof ApiError ? `${err.status} · ${err.message}` : String(err);
+      void load();
+    }
+  }
+
   const laneItems = (lane: string): WorkItemSummary[] =>
     board?.lanes.find((l) => l.lane === lane)?.items ?? [];
 
@@ -212,6 +286,11 @@
     {/if}
   </div>
   <div class="right">
+    {#if writable}
+      <button class="new" onclick={() => (creating = !creating)} aria-expanded={creating}
+        >+ {t('board.new')}</button
+      >
+    {/if}
     <button
       class="toggle"
       class:on={live}
@@ -231,12 +310,45 @@
   <div class="stale" role="status">{t('common.error')}: {staleError}</div>
 {/if}
 
+{#if creating && writable}
+  <form
+    class="create"
+    onsubmit={(e) => {
+      e.preventDefault();
+      void submitCreate();
+    }}
+  >
+    <input
+      class="ci title"
+      placeholder={t('board.newTitle')}
+      bind:value={newTitle}
+      use:autofocusEl
+    />
+    <select class="ci" bind:value={newLane} aria-label={t('board.lane')}>
+      {#each LANES as lane (lane)}<option value={lane}>{laneLabel(lane)}</option>{/each}
+    </select>
+    <input class="ci labels" placeholder={t('board.newLabels')} bind:value={newLabels} />
+    <button type="submit" class="primary" disabled={busy || newTitle.trim().length === 0}
+      >{t('board.create')}</button
+    >
+    <button type="button" class="ghost" onclick={() => (creating = false)}>{t('common.cancel')}</button
+    >
+  </form>
+{/if}
+
 {#if loading && board === null}
   <div class="state muted">{t('common.loading')}</div>
 {:else if error !== null && board === null}
   <div class="state bad">{t('common.error')}: {error}</div>
 {:else if total === 0}
-  <div class="state muted">{t('board.empty')}</div>
+  <div class="state muted">
+    {#if writable}
+      <p>{t('board.emptyWrite')}</p>
+      <button class="primary" onclick={() => (creating = true)}>+ {t('board.newFirst')}</button>
+    {:else}
+      {t('board.empty')}
+    {/if}
+  </div>
 {:else}
   <div class="board">
     {#each LANES as lane (lane)}
@@ -351,6 +463,12 @@
                       moveAdjacent(item, 1);
                     }}>▶</button
                   >
+                  <button
+                    class="del"
+                    title={t('board.delete')}
+                    aria-label={t('board.delete')}
+                    onclick={(e) => removeCard(e, item)}>🗑</button
+                  >
                 {/if}
                 {#if item.assignee}<span class="who faint">@{item.assignee}</span>{/if}
                 {#if item.runCount > 0}
@@ -359,6 +477,34 @@
               </div>
             </a>
           {/each}
+          {#if writable}
+            {#if quickLane === lane}
+              <form
+                class="quick"
+                onsubmit={(e) => {
+                  e.preventDefault();
+                  void submitQuick(lane);
+                }}
+              >
+                <input
+                  placeholder={t('board.quickAdd')}
+                  bind:value={quickTitle}
+                  use:autofocusEl
+                  onblur={() => {
+                    if (quickTitle.trim().length === 0) quickLane = null;
+                  }}
+                />
+              </form>
+            {:else}
+              <button
+                class="addcard"
+                onclick={() => {
+                  quickTitle = '';
+                  quickLane = lane;
+                }}>+ {t('board.add')}</button
+              >
+            {/if}
+          {/if}
         </div>
       </section>
     {/each}
@@ -571,6 +717,100 @@
   .move:disabled {
     opacity: 0.3;
     cursor: default;
+  }
+  .new {
+    background: var(--accent);
+    color: #fff;
+    border: 1px solid var(--accent);
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-weight: 500;
+  }
+  .new:hover {
+    filter: brightness(1.08);
+  }
+  .create {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .ci {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    font: inherit;
+  }
+  .ci.title {
+    flex: 2;
+    min-width: 200px;
+  }
+  .ci.labels {
+    flex: 1;
+    min-width: 120px;
+  }
+  .primary {
+    background: var(--accent);
+    color: #fff;
+    border: 1px solid var(--accent);
+    padding: 7px 14px;
+    border-radius: var(--radius-sm);
+  }
+  .primary:disabled {
+    opacity: 0.5;
+  }
+  .ghost {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    padding: 7px 12px;
+    border-radius: var(--radius-sm);
+  }
+  .ghost:hover {
+    color: var(--text);
+  }
+  .quick input {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--panel-2);
+    border: 1px solid var(--accent-dim);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    font: inherit;
+  }
+  .addcard {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 1px dashed var(--line);
+    color: var(--muted);
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+  }
+  .addcard:hover {
+    color: var(--text);
+    border-color: var(--line-strong);
+  }
+  .del {
+    font-size: 11px;
+    line-height: 1;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 2px 5px;
+    opacity: 0.55;
+  }
+  .del:hover {
+    opacity: 1;
+    border-color: var(--warn);
+  }
+  .state p {
+    margin-bottom: 12px;
   }
   .top {
     display: flex;
