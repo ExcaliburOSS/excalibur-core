@@ -14,6 +14,7 @@
   import Scheduler from './pages/Scheduler.svelte';
   import Threads from './pages/Threads.svelte';
   import RunDetail from './pages/RunDetail.svelte';
+  import Search from './pages/Search.svelte';
 
   const router = createRouter();
 
@@ -28,6 +29,7 @@
     { href: '#/sessions', key: 'nav.sessions', match: ['sessions', 'session'] },
     { href: '#/scheduler', key: 'nav.scheduler', match: ['scheduler'] },
     { href: '#/threads', key: 'nav.threads', match: ['threads'] },
+    { href: '#/search', key: 'nav.search', match: ['search'] },
   ];
 </script>
 
@@ -75,6 +77,8 @@
       <Scheduler />
     {:else if router.current.name === 'threads'}
       <Threads />
+    {:else if router.current.name === 'search'}
+      <Search />
     {:else}
       <div class="empty">{t('common.notFound')}</div>
     {/if}
