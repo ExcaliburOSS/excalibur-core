@@ -444,6 +444,21 @@ export {
   type IntentModel,
 } from './sessions/intent-router';
 
+// Interrupt triage (project §"interruptions") — classify input while busy
+export {
+  classifyInterrupt,
+  buildInterruptPrompt,
+  parseInterruptClass,
+  parseInterruptConfidence,
+  parseInterruptDecision,
+  INTERRUPT_CLASSES,
+  type InterruptClass,
+  type InterruptConfidence,
+  type InterruptDecision,
+  type InterruptContext,
+  type InterruptModel,
+} from './sessions/interrupt-router';
+
 // Core-local errors
 export {
   ArtifactRecordError,
