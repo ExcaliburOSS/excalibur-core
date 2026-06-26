@@ -71,6 +71,19 @@ export const normalizedWorkItemLinkSchema = z.object({
   raw: z.unknown(),
 });
 
+/** One user-authored checklist entry (acceptance criterion / subtask). */
+export type NormalizedWorkItemChecklistItem = {
+  id: string;
+  text: string;
+  done: boolean;
+};
+
+export const normalizedWorkItemChecklistItemSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  done: z.boolean(),
+});
+
 export type NormalizedWorkItem = {
   provider: WorkItemProviderType;
   externalId: string;
@@ -96,6 +109,12 @@ export type NormalizedWorkItem = {
    * store (WK1) for board ordering; remote providers leave it undefined.
    */
   order?: number;
+  /**
+   * A user-authored checklist (acceptance criteria / subtasks), local-only.
+   * Optional so existing `.excalibur/work-items/*.json` keep loading. Distinct
+   * from the run-derived live checklist the dashboard rolls up from a run.
+   */
+  checklist?: NormalizedWorkItemChecklistItem[];
   raw: unknown;
 };
 
@@ -120,6 +139,7 @@ export const normalizedWorkItemSchema = z.object({
   createdAt: z.string().nullable(),
   updatedAt: z.string().nullable(),
   order: z.number().optional(),
+  checklist: z.array(normalizedWorkItemChecklistItemSchema).optional(),
   raw: z.unknown(),
 });
 

@@ -22,6 +22,7 @@ import {
   updateWorkItemFrom,
   deleteWorkItemAt,
   addCommentTo,
+  mutateChecklistOn,
   InvalidLaneError,
   InvalidWorkItemError,
   type WorkItemWriteInput,
@@ -732,6 +733,34 @@ async function handleWrite(
       } catch (error) {
         send(400, { error: error instanceof Error ? error.message : String(error) });
       }
+      return;
+    }
+    // Add / toggle / remove a user-authored checklist item.
+    const wiChecklist = /^\/api\/work-items\/([^/]+)\/checklist$/.exec(path);
+    if (wiChecklist !== null) {
+      const key = decodeURIComponent(wiChecklist[1] as string);
+      if (!WORK_ITEM_KEY.test(key)) {
+        send(400, { error: 'invalid work item key' });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const action = body['action'];
+      let op:
+        | { action: 'add'; text: string }
+        | { action: 'toggle'; id: string }
+        | { action: 'remove'; id: string }
+        | null = null;
+      if (action === 'add' && typeof body['text'] === 'string') {
+        op = { action: 'add', text: body['text'] };
+      } else if ((action === 'toggle' || action === 'remove') && typeof body['id'] === 'string') {
+        op = { action, id: body['id'] };
+      }
+      if (op === null) {
+        send(400, { error: 'invalid checklist op' });
+        return;
+      }
+      const detail = await mutateChecklistOn(options.repoRoot, key, op);
+      send(detail !== null ? 200 : 404, detail ?? { error: `work item ${key} not found` });
       return;
     }
     // Edit a work item's fields (bare :key — MUST follow the subroutes above).

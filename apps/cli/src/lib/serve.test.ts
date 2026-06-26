@@ -470,6 +470,26 @@ describe('excalibur serve — interactive write surface (D2)', () => {
     expect((await post(`/api/work-items/${created.key}/delete`, {})).status).toBe(404);
   });
 
+  it('authored checklist: add → toggle → remove', async () => {
+    type Detail = { authoredChecklist: { id: string; text: string; done: boolean }[] };
+    let d = (await (
+      await post(`/api/work-items/${wiKey}/checklist`, { action: 'add', text: 'write a test' })
+    ).json()) as Detail;
+    expect(d.authoredChecklist).toHaveLength(1);
+    expect(d.authoredChecklist[0]!.done).toBe(false);
+    const id = d.authoredChecklist[0]!.id;
+    d = (await (
+      await post(`/api/work-items/${wiKey}/checklist`, { action: 'toggle', id })
+    ).json()) as Detail;
+    expect(d.authoredChecklist[0]!.done).toBe(true);
+    d = (await (
+      await post(`/api/work-items/${wiKey}/checklist`, { action: 'remove', id })
+    ).json()) as Detail;
+    expect(d.authoredChecklist).toHaveLength(0);
+    // A malformed op is a 400.
+    expect((await post(`/api/work-items/${wiKey}/checklist`, { action: 'nope' })).status).toBe(400);
+  });
+
   it('passes workItemId through to startRun', async () => {
     startCalls.length = 0;
     const res = await post('/api/runs', { task: 'do it', workItemId: wiKey });

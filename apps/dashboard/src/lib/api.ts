@@ -251,6 +251,15 @@ export const deleteWorkItem = (key: string): Promise<{ deleted: boolean }> =>
 export const addComment = (key: string, body: string): Promise<WorkItemDetail> =>
   post(`/api/work-items/${encodeURIComponent(key)}/comment`, { body });
 
+/** Add / toggle / remove an authored checklist item. Returns the updated detail. */
+export const checklistMutate = (
+  key: string,
+  op:
+    | { action: 'add'; text: string }
+    | { action: 'toggle'; id: string }
+    | { action: 'remove'; id: string },
+): Promise<WorkItemDetail> => post(`/api/work-items/${encodeURIComponent(key)}/checklist`, op);
+
 /** Start a run, optionally linked to a work item. */
 export const startRun = (input: {
   task: string;

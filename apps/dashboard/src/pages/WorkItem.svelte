@@ -9,6 +9,7 @@
     updateWorkItem,
     deleteWorkItem,
     addComment,
+    checklistMutate,
     ApiError,
   } from '../lib/api';
   import { LANES, type DashboardLane, type WorkItemDetail } from '../lib/contracts';
@@ -32,7 +33,30 @@
   let eAssignee = $state('');
   let eLane = $state<DashboardLane>('todo');
   let newComment = $state('');
+  let newCheck = $state('');
   let busy = $state(false);
+
+  async function mutateCheck(
+    op:
+      | { action: 'add'; text: string }
+      | { action: 'toggle'; id: string }
+      | { action: 'remove'; id: string },
+  ): Promise<void> {
+    if (item === null) return;
+    actionError = null;
+    try {
+      item = await checklistMutate(item.key, op);
+    } catch (e) {
+      actionError = e instanceof ApiError ? `${e.status} · ${e.message}` : String(e);
+    }
+  }
+
+  async function addCheck(): Promise<void> {
+    const text = newCheck.trim();
+    if (text.length === 0) return;
+    newCheck = '';
+    await mutateCheck({ action: 'add', text });
+  }
 
   function startEdit(): void {
     if (item === null) return;
@@ -238,6 +262,58 @@
     </form>
   {:else if item.description}
     <p class="desc">{item.description}</p>
+  {/if}
+
+  {#if item.authoredChecklist.length > 0 || writable}
+    <section>
+      <h2>
+        {t('workItem.checklist')}
+        {#if item.authoredChecklist.length > 0}
+          <span class="faint"
+            >({item.authoredChecklist.filter((c) => c.done).length}/{item.authoredChecklist
+              .length})</span
+          >
+        {/if}
+      </h2>
+      {#if item.authoredChecklist.length > 0}
+        <ul class="check">
+          {#each item.authoredChecklist as c (c.id)}
+            <li class:done={c.done}>
+              <button
+                class="cbox"
+                class:on={c.done}
+                aria-pressed={c.done}
+                disabled={!writable}
+                onclick={() => mutateCheck({ action: 'toggle', id: c.id })}>{c.done ? '✓' : ''}</button
+              >
+              <span class="ctext">{c.text}</span>
+              {#if writable}
+                <button
+                  class="cdel"
+                  title={t('board.delete')}
+                  aria-label={t('board.delete')}
+                  onclick={() => mutateCheck({ action: 'remove', id: c.id })}>×</button
+                >
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      {#if writable}
+        <form
+          class="addc"
+          onsubmit={(e) => {
+            e.preventDefault();
+            void addCheck();
+          }}
+        >
+          <input bind:value={newCheck} placeholder={t('workItem.addCheck')} />
+          <button type="submit" class="act" disabled={newCheck.trim().length === 0}
+            >{t('board.add')}</button
+          >
+        </form>
+      {/if}
+    </section>
   {/if}
 
   <section>
@@ -489,5 +565,50 @@
     padding: 7px 10px;
     border-radius: var(--radius-sm);
     font: inherit;
+  }
+  .check li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .check li.done .ctext {
+    text-decoration: line-through;
+    color: var(--faint);
+  }
+  .cbox {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    background: var(--panel-2);
+    color: #fff;
+    font-size: 11px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cbox.on {
+    background: var(--ok);
+    border-color: var(--ok);
+  }
+  .cbox:disabled {
+    cursor: default;
+  }
+  .ctext {
+    flex: 1;
+  }
+  .cdel {
+    background: transparent;
+    border: none;
+    color: var(--faint);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+  }
+  .cdel:hover {
+    color: var(--bad);
   }
 </style>

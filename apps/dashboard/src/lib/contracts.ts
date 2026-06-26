@@ -9,6 +9,7 @@
  * not duplicated — they are translated via i18n.
  */
 export type {
+  AuthoredChecklistItemDto,
   BackgroundThreadView,
   BoardResponse,
   ChecklistItemDto,

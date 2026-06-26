@@ -37,6 +37,13 @@ export interface ChecklistItemDto {
   status: 'pending' | 'in_progress' | 'completed';
 }
 
+/** A user-authored checklist entry on a work item (distinct from the run-derived one). */
+export interface AuthoredChecklistItemDto {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
 /** A work item as it appears on a board card (compact). */
 export interface WorkItemSummary {
   /** Stable key, e.g. `WI-12`. */
@@ -217,6 +224,8 @@ export interface WorkItemDetail {
   runs: RunSummary[];
   links: WorkItemLinkDto[];
   comments: WorkItemCommentDto[];
+  /** The user-authored checklist (acceptance criteria / subtasks). */
+  authoredChecklist: AuthoredChecklistItemDto[];
   /** Plans linked to this item (D3 fills the link; D0 ships the shape). */
   plans: PlanRefDto[];
 }

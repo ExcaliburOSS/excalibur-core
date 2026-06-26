@@ -18,6 +18,7 @@ export type {
   NormalizedWorkItemComment,
   NormalizedWorkItemLinkType,
   NormalizedWorkItemLink,
+  NormalizedWorkItemChecklistItem,
   NormalizedWorkItem,
 } from './types';
 

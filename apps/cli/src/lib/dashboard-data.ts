@@ -294,6 +294,11 @@ export async function buildWorkItemDetail(
       body: c.body,
       createdAt: c.createdAt,
     })),
+    authoredChecklist: (item.checklist ?? []).map((c) => ({
+      id: c.id,
+      text: c.text,
+      done: c.done,
+    })),
     // Plans are linked in D3; D0 ships the (empty) contract slot.
     plans: [],
   };
@@ -384,6 +389,24 @@ export async function updateWorkItemFrom(
 /** Deletes a work item; returns whether it existed. */
 export function deleteWorkItemAt(repoRoot: string, key: string): boolean {
   return new LocalWorkItemProvider(repoRoot).deleteWorkItem(key);
+}
+
+/** Add / toggle / remove an authored checklist item; returns the updated detail (null if unknown). */
+export async function mutateChecklistOn(
+  repoRoot: string,
+  key: string,
+  op:
+    | { action: 'add'; text: string }
+    | { action: 'toggle'; id: string }
+    | { action: 'remove'; id: string },
+): Promise<WorkItemDetail | null> {
+  const provider = new LocalWorkItemProvider(repoRoot);
+  try {
+    provider.mutateChecklist(key, op);
+  } catch {
+    return null; // unknown key
+  }
+  return buildWorkItemDetail(repoRoot, key);
 }
 
 /** Appends a comment to a work item; returns the updated detail (null if unknown). */

@@ -11,6 +11,7 @@ import { laneOf, WORK_ITEM_LANES, type WorkItemLane } from './lanes';
 import {
   normalizedWorkItemSchema,
   type NormalizedWorkItem,
+  type NormalizedWorkItemChecklistItem,
   type NormalizedWorkItemComment,
   type NormalizedWorkItemUser,
 } from './types';
@@ -220,6 +221,39 @@ export class LocalWorkItemProvider implements WorkItemProvider {
     const item = this.readOne(key);
     item.status = target.lane;
     item.order = target.order ?? this.nextOrder(target.lane);
+    item.updatedAt = this.now().toISOString();
+    this.write(item);
+    return item;
+  }
+
+  /** Add / toggle / remove a user-authored checklist item; returns the updated item. */
+  mutateChecklist(
+    key: string,
+    op:
+      | { action: 'add'; text: string }
+      | { action: 'toggle'; id: string }
+      | { action: 'remove'; id: string },
+  ): NormalizedWorkItem {
+    const item = this.readOne(key);
+    const list: NormalizedWorkItemChecklistItem[] = item.checklist ?? [];
+    if (op.action === 'add') {
+      const text = op.text.trim();
+      if (text.length > 0) {
+        let max = 0;
+        for (const c of list) {
+          const m = /^cl-(\d+)$/.exec(c.id);
+          if (m) max = Math.max(max, Number.parseInt(m[1] as string, 10));
+        }
+        list.push({ id: `cl-${max + 1}`, text, done: false });
+      }
+    } else if (op.action === 'toggle') {
+      const found = list.find((c) => c.id === op.id);
+      if (found !== undefined) found.done = !found.done;
+    } else {
+      const i = list.findIndex((c) => c.id === op.id);
+      if (i >= 0) list.splice(i, 1);
+    }
+    item.checklist = list;
     item.updatedAt = this.now().toISOString();
     this.write(item);
     return item;
