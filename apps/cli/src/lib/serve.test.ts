@@ -435,6 +435,41 @@ describe('excalibur serve — interactive write surface (D2)', () => {
     expect((await post('/api/work-items/WI-9999/move', { lane: 'done' })).status).toBe(404);
   });
 
+  it('creates a work item (201) and rejects a blank title (400)', async () => {
+    const res = await post('/api/work-items', { title: 'Built from the board', labels: ['ui'] });
+    expect(res.status).toBe(201);
+    const card = (await res.json()) as { key: string; title: string; labels: string[] };
+    expect(card.key).toMatch(/^WI-\d+$/);
+    expect(card.title).toBe('Built from the board');
+    expect(card.labels).toEqual(['ui']);
+    expect((await post('/api/work-items', { title: '   ' })).status).toBe(400);
+  });
+
+  it('edits a work item (200) and 404s an unknown key', async () => {
+    const res = await post(`/api/work-items/${wiKey}`, { title: 'Renamed', priority: 'high' });
+    expect(res.status).toBe(200);
+    const detail = (await res.json()) as { title: string; priority: string | null };
+    expect(detail.title).toBe('Renamed');
+    expect(detail.priority).toBe('high');
+    expect((await post('/api/work-items/WI-9999', { title: 'x' })).status).toBe(404);
+  });
+
+  it('adds a comment (200) and rejects an empty one (400)', async () => {
+    const res = await post(`/api/work-items/${wiKey}/comment`, { body: 'on it' });
+    expect(res.status).toBe(200);
+    const detail = (await res.json()) as { comments: unknown[] };
+    expect(detail.comments.length).toBeGreaterThan(0);
+    expect((await post(`/api/work-items/${wiKey}/comment`, { body: '  ' })).status).toBe(400);
+  });
+
+  it('deletes a work item (200) then 404s it', async () => {
+    const created = (await (await post('/api/work-items', { title: 'Disposable' })).json()) as {
+      key: string;
+    };
+    expect((await post(`/api/work-items/${created.key}/delete`, {})).status).toBe(200);
+    expect((await post(`/api/work-items/${created.key}/delete`, {})).status).toBe(404);
+  });
+
   it('passes workItemId through to startRun', async () => {
     startCalls.length = 0;
     const res = await post('/api/runs', { task: 'do it', workItemId: wiKey });

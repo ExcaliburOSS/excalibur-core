@@ -23,8 +23,9 @@ import { buildSchedules } from '../lib/dashboard-data';
 import { computeScope } from '../lib/scope';
 import { createExcaliburServer, type ServeWriteHandler } from '../lib/serve';
 
-/** Builds the control-plane write handler: start/cancel/approve runs via a RunController. */
-function buildWriteHandler(repoRoot: string): ServeWriteHandler {
+/** Builds the control-plane write handler: start/cancel/approve runs via a RunController.
+ * Shared by `serve --write` and the m-shell's auto-started interactive dashboard. */
+export function buildWriteHandler(repoRoot: string): ServeWriteHandler {
   const { config } = loadConfigContext(repoRoot);
   const gwCtx = loadGatewayContext(repoRoot);
   const { gateway, providerName, cheapProviderName, configured } = gwCtx;

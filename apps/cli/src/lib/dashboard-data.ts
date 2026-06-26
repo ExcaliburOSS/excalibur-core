@@ -317,6 +317,94 @@ export function moveWorkItemLane(repoRoot: string, key: string, lane: string): W
   return summarize(item, manager.runsForWorkItem(item.key), manager);
 }
 
+/** Raised for a missing/blank work-item title on create (→ 400). */
+export class InvalidWorkItemError extends Error {}
+
+/** Fields the dashboard "+ New" / edit forms may send. */
+export interface WorkItemWriteInput {
+  title?: string;
+  description?: string | null;
+  labels?: string[];
+  priority?: string | null;
+  /** A canonical lane id (`backlog`…`done`); stored as the item's status. */
+  lane?: string;
+  assignee?: string | null;
+}
+
+/** Creates a work item from the dashboard "+ New" form; returns the new card summary. */
+export function createWorkItemFrom(repoRoot: string, input: WorkItemWriteInput): WorkItemSummary {
+  const title = (input.title ?? '').trim();
+  if (title.length === 0) {
+    throw new InvalidWorkItemError('a work item needs a title');
+  }
+  if (input.lane !== undefined && !isWorkItemLane(input.lane)) {
+    throw new InvalidLaneError(`invalid lane "${input.lane}"`);
+  }
+  const provider = new LocalWorkItemProvider(repoRoot);
+  const item = provider.createWorkItem({
+    title,
+    ...(input.description != null ? { description: input.description } : {}),
+    ...(input.labels !== undefined ? { labels: input.labels } : {}),
+    ...(input.priority != null ? { priority: input.priority } : {}),
+    ...(input.lane !== undefined ? { status: input.lane } : {}),
+    ...(input.assignee !== undefined ? { assignee: input.assignee } : {}),
+  });
+  const manager = new RunManager(repoRoot);
+  return summarize(item, manager.runsForWorkItem(item.key), manager);
+}
+
+/** Patches a work item's fields; returns the updated detail (null if the key is unknown). */
+export async function updateWorkItemFrom(
+  repoRoot: string,
+  key: string,
+  patch: WorkItemWriteInput & { title?: string },
+): Promise<WorkItemDetail | null> {
+  if (patch.title !== undefined && patch.title.trim().length === 0) {
+    throw new InvalidWorkItemError('a work item needs a title');
+  }
+  if (patch.lane !== undefined && !isWorkItemLane(patch.lane)) {
+    throw new InvalidLaneError(`invalid lane "${patch.lane}"`);
+  }
+  const provider = new LocalWorkItemProvider(repoRoot);
+  try {
+    provider.updateWorkItem(key, {
+      ...(patch.title !== undefined ? { title: patch.title.trim() } : {}),
+      ...(patch.description !== undefined ? { description: patch.description } : {}),
+      ...(patch.labels !== undefined ? { labels: patch.labels } : {}),
+      ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
+      ...(patch.lane !== undefined ? { status: patch.lane } : {}),
+      ...(patch.assignee !== undefined ? { assignee: patch.assignee } : {}),
+    });
+  } catch {
+    return null; // unknown key → 404 at the route
+  }
+  return buildWorkItemDetail(repoRoot, key);
+}
+
+/** Deletes a work item; returns whether it existed. */
+export function deleteWorkItemAt(repoRoot: string, key: string): boolean {
+  return new LocalWorkItemProvider(repoRoot).deleteWorkItem(key);
+}
+
+/** Appends a comment to a work item; returns the updated detail (null if unknown). */
+export async function addCommentTo(
+  repoRoot: string,
+  key: string,
+  body: string,
+): Promise<WorkItemDetail | null> {
+  const text = body.trim();
+  if (text.length === 0) {
+    throw new InvalidWorkItemError('a comment needs a body');
+  }
+  const provider = new LocalWorkItemProvider(repoRoot);
+  try {
+    await provider.addComment({ integrationId: 'local', externalIdOrKey: key, body: text });
+  } catch {
+    return null;
+  }
+  return buildWorkItemDetail(repoRoot, key);
+}
+
 /** Plans list for the Plans & Discovery view (D3), newest first. */
 export function buildPlans(repoRoot: string): PlanSummary[] {
   return listPlans(repoRoot).map((p) => ({

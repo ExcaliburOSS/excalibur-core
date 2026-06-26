@@ -18,7 +18,13 @@ import {
   buildSchedules,
   buildThreads,
   moveWorkItemLane,
+  createWorkItemFrom,
+  updateWorkItemFrom,
+  deleteWorkItemAt,
+  addCommentTo,
   InvalidLaneError,
+  InvalidWorkItemError,
+  type WorkItemWriteInput,
 } from './dashboard-data';
 import type { PlanShapeView, ScheduleJobView, ScopeMapView } from '@excalibur/shared';
 import { buildChronogramForRun } from './chronogram';
@@ -538,6 +544,26 @@ function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   });
 }
 
+/** Coerces a JSON body into the work-item write fields, dropping anything mistyped. */
+function parseWorkItemBody(body: Record<string, unknown>): WorkItemWriteInput {
+  const out: WorkItemWriteInput = {};
+  if (typeof body['title'] === 'string') out.title = body['title'];
+  if (typeof body['description'] === 'string' || body['description'] === null) {
+    out.description = body['description'] as string | null;
+  }
+  if (Array.isArray(body['labels'])) {
+    out.labels = (body['labels'] as unknown[]).filter((l): l is string => typeof l === 'string');
+  }
+  if (typeof body['priority'] === 'string' || body['priority'] === null) {
+    out.priority = body['priority'] as string | null;
+  }
+  if (typeof body['lane'] === 'string') out.lane = body['lane'];
+  if (typeof body['assignee'] === 'string' || body['assignee'] === null) {
+    out.assignee = body['assignee'] as string | null;
+  }
+  return out;
+}
+
 /** Handles the POST write surface (start/cancel/approve). 403 when write is disabled. */
 async function handleWrite(
   options: ServeOptions,
@@ -663,6 +689,67 @@ async function handleWrite(
           // A corrupt/unreadable work-item file is a server error, not a 404.
           send(500, { error: message });
         }
+      }
+      return;
+    }
+    // Create a work item (the dashboard "+ New" / quick-add).
+    if (path === '/api/work-items') {
+      const body = await readJsonBody(req);
+      try {
+        send(201, createWorkItemFrom(options.repoRoot, parseWorkItemBody(body)));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const bad = error instanceof InvalidWorkItemError || error instanceof InvalidLaneError;
+        send(bad ? 400 : 500, { error: message });
+      }
+      return;
+    }
+    // Delete a work item.
+    const wiDelete = /^\/api\/work-items\/([^/]+)\/delete$/.exec(path);
+    if (wiDelete !== null) {
+      const key = decodeURIComponent(wiDelete[1] as string);
+      if (!WORK_ITEM_KEY.test(key)) {
+        send(400, { error: 'invalid work item key' });
+        return;
+      }
+      const ok = deleteWorkItemAt(options.repoRoot, key);
+      send(ok ? 200 : 404, ok ? { deleted: true } : { error: `work item ${key} not found` });
+      return;
+    }
+    // Add a comment to a work item.
+    const wiComment = /^\/api\/work-items\/([^/]+)\/comment$/.exec(path);
+    if (wiComment !== null) {
+      const key = decodeURIComponent(wiComment[1] as string);
+      if (!WORK_ITEM_KEY.test(key)) {
+        send(400, { error: 'invalid work item key' });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const text = typeof body['body'] === 'string' ? body['body'] : '';
+      try {
+        const detail = await addCommentTo(options.repoRoot, key, text);
+        send(detail !== null ? 200 : 404, detail ?? { error: `work item ${key} not found` });
+      } catch (error) {
+        send(400, { error: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+    // Edit a work item's fields (bare :key — MUST follow the subroutes above).
+    const wiEdit = /^\/api\/work-items\/([^/]+)$/.exec(path);
+    if (wiEdit !== null) {
+      const key = decodeURIComponent(wiEdit[1] as string);
+      if (!WORK_ITEM_KEY.test(key)) {
+        send(400, { error: 'invalid work item key' });
+        return;
+      }
+      const body = await readJsonBody(req);
+      try {
+        const detail = await updateWorkItemFrom(options.repoRoot, key, parseWorkItemBody(body));
+        send(detail !== null ? 200 : 404, detail ?? { error: `work item ${key} not found` });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const bad = error instanceof InvalidWorkItemError || error instanceof InvalidLaneError;
+        send(bad ? 400 : 500, { error: message });
       }
       return;
     }
