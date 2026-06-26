@@ -6,6 +6,28 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-06-26
+
+The work-item dashboard minor — the local board becomes a real command center.
+
+### Fixed
+
+- **The local dashboard now serves the work-item board, not a legacy run page.** A
+  symlink path-resolution bug meant every globally-installed CLI fell back to an old
+  run-centric page; `excalibur serve` (and the m-shell's auto-dashboard) now reliably
+  serve the embedded Svelte work-item kanban, with an honest "not built" page as the
+  only fallback. The legacy inline run dashboard is removed.
+
+### Added
+
+- **A work-item command center in the local dashboard.** Create work items (a `+ New`
+  panel and per-lane quick-add), edit them (title · description · lane · priority ·
+  assignee · labels), delete, comment, and author a checklist (acceptance criteria /
+  subtasks) — all from the UI, over a write-gated `/api/work-items` surface.
+- **The m-shell's auto-started dashboard is now interactive** (writable), so you can
+  manage work items and start runs right there. It stays localhost-bound + per-session
+  token-gated; `EXCALIBUR_DASHBOARD=read-only` opts down, `=off` disables.
+
 ## [1.3.0] - 2026-06-26
 
 The orchestration & autonomy minor: Excalibur now interprets a big goal, maps
