@@ -8,7 +8,9 @@ import {
   parseInterruptClass,
   parseInterruptConfidence,
   parseInterruptDecision,
+  planInterrupt,
   type IndependenceContext,
+  type InterruptClass,
   type InterruptContext,
 } from './interrupt-router';
 
@@ -130,5 +132,48 @@ describe('assessIndependence (injected model)', () => {
     const boom = vi.fn().mockRejectedValue(new Error('down'));
     expect((await assessIndependence('do X', indepCtx, boom)).independent).toBe(false);
     expect((await assessIndependence('   ', indepCtx, indep)).independent).toBe(false);
+  });
+});
+
+describe('planInterrupt (routing + ack, INT-4)', () => {
+  const dec = (cls: InterruptClass, confidence: 'high' | 'medium' | 'low' = 'high') => ({
+    cls,
+    confidence,
+  });
+
+  it('steer → fold; quick → answer_inline; stop → abort', () => {
+    expect(planInterrupt(dec('steer'), null, busy).action).toBe('fold');
+    expect(planInterrupt(dec('quick'), null, busy).action).toBe('answer_inline');
+    expect(planInterrupt(dec('stop'), null, busy).action).toBe('abort');
+  });
+
+  it('new → parallel when independent, pause_switch when not', () => {
+    expect(planInterrupt(dec('new'), { independent: true, reason: '' }, busy).action).toBe(
+      'parallel',
+    );
+    expect(planInterrupt(dec('new'), { independent: false, reason: '' }, busy).action).toBe(
+      'pause_switch',
+    );
+    expect(planInterrupt(dec('new'), null, busy).action).toBe('pause_switch'); // no verdict → pause
+  });
+
+  it('while awaiting: answer feeds it (no re-ask); a side question re-asks after', () => {
+    const ans = planInterrupt(dec('answer'), null, asking);
+    expect(ans.action).toBe('feed_answer');
+    expect(ans.reaskAfter).toBe(false);
+    const side = planInterrupt(dec('quick'), null, asking);
+    expect(side.action).toBe('answer_inline');
+    expect(side.reaskAfter).toBe(true); // re-ask the pending approval after
+    // stop while awaiting cancels, does NOT re-ask.
+    expect(planInterrupt(dec('stop'), null, asking).reaskAfter).toBe(false);
+  });
+
+  it('the ack names the action + invites correction on a non-high-confidence read', () => {
+    expect(planInterrupt(dec('steer', 'high'), null, busy).ack.length).toBeGreaterThan(0);
+    const lowNew = planInterrupt(dec('new', 'low'), { independent: true, reason: '' }, busy);
+    expect(lowNew.ack).toContain('parallel');
+    expect(lowNew.ack.toLowerCase()).toContain('separate'); // correction hint
+    const highNew = planInterrupt(dec('new', 'high'), { independent: true, reason: '' }, busy);
+    expect(highNew.ack.toLowerCase()).not.toContain('say "no'); // no hint at high confidence
   });
 });

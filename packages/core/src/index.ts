@@ -454,6 +454,8 @@ export {
   assessIndependence,
   buildIndependencePrompt,
   parseIndependence,
+  planInterrupt,
+  buildInterruptAck,
   INTERRUPT_CLASSES,
   type InterruptClass,
   type InterruptConfidence,
@@ -462,6 +464,8 @@ export {
   type InterruptModel,
   type IndependenceContext,
   type IndependenceVerdict,
+  type InterruptAction,
+  type InterruptPlan,
 } from './sessions/interrupt-router';
 
 // Core-local errors

@@ -206,3 +206,104 @@ export async function assessIndependence(
     return { independent: false, reason: 'could not assess — pausing is the safe default' };
   }
 }
+
+// --- Routing + acknowledgment (INT-4) ---------------------------------------
+//
+// Turns a triage decision (+ independence) into the ACTION the shell takes and the
+// INSTANT acknowledgment the user sees BEFORE it acts. The execution of each action
+// (fold via supervisor.reassess, parallel background thread, pause+switch, re-ask…)
+// is wired in the CLI where the live run handles exist; this is the pure decision.
+
+export type InterruptAction =
+  /** steer → fold into the current work. */
+  | 'fold'
+  /** quick question → answer now, work keeps running. */
+  | 'answer_inline'
+  /** new + independent → run as a parallel background thread. */
+  | 'parallel'
+  /** new + conflicting → pause the current work, do the new, then resume. */
+  | 'pause_switch'
+  /** stop → abort the current work. */
+  | 'abort'
+  /** the input IS the answer to the pending question → feed it. */
+  | 'feed_answer';
+
+export interface InterruptPlan {
+  action: InterruptAction;
+  /**
+   * After handling, RE-ASK the pending question Excalibur was waiting on (the
+   * input was a side-question/steer/new while it was awaiting an answer — never
+   * lose the original prompt).
+   */
+  reaskAfter: boolean;
+  /** The instant, human acknowledgment to show the user before acting. */
+  ack: string;
+}
+
+/** The instant acknowledgment — names the interpretation so the user can correct it. */
+export function buildInterruptAck(
+  action: InterruptAction,
+  decision: InterruptDecision,
+  ctx: InterruptContext,
+  reaskAfter: boolean,
+): string {
+  const work = ctx.currentWork;
+  const resume = reaskAfter ? ' Then I’ll go back to the question.' : '';
+  const base = ((): string => {
+    switch (action) {
+      case 'fold':
+        return `↻ Folding that into the current work (${work}).`;
+      case 'answer_inline':
+        return `↳ Quick answer — ${work} keeps running.`;
+      case 'parallel':
+        return `▶ Running that in parallel (independent of ${work}); the current work continues.`;
+      case 'pause_switch':
+        return `⏸ Pausing ${work} and switching to this; I’ll resume it after.`;
+      case 'abort':
+        return `⏹ Stopping ${work}.`;
+      case 'feed_answer':
+        return `✓ Got it.`;
+    }
+  })();
+  // Per the ambiguity choice (act on best guess, let the user correct): on a
+  // non-high-confidence read, invite a one-word correction.
+  const hint =
+    decision.confidence !== 'high' && action !== 'feed_answer'
+      ? ' (say "no, it’s separate" / "that’s for the current task" if I read it wrong)'
+      : '';
+  return `${base}${resume}${hint}`;
+}
+
+/**
+ * Plans the shell's reaction to an interruption: the {@link InterruptAction}, whether
+ * to re-ask a pending question afterwards, and the acknowledgment. Pure + total.
+ * `independence` is only consulted for a `new` request (null → treated as a pause).
+ */
+export function planInterrupt(
+  decision: InterruptDecision,
+  independence: IndependenceVerdict | null,
+  ctx: InterruptContext,
+): InterruptPlan {
+  // Re-ask the pending question when the input was something OTHER than its answer
+  // or an outright stop, while Excalibur was awaiting an answer.
+  const reaskAfter = ctx.awaitingAnswer && decision.cls !== 'answer' && decision.cls !== 'stop';
+  let action: InterruptAction;
+  switch (decision.cls) {
+    case 'answer':
+      action = 'feed_answer';
+      break;
+    case 'stop':
+      action = 'abort';
+      break;
+    case 'steer':
+      action = 'fold';
+      break;
+    case 'quick':
+      action = 'answer_inline';
+      break;
+    case 'new':
+      action = independence?.independent === true ? 'parallel' : 'pause_switch';
+      break;
+  }
+  return { action, reaskAfter, ack: buildInterruptAck(action, decision, ctx, reaskAfter) };
+}
