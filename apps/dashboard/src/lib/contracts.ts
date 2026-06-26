@@ -54,11 +54,15 @@ export const LANES = [
   'done',
 ] as const satisfies readonly DashboardLane[];
 
-/** Accent color per lane (board column headers / card stripes) — UI only. */
+/**
+ * Accent color per lane (board column headers / card stripes) — UI only.
+ * Cooled toward the Cobalt palette (accent #4DA3FF, amber #F2C94C, teal #3DD6A8)
+ * while keeping each column a distinct hue for scannability.
+ */
 export const LANE_COLORS: Readonly<Record<DashboardLane, string>> = {
-  backlog: '#5b6577',
-  todo: '#5b9dff',
-  in_progress: '#e2b341',
-  review: '#c08bff',
-  done: '#4ec9a8',
+  backlog: '#5a6678',
+  todo: '#4da3ff',
+  in_progress: '#f2c94c',
+  review: '#9d8bff',
+  done: '#3dd6a8',
 };

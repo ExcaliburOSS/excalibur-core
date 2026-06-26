@@ -4,22 +4,22 @@
  * layer here so D1–D5 views stay visually coherent without re-deciding colors.
  */
 :root {
-  --bg: #0b0e14;
-  --panel: #11151f;
-  --panel-2: #161b27;
-  --line: #232b3a;
-  --line-strong: #33405a;
-  --text: #e6ebf5;
-  --muted: #8a96ab;
-  --faint: #5b6577;
-  /* DASH7 — parity with the live TUI palette (cyan accent #5BC8FF, success
-   * #5AD18A, warn #F2C94C on near-black), so the web view reads as the same
-   * product as the Ink rail. */
-  --accent: #5bc8ff;
-  --accent-dim: #2a5b78;
-  --ok: #5ad18a;
+  --bg: #0a0e16;
+  --panel: #141a24;
+  --panel-2: #1a2230;
+  --line: #212a3a;
+  --line-strong: #34415a;
+  --text: #e6edf3;
+  --muted: #8b98ab;
+  --faint: #5a6678;
+  /* Parity with the live TUI Cobalt palette (sword-blue accent #4DA3FF, teal
+   * success #3DD6A8, amber warn #F2C94C, coral danger #FF6B7A on near-black),
+   * so the web view reads as the same product as the Ink rail. */
+  --accent: #4da3ff;
+  --accent-dim: #2f6fb5;
+  --ok: #3dd6a8;
   --warn: #f2c94c;
-  --bad: #e5687a;
+  --bad: #ff6b7a;
   --radius: 10px;
   --radius-sm: 6px;
   --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Fira Code', Menlo, Consolas, monospace;

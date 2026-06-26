@@ -30,7 +30,7 @@ export function buildRunShareHtml(record: RunRecord, rail: RailModel): string {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;" />
 <title>Excalibur run — shared</title>
 <style>
-  :root{--bg:#0b0e14;--panel:#11151f;--line:#232b3a;--text:#e6ebf5;--muted:#8a96ab;--accent:#5b9dff;--ok:#4ec9a8;--bad:#e5687a;--warn:#e2b341}
+  :root{--bg:#0a0e16;--panel:#141a24;--line:#212a3a;--text:#e6edf3;--muted:#8b98ab;--accent:#4da3ff;--ok:#3dd6a8;--bad:#ff6b7a;--warn:#f2c94c}
   *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 ui-sans-serif,system-ui,sans-serif}
   .wrap{max-width:900px;margin:0 auto;padding:24px}
   h1{font-size:22px;margin:0 0 4px}.id{font-family:ui-monospace,monospace;color:var(--muted);font-size:12px}

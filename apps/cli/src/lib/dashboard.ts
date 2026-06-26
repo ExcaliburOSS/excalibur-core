@@ -8,8 +8,8 @@
  */
 
 const STYLE = `
-:root{--bg:#0b0e14;--panel:#11161f;--line:#1d2531;--text:#c8d3e0;--muted:#6b7888;
---accent:#5bc8ff;--ok:#4ec9b0;--warn:#e2b341;--bad:#f06c6c}
+:root{--bg:#0a0e16;--panel:#141a24;--line:#212a3a;--text:#e6edf3;--muted:#8b98ab;
+--accent:#4da3ff;--ok:#3dd6a8;--warn:#f2c94c;--bad:#ff6b7a}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);
 font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 header{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;
