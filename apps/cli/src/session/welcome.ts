@@ -3,6 +3,7 @@ import {
   detectThemeSync,
   getColors,
   paint,
+  paintBg,
   type ColorTier,
   type Palette,
 } from '@excalibur/tui';
@@ -13,8 +14,9 @@ import {
  * A full-width framed box with an ACCENT-coloured border and the mixed-case
  * `Excalibur` title (blue→cyan gradient) + dim version breaking out of the top
  * border (legend style). Two columns — left: "Welcome back, <name>", a crisp
- * quadrant-pixel sword (¼-cell sub-pixels: a solid blue blade + gray crossguard
- * with a symmetric stepped point), the brand epigraph, then model/org/user;
+ * half-block sword (background-filled cells so it never shows inter-row gaps: a
+ * solid blue blade + gray crossguard with a symmetric stepped point), the brand
+ * epigraph, then model/org/user;
  * right: a Tip and a What's-new. Width-adaptive (collapses to one column when
  * narrow), truecolor with graceful 256/16/none downsampling, pure-ASCII fallback
  * when `unicode` is false. Layout is alignment-verified at widths 80/72/64/50.
@@ -115,31 +117,18 @@ function gradient(text: string, tier: ColorTier): string {
   return out;
 }
 
-// Map a 2×2 sub-pixel on/off pattern (TL,TR,BL,BR) to its quadrant block glyph.
-const QUAD: Record<string, string> = {
-  '0000': ' ',
-  '1000': '▘',
-  '0100': '▝',
-  '0010': '▖',
-  '0001': '▗',
-  '1100': '▀',
-  '0011': '▄',
-  '1010': '▌',
-  '0101': '▐',
-  '1001': '▚',
-  '0110': '▞',
-  '1110': '▛',
-  '1101': '▜',
-  '1011': '▙',
-  '0111': '▟',
-  '1111': '█',
-};
-
 /**
- * Crisp horizontal sword in quadrant sub-pixels (¼-cell pixels): a solid blue
- * blade + a taller gray crossguard, NO fuller, with a symmetric stepped point.
- * The blade length adapts to `availCells` so it never overflows its column.
- * Returns one coloured string per terminal row.
+ * Crisp horizontal sword: a solid blue blade + a taller gray crossguard, NO
+ * fuller, with a symmetric stepped point. The blade length adapts to `availCells`
+ * so it never overflows its column. Returns one coloured string per terminal row.
+ *
+ * Rendered with VERTICAL half-block sub-pixels (two stacked pixels per cell) and
+ * painted FG+BG: a solid cell sets the cell BACKGROUND to its colour, which fills
+ * the whole character cell — including the terminal's inter-line spacing — so a
+ * stack of rows is seamless. (Foreground-only block glyphs leave that spacing
+ * unpainted; that gap is what shows up as the "black lines" cutting across the
+ * blade.) Every sword feature is cell-aligned horizontally, so a 1×2 cell carries
+ * the same detail the old 2×2 quadrant grid did.
  */
 function swordBlock(tier: ColorTier, availCells: number): string[] {
   const guardW = 8; // sub-cols (=4 cells)
@@ -181,17 +170,21 @@ function swordBlock(tier: ColorTier, availCells: number): string[] {
   for (let cr = 0; cr < cellRows; cr++) {
     let line = '';
     for (let cc = 0; cc < cellCols; cc++) {
-      const tl = grid.get(`${cr * 2},${cc * 2}`);
-      const tr = grid.get(`${cr * 2},${cc * 2 + 1}`);
-      const bl = grid.get(`${cr * 2 + 1},${cc * 2}`);
-      const br = grid.get(`${cr * 2 + 1},${cc * 2 + 1}`);
-      const color = tl ?? tr ?? bl ?? br;
-      if (color === undefined) {
+      // Collapse each cell's two horizontal sub-columns (always equal-or-empty,
+      // since the sword is cell-aligned) into one top + one bottom sub-pixel.
+      const top = grid.get(`${cr * 2},${cc * 2}`) ?? grid.get(`${cr * 2},${cc * 2 + 1}`);
+      const bottom = grid.get(`${cr * 2 + 1},${cc * 2}`) ?? grid.get(`${cr * 2 + 1},${cc * 2 + 1}`);
+      if (top !== undefined && bottom !== undefined) {
+        // Both halves live → fill the WHOLE cell via the background (no inter-row
+        // gap); `█` keeps it visible on the no-colour tier where bg is dropped.
+        line += top === bottom ? paintBg('█', top, tier, top) : paintBg('▀', bottom, tier, top);
+      } else if (top !== undefined) {
+        line += paint('▀', top, tier); // top-half edge (feathered tip / blade base)
+      } else if (bottom !== undefined) {
+        line += paint('▄', bottom, tier); // bottom-half edge
+      } else {
         line += ' ';
-        continue;
       }
-      const key = (tl ? '1' : '0') + (tr ? '1' : '0') + (bl ? '1' : '0') + (br ? '1' : '0');
-      line += paint(QUAD[key] ?? '█', color, tier);
     }
     lines.push(line);
   }
