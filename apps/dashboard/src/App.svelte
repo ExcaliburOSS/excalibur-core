@@ -15,6 +15,7 @@
   import Threads from './pages/Threads.svelte';
   import RunDetail from './pages/RunDetail.svelte';
   import Search from './pages/Search.svelte';
+  import BudgetMeter from './lib/BudgetMeter.svelte';
 
   const router = createRouter();
 
@@ -40,14 +41,17 @@
       <span class="word">Excalibur</span>
       <span class="tag faint">{t('app.tagline')}</span>
     </a>
-    <nav>
-      {#each NAV as item (item.href)}
-        {@const active = item.match.includes(router.current.name)}
-        <a href={item.href} class:active aria-current={active ? 'page' : undefined}>
-          {t(item.key)}
-        </a>
-      {/each}
-    </nav>
+    <div class="right">
+      <nav>
+        {#each NAV as item (item.href)}
+          {@const active = item.match.includes(router.current.name)}
+          <a href={item.href} class:active aria-current={active ? 'page' : undefined}>
+            {t(item.key)}
+          </a>
+        {/each}
+      </nav>
+      <BudgetMeter />
+    </div>
   </header>
 
   <main>
@@ -123,9 +127,15 @@
   .tag {
     font-size: 12px;
   }
+  .right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
   nav {
     display: flex;
     gap: 4px;
+    flex-wrap: wrap;
   }
   nav a {
     color: var(--muted);
