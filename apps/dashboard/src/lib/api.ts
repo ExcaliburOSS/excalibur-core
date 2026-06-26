@@ -132,6 +132,49 @@ export const fetchPlan = (id: string): Promise<PlanDetail> =>
 export const fetchDiscovery = (): Promise<{ discovery: DiscoverySummary[] }> =>
   get('/api/discovery');
 
+// ---- meta-orchestrator missions (M8 #43) — read-only view of .excalibur/missions/ ----
+
+/** One mission summary for the list view. */
+export interface MissionListItemView {
+  id: string;
+  goal: string;
+  outcome: string;
+  spentCents: number;
+  stepsDone: number;
+  stepsTotal: number;
+}
+/** One step of a mission's capability DAG. */
+export interface MissionStepView {
+  id: string;
+  capability: string;
+  objective: string;
+  status: string;
+  gate: boolean;
+  attempts: number;
+  dependsOn: string[];
+}
+/** A mission's full DAG + progress for the detail view. */
+export interface MissionDetailView {
+  id: string;
+  goal: string;
+  interpretation: string;
+  complexity: string;
+  risk: string;
+  outcome: string;
+  pausedReason?: string;
+  spentCents: number;
+  successCriteria: string[];
+  steps: MissionStepView[];
+}
+
+/** All checkpointed missions (the meta-orchestrator runs). */
+export const fetchMissions = (): Promise<{ missions: MissionListItemView[] }> =>
+  get('/api/missions');
+
+/** One mission's full capability DAG + progress. */
+export const fetchMission = (id: string): Promise<MissionDetailView> =>
+  get(`/api/missions/${encodeURIComponent(id)}`);
+
 // ---- write surface (D2; only succeeds when `excalibur serve --write`) ----
 
 /** Move a work item to another lane (drag-to-change-status). Returns the updated card. */

@@ -9,6 +9,7 @@
   import Chronogram from './pages/Chronogram.svelte';
   import Plans from './pages/Plans.svelte';
   import Scope from './pages/Scope.svelte';
+  import Missions from './pages/Missions.svelte';
 
   const router = createRouter();
 
@@ -19,6 +20,7 @@
     { href: '#/insights', key: 'nav.insights', match: ['insights'] },
     { href: '#/plans', key: 'nav.plans', match: ['plans'] },
     { href: '#/scope', key: 'nav.scope', match: ['scope'] },
+    { href: '#/missions', key: 'nav.missions', match: ['missions'] },
   ];
 </script>
 
@@ -56,6 +58,8 @@
       <Plans />
     {:else if router.current.name === 'scope'}
       <Scope />
+    {:else if router.current.name === 'missions'}
+      <Missions />
     {:else}
       <div class="empty">{t('common.notFound')}</div>
     {/if}

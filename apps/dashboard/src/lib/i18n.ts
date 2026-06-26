@@ -16,6 +16,7 @@ const EN: Catalog = {
   'nav.insights': 'Insights',
   'nav.plans': 'Plans',
   'nav.scope': 'Scope',
+  'nav.missions': 'Missions',
   'orch.title': 'Orchestrations',
   'orch.subtitle': 'Parallel swarm runs and their per-lane agents.',
   'orch.none': 'No parallel orchestrations yet — they appear when a build fans out to a swarm.',
@@ -146,6 +147,7 @@ const ES: Catalog = {
   'nav.insights': 'Métricas',
   'nav.plans': 'Planes',
   'nav.scope': 'Alcance',
+  'nav.missions': 'Misiones',
   'orch.title': 'Orquestaciones',
   'orch.subtitle': 'Ejecuciones de swarm en paralelo y sus agentes por carril.',
   'orch.none':

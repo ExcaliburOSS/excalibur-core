@@ -19,6 +19,7 @@ import {
 } from './dashboard-data';
 import type { PlanShapeView, ScopeMapView } from '@excalibur/shared';
 import { buildChronogramForRun } from './chronogram';
+import { missionsList, missionDetail } from './missions-serve';
 import { cancelOrchestrationLane, setOrchestrationPaused } from './orchestration-manifest';
 
 /**
@@ -185,6 +186,17 @@ function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
     const detail = buildPlanDetail(repoRoot, decodeURIComponent(planMatch[1] as string));
     return detail === null
       ? { status: 404, body: { error: 'plan not found' } }
+      : { status: 200, body: detail };
+  }
+  if (path === '/api/missions') {
+    // The meta-orchestrator's missions (M8 #43) — read-only from .excalibur/missions/.
+    return { status: 200, body: { missions: missionsList(repoRoot) } };
+  }
+  const missionMatch = /^\/api\/missions\/([^/]+)$/.exec(path);
+  if (missionMatch !== null) {
+    const detail = missionDetail(repoRoot, decodeURIComponent(missionMatch[1] as string));
+    return detail === null
+      ? { status: 404, body: { error: 'mission not found' } }
       : { status: 200, body: detail };
   }
   const runMatch = /^\/api\/runs\/([^/]+)(\/events|\/stream)?$/.exec(path);
