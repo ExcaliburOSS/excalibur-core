@@ -6,6 +6,40 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-06-27
+
+A conversational-shell polish release — the m-shell now talks like a
+pair-programmer, never leaks internal "run" machinery, and its intelligence can
+no longer be silently disabled.
+
+### Fixed
+
+- **The shell's intelligence is never silently off.** Intent routing — the gate
+  that sends a turn to plan / swarm / scope / mission instead of a plain turn —
+  required a separate fast model; with a single model configured it quietly fell
+  back to "always a plain turn", so scope estimation and plan-shaping never ran.
+  It now falls back to the default model (with a reasoning-aware budget) so the
+  routing always works. Verified across EN/ES/FR.
+- **`exit` / `quit` leave the shell.** A bare `exit`/`quit` was treated as a task
+  and handed to the model; it now exits, as in every REPL.
+- **No stray git error on a fresh repo** — `fatal: ambiguous argument 'HEAD'` no
+  longer leaks on a repository with no commits.
+
+### Changed
+
+- **The conversational turn leads with narration, not run scaffolding.** Dropped
+  the `→ agent · act · L4` header, the internal run id/path line, and the
+  `run completed` line from chat/plan/build turns — the warm narration, the live
+  action lines (file paths + diffs stay) and the post-turn receipt carry it.
+  Plan/build phases read as `◇ Planning…` / `◆ Making the changes…`.
+- **Talk tasks, not "runs".** "run" is internal; user-facing output across the
+  shell, the `run`/`patch` command and replay now says **task** (en + es).
+- **Slimmer live footer in the shell** — just time · tokens · cost, dropping the
+  level/safety/push/model telemetry (the `excalibur run` command keeps the full
+  footer).
+- **Status-line safety reflects the real posture** — when auto-accept is on it
+  says so, instead of always claiming "no files will be modified without approval".
+
 ## [1.4.0] - 2026-06-26
 
 The work-item dashboard minor — the local board becomes a real command center.
