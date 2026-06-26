@@ -10,6 +10,7 @@ import {
   runMission,
   runVerificationMesh,
   saveMission,
+  scopeMapToMarkdown,
   type CapabilityExecutor,
   type Mission,
   type MissionState,
@@ -28,6 +29,7 @@ import { loadGatewayContext, requireConfiguredModel } from '../lib/context';
 import { runExploreFlow } from '../lib/explore';
 import { captureRestorePoint, printRecoveryHint, warnDirtyTree } from '../lib/run-safety';
 import { runSwarmFlow } from '../lib/swarm';
+import { computeScope } from '../lib/scope';
 import { shipChange } from '../lib/ship-pr';
 import { runAgentTurn, type AgentTurnDeps, type ApprovalState } from './agent-turn';
 
@@ -49,8 +51,17 @@ function capabilityLevel(capability: string, sessionLevel: AutonomyLevel): Auton
   return (readOnly.includes(capability) ? 1 : Math.max(2, sessionLevel)) as AutonomyLevel;
 }
 
-/** The task prompt handed to the agentic turn for a capability step. */
-function capabilityTask(step: PlanStep, mission: Mission): string {
+/**
+ * The task prompt handed to the agentic turn for a capability step. When an
+ * earlier `understand` step produced a scope map (AO9), it is threaded into every
+ * LATER step so plan/implement/verify build ON the established understanding
+ * instead of re-discovering the codebase from scratch.
+ */
+export function capabilityTask(
+  step: PlanStep,
+  mission: Mission,
+  context: { understanding?: string } = {},
+): string {
   const framing: Record<string, string> = {
     understand:
       'Explore the codebase READ-ONLY and map what is relevant to the objective. Report your findings concisely — do not modify anything.',
@@ -69,7 +80,16 @@ function capabilityTask(step: PlanStep, mission: Mission): string {
       'Review the recent change for the objective (correctness, regressions, quality). Report findings.',
     ship: 'Summarize the completed change for a pull request (title + body). Do NOT push or open the PR.',
   };
-  return `${framing[step.capability] ?? 'Do the objective.'}\n\nObjective: ${step.objective}\nOverall goal: ${mission.goal}`;
+  const base = `${framing[step.capability] ?? 'Do the objective.'}\n\nObjective: ${step.objective}\nOverall goal: ${mission.goal}`;
+  // Feed the understand step's scope map forward (not into understand itself).
+  if (
+    step.capability !== 'understand' &&
+    context.understanding !== undefined &&
+    context.understanding.length > 0
+  ) {
+    return `${base}\n\nWhat an earlier read-only scope already established about this codebase — build ON it, do not re-discover:\n${context.understanding.slice(0, 4000)}`;
+  }
+  return base;
 }
 
 /**
@@ -208,21 +228,56 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
     adapter,
     ribbon: ribbonModel,
   });
+  // AO9 — the understand step's scope map, threaded into every later step so the
+  // mission builds ON the established understanding (set by the `understand`
+  // special-case below; empty until then).
+  let understanding = '';
+  /** The step prompt, grounded in the accumulated understanding. */
+  const taskFor = (step: PlanStep): string => capabilityTask(step, mission, { understanding });
+
   const executor: CapabilityExecutor = async (step, state) => {
     const level = capabilityLevel(step.capability, opts.autonomyLevel);
     const turn = baseTurn(level, toRibbon(state));
     deps.ui.write(pc.cyan(`▶ ${step.capability}: ${step.objective}`));
 
-    // `parallelize` and `explore` use their REAL dedicated engines (the swarm /
-    // best-of-N) when the step calls for them; on a setup failure (e.g. not a git
-    // repo) they degrade to a single capable run. The subsequent test/verify gates
-    // ground overall correctness via runVerdict.
-    if (step.capability === 'parallelize') {
+    // `understand` uses the REAL AO9 scope engine: decompose the objective, fan
+    // out parallel READ-ONLY explorers, and synthesize a ScopeMap (subsystems ·
+    // built-vs-missing · risks) — the proactive "understand-first" map that then
+    // grounds every later step. Degrades to a generic read-only turn on failure.
+    if (step.capability === 'understand') {
+      try {
+        const map = await computeScope(repoRoot, taskFor(step), gateway, { signal });
+        if (map !== null) {
+          understanding = scopeMapToMarkdown(map);
+          deps.ui.write(pc.dim(`  ${map.summary}`));
+          for (const s of map.subsystems.slice(0, 8)) {
+            const gap = s.whatsMissing.trim().length > 0 ? ` — ${s.whatsMissing}` : '';
+            deps.ui.write(pc.dim(`  • ${s.subsystem}${gap}`));
+          }
+          return {
+            ok: true,
+            summary: map.summary.slice(0, 600),
+            signals: {
+              engine: 'scope',
+              subsystems: map.subsystems.length,
+              risks: map.risks.length,
+              openQuestions: map.openQuestions.length,
+            },
+          };
+        }
+      } catch {
+        /* fall through to a generic read-only understand turn */
+      }
+    } else if (step.capability === 'parallelize') {
+      // `parallelize` and `explore` use their REAL dedicated engines (the swarm /
+      // best-of-N) when the step calls for them; on a setup failure (e.g. not a git
+      // repo) they degrade to a single agentic run. The subsequent test/verify gates
+      // ground overall correctness via runVerdict.
       try {
         await runSwarmFlow(
           deps,
           repoRoot,
-          capabilityTask(step, mission),
+          taskFor(step),
           { gateway: gateway.gateway, providerName: gateway.providerName, config: opts.config },
           { yes: true, apply: true, grade: true, signal },
         );
@@ -239,7 +294,7 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
         await runExploreFlow(
           deps,
           repoRoot,
-          capabilityTask(step, mission),
+          taskFor(step),
           { gateway: gateway.gateway, providerName: gateway.providerName, config: opts.config },
           { yes: true, signal },
         );
@@ -289,7 +344,7 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
       }
       let body = '';
       try {
-        const summary = await runAgentTurn(turn, capabilityTask(step, mission));
+        const summary = await runAgentTurn(turn, taskFor(step));
         body = summary.text;
       } catch {
         /* the PR body is best-effort — fall back to the goal as the title/body */
@@ -316,7 +371,7 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
     }
 
     try {
-      const result = await runAgentTurn(turn, capabilityTask(step, mission));
+      const result = await runAgentTurn(turn, taskFor(step));
       // Ground the outcome in the run's real events (failed tests / refuted claims /
       // errors) so gates aren't judged on the model's prose alone; the reassessor
       // also sees the structured signals.
