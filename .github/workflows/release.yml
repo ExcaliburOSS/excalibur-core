@@ -1,8 +1,19 @@
 name: Release
 
 # Publishes the public packages to npm when a version tag is pushed (e.g. v1.3.0).
-# Requires an NPM_TOKEN repository secret (an npm automation token with publish
-# rights to the @excalibur-oss scope). The full CI gate runs first.
+#
+# Auth = npm TRUSTED PUBLISHING (OIDC) — there is NO long-lived NPM_TOKEN secret.
+# The job mints a short-lived credential from GitHub's OIDC token (id-token: write),
+# so nothing publishable can leak from the repo. One-time setup (on npmjs.com, by a
+# scope owner): for EACH package, add a Trusted Publisher →
+#   GitHub Actions · repository: ExcaliburOSS/excalibur-core · workflow: release.yml
+# (npm only allows configuring a trusted publisher for a package that already exists,
+# which both do.)
+#
+# Packing is done with pnpm (it rewrites `workspace:*` dev deps out of the published
+# manifest → clean `deps: {}`); publishing the resulting tarball is done with npm
+# (>= 11.5.1) so the OIDC exchange + provenance attestation run. The full CI gate
+# runs first — never publish an unbuilt or failing tree.
 on:
   push:
     tags: ['v*']
@@ -12,11 +23,11 @@ permissions:
 
 jobs:
   publish:
-    name: build · verify · publish to npm
+    name: build · verify · publish to npm (trusted publishing)
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # npm provenance (signed build attestation)
+      id-token: write # OIDC for npm Trusted Publishing + the provenance attestation
     steps:
       - uses: actions/checkout@v4
 
@@ -29,6 +40,10 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
           registry-url: https://registry.npmjs.org
+
+      # Trusted Publishing (OIDC) needs a recent npm; node's bundled npm may predate it.
+      - name: Ensure npm supports Trusted Publishing (>= 11.5.1)
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -45,13 +60,16 @@ jobs:
       - name: Test
         run: pnpm -r test
 
-      # Publish both public packages. `prepublishOnly` rebuilds; `--no-git-checks`
-      # because we publish from a tag. provenance attaches a signed build attestation.
+      # Pack with pnpm (rewrites `workspace:*` → real versions, so no protocol leaks
+      # into the tarball), then publish that tarball with npm via OIDC + provenance.
+      - name: Pack @excalibur-oss/extension-sdk
+        run: pnpm pack --pack-destination "$RUNNER_TEMP"
+        working-directory: packages/extension-sdk
+      - name: Pack @excalibur-oss/excalibur
+        run: pnpm pack --pack-destination "$RUNNER_TEMP"
+        working-directory: apps/cli
+
       - name: Publish @excalibur-oss/extension-sdk
-        run: pnpm --filter @excalibur-oss/extension-sdk publish --access public --no-git-checks --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish "$RUNNER_TEMP"/excalibur-oss-extension-sdk-*.tgz --access public --provenance
       - name: Publish @excalibur-oss/excalibur
-        run: pnpm --filter @excalibur-oss/excalibur publish --access public --no-git-checks --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish "$RUNNER_TEMP"/excalibur-oss-excalibur-*.tgz --access public --provenance
