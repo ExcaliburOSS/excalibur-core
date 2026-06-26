@@ -15,7 +15,7 @@
  *  3. Voluntary navigation (Tab) cycles the foreground across live threads.
  */
 
-export type ThreadStatus = 'running' | 'blocked' | 'done' | 'failed';
+export type ThreadStatus = 'running' | 'blocked' | 'paused' | 'done' | 'failed';
 
 export interface FleetThread {
   id: string;
@@ -28,6 +28,9 @@ export interface FleetThread {
   /** AO8-1 — a task to auto-dispatch when this thread completes (reaction-on-
    * completion / chaining); absent = no follow-up. Consumed once by the REPL. */
   followUp?: string;
+  /** INT-5 — the task to re-dispatch when a PAUSED thread is resumed (interrupted
+   * work is a first-class resumable thread). Set when the thread is paused. */
+  resumeTask?: string;
 }
 
 export interface FleetState {
@@ -101,6 +104,76 @@ export function settleThread(
   };
 }
 
+/**
+ * INT-5 — registers the work that was just INTERRUPTED as a PAUSED, resumable
+ * thread (a pause+switch). Does NOT steal focus (the new work runs in the
+ * foreground); `resumeTask` is what the REPL re-dispatches to resume it. If a
+ * thread with `id` already exists it is flipped to paused; otherwise a new paused
+ * entry is added. A blank task is a no-op (nothing meaningful to resume).
+ */
+export function pauseThread(
+  state: FleetState,
+  id: string,
+  title: string,
+  resumeTask: string,
+): FleetState {
+  if (resumeTask.trim().length === 0) {
+    return state;
+  }
+  const existing = state.threads.findIndex((t) => t.id === id);
+  if (existing !== -1) {
+    return {
+      ...state,
+      threads: state.threads.map((t) => (t.id === id ? { ...t, status: 'paused', resumeTask } : t)),
+      foreground: state.foreground === existing ? -1 : state.foreground,
+    };
+  }
+  return {
+    ...state,
+    threads: [
+      ...state.threads,
+      { id, title, status: 'paused', draft: '', banner: null, resumeTask },
+    ],
+  };
+}
+
+/** INT-5 — the paused (interrupted) threads, in registration order, for the
+ * resume offer + `/threads`. */
+export function pausedThreads(state: FleetState): FleetThread[] {
+  return state.threads.filter((t) => t.status === 'paused');
+}
+
+/** INT-5 — flips a paused thread back to running (the REPL then re-dispatches its
+ * `resumeTask` and settles it). No-op for an unknown / non-paused id. */
+export function resumeThread(state: FleetState, id: string): FleetState {
+  const thread = state.threads.find((t) => t.id === id);
+  if (thread === undefined || thread.status !== 'paused') {
+    return state;
+  }
+  return {
+    ...state,
+    threads: state.threads.map((t) => (t.id === id ? { ...t, status: 'running' } : t)),
+  };
+}
+
+/** INT-5 — drops a paused thread the user chose not to resume (dismiss). */
+export function dropThread(state: FleetState, id: string): FleetState {
+  const threads = state.threads.filter((t) => t.id !== id);
+  if (threads.length === state.threads.length) {
+    return state;
+  }
+  const droppedIndex = state.threads.findIndex((t) => t.id === id);
+  return {
+    threads,
+    foreground:
+      state.foreground === droppedIndex
+        ? -1
+        : state.foreground > droppedIndex
+          ? state.foreground - 1
+          : state.foreground,
+  };
+}
+
 /** Tab — cycles the foreground across LIVE (running/blocked) threads + the main
  * prompt (-1), preserving the leaving thread's draft. */
 export function cycleForeground(state: FleetState, currentDraft: string): FleetState {
@@ -133,30 +206,35 @@ export function drainBanners(state: FleetState): { state: FleetState; banners: s
   };
 }
 
-/** Live = running or blocked. Counts for the status bar (`⚑` = blocked). */
+/** Live = running or blocked. Counts for the status bar (`⚑` = blocked, `⏸` =
+ * paused). `active` stays running+blocked (a paused thread holds no slot). */
 export function fleetCounts(state: FleetState): {
   running: number;
   blocked: number;
+  paused: number;
   done: number;
   failed: number;
   active: number;
 } {
   let running = 0,
     blocked = 0,
+    paused = 0,
     done = 0,
     failed = 0;
   for (const t of state.threads) {
     if (t.status === 'running') running += 1;
     else if (t.status === 'blocked') blocked += 1;
+    else if (t.status === 'paused') paused += 1;
     else if (t.status === 'done') done += 1;
     else failed += 1;
   }
-  return { running, blocked, done, failed, active: running + blocked };
+  return { running, blocked, paused, done, failed, active: running + blocked };
 }
 
-/** Removes settled (done/failed) threads — e.g. after their banners are shown. */
+/** Removes settled (done/failed) threads — e.g. after their banners are shown.
+ * Paused threads are NOT settled (they are resumable), so they survive. */
 export function pruneSettled(state: FleetState): FleetState {
-  const threads = state.threads.filter((t) => t.status === 'running' || t.status === 'blocked');
+  const threads = state.threads.filter((t) => t.status !== 'done' && t.status !== 'failed');
   if (threads.length === state.threads.length) {
     return state;
   }

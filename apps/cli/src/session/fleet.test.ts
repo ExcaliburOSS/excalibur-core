@@ -3,9 +3,13 @@ import {
   blockThread,
   cycleForeground,
   drainBanners,
+  dropThread,
   fleetCounts,
   initialFleet,
+  pauseThread,
+  pausedThreads,
   pruneSettled,
+  resumeThread,
   settleThread,
   spawnThread,
 } from './fleet';
@@ -69,5 +73,49 @@ describe('fleet (pure thread state machine)', () => {
     expect(fleetCounts(f)).toMatchObject({ running: 1, blocked: 1, failed: 1, active: 2 });
     f = pruneSettled(f);
     expect(f.threads.map((t) => t.id)).toEqual(['t1', 't2']); // t3 pruned
+  });
+
+  describe('INT-5: paused (interrupted) threads are first-class + resumable', () => {
+    it('registers interrupted work as a paused thread without stealing focus', () => {
+      const f = pauseThread(initialFleet(), 'p1', 'refactor the limiter', 'refactor the limiter');
+      expect(f.threads[0]).toMatchObject({ status: 'paused', resumeTask: 'refactor the limiter' });
+      expect(f.foreground).toBe(-1);
+      expect(pausedThreads(f).map((t) => t.id)).toEqual(['p1']);
+      expect(fleetCounts(f).paused).toBe(1);
+      // active excludes paused — it holds no live slot.
+      expect(fleetCounts(f).active).toBe(0);
+      // A blank resume task is a no-op (nothing to come back to).
+      expect(pauseThread(initialFleet(), 'p0', 't', '   ').threads).toHaveLength(0);
+    });
+
+    it('pausing the CURRENT foreground thread drops focus back to the prompt', () => {
+      let f = spawnThread(initialFleet(), 't1', 'work');
+      f = blockThread(f, 't1'); // focuses t1
+      expect(f.foreground).toBe(0);
+      f = pauseThread(f, 't1', 'work', 'work'); // flip the existing thread to paused
+      expect(f.threads[0]?.status).toBe('paused');
+      expect(f.foreground).toBe(-1);
+    });
+
+    it('resumeThread flips paused → running; dropThread dismisses it', () => {
+      let f = pauseThread(initialFleet(), 'p1', 'task A', 'task A');
+      f = resumeThread(f, 'p1');
+      expect(f.threads[0]?.status).toBe('running');
+      expect(pausedThreads(f)).toHaveLength(0);
+      // resume is a no-op on a non-paused id.
+      expect(resumeThread(f, 'p1').threads[0]?.status).toBe('running');
+      // dropping removes it entirely.
+      f = pauseThread(f, 'p2', 'task B', 'task B');
+      f = dropThread(f, 'p2');
+      expect(f.threads.map((t) => t.id)).toEqual(['p1']);
+    });
+
+    it('paused threads survive pruneSettled (only done/failed are pruned)', () => {
+      let f = spawnThread(initialFleet(), 't1', 'a');
+      f = pauseThread(f, 'p1', 'paused work', 'paused work');
+      f = settleThread(f, 't1', 'done', '✓ done');
+      f = pruneSettled(f);
+      expect(f.threads.map((t) => t.id)).toEqual(['p1']); // t1 pruned, p1 kept
+    });
   });
 });

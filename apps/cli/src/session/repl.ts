@@ -100,8 +100,12 @@ import { resolveProjectRoot } from './project-location';
 import { startSessionDashboard } from './dashboard';
 import {
   drainBanners,
+  dropThread,
   fleetCounts,
   initialFleet,
+  pauseThread,
+  pausedThreads,
+  resumeThread,
   settleThread,
   spawnThread,
   type FleetState,
@@ -439,6 +443,19 @@ export async function runInteractiveSession(
       const ops: InterruptOps = {
         say: (t) => control.say(t),
         abort: () => control.abort(),
+        pauseCurrent: () => {
+          // Park the interrupted work as a first-class resumable thread (INT-5).
+          const title =
+            control.currentWork.length > 56
+              ? `${control.currentWork.slice(0, 55)}…`
+              : control.currentWork;
+          runtime.fleet = pauseThread(
+            runtime.fleet,
+            generateId('paused'),
+            title,
+            control.currentWork,
+          );
+        },
         runParallel: (t) => launchBgThread(deps, runtime, t, bgControllers),
         queueForeground: (t, o) => {
           pendingForeground.push({
@@ -486,6 +503,57 @@ export async function runInteractiveSession(
         // Never lose the question the interrupted turn was awaiting.
         deps.ui.info(deps.t('repl.interrupt-reask', { question: next.reaskAfter }));
       }
+    }
+  };
+
+  /** INT-5 — after the switch work finishes, OFFER to resume each paused (interrupted)
+   * thread (default yes). Accept → re-dispatch its task; decline → dismiss it. The
+   * "pause the current work, do the new, THEN resume" promise, made explicit. */
+  const offerResumePaused = async (): Promise<void> => {
+    if (runtime.shuttingDown) {
+      return;
+    }
+    for (const thread of pausedThreads(runtime.fleet)) {
+      let resume = true;
+      if (deps.ui.isInteractive()) {
+        deps.ui.write();
+        resume = await deps.ui.confirm(
+          deps.t('repl.interrupt-resume-offer', { title: thread.title }),
+          { defaultYes: true },
+        );
+      }
+      if (!resume) {
+        runtime.fleet = dropThread(runtime.fleet, thread.id); // dismissed — still recorded in history
+        continue;
+      }
+      runtime.fleet = resumeThread(runtime.fleet, thread.id);
+      deps.ui.info(deps.t('repl.interrupt-resuming', { title: thread.title }));
+      const fctrl = beginTurn();
+      try {
+        await dispatchAgentTurn(
+          deps,
+          runtime,
+          thread.resumeTask ?? thread.title,
+          fctrl.signal,
+          await sessionSeedSettled(runtime),
+        );
+      } catch (error) {
+        deps.ui.error(error instanceof Error ? error.message : String(error));
+      } finally {
+        endTurn();
+      }
+      runtime.fleet = dropThread(runtime.fleet, thread.id); // resumed + done
+    }
+  };
+
+  /** The full post-turn interrupt aftermath: run queued foreground work (folds /
+   * switches), then offer to resume paused work — and drain anything that resume
+   * itself queued. Bounded (one extra drain pass; deeper nesting stays in /threads). */
+  const settleInterruptAftermath = async (): Promise<void> => {
+    await drainForegroundInterrupts();
+    await offerResumePaused();
+    if (pendingForeground.length > 0) {
+      await drainForegroundInterrupts();
     }
   };
 
@@ -907,14 +975,14 @@ export async function runInteractiveSession(
         const reason = error instanceof Error ? error.message : String(error);
         deps.ui.error(reason);
         store.appendTurn(session.id, { role: 'system', kind: 'status', text: `error: ${reason}` });
-        await drainForegroundInterrupts(); // a steer/switch queued before the error still runs
+        await settleInterruptAftermath(); // a steer/switch queued before the error still runs
         printStatusLine(deps, runtime);
         continue;
       }
       endTurn();
-      // INT-1 — run any foreground interrupt (folded steer / pause+switch) queued
-      // while this turn streamed, now that it has unwound.
-      await drainForegroundInterrupts();
+      // INT-1/INT-5 — run any foreground interrupt (folded steer / pause+switch)
+      // queued while this turn streamed, then offer to resume the paused work.
+      await settleInterruptAftermath();
       printStatusLine(deps, runtime);
     }
   } finally {
@@ -2132,6 +2200,7 @@ function handleThreadsCommand(deps: CliDeps, runtime: SessionRuntime): void {
   deps.ui.info(
     deps.t('repl.threads-header', {
       running: counts.running,
+      paused: counts.paused,
       done: counts.done,
       failed: counts.failed,
     }),
@@ -2144,8 +2213,16 @@ function handleThreadsCommand(deps: CliDeps, runtime: SessionRuntime): void {
           ? pc.red('✗')
           : thread.status === 'blocked'
             ? pc.yellow('⚑')
-            : pc.cyan('◐');
-    deps.ui.write(`  ${glyph} ${thread.title} ${pc.dim(`(${thread.status})`)}`);
+            : thread.status === 'paused'
+              ? pc.yellow('⏸')
+              : pc.cyan('◐');
+    // A paused thread is interrupted work the user can come back to — flag it as
+    // resumable so the surface is self-explanatory.
+    const tail =
+      thread.status === 'paused'
+        ? pc.dim(`(${deps.t('repl.threads-paused-resumable')})`)
+        : pc.dim(`(${thread.status})`);
+    deps.ui.write(`  ${glyph} ${thread.title} ${tail}`);
   }
 }
 
@@ -2869,10 +2946,14 @@ function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
     autonomyLevel: runtime.autonomyLevel,
   });
   const cost = `$${(status.costCents / 100).toFixed(2)}`;
-  const active = fleetCounts(runtime.fleet).active;
-  const bg = active > 0 ? ` · ${pc.cyan(deps.t('repl.bg-active', { n: active }))}` : '';
+  const counts = fleetCounts(runtime.fleet);
+  const bg =
+    counts.active > 0 ? ` · ${pc.cyan(deps.t('repl.bg-active', { n: counts.active }))}` : '';
+  // INT-5 — surface paused (interrupted) work so it is never silently forgotten.
+  const paused =
+    counts.paused > 0 ? ` · ${pc.yellow(deps.t('repl.paused-count', { n: counts.paused }))}` : '';
   deps.ui.info(
-    `${status.autonomy} · ${status.workflow} · ${status.model} · ${cost} · ${safetyLine(deps.t, runtime.config)}${contextUsageLabel(runtime)}${bg}`,
+    `${status.autonomy} · ${status.workflow} · ${status.model} · ${cost} · ${safetyLine(deps.t, runtime.config)}${contextUsageLabel(runtime)}${bg}${paused}`,
   );
 }
 

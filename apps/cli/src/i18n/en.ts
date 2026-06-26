@@ -911,8 +911,13 @@ export const EN: Catalog = {
   'repl.bg-done': '✓ background done: {title}',
   'repl.bg-failed': '✗ background failed: {title} — {error}',
   'repl.bg-active': '{n} bg',
+  'repl.paused-count': '{n} paused',
   'repl.threads-none': 'No background threads this session. Start one with /bg <task>.',
-  'repl.threads-header': 'Background threads — {running} running · {done} done · {failed} failed',
+  'repl.threads-header':
+    'Threads — {running} running · {paused} paused · {done} done · {failed} failed',
+  'repl.threads-paused-resumable': 'paused — resumable',
+  'repl.interrupt-resume-offer': 'Resume what I paused — {title}?',
+  'repl.interrupt-resuming': '↩ Resuming: {title}',
   'repl.loop-start':
     'Looping every {every}s, up to {times}× — press ESC to stop. (recurrence, not completion)',
   'repl.loop-iteration': '  loop · iteration {iteration}/{times}',

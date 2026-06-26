@@ -973,9 +973,13 @@ export const ES: Catalog = {
   'repl.bg-done': '✓ segundo plano hecho: {title}',
   'repl.bg-failed': '✗ segundo plano falló: {title} — {error}',
   'repl.bg-active': '{n} en 2º plano',
+  'repl.paused-count': '{n} en pausa',
   'repl.threads-none': 'No hay hilos en segundo plano en esta sesión. Inicia uno con /bg <tarea>.',
   'repl.threads-header':
-    'Hilos en segundo plano — {running} en curso · {done} hechos · {failed} fallidos',
+    'Hilos — {running} en curso · {paused} en pausa · {done} hechos · {failed} fallidos',
+  'repl.threads-paused-resumable': 'en pausa — reanudable',
+  'repl.interrupt-resume-offer': '¿Retomo lo que pausé — {title}?',
+  'repl.interrupt-resuming': '↩ Retomando: {title}',
   'repl.help-swarm':
     '  /swarm <tarea>  reparte entre agentes reales en paralelo (subtareas independientes, carriles en vivo)',
   'repl.help-bg': '  /bg <tarea>    ejecuta una tarea en segundo plano mientras sigues trabajando',

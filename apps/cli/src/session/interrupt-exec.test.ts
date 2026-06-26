@@ -9,6 +9,7 @@ function fakeOps(): InterruptOps & { calls: string[] } {
     calls,
     say: (t) => calls.push(`say:${t}`),
     abort: () => calls.push('abort'),
+    pauseCurrent: () => calls.push('pause'),
     runParallel: (t) => calls.push(`parallel:${t}`),
     queueForeground: (t, o) =>
       calls.push(`queue:${t}:abort=${o.abortCurrent}:reask=${o.reaskAfter ?? ''}`),
@@ -48,10 +49,10 @@ describe('executeInterrupt', () => {
     expect(ops.calls).toContain('parallel:update the docs');
   });
 
-  it('pause_switch → aborts the current turn and queues the new work', () => {
+  it('pause_switch → parks the current work as paused, then queues the new work', () => {
     const ops = fakeOps();
     executeInterrupt(outcome('pause_switch'), 'fix the other bug', ops);
-    expect(ops.calls).toEqual(['say:ack', 'queue:fix the other bug:abort=true:reask=']);
+    expect(ops.calls).toEqual(['say:ack', 'pause', 'queue:fix the other bug:abort=true:reask=']);
   });
 
   it('fold → queues a follow-up WITHOUT aborting the current work', () => {
@@ -91,6 +92,10 @@ describe('executeInterrupt', () => {
   it('pause_switch carries the re-ask into the queued switch', () => {
     const ops = fakeOps();
     executeInterrupt(outcome('pause_switch', true), 'do the other thing', ops, 'Approve?');
-    expect(ops.calls).toEqual(['say:ack', 'queue:do the other thing:abort=true:reask=Approve?']);
+    expect(ops.calls).toEqual([
+      'say:ack',
+      'pause',
+      'queue:do the other thing:abort=true:reask=Approve?',
+    ]);
   });
 });

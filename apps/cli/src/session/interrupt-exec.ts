@@ -17,6 +17,10 @@ export interface InterruptOps {
   say(text: string): void;
   /** Abort the in-flight foreground turn (an explicit stop, or before a switch). */
   abort(): void;
+  /** Register the work being interrupted as a PAUSED, resumable thread (INT-5),
+   * before switching to the new work. The interrupted task is offered for resume
+   * once the switch completes. */
+  pauseCurrent(): void;
   /** Run the text as an INDEPENDENT background thread (new + non-conflicting work). */
   runParallel(text: string): void;
   /**
@@ -58,6 +62,8 @@ export function executeInterrupt(
       ops.runParallel(original);
       break;
     case 'pause_switch':
+      // Park the current work as a resumable paused thread, then switch to the new.
+      ops.pauseCurrent();
       ops.queueForeground(original, {
         abortCurrent: true,
         ...(reask !== undefined ? { reaskAfter: reask } : {}),
