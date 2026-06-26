@@ -1121,21 +1121,35 @@ function buildIntentClassifier(deps: CliDeps, runtime: SessionRuntime): IntentMo
     return undefined;
   }
   const gateway = loadGatewayContext(runtime.repoRoot);
-  const provider = gateway.cheapProviderName;
-  if (!gateway.configured || provider == null) {
-    return undefined; // no real/fast model → stay model-first (no classification)
+  if (!gateway.configured) {
+    return undefined; // no model at all → can't classify
   }
-  const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[provider]
-    ?.type;
-  if (providerType === 'mock') {
+  // The intelligence layer (intent routing → scope / plan-shaping / mission) must
+  // NEVER be silently off just because no SEPARATE fast model is paired: fall back
+  // to the DEFAULT model so single-model setups still get routed. A reasoning
+  // default burns output tokens "thinking" before the label, so the 6-token cap
+  // that suits a fast model returns empty — give it headroom + time on fallback.
+  const provider = gateway.cheapProviderName ?? gateway.providerName;
+  const providerCfg = (
+    gateway.providers.providers as Record<
+      string,
+      { type?: string; capabilities?: { reasoning?: boolean } }
+    >
+  )[provider];
+  if (providerCfg?.type === 'mock') {
     return undefined;
   }
+  const reasoning = providerCfg?.capabilities?.reasoning === true;
   return async (prompt: string, signal?: AbortSignal): Promise<string> => {
     const output = await gateway.gateway.chat({
       provider,
       messages: [{ role: 'user', content: redactSecrets(prompt) }],
-      maxTokens: 6,
-      timeoutMs: 2500,
+      // A reasoning fallback needs room to emit the label AFTER thinking (6 tokens
+      // → empty); verify-scope-routing confirms kimi-k2.7-code routes at this
+      // budget with reasoning pinned minimal. The fast paired model stays snappy.
+      maxTokens: reasoning ? 256 : 6,
+      timeoutMs: reasoning ? 10000 : 2500,
+      ...(reasoning ? { reasoningEffort: 'minimal' as const } : {}),
       metadata: { kind: 'intent' },
       ...(signal !== undefined ? { signal } : {}),
     });
@@ -1153,21 +1167,29 @@ function buildIntentClassifier(deps: CliDeps, runtime: SessionRuntime): IntentMo
  */
 function buildInterruptModel(deps: CliDeps, runtime: SessionRuntime): InterruptModel | undefined {
   const gateway = loadGatewayContext(runtime.repoRoot);
-  const provider = gateway.cheapProviderName;
-  if (!gateway.configured || provider == null) {
+  if (!gateway.configured) {
     return undefined;
   }
-  const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[provider]
-    ?.type;
-  if (providerType === 'mock') {
+  // Same rule as the intent classifier: fall back to the default model so the
+  // interrupt channel is never silently dead when no fast model is paired.
+  const provider = gateway.cheapProviderName ?? gateway.providerName;
+  const providerCfg = (
+    gateway.providers.providers as Record<
+      string,
+      { type?: string; capabilities?: { reasoning?: boolean } }
+    >
+  )[provider];
+  if (providerCfg?.type === 'mock') {
     return undefined;
   }
+  const reasoning = providerCfg?.capabilities?.reasoning === true;
   return async (prompt: string, signal?: AbortSignal): Promise<string> => {
     const output = await gateway.gateway.chat({
       provider,
       messages: [{ role: 'user', content: redactSecrets(prompt) }],
-      maxTokens: 48,
-      timeoutMs: 4000,
+      maxTokens: reasoning ? 256 : 48,
+      timeoutMs: reasoning ? 10000 : 4000,
+      ...(reasoning ? { reasoningEffort: 'minimal' as const } : {}),
       metadata: { kind: 'intent' },
       ...(signal !== undefined ? { signal } : {}),
     });
