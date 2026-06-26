@@ -12,6 +12,7 @@ import {
   chatWithGuidance,
   loadGatewayContext,
   requireConfiguredModel,
+  safetyLine,
   streamWithGuidance,
   type GatewayContext,
 } from './context';
@@ -106,6 +107,34 @@ function midStreamErrorContext(chunks: string[], error: unknown): GatewayContext
     configured: true,
   };
 }
+
+describe('safetyLine reflects the live approval posture', () => {
+  it('says "no files modified" only when auto-accept is OFF', () => {
+    const line = safetyLine(t, { safety: { preset: 'standard-safe' } }, false);
+    expect(line).toContain('standard-safe');
+    expect(line).toContain('No files will be modified without approval');
+  });
+
+  it('says edits apply automatically when the live auto-accept flag is ON', () => {
+    // The user opted into auto-accept; the line must NOT claim files stay untouched.
+    const line = safetyLine(t, { safety: { preset: 'standard-safe' } }, true);
+    expect(line).toContain('Auto-accept on');
+    expect(line).not.toContain('No files will be modified without approval');
+  });
+
+  it('falls back to the persisted approvals.auto when no live flag is passed', () => {
+    expect(safetyLine(t, { approvals: { auto: true } })).toContain('Auto-accept on');
+    expect(safetyLine(t, { approvals: { auto: false } })).toContain(
+      'No files will be modified without approval',
+    );
+  });
+
+  it('the live flag overrides the persisted config (it can lead within a session)', () => {
+    // config says auto:false, but the session just enabled it → trust the live value.
+    const line = safetyLine(t, { approvals: { auto: false } }, true);
+    expect(line).toContain('Auto-accept on');
+  });
+});
 
 describe('loadGatewayContext real-provider wiring', () => {
   it('constructs a real adapter for a configured provider (no network until chat)', () => {

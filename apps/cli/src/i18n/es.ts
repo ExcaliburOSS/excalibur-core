@@ -1083,6 +1083,8 @@ export const ES: Catalog = {
     'No hay ningún proveedor de LLM configurado — Excalibur necesita un modelo real. Ejecuta `excalibur models setup` para conectar uno (OpenAI, Anthropic, Groq, Ollama, …). (El proveedor mock solo existe para uso offline/tests, mediante un `type: mock` explícito en providers.yaml.)',
   'context.safetyLine': 'Seguridad: {preset} — {description}',
   'context.safetyOk': 'No se modificará ningún archivo sin aprobación.',
+  'context.safetyAuto':
+    'Auto-aceptar activado — ediciones y comandos se aplican sin preguntar (las rutas bloqueadas siguen protegidas).',
   'context.safetyUnknown': 'Preset desconocido — usando las reglas de {preset} por defecto.',
   'context.providerUnusable':
     'El proveedor "{provider}" no es utilizable: {error}. Ejecuta `excalibur models setup` para configurar un proveedor de LLM que funcione.',

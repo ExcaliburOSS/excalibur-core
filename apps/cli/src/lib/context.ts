@@ -150,14 +150,24 @@ export function loadConfigContext(repoRoot: string): LoadedExcaliburConfig {
   return loadExcaliburConfig(repoRoot);
 }
 
-/** The active safety preset line printed by init/run/patch (onboarding §5). */
-export function safetyLine(t: Translator, config: ExcaliburConfig): string {
+/**
+ * The active safety preset line printed by init/run/patch and the shell status
+ * line (onboarding §5). The description reflects the live approval posture: when
+ * auto-accept is ON (the user opted in), it says edits/commands apply
+ * automatically rather than the misleading "no files modified without approval".
+ * `autoAccept` lets the caller pass the live session value (which can lead the
+ * persisted config); it defaults to the persisted `approvals.auto`.
+ */
+export function safetyLine(t: Translator, config: ExcaliburConfig, autoAccept?: boolean): string {
   const presetId = config.safety?.preset ?? DEFAULT_SAFETY_PRESET_ID;
   const preset = SAFETY_PRESETS[presetId];
+  const auto = autoAccept ?? config.approvals?.auto === true;
   const description =
-    preset !== undefined
-      ? t('context.safetyOk')
-      : t('context.safetyUnknown', { preset: DEFAULT_SAFETY_PRESET_ID });
+    preset === undefined
+      ? t('context.safetyUnknown', { preset: DEFAULT_SAFETY_PRESET_ID })
+      : auto
+        ? t('context.safetyAuto')
+        : t('context.safetyOk');
   return t('context.safetyLine', { preset: presetId, description });
 }
 

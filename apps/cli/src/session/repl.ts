@@ -2966,7 +2966,7 @@ function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
   const paused =
     counts.paused > 0 ? ` · ${pc.yellow(deps.t('repl.paused-count', { n: counts.paused }))}` : '';
   deps.ui.info(
-    `${status.autonomy} · ${status.workflow} · ${status.model} · ${cost} · ${safetyLine(deps.t, runtime.config)}${contextUsageLabel(runtime)}${bg}${paused}`,
+    `${status.autonomy} · ${status.workflow} · ${status.model} · ${cost} · ${safetyLine(deps.t, runtime.config, runtime.approvals.auto)}${contextUsageLabel(runtime)}${bg}${paused}`,
   );
 }
 
