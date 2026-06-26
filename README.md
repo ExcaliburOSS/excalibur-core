@@ -1,6 +1,9 @@
 <div align="center">
 
-# ⚔ Excalibur
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-white.svg" />
+  <img alt="Excalibur" src=".github/assets/logo.svg" width="400" />
+</picture>
 
 ### The AI coding agent for product engineers.
 
