@@ -12,10 +12,13 @@
   --text: #e6ebf5;
   --muted: #8a96ab;
   --faint: #5b6577;
-  --accent: #5b9dff;
-  --accent-dim: #2b4a7a;
-  --ok: #4ec9a8;
-  --warn: #e2b341;
+  /* DASH7 — parity with the live TUI palette (cyan accent #5BC8FF, success
+   * #5AD18A, warn #F2C94C on near-black), so the web view reads as the same
+   * product as the Ink rail. */
+  --accent: #5bc8ff;
+  --accent-dim: #2a5b78;
+  --ok: #5ad18a;
+  --warn: #f2c94c;
   --bad: #e5687a;
   --radius: 10px;
   --radius-sm: 6px;
@@ -79,4 +82,24 @@ button {
 }
 .faint {
   color: var(--faint);
+}
+
+/* DASH7 — mobile/responsive base. Pages opt their own grids into a single
+ * column via the shared `.cols` helper; tables/wide content scroll. */
+.cols {
+  display: grid;
+  gap: 24px;
+  align-items: start;
+}
+/* Wrap a wide table/element so it scrolls instead of overflowing the viewport. */
+.scroll-x {
+  overflow-x: auto;
+}
+@media (max-width: 720px) {
+  body {
+    font-size: 13px;
+  }
+  .cols {
+    grid-template-columns: 1fr !important;
+  }
 }

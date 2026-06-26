@@ -472,6 +472,21 @@
     gap: 14px;
     align-items: start;
   }
+  /* DASH7 — on a phone the 5 lanes become horizontally-scrollable columns
+   * (the kanban pattern) instead of squishing to unusable widths. */
+  @media (max-width: 720px) {
+    .board {
+      grid-auto-flow: column;
+      grid-template-columns: none;
+      grid-auto-columns: 82%;
+      overflow-x: auto;
+      scroll-snap-type: x proximity;
+      padding-bottom: 6px;
+    }
+    .lane {
+      scroll-snap-align: start;
+    }
+  }
   .lane {
     background: var(--panel);
     border: 1px solid var(--line);

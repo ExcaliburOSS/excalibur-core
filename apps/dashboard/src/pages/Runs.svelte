@@ -63,33 +63,35 @@
 {:else if runs.length === 0}
   <div class="state muted">{t('runs.empty')}</div>
 {:else}
-  <table>
-    <thead>
-      <tr>
-        <th>{t('runs.col.run')}</th>
-        <th>{t('runs.col.status')}</th>
-        <th>{t('runs.col.workflow')}</th>
-        <th>{t('runs.col.model')}</th>
-        <th>{t('runs.col.started')}</th>
-      </tr>
-    </thead>
-    <tbody>
-      {#each filtered as run (run.id)}
+  <div class="scroll-x">
+    <table>
+      <thead>
         <tr>
-          <td><a class="mono" href={`#/runs/${run.id}`}>{run.title || run.id}</a></td>
-          <td>
-            <span class="st st-{run.status}" title={statusLabel(run.status)}>
-              <span class="glyph" aria-hidden="true">{statusGlyph(run.status)}</span>
-              {statusLabel(run.status)}
-            </span>
-          </td>
-          <td class="faint">{run.workflow}</td>
-          <td class="faint">{run.model ?? '—'}</td>
-          <td class="faint">{when(run.startedAt)}</td>
+          <th>{t('runs.col.run')}</th>
+          <th>{t('runs.col.status')}</th>
+          <th>{t('runs.col.workflow')}</th>
+          <th>{t('runs.col.model')}</th>
+          <th>{t('runs.col.started')}</th>
         </tr>
-      {/each}
-    </tbody>
-  </table>
+      </thead>
+      <tbody>
+        {#each filtered as run (run.id)}
+          <tr>
+            <td><a class="mono" href={`#/runs/${run.id}`}>{run.title || run.id}</a></td>
+            <td>
+              <span class="st st-{run.status}" title={statusLabel(run.status)}>
+                <span class="glyph" aria-hidden="true">{statusGlyph(run.status)}</span>
+                {statusLabel(run.status)}
+              </span>
+            </td>
+            <td class="faint">{run.workflow}</td>
+            <td class="faint">{run.model ?? '—'}</td>
+            <td class="faint">{when(run.startedAt)}</td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  </div>
 {/if}
 
 <style>

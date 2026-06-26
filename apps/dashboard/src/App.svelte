@@ -160,4 +160,29 @@
     text-align: center;
     color: var(--muted);
   }
+
+  /* DASH7 — on a narrow viewport the topbar stacks (brand on top, the nav +
+   * meter wrap below) and the shell padding tightens, so the dashboard is usable
+   * on a phone. The sticky header keeps the nav reachable while scrolling. */
+  @media (max-width: 720px) {
+    .shell {
+      padding: 0 12px 48px;
+    }
+    .topbar {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .right {
+      width: 100%;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    nav {
+      gap: 2px;
+    }
+    nav a {
+      padding: 5px 9px;
+      font-size: 13px;
+    }
+  }
 </style>
