@@ -1,8 +1,14 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { RunManager } from '@excalibur/core';
+import { RunManager, SessionStore } from '@excalibur/core';
 import { createEvent } from '@excalibur/shared';
 import { LocalWorkItemProvider } from '@excalibur/work-items';
-import { buildBoard, buildOrchestrations, buildWorkItemDetail } from './dashboard-data';
+import {
+  buildBoard,
+  buildOrchestrations,
+  buildSessions,
+  buildSessionDetail,
+  buildWorkItemDetail,
+} from './dashboard-data';
 import { makeTempDir, removeDir } from '../test-utils';
 
 describe('dashboard-data (store → DTO mappers)', () => {
@@ -13,6 +19,33 @@ describe('dashboard-data (store → DTO mappers)', () => {
   });
   afterEach(() => {
     removeDir(repoRoot);
+  });
+
+  it('maps shell sessions to summaries (newest-updated first) + a transcript (DASH1)', () => {
+    const store = new SessionStore(repoRoot);
+    const a = store.createSession({ title: 'older' });
+    const b = store.createSession({ title: 'newer' });
+    store.appendTurn(b.id, { role: 'user', kind: 'message', text: 'hi' });
+    store.appendTurn(b.id, {
+      role: 'assistant',
+      kind: 'message',
+      text: 'hello',
+      model: 'kimi',
+      costCents: 12,
+    });
+
+    const list = buildSessions(repoRoot);
+    expect(list.map((s) => s.title)).toEqual(['newer', 'older']); // newer was updated last
+    const newer = list.find((s) => s.id === b.id);
+    expect(newer).toMatchObject({ turnCount: 2, status: 'active', lastModel: 'kimi' });
+    void a;
+
+    const detail = buildSessionDetail(repoRoot, b.id);
+    expect(detail).not.toBeNull();
+    expect(detail!.turns.map((t) => t.text)).toEqual(['hi', 'hello']);
+    expect(detail!.turns[1]).toMatchObject({ role: 'assistant', model: 'kimi', costCents: 12 });
+    // unknown id → null (never throws)
+    expect(buildSessionDetail(repoRoot, 'sess_nope')).toBeNull();
   });
 
   it('groups parent + child runs into a parallel orchestration (AO4e)', () => {

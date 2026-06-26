@@ -16,6 +16,8 @@ import type {
   PlanSummary,
   RunRecord,
   ScopeMapView,
+  SessionDetail,
+  SessionSummary,
   WorkItemDetail,
   WorkItemSummary,
 } from './contracts';
@@ -131,6 +133,13 @@ export const fetchPlan = (id: string): Promise<PlanDetail> =>
 /** Discovery sessions (D3). */
 export const fetchDiscovery = (): Promise<{ discovery: DiscoverySummary[] }> =>
   get('/api/discovery');
+
+/** Interactive shell sessions (DASH1) — read-only list, newest-updated first. */
+export const fetchSessions = (): Promise<{ sessions: SessionSummary[] }> => get('/api/sessions');
+
+/** One session with its full transcript (DASH1 drill-in). */
+export const fetchSession = (id: string): Promise<SessionDetail> =>
+  get(`/api/sessions/${encodeURIComponent(id)}`);
 
 // ---- meta-orchestrator missions (M8 #43) — read-only view of .excalibur/missions/ ----
 

@@ -1,4 +1,4 @@
-import { RunManager, listPlans, readPlan, DiscoveryManager } from '@excalibur/core';
+import { RunManager, listPlans, readPlan, DiscoveryManager, SessionStore } from '@excalibur/core';
 import type { LocalRun } from '@excalibur/shared';
 import {
   LocalWorkItemProvider,
@@ -21,6 +21,8 @@ import {
   type PlanDetail,
   type PlanSummary,
   type RunSummary,
+  type SessionDetail,
+  type SessionSummary,
   type WorkItemDetail,
   type WorkItemSummary,
 } from '@excalibur/shared';
@@ -344,4 +346,58 @@ export function buildDiscovery(repoRoot: string): DiscoverySummary[] {
       completedAt: s.record.completedAt,
     }))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/** Shell sessions for the dashboard Sessions list (DASH1), newest-updated first. */
+export function buildSessions(repoRoot: string): SessionSummary[] {
+  return new SessionStore(repoRoot)
+    .listSessions()
+    .map((s) => sessionSummaryOf(s.metadata))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/** One session with its full transcript (DASH1 drill-in), or null if unknown. */
+export function buildSessionDetail(repoRoot: string, id: string): SessionDetail | null {
+  const store = new SessionStore(repoRoot);
+  let session;
+  try {
+    session = store.getSession(id);
+  } catch {
+    return null; // unknown / corrupt session id
+  }
+  return {
+    ...sessionSummaryOf(session.metadata),
+    turns: store.readTranscript(id).map((turn) => ({
+      id: turn.id,
+      seq: turn.seq,
+      role: turn.role,
+      kind: turn.kind,
+      text: turn.text,
+      ...(turn.route !== undefined ? { route: turn.route } : {}),
+      ...(turn.model !== undefined ? { model: turn.model } : {}),
+      ...(turn.costCents !== undefined ? { costCents: turn.costCents } : {}),
+      at: turn.at,
+    })),
+  };
+}
+
+/** Projects core SessionMetadata onto the wire SessionSummary. */
+function sessionSummaryOf(m: {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  lastModel: string | null;
+  turnCount: number;
+  status: 'active' | 'closed';
+}): SessionSummary {
+  return {
+    id: m.id,
+    title: m.title,
+    createdAt: m.createdAt,
+    updatedAt: m.updatedAt,
+    lastModel: m.lastModel,
+    turnCount: m.turnCount,
+    status: m.status,
+  };
 }

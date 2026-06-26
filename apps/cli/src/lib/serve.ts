@@ -14,6 +14,8 @@ import {
   buildPlans,
   buildPlanDetail,
   buildDiscovery,
+  buildSessions,
+  buildSessionDetail,
   moveWorkItemLane,
   InvalidLaneError,
 } from './dashboard-data';
@@ -186,6 +188,17 @@ function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
     const detail = buildPlanDetail(repoRoot, decodeURIComponent(planMatch[1] as string));
     return detail === null
       ? { status: 404, body: { error: 'plan not found' } }
+      : { status: 200, body: detail };
+  }
+  if (path === '/api/sessions') {
+    // DASH1: interactive shell sessions — read-only from .excalibur/sessions/.
+    return { status: 200, body: { sessions: buildSessions(repoRoot) } };
+  }
+  const sessionMatch = /^\/api\/sessions\/([^/]+)$/.exec(path);
+  if (sessionMatch !== null) {
+    const detail = buildSessionDetail(repoRoot, decodeURIComponent(sessionMatch[1] as string));
+    return detail === null
+      ? { status: 404, body: { error: 'session not found' } }
       : { status: 200, body: detail };
   }
   if (path === '/api/missions') {

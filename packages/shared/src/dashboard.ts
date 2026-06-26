@@ -280,6 +280,38 @@ export interface ScopeMapView {
   openQuestions: string[];
 }
 
+/** A shell session summary for the dashboard Sessions list (DASH1) — mirrors the
+ * core `SessionMetadata`. Read-only; newest first. */
+export interface SessionSummary {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  /** Provider/model that last answered (null until the first assistant turn). */
+  lastModel: string | null;
+  turnCount: number;
+  status: 'active' | 'closed';
+}
+
+/** One transcript turn in a {@link SessionDetail} (DASH1) — mirrors the core
+ * `SessionTurn`. `role`/`kind` are kept as strings (display-only). */
+export interface SessionTurnDto {
+  id: string;
+  seq: number;
+  role: string;
+  kind: string;
+  text: string;
+  route?: string;
+  model?: string;
+  costCents?: number | null;
+  at: string;
+}
+
+/** A session with its full transcript (DASH1 drill-in). */
+export interface SessionDetail extends SessionSummary {
+  turns: SessionTurnDto[];
+}
+
 /** A discovery session summary (D3). */
 export interface DiscoverySummary {
   id: string;

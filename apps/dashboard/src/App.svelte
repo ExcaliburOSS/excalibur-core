@@ -10,6 +10,7 @@
   import Plans from './pages/Plans.svelte';
   import Scope from './pages/Scope.svelte';
   import Missions from './pages/Missions.svelte';
+  import Sessions from './pages/Sessions.svelte';
 
   const router = createRouter();
 
@@ -21,6 +22,7 @@
     { href: '#/plans', key: 'nav.plans', match: ['plans'] },
     { href: '#/scope', key: 'nav.scope', match: ['scope'] },
     { href: '#/missions', key: 'nav.missions', match: ['missions'] },
+    { href: '#/sessions', key: 'nav.sessions', match: ['sessions', 'session'] },
   ];
 </script>
 
@@ -60,6 +62,8 @@
       <Scope />
     {:else if router.current.name === 'missions'}
       <Missions />
+    {:else if router.current.name === 'sessions' || router.current.name === 'session'}
+      <Sessions id={router.current.params.id ?? ''} />
     {:else}
       <div class="empty">{t('common.notFound')}</div>
     {/if}
