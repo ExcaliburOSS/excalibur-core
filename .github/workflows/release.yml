@@ -29,7 +29,7 @@ jobs:
       contents: read
       id-token: write # OIDC for npm Trusted Publishing + the provenance attestation
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
