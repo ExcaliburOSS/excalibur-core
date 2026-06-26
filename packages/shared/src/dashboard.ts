@@ -312,6 +312,19 @@ export interface SessionDetail extends SessionSummary {
   turns: SessionTurnDto[];
 }
 
+/** One background-fleet thread for the dashboard Threads panel (DASH3) — a run
+ * launched by `/bg` (workflow `conversation-bg`: the initial thread plus its
+ * follow-ups and supervisor reactions). */
+export interface BackgroundThreadView {
+  id: string;
+  title: string;
+  /** Run status: queued | running | waiting_approval | completed | failed | cancelled. */
+  status: string;
+  model: string | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
 /** One scheduled autonomous job for the dashboard Scheduler view (DASH2) —
  * mirrors the core `ScheduledJob` with the spec pre-rendered to a human cadence. */
 export interface ScheduleJobView {

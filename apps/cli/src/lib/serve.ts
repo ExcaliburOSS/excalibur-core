@@ -17,6 +17,7 @@ import {
   buildSessions,
   buildSessionDetail,
   buildSchedules,
+  buildThreads,
   moveWorkItemLane,
   InvalidLaneError,
 } from './dashboard-data';
@@ -212,6 +213,10 @@ function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
   if (path === '/api/schedules') {
     // DASH2: scheduled autonomous jobs (AO8-3) — read-only from .excalibur/schedules.json.
     return { status: 200, body: { schedules: buildSchedules(repoRoot) } };
+  }
+  if (path === '/api/threads') {
+    // DASH3: the background fleet (`/bg` runs) — read-only projection of the run store.
+    return { status: 200, body: { threads: buildThreads(repoRoot) } };
   }
   if (path === '/api/missions') {
     // The meta-orchestrator's missions (M8 #43) — read-only from .excalibur/missions/.

@@ -657,7 +657,13 @@ export async function runAgentTurn(
     task,
     turn.autonomyLevel,
     turn.providerName,
-    role === 'planner' ? 'conversation-ask' : 'conversation',
+    // DASH3: tag the background fleet (`/bg` + its follow-ups + supervisor reactions —
+    // the only `quiet` path) with a distinct workflow so the dashboard can surface it.
+    turn.quiet === true
+      ? 'conversation-bg'
+      : role === 'planner'
+        ? 'conversation-ask'
+        : 'conversation',
   );
   runManager.updateRecord(run.id, { status: 'running' });
 

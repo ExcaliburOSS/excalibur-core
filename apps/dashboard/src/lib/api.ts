@@ -5,6 +5,7 @@
  * response is typed against the shared dashboard contracts.
  */
 import type {
+  BackgroundThreadView,
   BoardResponse,
   ChronogramDto,
   DashboardLane,
@@ -141,6 +142,9 @@ export const fetchSessions = (): Promise<{ sessions: SessionSummary[] }> => get(
 /** One session with its full transcript (DASH1 drill-in). */
 export const fetchSession = (id: string): Promise<SessionDetail> =>
   get(`/api/sessions/${encodeURIComponent(id)}`);
+
+/** Background-fleet threads (DASH3) — `/bg` runs, newest first. */
+export const fetchThreads = (): Promise<{ threads: BackgroundThreadView[] }> => get('/api/threads');
 
 /** Scheduled autonomous jobs (DASH2) — read-only list, soonest-next first. */
 export const fetchSchedules = (): Promise<{ schedules: ScheduleJobView[] }> =>

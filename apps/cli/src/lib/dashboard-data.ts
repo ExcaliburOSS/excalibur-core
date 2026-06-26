@@ -28,6 +28,7 @@ import {
   type OrchestrationSummary,
   type PlanDetail,
   type PlanSummary,
+  type BackgroundThreadView,
   type RunSummary,
   type ScheduleJobView,
   type SessionDetail,
@@ -35,6 +36,10 @@ import {
   type WorkItemDetail,
   type WorkItemSummary,
 } from '@excalibur/shared';
+
+/** The workflow stamped on every `/bg` background run (set in agent-turn.ts) —
+ * the dashboard Threads panel (DASH3) filters runs by it. */
+const BACKGROUND_WORKFLOW = 'conversation-bg';
 
 /**
  * Maps the in-process stores (`@excalibur/work-items` + `RunManager`) onto the
@@ -388,6 +393,25 @@ export function buildSessionDetail(repoRoot: string, id: string): SessionDetail 
       at: turn.at,
     })),
   };
+}
+
+/** Background-fleet threads for the dashboard Threads panel (DASH3) — `/bg` runs
+ * (workflow `conversation-bg`: initial + follow-ups + supervisor reactions),
+ * newest first. */
+export function buildThreads(repoRoot: string): BackgroundThreadView[] {
+  return new RunManager(repoRoot)
+    .listRuns()
+    .map((r) => r.record)
+    .filter((rec) => rec.workflow === BACKGROUND_WORKFLOW)
+    .map((rec) => ({
+      id: rec.id,
+      title: rec.title,
+      status: rec.status,
+      model: rec.model,
+      startedAt: rec.startedAt,
+      completedAt: rec.completedAt,
+    }))
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }
 
 /** Scheduled autonomous jobs for the dashboard Scheduler view (DASH2), soonest-next first. */

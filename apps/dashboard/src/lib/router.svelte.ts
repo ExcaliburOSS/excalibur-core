@@ -20,6 +20,7 @@ export interface Route {
     | 'sessions'
     | 'session'
     | 'scheduler'
+    | 'threads'
     | 'notFound';
   /** Path params (e.g. `{ key: 'WI-12' }`). */
   params: Record<string, string>;
@@ -39,6 +40,7 @@ const PATTERNS: { name: Route['name']; re: RegExp; keys: string[] }[] = [
   { name: 'session', re: /^\/sessions\/([^/]+)$/, keys: ['id'] },
   { name: 'sessions', re: /^\/sessions$/, keys: [] },
   { name: 'scheduler', re: /^\/scheduler$/, keys: [] },
+  { name: 'threads', re: /^\/threads$/, keys: [] },
 ];
 
 /** Parses the current `location.hash` (stripping any `?query`) into a Route. */

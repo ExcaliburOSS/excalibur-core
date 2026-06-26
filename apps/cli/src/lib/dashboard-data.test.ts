@@ -8,6 +8,7 @@ import {
   buildSchedules,
   buildSessions,
   buildSessionDetail,
+  buildThreads,
   buildWorkItemDetail,
 } from './dashboard-data';
 import { makeTempDir, removeDir } from '../test-utils';
@@ -47,6 +48,22 @@ describe('dashboard-data (store → DTO mappers)', () => {
     expect(detail!.turns[1]).toMatchObject({ role: 'assistant', model: 'kimi', costCents: 12 });
     // unknown id → null (never throws)
     expect(buildSessionDetail(repoRoot, 'sess_nope')).toBeNull();
+  });
+
+  it('surfaces only the `/bg` background fleet (conversation-bg runs) (DASH3)', () => {
+    const manager = new RunManager(repoRoot);
+    const bg = manager.createRun({
+      title: 'bg: lint sweep',
+      autonomyLevel: 3,
+      workflow: 'conversation-bg',
+    });
+    manager.updateRecord(bg.id, { status: 'running' });
+    manager.createRun({ title: 'a foreground chat', autonomyLevel: 3, workflow: 'conversation' });
+    manager.createRun({ title: 'a build', autonomyLevel: 3, workflow: 'standard-feature' });
+
+    const threads = buildThreads(repoRoot);
+    expect(threads).toHaveLength(1); // only the conversation-bg run
+    expect(threads[0]).toMatchObject({ id: bg.id, title: 'bg: lint sweep', status: 'running' });
   });
 
   it('maps scheduled jobs with a human cadence, soonest-next first (DASH2)', () => {
