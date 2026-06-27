@@ -52,6 +52,8 @@ import {
   detectThemeSync,
   paletteFor,
   type MissionRibbonModel,
+  type PlanRibbonModel,
+  type PlanRibbonOutcome,
 } from '@excalibur/tui';
 import type { RunViewHandle } from '@excalibur/tui/ink';
 import type { ChatMessage, ModelGateway } from '@excalibur/model-gateway';
@@ -169,6 +171,12 @@ export interface AgentTurnDeps {
    * so each capability runs with the mission DAG shown on top. Additive.
    */
   ribbon?: MissionRibbonModel;
+  /**
+   * The live PLAN ribbon (PLAN4) to pin ABOVE this turn's rail — the structured
+   * plan as a phase→step tree, so a step runs with the whole plan shown on top
+   * (set per step by {@link driveStructuredPlan}). Additive.
+   */
+  planRibbon?: PlanRibbonModel;
   /**
    * The interrupt handler (INT-1): invoked when the user types a message WHILE
    * this turn streams (Ink path only). It receives the raw input plus a live
@@ -361,6 +369,11 @@ async function driveLoop(
   // caller supplied one), so each capability runs under the live plan DAG.
   if (view !== null && turn.ribbon !== undefined) {
     view.setRibbon(turn.ribbon);
+  }
+  // Pin the live plan ribbon (PLAN4) above the rail, so a plan step runs under
+  // the whole phase→step tree with its own node lit up.
+  if (view !== null && turn.planRibbon !== undefined) {
+    view.setPlanRibbon(turn.planRibbon);
   }
 
   // Arm the interrupt channel (INT-1): each message the user types while this
@@ -1022,6 +1035,31 @@ interface DrivePlanInput extends ExecutePlanInput {
 }
 
 /**
+ * Projects the (in-place-mutated) structured plan into a live PLAN ribbon model
+ * for the TUI — the terminal twin of the dashboard plan tree (PLAN4). Called per
+ * step so the ribbon pinned above that step's rail shows the whole plan with the
+ * current step lit up, prior steps done, the rest pending.
+ */
+function planToRibbon(
+  plan: StructuredPlan,
+  task: string,
+  outcome: PlanRibbonOutcome,
+): PlanRibbonModel {
+  const { total, done } = planProgress(plan);
+  return {
+    task,
+    done,
+    total,
+    outcome,
+    phases: plan.phases.map((phase) => ({
+      id: phase.id,
+      title: phase.title,
+      steps: phase.steps.map((s) => ({ id: s.id, title: s.title, status: s.status })),
+    })),
+  };
+}
+
+/**
  * The shared step-by-step driver (used by a fresh execute AND a resume). Drives the
  * structured plan through {@link runStructuredPlan}: each step is a focused
  * implementer pass, and every status transition is persisted via `updatePlanStep`
@@ -1052,7 +1090,14 @@ async function driveStructuredPlan(
       'conversation',
     );
     runManager.updateRecord(execRun.id, { status: 'running' });
-    const execResult = await driveLoop(turn, adapter, runManager, execRun, generateId('sess'), {
+    // Pin the live plan tree above this step's rail — the whole plan with this
+    // step lit up, prior steps done, the rest pending (PLAN4). `ctx.plan` is the
+    // in-place-mutated plan, so it already has this step marked `active`.
+    const stepTurn: AgentTurnDeps = {
+      ...turn,
+      planRibbon: planToRibbon(ctx.plan, task, 'executing'),
+    };
+    const execResult = await driveLoop(stepTurn, adapter, runManager, execRun, generateId('sess'), {
       role: 'implementer',
       prompt: stepPrompt(task, ctx.plan, ctx.phase, step),
       approvalDefaultYes: approvalDefaultYes(turn.autonomyLevel),

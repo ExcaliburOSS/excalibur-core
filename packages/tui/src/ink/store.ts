@@ -1,6 +1,7 @@
 import type { ExcaliburEvent } from '@excalibur/shared';
 import type { ApprovalPrompt } from '../rail-types.js';
 import type { MissionRibbonModel } from '../mission-ribbon.js';
+import type { PlanRibbonModel } from '../plan-ribbon.js';
 
 /**
  * The external store behind `mountRunView`: an event log + spinner frame +
@@ -38,6 +39,12 @@ export interface RunViewSnapshot {
    */
   missionRibbon: MissionRibbonModel | null;
   /**
+   * The live PLAN ribbon (PLAN4): the structured plan rendered ABOVE the run rail
+   * as a phase→step tree while it executes step by step (PLAN3). Null for an
+   * ordinary run/turn (and for a mission, which uses {@link missionRibbon}).
+   */
+  planRibbon: PlanRibbonModel | null;
+  /**
    * The interrupt channel (INT-1): the message the user is typing WHILE the run
    * streams, shown as a composing line at the foot of the rail. Empty when not
    * composing. Submitted (Enter) it is handed to the interrupt handler — which
@@ -70,6 +77,8 @@ export interface RunViewStore {
   streamNarration(text: string): void;
   /** Set/refresh the mission plan ribbon shown above the rail. */
   setRibbon(model: MissionRibbonModel): void;
+  /** Set/refresh the live plan ribbon (PLAN4) shown above the rail. */
+  setPlanRibbon(model: PlanRibbonModel): void;
   /** Clear the rail event log (a new capability starts its own rail below the ribbon). */
   resetEvents(): void;
   toggleDiffs(): void;
@@ -185,6 +194,7 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
     approval: null,
     streamingNarration: '',
     missionRibbon: null,
+    planRibbon: null,
     interruptDraft: '',
     interruptEnabled: false,
     interruptNotice: '',
@@ -230,6 +240,9 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
     },
     setRibbon(model) {
       set({ missionRibbon: model });
+    },
+    setPlanRibbon(model) {
+      set({ planRibbon: model });
     },
     resetEvents() {
       events.length = 0; // a new capability starts its rail fresh below the ribbon

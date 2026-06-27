@@ -8,7 +8,9 @@ import type { ApprovalPrompt } from '../rail-types.js';
 import { ThemeProvider } from './ThemeContext.js';
 import { RunView, type RunViewLabels } from './RunView.js';
 import { MissionRibbon } from './MissionRibbon.js';
+import { PlanRibbon } from './PlanRibbon.js';
 import type { MissionRibbonModel } from '../mission-ribbon.js';
+import type { PlanRibbonModel } from '../plan-ribbon.js';
 import {
   applyRunViewKey,
   createRunViewStore,
@@ -48,6 +50,8 @@ export interface RunViewHandle {
   streamNarration(text: string): void;
   /** Set/refresh the mission plan ribbon pinned above the rail (M8 #43). */
   setRibbon(model: MissionRibbonModel): void;
+  /** Set/refresh the live plan ribbon (PLAN4) pinned above the rail. */
+  setPlanRibbon(model: PlanRibbonModel): void;
   /** Clear the rail for a new capability (the ribbon stays). */
   resetEvents(): void;
   /** Show an approval; resolves once the user answers. */
@@ -102,6 +106,9 @@ function RunViewApp({
       {snapshot.missionRibbon !== null ? (
         <MissionRibbon model={snapshot.missionRibbon} spinnerFrame={snapshot.frame} />
       ) : null}
+      {snapshot.planRibbon !== null ? (
+        <PlanRibbon model={snapshot.planRibbon} spinnerFrame={snapshot.frame} />
+      ) : null}
       <RunView
         model={model}
         spinnerFrame={snapshot.frame}
@@ -141,6 +148,7 @@ export function mountRunView(options: MountRunViewOptions): RunViewHandle {
     push: (event) => store.push(event),
     streamNarration: (text) => store.streamNarration(text),
     setRibbon: (model) => store.setRibbon(model),
+    setPlanRibbon: (model) => store.setPlanRibbon(model),
     resetEvents: () => store.resetEvents(),
     requestApproval: (approval) => store.requestApproval(approval),
     onEscape: (listener) => store.onEscape(listener),

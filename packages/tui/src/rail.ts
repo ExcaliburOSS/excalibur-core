@@ -17,6 +17,17 @@ export {
   type MissionStepStatus,
   type MissionRibbonOutcome,
 } from './mission-ribbon.js';
+export {
+  renderPlanRibbon,
+  planStatusChar,
+  planStatusHex,
+  type RenderPlanRibbonOptions,
+  type PlanRibbonModel,
+  type PlanRibbonPhaseView,
+  type PlanRibbonStepView,
+  type PlanRibbonStepStatus,
+  type PlanRibbonOutcome,
+} from './plan-ribbon.js';
 export { renderTodos, type RenderTodosOptions } from './rail-todos.js';
 export type { TodoItem } from './rail-types.js';
 export {
