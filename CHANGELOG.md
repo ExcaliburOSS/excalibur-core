@@ -6,6 +6,61 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-06-27
+
+The **shell-parity & live-rail polish** release. The headline: the conversational
+m-shell is now a _friendlier interface to the SAME engine_ as the direct
+commands — a build you type in the shell runs the full **gated workflow** (the
+complexity-sized Plan → Implement → **Verify** → **Review** → PR phases, the
+adversarial **verification mesh** and the **claim ledger**), exactly like
+`excalibur run`, never a degraded single loop. Plus a wave of fixes to the live
+run rail and the post-turn receipt.
+
+### Added
+
+- **The m-shell runs the gated workflow engine.** A build (or a single direct
+  code change) typed into the interactive shell now flows through the same
+  `selectWorkflow → executeLocalRun` pipeline as `excalibur run`: the
+  complexity-sized workflow, its Verify/Review phases, the verification mesh and
+  the claim ledger all run — wrapped in the conversational rail, live narration,
+  inline approvals and the warm receipt. Previously a shell build ran a bare
+  single agent loop with no phases or gates. Real-Kimi verified end to end
+  (`scripts/verify-mshell-gated.mjs`).
+- **New `edit` intent.** The intent router now distinguishes a pure question
+  (`chat`, a conversational turn) from one small direct code change (`edit`,
+  routed through the gated engine) — so even a quick change in the shell gets the
+  same tests/typecheck/verify quality as the CLI.
+- **Default engineering-quality bar in the agent prompt.** Every build now holds
+  to a production bar by default: real project structure with concerns separated
+  into their own files/modules (not one monolithic blob), idiomatic code,
+  accessible/usable UX, and _verify it actually builds/runs_ before declaring
+  done. Real-Kimi verified ("build a landing page" now yields a structured
+  `index.html` + `styles/` + `scripts/`, not a bare inline file).
+- **Animated live rail.** The in-progress action and the active phase header
+  pulse an accent crest left→right (Claude-Code-style), so the live line reads as
+  "happening now".
+
+### Changed
+
+- **Diffs peek by default.** The most-recent change shows the first lines of its
+  diff inline (up to ~25, capped to the terminal height) instead of a "press
+  space to expand" stub.
+- **The live "Working" tail collapses.** The active phase shows only its
+  most-recent actions behind a "⋯ N earlier" indicator, so the breathing header
+  never scrolls off the top — and the header reads warmly ("Working on your
+  task…") rather than a bare "Working".
+
+### Fixed
+
+- **A successful turn no longer renders as a red error.** A backgrounded dev
+  server (`… &`), a user-denied/skipped command, an interrupt/terminate signal,
+  or an unknown exit code is no longer mistaken for a failed check that flipped
+  the whole turn to a red ✗. Genuine failures (incl. crash signals) still fail.
+- **"exit 0" is never shown** — a green ✓ already says the command passed.
+- **The live region no longer erases the scrollback above it, and the TUI no
+  longer flickers** — both were the same Ink "dynamic region taller than the
+  viewport" bug, fixed by bounding the live region to the terminal height.
+
 ## [1.6.0] - 2026-06-27
 
 The **planning overhaul** release: Excalibur's plans go from prose to a
