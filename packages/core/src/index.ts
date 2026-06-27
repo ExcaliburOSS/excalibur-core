@@ -113,6 +113,7 @@ export {
   type BurndownItem,
   type BurndownPoint,
 } from './sprints/burndown';
+export { buildPlanMemoryEntry, planFilesTouched, type PlanMemoryInput } from './plans/plan-memory';
 export {
   planVerificationMesh,
   aggregateMesh,

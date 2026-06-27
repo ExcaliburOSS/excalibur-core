@@ -13,6 +13,7 @@ import {
   EXCALIBUR_DIR,
   getGitInfo,
   hasCommits,
+  buildPlanMemoryEntry,
   loadReplay,
   MemoryStore,
   nextPendingStep,
@@ -1001,7 +1002,12 @@ async function executeApprovedPlan(
           execRunId: execRun.id,
         });
         turn.deps.ui.info(turn.deps.t('agent-turn.plan_saved', { file: basename(file) }));
-        captureExecutedPlanMemory(turn, task, planText, planRunId);
+        // A flat plan runs as ONE pass — its steps carry no runId, so fold the
+        // single exec run's files in via extraRunIds (PLAN6).
+        capturePlanMemory(turn, plan, task, planRunId, {
+          completed: true,
+          extraRunIds: [execRun.id],
+        });
       } catch {
         /* persistence is best-effort; the executed run already succeeded */
       }
@@ -1092,7 +1098,7 @@ async function driveStructuredPlan(
   runManager: RunManager,
   input: DrivePlanInput,
 ): Promise<{ execution: AgentTurnResult | null }> {
-  const { task, planText, plan, planId, planRunId, seed } = input;
+  const { task, plan, planId, planRunId, seed } = input;
   const t = turn.deps.t;
 
   let lastRunId: string | null = null;
@@ -1170,14 +1176,19 @@ async function driveStructuredPlan(
         /* best-effort */
       }
     }
-    captureExecutedPlanMemory(turn, task, planText, planRunId);
+    capturePlanMemory(turn, plan, task, planRunId, { completed: true });
     turn.deps.ui.write();
     turn.deps.ui.info(
       pc.green(t('agent-turn.plan_steps_done', { count: planProgress(plan).done })),
     );
   } else {
-    // Paused/blocked → the plan stays APPROVED on disk (resumable). Point the way.
+    // Paused/blocked → the plan stays APPROVED on disk (resumable). Point the way,
+    // and record a PARTIAL plan memory (PLAN6) so the blocked area is remembered.
     const at = nextPendingStep(plan);
+    capturePlanMemory(turn, plan, task, planRunId, {
+      completed: false,
+      blockedStepIds: result.blockedStepIds,
+    });
     turn.deps.ui.write();
     if (at !== null) {
       turn.deps.ui.info(t('agent-turn.plan_steps_paused', { step: at.step.title }));
@@ -1241,19 +1252,30 @@ function stepPrompt(
 }
 
 /** Promotes an executed plan to project MEMORY (Knowledge Compounding). Best-effort. */
-function captureExecutedPlanMemory(
+/**
+ * PLAN6 — promotes a finished plan to project MEMORY as a RICH, recall-friendly
+ * entry: a structured outcome digest (phases→steps, epic, blocked) as the rationale
+ * and the FILES TOUCHED as subjectPaths (the relevance key), so an executed plan
+ * primes future work on the same files. Captures partial/blocked plans too (lower
+ * confidence). Best-effort — never breaks the already-finished execution.
+ */
+function capturePlanMemory(
   turn: AgentTurnDeps,
+  plan: StructuredPlan,
   task: string,
-  planText: string,
   planRunId: string,
+  opts: { completed: boolean; blockedStepIds?: string[]; extraRunIds?: string[] },
 ): void {
   try {
-    new MemoryStore(turn.repoRoot).capture({
-      type: 'decision',
-      statement: `Approved & executed a plan for: ${task}`,
-      rationale: planText.slice(0, 600),
-      sourceRunId: planRunId,
-    });
+    new MemoryStore(turn.repoRoot).capture(
+      buildPlanMemoryEntry(turn.repoRoot, plan, {
+        task,
+        planRunId,
+        completed: opts.completed,
+        ...(opts.blockedStepIds !== undefined ? { blockedStepIds: opts.blockedStepIds } : {}),
+        ...(opts.extraRunIds !== undefined ? { extraRunIds: opts.extraRunIds } : {}),
+      }),
+    );
   } catch {
     /* memory promotion is best-effort */
   }
