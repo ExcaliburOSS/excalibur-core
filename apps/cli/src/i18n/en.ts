@@ -334,6 +334,7 @@ export const EN: Catalog = {
     "No saved plans yet. Approve a plan in plan mode and it's saved to .excalibur/plans/.",
   'plans.heading': 'Saved plans ({count}) · newest first:',
   'plans.footer': 'Each plan is portable markdown — re-run or fork it from its run.',
+  'plans.resume_none': 'No unfinished plan to resume.',
   'session-log.empty': 'No tasks in this session yet.',
   'session-log.heading': 'Session log · {runs} tasks · {cost} total',
   'session-log.untitled': '(untitled)',
@@ -716,6 +717,16 @@ export const EN: Catalog = {
   'agent-turn.plan_cancelled': 'Plan cancelled. Nothing was changed.',
   'agent-turn.plan_saved': 'Plan saved to .excalibur/plans/{file} and recorded in memory.',
   'agent-turn.execute_header': '◆ Making the changes…',
+  'agent-turn.plan_steps_header': '◆ Working through the plan — {count} steps, one at a time.',
+  'agent-turn.plan_step_running': '  ▸ {step}',
+  'agent-turn.plan_step_done': '  ✓ {step}',
+  'agent-turn.plan_step_blocked': '  ✗ {step} — stopped here.',
+  'agent-turn.plan_steps_done': 'Plan complete — {count} steps done.',
+  'agent-turn.plan_steps_paused':
+    'Paused — I saved the progress. Pick up at “{step}” anytime (it resumes from there).',
+  'agent-turn.plan_resume_header': 'Resuming “{task}” from step “{step}”.',
+  'agent-turn.plan_resume_missing': "I couldn't find that plan to resume.",
+  'agent-turn.plan_resume_complete': '“{task}” is already finished — nothing left to do.',
   'agent-turn.fork_redacted':
     'The reconstructed base contains [REDACTED] where a secret was scrubbed at capture — fill those in before relying on the forked worktree.',
   'agent-turn.fork_header': '⑂ fork of {runId} @ step {step}/{total}',
@@ -1107,6 +1118,8 @@ export const EN: Catalog = {
   'repl.context-plan': '↳ Active plan: {task}',
   'repl.context-memory': '↳ Remembering {count} decision(s) about this repo.',
   'repl.resume-offer': 'Resume your last session ({turns} turn(s))?',
+  'repl.resume-plan-offer':
+    'You have an unfinished plan — “{task}” ({done}/{total} done). Pick it up at “{step}”?',
   'repl.auto-setup-prompt':
     'Allow Excalibur to edit files and run commands automatically (no approval prompts)?',
   'repl.auto-enabled':

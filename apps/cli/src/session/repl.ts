@@ -37,7 +37,9 @@ import {
   getLocalDiff,
   loadReplay,
   MemoryStore,
+  nextPendingStep,
   parseStructuralInput,
+  planProgress,
   decideInterrupt,
   type AsyncSummarizer,
   type IntentModel,
@@ -87,6 +89,8 @@ import { LOG_SENTINEL, REWIND_SENTINEL } from '../ui';
 import { CLI_VERSION } from '../program';
 import { renderWelcome, type WelcomeContext } from './welcome';
 import {
+  findResumablePlan,
+  resumePlanTurn,
   runAgentTurn,
   runForkTurn,
   runPlanTurn,
@@ -572,6 +576,58 @@ export async function runInteractiveSession(
       await drainForegroundInterrupts();
     }
   };
+
+  /** PLAN3 — at launch, if a saved plan was left unfinished (approved with a still-
+   * pending step), proactively OFFER to pick it up where it left off (no command
+   * needed). Accept → resume at the next step, checkpointing as it goes. Only on a
+   * fresh interactive launch (an explicit --resume/--continue already chose intent). */
+  const offerResumePlan = async (): Promise<void> => {
+    if (
+      options.resume !== undefined ||
+      options.continue === true ||
+      !deps.ui.isInteractive() ||
+      !deps.ui.isOutputTty()
+    ) {
+      return;
+    }
+    const plan = findResumablePlan(repoRoot);
+    if (plan === null) {
+      return;
+    }
+    const at = nextPendingStep(plan.plan);
+    const progress = planProgress(plan.plan);
+    deps.ui.write();
+    const resume = await deps.ui.confirm(
+      deps.t('repl.resume-plan-offer', {
+        task: plan.task,
+        step: at?.step.title ?? '',
+        done: progress.done,
+        total: progress.total,
+      }),
+      { defaultYes: true },
+    );
+    if (!resume) {
+      return;
+    }
+    const ctrl = beginTurn();
+    try {
+      const seed = await sessionSeedSettled(runtime);
+      const outcome = await resumePlanTurn(
+        agentTurnDeps(deps, runtime, ctrl.signal),
+        plan.id,
+        seed,
+      );
+      if (outcome.execution !== null) {
+        await recordAssistantTurn(deps, runtime, outcome.execution);
+      }
+    } catch (error) {
+      deps.ui.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      endTurn();
+    }
+  };
+
+  await offerResumePlan();
 
   try {
     for (;;) {

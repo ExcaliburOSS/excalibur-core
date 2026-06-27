@@ -5,10 +5,17 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { NativeAgentAdapter } from '@excalibur/agent-runtime';
 import { DEFAULT_CONFIG, type AutonomyLevel } from '@excalibur/shared';
 import type { ChatInput, ChatMessage, ChatOutput, ModelGateway } from '@excalibur/model-gateway';
+import { plansDir, readPlan, savePlan, updatePlanStep } from '@excalibur/core';
 import { Ui } from '../ui';
 import { defaultDeps, type CliDeps } from '../deps';
 import { makeTempRepo, removeDir } from '../test-utils';
-import { roleForAutonomy, runAgentTurn, runPlanTurn, type AgentTurnDeps } from './agent-turn';
+import {
+  resumePlanTurn,
+  roleForAutonomy,
+  runAgentTurn,
+  runPlanTurn,
+  type AgentTurnDeps,
+} from './agent-turn';
 
 /**
  * Deterministic agent-loop tests with an INJECTED fake gateway that scripts
@@ -20,6 +27,11 @@ import { roleForAutonomy, runAgentTurn, runPlanTurn, type AgentTurnDeps } from '
 
 const repo = makeTempRepo();
 afterAll(() => removeDir(repo));
+
+/** The plan id (filename without `.md`) from a saved plan's absolute path. */
+function planIdOf(file: string): string {
+  return file.slice(plansDir(repo).length + 1, -'.md'.length);
+}
 
 class MemoryStream extends Writable {
   chunks: string[] = [];
@@ -356,6 +368,94 @@ describe('runPlanTurn — plan-mode (plan → gate → execute)', () => {
     expect(result.gate).toBe('cancel');
     expect(result.execution).toBeNull();
     expect(out.text()).toContain('not executing');
+  });
+
+  it('LARGE multi-phase plan: executes STEP BY STEP and persists a resumable checkpoint', async () => {
+    const h = makeHarness();
+    h.send('approve'); // the plan gate
+    const gw = fakeGateway([
+      // Plan pass → a genuine TWO-PHASE structured plan.
+      output('## Setup\n1. Create the config\n\n## Build\n1. Write the module'),
+      // Step 1 (Setup / Create the config): a write, then a step summary.
+      output('', {
+        finishReason: 'tool_calls',
+        toolCalls: [
+          { id: 's1', name: 'write_file', arguments: { path: 'step1.txt', content: 'one' } },
+        ],
+      }),
+      output('Setup step done.'),
+      // Step 2 (Build / Write the module): a write, then a step summary.
+      output('', {
+        finishReason: 'tool_calls',
+        toolCalls: [
+          { id: 's2', name: 'write_file', arguments: { path: 'step2.txt', content: 'two' } },
+        ],
+      }),
+      output('Build step done.'),
+    ]);
+
+    const result = await runPlanTurn(
+      { ...turnDeps(h.deps, gw, 4), approvals: { auto: true } },
+      'build a two-phase thing',
+    );
+
+    expect(result.gate).toBe('approve');
+    expect(result.execution).not.toBeNull();
+    // Each step ran its own pass and wrote its file.
+    expect(existsSync(join(repo, 'step1.txt'))).toBe(true);
+    expect(existsSync(join(repo, 'step2.txt'))).toBe(true);
+    // The user sees per-step progress (the step titles), not run jargon.
+    const out = h.stdout();
+    expect(out).toContain('Create the config');
+    expect(out).toContain('Write the module');
+    // The plan was saved and flipped to executed once every step finished.
+    const md = readFileSync(join(repo, 'step1.txt'), 'utf8');
+    expect(md).toBe('one');
+  });
+
+  it('resumePlanTurn continues at the first UNFINISHED step (durable resume)', async () => {
+    const h = makeHarness();
+    // A two-phase plan saved as APPROVED, with the first step already done — i.e.
+    // exactly the on-disk checkpoint an interrupted run leaves behind.
+    const file = savePlan(repo, {
+      task: 'Resume me',
+      planMarkdown: '## Phase A\n1. already done\n\n## Phase B\n1. still pending',
+      status: 'approved',
+      planRunId: 'run_seed',
+      now: new Date('2026-06-27T12:00:00.000Z'),
+    });
+    const id = planIdOf(file);
+    expect(updatePlanStep(repo, id, 'p1.s1', 'done')).toBe(true);
+
+    const gw = fakeGateway([
+      // ONLY the pending step should run: a write, then a final summary.
+      output('', {
+        finishReason: 'tool_calls',
+        toolCalls: [
+          { id: 'r1', name: 'write_file', arguments: { path: 'resumed.txt', content: 'go' } },
+        ],
+      }),
+      output('Resumed and finished.'),
+    ]);
+
+    const result = await resumePlanTurn(
+      { ...turnDeps(h.deps, gw, 4), approvals: { auto: true } },
+      id,
+    );
+
+    expect(result.gate).toBe('approve');
+    expect(existsSync(join(repo, 'resumed.txt'))).toBe(true);
+    // The whole plan is now executed (its last step finished on resume).
+    expect(readPlan(repo, id)?.status).toBe('executed');
+    expect(readPlan(repo, id)?.plan.phases[1]?.steps[0]?.status).toBe('done');
+  });
+
+  it('resumePlanTurn is a friendly no-op for a missing or already-finished plan', async () => {
+    const h = makeHarness();
+    const gw = fakeGateway([output('unused')]);
+    const missing = await resumePlanTurn(turnDeps(h.deps, gw, 4), 'no-such-plan');
+    expect(missing.gate).toBe('cancel');
+    expect(missing.execution).toBeNull();
   });
 });
 

@@ -344,6 +344,7 @@ export const ES: Catalog = {
     'Aún no hay planes guardados. Aprueba un plan en modo plan y se guarda en .excalibur/plans/.',
   'plans.heading': 'Planes guardados ({count}) · más recientes primero:',
   'plans.footer': 'Cada plan es markdown portable — reejecútalo o forkéalo desde su tarea.',
+  'plans.resume_none': 'No hay ningún plan sin terminar para retomar.',
   'session-log.empty': 'Aún no hay tareas en esta sesión.',
   'session-log.heading': 'Registro de sesión · {runs} tareas · {cost} total',
   'session-log.untitled': '(sin título)',
@@ -771,6 +772,16 @@ export const ES: Catalog = {
   'agent-turn.plan_cancelled': 'Plan cancelado. No se cambió nada.',
   'agent-turn.plan_saved': 'Plan guardado en .excalibur/plans/{file} y registrado en memoria.',
   'agent-turn.execute_header': '◆ Aplicando los cambios…',
+  'agent-turn.plan_steps_header': '◆ Avanzando el plan — {count} pasos, uno a uno.',
+  'agent-turn.plan_step_running': '  ▸ {step}',
+  'agent-turn.plan_step_done': '  ✓ {step}',
+  'agent-turn.plan_step_blocked': '  ✗ {step} — me detuve aquí.',
+  'agent-turn.plan_steps_done': 'Plan completado — {count} pasos hechos.',
+  'agent-turn.plan_steps_paused':
+    'En pausa — guardé el progreso. Retoma en «{step}» cuando quieras (sigue desde ahí).',
+  'agent-turn.plan_resume_header': 'Retomando «{task}» desde el paso «{step}».',
+  'agent-turn.plan_resume_missing': 'No encontré ese plan para retomarlo.',
+  'agent-turn.plan_resume_complete': '«{task}» ya está terminado — no queda nada por hacer.',
   'agent-turn.fork_redacted':
     'La base reconstruida contiene [REDACTED] donde se ocultó un secreto al capturarlo — complétalos antes de confiar en el árbol de trabajo bifurcado.',
   'agent-turn.fork_header': '⑂ bifurcación de {runId} @ paso {step}/{total}',
@@ -1179,6 +1190,8 @@ export const ES: Catalog = {
   'repl.context-plan': '↳ Plan activo: {task}',
   'repl.context-memory': '↳ Recordando {count} decisión(es) sobre este repo.',
   'repl.resume-offer': '¿Retomar tu última sesión ({turns} turno(s))?',
+  'repl.resume-plan-offer':
+    'Tienes un plan sin terminar — «{task}» ({done}/{total} hechos). ¿Lo retomo en «{step}»?',
   'repl.auto-setup-prompt':
     '¿Permitir que Excalibur edite ficheros y ejecute comandos automáticamente (sin pedir aprobación)?',
   'repl.auto-enabled':

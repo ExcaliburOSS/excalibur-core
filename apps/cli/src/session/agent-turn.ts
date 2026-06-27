@@ -15,13 +15,25 @@ import {
   hasCommits,
   loadReplay,
   MemoryStore,
+  nextPendingStep,
+  parsePlanMarkdown,
   planFork,
+  planProgress,
   planUndo,
+  readPlan,
   removeWorktree,
   restampEventsForFork,
+  resumablePlans,
   RunManager,
+  runStructuredPlan,
   savePlan,
+  setPlanStatus,
   turnSummaryToMarkdown,
+  updatePlanStep,
+  type PlanStepExecutor,
+  type StoredPlan,
+  type StructuredPlan,
+  type StructuredPlanStep,
 } from '@excalibur/core';
 import { basename } from 'node:path';
 import {
@@ -890,56 +902,355 @@ export async function runPlanTurn(
   }
 
   // --- 3. Execute pass (implementer role, write tools) ---------------------
-  const execRun = createTurnRun(
-    runManager,
+  // Structure the approved plan. A multi-step plan executes STEP BY STEP with a
+  // durable checkpoint persisted after each step (PLAN3) — so an interrupted run
+  // (Ctrl-C, a crash, closing the laptop) resumes at the next unfinished step
+  // instead of redoing everything. A trivial (≤1 step) plan runs in one pass.
+  const plan = parsePlanMarkdown(planResult.finalText);
+  const exec = await executeApprovedPlan(turn, adapter, runManager, {
     task,
-    turn.autonomyLevel,
-    turn.providerName,
-    'conversation',
-  );
-  runManager.updateRecord(execRun.id, { status: 'running' });
-  turn.deps.ui.write();
-  turn.deps.ui.info(turn.deps.t('agent-turn.execute_header'));
-
-  const execResult = await driveLoop(turn, adapter, runManager, execRun, generateId('sess'), {
-    role: 'implementer',
-    prompt: `Execute this approved plan for the task. Make the changes using the available tools.\n\nTask: ${task}\n\nApproved plan:\n${planResult.finalText}`,
-    approvalDefaultYes: approvalDefaultYes(turn.autonomyLevel),
-    allowConfirm: true,
-    ...seed,
+    planText: planResult.finalText,
+    plan,
+    planRunId: planRun.id,
+    seed,
   });
-  finishRun(turn.deps, runManager, execRun, execResult.aborted, true); // receipt below is the closure
-  emitReceipt(turn, runManager, execRun.id, execResult.model || turn.providerName);
-
-  // Persist the approved plan to the PLANS folder (portable, re-runnable .md) and
-  // promote it to project MEMORY (Knowledge Compounding) — neither CC nor
-  // OpenCode do this. Best-effort: a write fault never fails the executed run.
-  if (planResult.finalText.trim().length > 0) {
-    try {
-      const file = savePlan(turn.repoRoot, {
-        task,
-        planMarkdown: planResult.finalText,
-        status: 'executed',
-        planRunId: planRun.id,
-        execRunId: execRun.id,
-      });
-      turn.deps.ui.info(turn.deps.t('agent-turn.plan_saved', { file: basename(file) }));
-      new MemoryStore(turn.repoRoot).capture({
-        type: 'decision',
-        statement: `Approved & executed a plan for: ${task}`,
-        rationale: planResult.finalText.slice(0, 600),
-        sourceRunId: planRun.id,
-      });
-    } catch {
-      /* persistence is best-effort; the executed run already succeeded */
-    }
-  }
 
   return {
     gate: 'approve',
     planText: planResult.finalText,
-    execution: toResult(execRun.id, execResult, turn.providerName),
+    execution: exec.execution,
     planRunId: planRun.id,
+  };
+}
+
+interface ExecutePlanInput {
+  task: string;
+  planText: string;
+  plan: StructuredPlan;
+  planRunId: string;
+  seed: Pick<DriveOptions, 'seedMessages'>;
+}
+
+/**
+ * Runs an approved plan. A plan with ≥2 steps executes step by step with a durable
+ * checkpoint after each (PLAN3 — resumable), saved as `approved` first and flipped
+ * to `executed` once every step finishes. A trivial plan runs in a single focused
+ * implementer pass (the original behaviour). Either way the plan is persisted to
+ * the PLANS folder and promoted to project memory (Knowledge Compounding).
+ */
+async function executeApprovedPlan(
+  turn: AgentTurnDeps,
+  adapter: AgentAdapter,
+  runManager: RunManager,
+  input: ExecutePlanInput,
+): Promise<{ execution: AgentTurnResult | null }> {
+  const { task, planText, plan, planRunId, seed } = input;
+  const total = planProgress(plan).total;
+
+  // Step-by-step checkpointing (PLAN3) is reserved for genuinely LARGE work —
+  // a structured multi-PHASE plan, or a long flat one (≥5 steps) — where an
+  // interruption is costly and resumability earns its keep. A small flat plan
+  // (a few steps under one phase) runs better as ONE focused implementer pass:
+  // full context, no per-step fragmentation. Either way the structured plan is
+  // persisted; only the large path gets the resumable per-step checkpoint.
+  const stepwise = total >= 2 && (plan.phases.length >= 2 || total >= 5);
+
+  // Small/flat plan → one monolithic implementer pass, saved as executed.
+  if (!stepwise) {
+    const execRun = createTurnRun(
+      runManager,
+      task,
+      turn.autonomyLevel,
+      turn.providerName,
+      'conversation',
+    );
+    runManager.updateRecord(execRun.id, { status: 'running' });
+    turn.deps.ui.write();
+    turn.deps.ui.info(turn.deps.t('agent-turn.execute_header'));
+    const execResult = await driveLoop(turn, adapter, runManager, execRun, generateId('sess'), {
+      role: 'implementer',
+      prompt: `Execute this approved plan for the task. Make the changes using the available tools.\n\nTask: ${task}\n\nApproved plan:\n${planText}`,
+      approvalDefaultYes: approvalDefaultYes(turn.autonomyLevel),
+      allowConfirm: true,
+      ...seed,
+    });
+    finishRun(turn.deps, runManager, execRun, execResult.aborted, true);
+    emitReceipt(turn, runManager, execRun.id, execResult.model || turn.providerName);
+    if (planText.trim().length > 0) {
+      try {
+        const file = savePlan(turn.repoRoot, {
+          task,
+          planMarkdown: planText,
+          plan,
+          status: 'executed',
+          planRunId,
+          execRunId: execRun.id,
+        });
+        turn.deps.ui.info(turn.deps.t('agent-turn.plan_saved', { file: basename(file) }));
+        captureExecutedPlanMemory(turn, task, planText, planRunId);
+      } catch {
+        /* persistence is best-effort; the executed run already succeeded */
+      }
+    }
+    return { execution: toResult(execRun.id, execResult, turn.providerName) };
+  }
+
+  // Multi-step → save as APPROVED first so the structured sidecar exists on disk
+  // as a checkpoint BEFORE any step runs; then drive step by step.
+  let planId: string | null = null;
+  try {
+    const file = savePlan(turn.repoRoot, {
+      task,
+      planMarkdown: planText,
+      plan,
+      status: 'approved',
+      planRunId,
+    });
+    planId = basename(file).replace(/\.md$/, '');
+  } catch {
+    /* if the checkpoint can't be written we still execute (resume just won't persist) */
+  }
+
+  turn.deps.ui.write();
+  turn.deps.ui.info(turn.deps.t('agent-turn.plan_steps_header', { count: total }));
+  return driveStructuredPlan(turn, adapter, runManager, { ...input, planId });
+}
+
+interface DrivePlanInput extends ExecutePlanInput {
+  /** The saved plan id whose steps are checkpointed (null when the save failed). */
+  planId: string | null;
+}
+
+/**
+ * The shared step-by-step driver (used by a fresh execute AND a resume). Drives the
+ * structured plan through {@link runStructuredPlan}: each step is a focused
+ * implementer pass, and every status transition is persisted via `updatePlanStep`
+ * so the plan on disk is always an accurate, resumable checkpoint. Already-done
+ * steps are skipped — which is exactly what makes a re-run a RESUME.
+ */
+async function driveStructuredPlan(
+  turn: AgentTurnDeps,
+  adapter: AgentAdapter,
+  runManager: RunManager,
+  input: DrivePlanInput,
+): Promise<{ execution: AgentTurnResult | null }> {
+  const { task, planText, plan, planId, planRunId, seed } = input;
+  const t = turn.deps.t;
+
+  let lastRunId: string | null = null;
+  let lastResult: DriveResult | null = null;
+  let totalCost: number | null = null;
+  let mutated = false;
+  let peakInput = 0;
+
+  const executor: PlanStepExecutor = async (step, ctx) => {
+    const execRun = createTurnRun(
+      runManager,
+      `${task} — ${step.title}`,
+      turn.autonomyLevel,
+      turn.providerName,
+      'conversation',
+    );
+    runManager.updateRecord(execRun.id, { status: 'running' });
+    const execResult = await driveLoop(turn, adapter, runManager, execRun, generateId('sess'), {
+      role: 'implementer',
+      prompt: stepPrompt(task, ctx.plan, ctx.phase, step),
+      approvalDefaultYes: approvalDefaultYes(turn.autonomyLevel),
+      allowConfirm: true,
+      ...seed,
+    });
+    finishRun(turn.deps, runManager, execRun, execResult.aborted, true);
+    lastRunId = execRun.id;
+    lastResult = execResult;
+    if (execResult.costCents !== null) {
+      totalCost = (totalCost ?? 0) + execResult.costCents;
+    }
+    mutated = mutated || execResult.mutated;
+    peakInput = Math.max(peakInput, execResult.maxInputTokens);
+    // An aborted step is left re-runnable (blocked, not done) so resume retries it.
+    return { status: execResult.aborted ? 'blocked' : 'done', runId: execRun.id };
+  };
+
+  const result = await runStructuredPlan(plan, executor, {
+    ...(turn.signal !== undefined ? { signal: turn.signal } : {}),
+    onStep: (step) => {
+      if (planId !== null) {
+        try {
+          updatePlanStep(turn.repoRoot, planId, step.id, step.status, step.runId);
+        } catch {
+          /* the on-disk checkpoint is best-effort; execution continues regardless */
+        }
+      }
+      if (step.status === 'active') {
+        turn.deps.ui.write();
+        turn.deps.ui.info(t('agent-turn.plan_step_running', { step: step.title }));
+      } else if (step.status === 'done') {
+        turn.deps.ui.info(pc.green(t('agent-turn.plan_step_done', { step: step.title })));
+      } else if (step.status === 'blocked') {
+        turn.deps.ui.warn(t('agent-turn.plan_step_blocked', { step: step.title }));
+      }
+    },
+  });
+
+  if (result.completed) {
+    if (planId !== null) {
+      try {
+        setPlanStatus(turn.repoRoot, planId, 'executed');
+      } catch {
+        /* best-effort */
+      }
+    }
+    captureExecutedPlanMemory(turn, task, planText, planRunId);
+    turn.deps.ui.write();
+    turn.deps.ui.info(
+      pc.green(t('agent-turn.plan_steps_done', { count: planProgress(plan).done })),
+    );
+  } else {
+    // Paused/blocked → the plan stays APPROVED on disk (resumable). Point the way.
+    const at = nextPendingStep(plan);
+    turn.deps.ui.write();
+    if (at !== null) {
+      turn.deps.ui.info(t('agent-turn.plan_steps_paused', { step: at.step.title }));
+    }
+  }
+
+  if (lastRunId !== null && lastResult !== null) {
+    const settled: DriveResult = lastResult;
+    emitReceipt(turn, runManager, lastRunId, settled.model || turn.providerName);
+    const aggregate: DriveResult = {
+      finalText: settled.finalText,
+      costCents: totalCost,
+      model: settled.model,
+      mutated,
+      aborted: settled.aborted,
+      maxInputTokens: peakInput,
+    };
+    return { execution: toResult(lastRunId, aggregate, turn.providerName) };
+  }
+  return { execution: null };
+}
+
+/** The implementer prompt for ONE plan step — the whole plan for context, the
+ * already-done steps, and a hard instruction to complete only this step. */
+function stepPrompt(
+  task: string,
+  plan: StructuredPlan,
+  phase: { title: string },
+  step: StructuredPlanStep,
+): string {
+  const done = plan.phases
+    .flatMap((p) => p.steps)
+    .filter((s) => s.status === 'done')
+    .map((s) => `  ✓ ${s.title}`);
+  const doneBlock =
+    done.length > 0 ? `\n\nAlready completed (do not redo):\n${done.join('\n')}` : '';
+  const acceptance =
+    step.acceptance !== undefined && step.acceptance.length > 0
+      ? `\nAcceptance: ${step.acceptance}`
+      : '';
+  const outline = plan.phases
+    .map(
+      (p) =>
+        `${p.title}\n${p.steps.map((s) => `  - [${s.status === 'done' ? 'x' : ' '}] ${s.title}`).join('\n')}`,
+    )
+    .join('\n');
+  return [
+    'You are executing an approved, multi-step plan — ONE step at a time.',
+    `Task: ${task}`,
+    '',
+    'Full plan (for context):',
+    outline,
+    doneBlock,
+    '',
+    'Now complete ONLY this step (do not start later steps):',
+    `Phase: ${phase.title}`,
+    `Step: ${step.title}${acceptance}`,
+    '',
+    'Make the changes with the available tools. When this step is complete, stop.',
+  ].join('\n');
+}
+
+/** Promotes an executed plan to project MEMORY (Knowledge Compounding). Best-effort. */
+function captureExecutedPlanMemory(
+  turn: AgentTurnDeps,
+  task: string,
+  planText: string,
+  planRunId: string,
+): void {
+  try {
+    new MemoryStore(turn.repoRoot).capture({
+      type: 'decision',
+      statement: `Approved & executed a plan for: ${task}`,
+      rationale: planText.slice(0, 600),
+      sourceRunId: planRunId,
+    });
+  } catch {
+    /* memory promotion is best-effort */
+  }
+}
+
+/** The newest RESUMABLE plan (approved with a still-pending step) for this repo, or
+ * null — so the shell can proactively offer to pick it up where it left off. */
+export function findResumablePlan(repoRoot: string): StoredPlan | null {
+  try {
+    return resumablePlans(repoRoot)[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resumes a saved plan at its first unfinished step (PLAN3). Loads the structured
+ * plan from disk (already-done steps are marked) and drives the rest step by step,
+ * checkpointing each and flipping the plan to `executed` once complete. A plan that
+ * is missing or already finished is a friendly no-op.
+ */
+export async function resumePlanTurn(
+  turn: AgentTurnDeps,
+  planId: string,
+  seedMessages?: ChatMessage[],
+): Promise<PlanTurnResult> {
+  const stored = readPlan(turn.repoRoot, planId);
+  if (stored === null) {
+    turn.deps.ui.info(turn.deps.t('agent-turn.plan_resume_missing'));
+    return { gate: 'cancel', planText: '', execution: null, planRunId: '' };
+  }
+  const at = nextPendingStep(stored.plan);
+  if (at === null) {
+    turn.deps.ui.info(turn.deps.t('agent-turn.plan_resume_complete', { task: stored.task }));
+    return {
+      gate: 'cancel',
+      planText: stored.body,
+      execution: null,
+      planRunId: stored.planRun ?? '',
+    };
+  }
+
+  const adapter = turn.adapter ?? resolveAgentAdapter(turn.config);
+  const runManager = new RunManager(turn.repoRoot);
+  const seed: Pick<DriveOptions, 'seedMessages'> =
+    seedMessages !== undefined && seedMessages.length > 0 ? { seedMessages } : {};
+
+  turn.deps.ui.write();
+  turn.deps.ui.info(
+    turn.deps.t('agent-turn.plan_resume_header', { task: stored.task, step: at.step.title }),
+  );
+
+  const planRunId = stored.planRun ?? '';
+  const exec = await driveStructuredPlan(turn, adapter, runManager, {
+    task: stored.task,
+    planText: stored.body,
+    plan: stored.plan,
+    planId: stored.id,
+    planRunId,
+    seed,
+  });
+
+  return {
+    gate: 'approve',
+    planText: stored.body,
+    execution: exec.execution,
+    planRunId,
   };
 }
 
