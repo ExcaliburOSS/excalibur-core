@@ -292,6 +292,37 @@ export interface PlanDetail extends PlanSummary {
   nextStepId: string | null;
 }
 
+/** One day of a sprint burndown (PLAN5). */
+export interface BurndownPointDto {
+  /** `YYYY-MM-DD`. */
+  date: string;
+  /** Ideal remaining points (linear). */
+  ideal: number;
+  /** Actual remaining points. */
+  remaining: number;
+}
+
+/** A sprint as it appears in the Sprints list (PLAN5). */
+export interface SprintSummary {
+  id: string;
+  name: string;
+  goal: string | null;
+  startDate: string;
+  endDate: string;
+  status: 'planned' | 'active' | 'completed';
+  /** How many work-items are assigned to the sprint. */
+  itemCount: number;
+  /** Story-point roll-up across the sprint's work-items. */
+  totalPoints: number;
+  donePoints: number;
+}
+
+/** A sprint with its work-items + burndown series (PLAN5 drill-in). */
+export interface SprintDetail extends SprintSummary {
+  items: WorkItemSummary[];
+  burndown: BurndownPointDto[];
+}
+
 /** One plan-shaping recommendation toggled into scope (D — dashboard panel). */
 export interface PlanShapeRecommendationDto {
   title: string;

@@ -16,6 +16,8 @@ import type {
   PlanDetail,
   PlanShapeView,
   PlanSummary,
+  SprintSummary,
+  SprintDetail,
   RunRecord,
   ScheduleJobView,
   ScopeMapView,
@@ -142,6 +144,13 @@ export const fetchPlans = (): Promise<{ plans: PlanSummary[] }> => get('/api/pla
 /** One plan with its markdown body (D3). */
 export const fetchPlan = (id: string): Promise<PlanDetail> =>
   get(`/api/plans/${encodeURIComponent(id)}`);
+
+/** Sprints (PLAN5). */
+export const fetchSprints = (): Promise<{ sprints: SprintSummary[] }> => get('/api/sprints');
+
+/** One sprint with its work-items + burndown (PLAN5). */
+export const fetchSprint = (id: string): Promise<SprintDetail> =>
+  get(`/api/sprints/${encodeURIComponent(id)}`);
 
 /** Discovery sessions (D3). */
 export const fetchDiscovery = (): Promise<{ discovery: DiscoverySummary[] }> =>

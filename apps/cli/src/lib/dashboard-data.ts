@@ -7,7 +7,10 @@ import {
   DiscoveryManager,
   SessionStore,
   ScheduleStore,
+  SprintStore,
+  computeBurndown,
   describeSpec,
+  type BurndownItem,
   type StoredPlan,
 } from '@excalibur/core';
 import type { LocalRun } from '@excalibur/shared';
@@ -32,6 +35,8 @@ import {
   type PlanDetail,
   type PlanRefDto,
   type PlanSummary,
+  type SprintSummary,
+  type SprintDetail,
   type BackgroundThreadView,
   type RunSummary,
   type ScheduleJobView,
@@ -329,6 +334,79 @@ export async function buildWorkItemDetail(
     })),
     // Plans this item belongs to (PLAN2 — its epic or a step links here).
     plans: plansForWorkItem(repoRoot, item.key),
+  };
+}
+
+/** Projects a work-item into a burndown item (PLAN5): points = estimate or 1;
+ * done-date approximated from updatedAt while in the `done` lane. */
+function toBurndownItem(item: NormalizedWorkItem): BurndownItem {
+  const done = laneOf(item.status) === 'done';
+  return {
+    points: item.estimate ?? 1,
+    doneDate: done ? (item.updatedAt ?? '').slice(0, 10) || null : null,
+  };
+}
+
+/** Sprints for the Sprints view (PLAN5), newest first, with a points roll-up. */
+export function buildSprints(repoRoot: string): SprintSummary[] {
+  const all = new LocalWorkItemProvider(repoRoot).board().flatMap((c) => c.items);
+  const bySprint = new Map<string, NormalizedWorkItem[]>();
+  for (const item of all) {
+    if (item.cycleOrSprint !== null) {
+      const bucket = bySprint.get(item.cycleOrSprint) ?? [];
+      bucket.push(item);
+      bySprint.set(item.cycleOrSprint, bucket);
+    }
+  }
+  return new SprintStore(repoRoot)
+    .listSprints()
+    .map((s) => sprintSummaryOf(s, bySprint.get(s.id) ?? []));
+}
+
+function sprintSummaryOf(
+  s: {
+    id: string;
+    name: string;
+    goal: string | null;
+    startDate: string;
+    endDate: string;
+    status: SprintSummary['status'];
+  },
+  items: NormalizedWorkItem[],
+): SprintSummary {
+  const totalPoints = items.reduce((sum, i) => sum + (i.estimate ?? 1), 0);
+  const donePoints = items
+    .filter((i) => laneOf(i.status) === 'done')
+    .reduce((sum, i) => sum + (i.estimate ?? 1), 0);
+  return {
+    id: s.id,
+    name: s.name,
+    goal: s.goal,
+    startDate: s.startDate,
+    endDate: s.endDate,
+    status: s.status,
+    itemCount: items.length,
+    totalPoints,
+    donePoints,
+  };
+}
+
+/** One sprint with its work-items + burndown series (PLAN5 drill-in), or null. */
+export function buildSprintDetail(repoRoot: string, id: string): SprintDetail | null {
+  const sprint = new SprintStore(repoRoot).getSprint(id);
+  if (sprint === null) {
+    return null;
+  }
+  const manager = new RunManager(repoRoot);
+  const all = new LocalWorkItemProvider(repoRoot).board().flatMap((c) => c.items);
+  const items = all
+    .filter((i) => i.cycleOrSprint === id)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const burndown = computeBurndown(sprint.startDate, sprint.endDate, items.map(toBurndownItem));
+  return {
+    ...sprintSummaryOf(sprint, items),
+    items: items.map((i) => summarize(i, manager.runsForWorkItem(i.key), manager)),
+    burndown: burndown.days,
   };
 }
 

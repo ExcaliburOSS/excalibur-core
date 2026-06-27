@@ -17,6 +17,8 @@ export interface Route {
     | 'orchestration'
     | 'plans'
     | 'plan'
+    | 'sprints'
+    | 'sprint'
     | 'scope'
     | 'missions'
     | 'sessions'
@@ -40,6 +42,8 @@ const PATTERNS: { name: Route['name']; re: RegExp; keys: string[] }[] = [
   { name: 'orchestrations', re: /^\/orchestrations$/, keys: [] },
   { name: 'plan', re: /^\/plans\/([^/]+)$/, keys: ['id'] },
   { name: 'plans', re: /^\/plans$/, keys: [] },
+  { name: 'sprint', re: /^\/sprints\/([^/]+)$/, keys: ['id'] },
+  { name: 'sprints', re: /^\/sprints$/, keys: [] },
   { name: 'scope', re: /^\/scope$/, keys: [] },
   { name: 'missions', re: /^\/missions$/, keys: [] },
   { name: 'session', re: /^\/sessions\/([^/]+)$/, keys: ['id'] },

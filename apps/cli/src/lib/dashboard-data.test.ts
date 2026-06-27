@@ -3,6 +3,7 @@ import {
   RunManager,
   SessionStore,
   ScheduleStore,
+  SprintStore,
   readPlan,
   savePlan,
   updatePlanStep,
@@ -18,6 +19,8 @@ import {
   buildSchedules,
   buildSessions,
   buildSessionDetail,
+  buildSprints,
+  buildSprintDetail,
   buildThreads,
   buildWorkItemDetail,
 } from './dashboard-data';
@@ -424,6 +427,46 @@ describe('dashboard-data (store → DTO mappers)', () => {
     });
     const doneId = done.slice(plansDir(repoRoot).length + 1, -'.md'.length);
     expect(buildPlans(repoRoot).find((p) => p.id === doneId)?.resumable).toBe(false);
+  });
+
+  it('rolls up a sprint with its work-items, points and a burndown (PLAN5)', () => {
+    const sprint = new SprintStore(repoRoot).createSprint({
+      name: 'Sprint A',
+      goal: 'ship it',
+      startDate: '2026-07-01',
+      endDate: '2026-07-03',
+    });
+    // Deterministic clock so the done item's updatedAt (its burndown date) is fixed.
+    const wi = new LocalWorkItemProvider(repoRoot, {
+      now: () => new Date('2026-07-02T09:00:00.000Z'),
+    });
+    wi.createWorkItem({
+      title: 'sized done',
+      estimate: 3,
+      cycleOrSprint: sprint.id,
+      status: 'done',
+    });
+    wi.createWorkItem({ title: 'sized todo', estimate: 5, cycleOrSprint: sprint.id });
+    wi.createWorkItem({ title: 'unassigned', estimate: 8 }); // not in the sprint
+
+    // List roll-up: only the 2 assigned items, 3 of 8 points done.
+    const summary = buildSprints(repoRoot).find((s) => s.id === sprint.id);
+    expect(summary).toMatchObject({
+      itemCount: 2,
+      totalPoints: 8,
+      donePoints: 3,
+      status: 'planned',
+    });
+
+    // Detail carries the items + a zero-filled 3-day burndown series.
+    const detail = buildSprintDetail(repoRoot, sprint.id);
+    expect(detail?.items.map((i) => i.title).sort()).toEqual(['sized done', 'sized todo']);
+    expect(detail?.burndown.map((d) => d.date)).toEqual(['2026-07-01', '2026-07-02', '2026-07-03']);
+    // Ideal falls 8 → 4 → 0; the 3pt item completes on day 2, so remaining = 8, 5, 5.
+    expect(detail?.burndown.map((d) => d.ideal)).toEqual([8, 4, 0]);
+    expect(detail?.burndown.map((d) => d.remaining)).toEqual([8, 5, 5]);
+
+    expect(buildSprintDetail(repoRoot, 'SP-999')).toBeNull();
   });
 
   it('materializes a plan into an epic + sub-tasks the board & detail surface (PLAN2)', async () => {

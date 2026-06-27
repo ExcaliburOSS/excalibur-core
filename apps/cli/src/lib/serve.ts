@@ -12,6 +12,8 @@ import {
   buildWorkItemDetail,
   buildPlans,
   buildPlanDetail,
+  buildSprints,
+  buildSprintDetail,
   buildDiscovery,
   buildSessions,
   buildSessionDetail,
@@ -220,6 +222,20 @@ function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
     const detail = buildPlanDetail(repoRoot, id);
     return detail === null
       ? { status: 404, body: { error: 'plan not found' } }
+      : { status: 200, body: detail };
+  }
+  if (path === '/api/sprints') {
+    return { status: 200, body: { sprints: buildSprints(repoRoot) } }; // PLAN5
+  }
+  const sprintMatch = /^\/api\/sprints\/([^/]+)$/.exec(path);
+  if (sprintMatch !== null) {
+    const id = decodeURIComponent(sprintMatch[1] as string);
+    if (isTraversalId(id)) {
+      return { status: 400, body: { error: 'invalid sprint id' } };
+    }
+    const detail = buildSprintDetail(repoRoot, id);
+    return detail === null
+      ? { status: 404, body: { error: 'sprint not found' } }
       : { status: 200, body: detail };
   }
   if (path === '/api/sessions') {

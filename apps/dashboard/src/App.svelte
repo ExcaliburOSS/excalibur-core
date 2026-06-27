@@ -8,6 +8,7 @@
   import Orchestrations from './pages/Orchestrations.svelte';
   import Chronogram from './pages/Chronogram.svelte';
   import Plans from './pages/Plans.svelte';
+  import Sprints from './pages/Sprints.svelte';
   import Scope from './pages/Scope.svelte';
   import Missions from './pages/Missions.svelte';
   import Sessions from './pages/Sessions.svelte';
@@ -27,6 +28,7 @@
   const NAV: { href: string; key: string; match: string[] }[] = [
     { href: '#/', key: 'nav.board', match: ['board', 'workItem'] },
     { href: '#/plans', key: 'nav.plans', match: ['plans'] },
+    { href: '#/sprints', key: 'nav.sprints', match: ['sprints', 'sprint'] },
     {
       href: '#/activity',
       key: 'nav.activity',
@@ -140,6 +142,10 @@
           <Plans />
         {:else if router.current.name === 'plan'}
           <Plans id={router.current.params.id ?? ''} />
+        {:else if router.current.name === 'sprints'}
+          <Sprints />
+        {:else if router.current.name === 'sprint'}
+          <Sprints id={router.current.params.id ?? ''} />
         {:else if router.current.name === 'scope'}
           <Scope />
         {:else if router.current.name === 'missions'}
