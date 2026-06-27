@@ -100,6 +100,20 @@ export {
   type PlanMaterializeResult,
 } from './plans/plan-materializer';
 export {
+  SprintStore,
+  type Sprint,
+  type SprintStatus,
+  type CreateSprintInput,
+  type UpdateSprintInput,
+} from './sprints/sprint-store';
+export {
+  computeBurndown,
+  enumerateDays,
+  type Burndown,
+  type BurndownItem,
+  type BurndownPoint,
+} from './sprints/burndown';
+export {
   planVerificationMesh,
   aggregateMesh,
   MESH_LENSES,

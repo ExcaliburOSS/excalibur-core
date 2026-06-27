@@ -36,6 +36,7 @@ import { registerReplayCommand } from './commands/replay';
 import { registerChangesCommand } from './commands/changes';
 import { registerThemeCommand } from './commands/theme';
 import { registerPlansCommand } from './commands/plans';
+import { registerSprintsCommand } from './commands/sprints';
 import { registerVerifyCommand } from './commands/verify';
 import { registerForkCommand, registerUndoCommand } from './commands/fork';
 import { registerReviewCommand } from './commands/review';
@@ -115,6 +116,7 @@ export function buildProgram(overrides: Partial<CliDeps> = {}): Command {
   registerShareCommand(program, deps);
   registerAcpCommand(program, deps);
   registerWorkItemsCommand(program, deps);
+  registerSprintsCommand(program, deps);
   registerAgentsCommand(program, deps);
   registerMcpCommand(program, deps);
   registerSearchCommand(program, deps);

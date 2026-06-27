@@ -69,7 +69,21 @@ function printItem(deps: CliDeps, wi: NormalizedWorkItem): void {
   deps.ui.write(`${pc.bold(wi.key)}  ${statusColor(wi.status)}`);
   deps.ui.write(`  ${wi.title}`);
   if (wi.labels.length > 0) deps.ui.write(pc.dim(`  labels: ${wi.labels.join(', ')}`));
+  if (wi.estimate !== undefined) deps.ui.write(pc.dim(`  estimate: ${wi.estimate}pt`));
+  if (wi.cycleOrSprint !== null) deps.ui.write(pc.dim(`  sprint: ${wi.cycleOrSprint}`));
   deps.ui.write(pc.dim(`  ${wi.url}`));
+}
+
+/** Parses a `--estimate <points>` option into a non-negative number, or undefined. */
+function parseEstimate(deps: CliDeps, value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new CliUsageError(`--estimate must be a non-negative number (got "${value}").`);
+  }
+  return n;
 }
 
 export function registerWorkItemsCommand(program: Command, deps: CliDeps): void {
@@ -85,17 +99,23 @@ export function registerWorkItemsCommand(program: Command, deps: CliDeps): void 
     .argument('<title...>', 'the work item title')
     .option('--body <text>', 'description / details')
     .option('--label <label...>', 'labels')
+    .option('--estimate <points>', 'story-point estimate (PLAN5)')
     .option('--json', 'machine-readable JSON')
     .action(
-      (titleWords: string[], options: { body?: string; label?: string[]; json?: boolean }) => {
+      (
+        titleWords: string[],
+        options: { body?: string; label?: string[]; estimate?: string; json?: boolean },
+      ) => {
         const title = titleWords.join(' ').trim();
         if (title.length === 0) {
           throw new CliUsageError(deps.t('work-items.create-empty'));
         }
+        const estimate = parseEstimate(deps, options.estimate);
         const item = new LocalWorkItemProvider(deps.cwd()).createWorkItem({
           title,
           ...(options.body !== undefined ? { description: options.body } : {}),
           ...(options.label !== undefined ? { labels: options.label } : {}),
+          ...(estimate !== undefined ? { estimate } : {}),
         });
         if (options.json === true) {
           deps.ui.json(item);
@@ -247,6 +267,8 @@ export function registerWorkItemsCommand(program: Command, deps: CliDeps): void 
     .option('--assignee <name>', 'set the assignee ("none" clears it)')
     .option('--parent <key>', 'set the parent work item ("none" clears it)')
     .option('--status <status>', 'set the raw status (use `move` for kanban lanes)')
+    .option('--estimate <points>', 'set the story-point estimate (PLAN5)')
+    .option('--sprint <id>', 'assign to a sprint ("none" clears it)')
     .option('--json', 'machine-readable JSON')
     .action(
       (
@@ -259,6 +281,8 @@ export function registerWorkItemsCommand(program: Command, deps: CliDeps): void 
           assignee?: string;
           parent?: string;
           status?: string;
+          estimate?: string;
+          sprint?: string;
           json?: boolean;
         },
       ) => {
@@ -272,6 +296,10 @@ export function registerWorkItemsCommand(program: Command, deps: CliDeps): void 
         if (options.parent !== undefined)
           patch.parentExternalId = options.parent === 'none' ? null : options.parent;
         if (options.status !== undefined) patch.status = options.status;
+        const estimate = parseEstimate(deps, options.estimate);
+        if (estimate !== undefined) patch.estimate = estimate;
+        if (options.sprint !== undefined)
+          patch.cycleOrSprint = options.sprint === 'none' ? null : options.sprint;
         if (Object.keys(patch).length === 0) {
           throw new CliUsageError('Pass at least one field to edit (e.g. --title, --priority).');
         }

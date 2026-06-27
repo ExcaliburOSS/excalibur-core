@@ -55,6 +55,27 @@ describe('LocalWorkItemProvider', () => {
     expect(edited.blockedBy).toEqual(['WI-2']);
   });
 
+  it('persists an estimate + sprint assignment on create and update (PLAN5)', async () => {
+    const root = freshRepo();
+    const p = new LocalWorkItemProvider(root, { now: clock() });
+    const wi = p.createWorkItem({ title: 'sized', estimate: 5, cycleOrSprint: 'SP-1' });
+    expect(wi.estimate).toBe(5);
+    expect(wi.cycleOrSprint).toBe('SP-1');
+    const onDisk = JSON.parse(
+      readFileSync(join(root, '.excalibur', 'work-items', 'WI-1.json'), 'utf8'),
+    );
+    expect(onDisk.estimate).toBe(5);
+    expect(onDisk.cycleOrSprint).toBe('SP-1');
+    // unestimated item has no estimate key (back-compat)
+    const plain = p.createWorkItem({ title: 'unsized' });
+    expect(plain.estimate).toBeUndefined();
+    expect(plain.cycleOrSprint).toBeNull();
+    // update can re-estimate + re-assign
+    const edited = p.updateWorkItem('WI-2', { estimate: 3, cycleOrSprint: 'SP-2' });
+    expect(edited.estimate).toBe(3);
+    expect(edited.cycleOrSprint).toBe('SP-2');
+  });
+
   it('lists newest-first and filters by status, query and labels', async () => {
     const root = freshRepo();
     const p = new LocalWorkItemProvider(root, { now: clock() });

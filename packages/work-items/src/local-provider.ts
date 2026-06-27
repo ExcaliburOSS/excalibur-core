@@ -48,6 +48,10 @@ export interface CreateWorkItemInput {
   parentExternalId?: string | null;
   /** Work-item keys this item is blocked by (dependency edges — PLAN2). */
   blockedBy?: string[];
+  /** Effort estimate in story points (PLAN5). */
+  estimate?: number;
+  /** The sprint/cycle id this item belongs to (PLAN5). */
+  cycleOrSprint?: string | null;
 }
 
 /** Fields a {@link LocalWorkItemProvider.updateWorkItem} may patch (all optional). */
@@ -62,6 +66,10 @@ export interface UpdateWorkItemInput {
   order?: number;
   /** Work-item keys this item is blocked by (dependency edges — PLAN2). */
   blockedBy?: string[];
+  /** Effort estimate in story points (PLAN5). */
+  estimate?: number;
+  /** The sprint/cycle id this item belongs to (PLAN5). */
+  cycleOrSprint?: string | null;
 }
 
 /** A kanban lane plus its items, in board order. */
@@ -161,7 +169,7 @@ export class LocalWorkItemProvider implements WorkItemProvider {
       reporter: null,
       project: null,
       team: null,
-      cycleOrSprint: null,
+      cycleOrSprint: input.cycleOrSprint ?? null,
       parentExternalId: input.parentExternalId ?? null,
       comments: [],
       links: [],
@@ -172,6 +180,7 @@ export class LocalWorkItemProvider implements WorkItemProvider {
       ...(input.blockedBy !== undefined && input.blockedBy.length > 0
         ? { blockedBy: input.blockedBy }
         : {}),
+      ...(input.estimate !== undefined ? { estimate: input.estimate } : {}),
       raw: { local: true },
     };
     this.write(item);
@@ -209,6 +218,8 @@ export class LocalWorkItemProvider implements WorkItemProvider {
     if (patch.parentExternalId !== undefined) item.parentExternalId = patch.parentExternalId;
     if (patch.order !== undefined) item.order = patch.order;
     if (patch.blockedBy !== undefined) item.blockedBy = patch.blockedBy;
+    if (patch.estimate !== undefined) item.estimate = patch.estimate;
+    if (patch.cycleOrSprint !== undefined) item.cycleOrSprint = patch.cycleOrSprint;
     item.updatedAt = this.now().toISOString();
     this.write(item);
     return item;

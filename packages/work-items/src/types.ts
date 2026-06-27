@@ -122,6 +122,11 @@ export type NormalizedWorkItem = {
    * `.excalibur/work-items/*.json` keep loading.
    */
   blockedBy?: string[];
+  /**
+   * Effort estimate in story points (PLAN5 — drives sprint capacity + burndown).
+   * Local-only, optional so existing `.excalibur/work-items/*.json` keep loading.
+   */
+  estimate?: number;
   raw: unknown;
 };
 
@@ -148,6 +153,7 @@ export const normalizedWorkItemSchema = z.object({
   order: z.number().optional(),
   checklist: z.array(normalizedWorkItemChecklistItemSchema).optional(),
   blockedBy: z.array(z.string()).optional(),
+  estimate: z.number().optional(),
   raw: z.unknown(),
 });
 
