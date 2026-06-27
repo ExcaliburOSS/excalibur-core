@@ -252,6 +252,38 @@ function adversarialPreamble(role: AgentRunInput['role']): string[] {
   ];
 }
 
+/**
+ * The default engineering bar — the standards a senior engineer applies to ANY
+ * development task, so the agent ships production-quality work by default instead
+ * of a throwaway (the gap that produced a bare inline `index.html` with no
+ * structure and no verification). Deliberately GENERAL: no per-stack or per-task
+ * rules, just how to build well whatever the task. Skipped for read-only roles
+ * (planners, reviewers, researchers), which observe rather than build.
+ */
+function engineeringGuidance(role: AgentRole): string[] {
+  if (READ_ONLY_ROLES.has(role)) {
+    return [];
+  }
+  return [
+    'Work to a professional, production-quality bar on EVERY task, however small —',
+    'never a throwaway or a quick hack.',
+    'Structure the work properly: use a sensible project and file layout and separate',
+    'concerns into their own files and modules (styles, scripts, assets, components,',
+    'config) instead of cramming everything into one monolithic file. Follow the',
+    'conventions and idioms of the language and framework, and — in an existing repo —',
+    'the surrounding code. Write clear, maintainable code with real error handling and',
+    'good names; no dead code or copy-paste filler.',
+    'Design for the people who use it: usability and accessibility for the end user,',
+    'and developer experience (easy to read, run, and extend) for whoever comes next.',
+    'VERIFY before declaring done: build it, run the tests and any linters/formatters,',
+    'and for anything runnable (an app, a site, a server, a script) actually run or',
+    'serve it and confirm it works — do not just write files and stop. Leaving a dev',
+    'server or watcher running in the background to verify is fine; it is not a failure.',
+    'If doing it right needs missing pieces (a build step, config, a folder, a',
+    'dependency), create them rather than cutting corners to finish faster.',
+  ];
+}
+
 function systemPromptFor(input: AgentRunInput): string {
   const phase =
     input.phase !== undefined ? ` for phase "${input.phase.name}" (${input.phase.type})` : '';
@@ -279,6 +311,7 @@ function systemPromptFor(input: AgentRunInput): string {
     'mark exactly one item "in_progress", flip finished items to "completed", and',
     'send the whole list again each time. It is shown to the user as a live to-do',
     'list. Skip it only for trivial one-step tasks.',
+    ...engineeringGuidance(input.role),
     ...narrationGuidance(input.role),
     'When the task is complete, reply with a brief, warm summary — like updating a',
     'teammate on what you did and why — and no further tool calls.',

@@ -151,16 +151,42 @@ export function parseDiffStat(diff: string): ChangedFile[] {
 
 // --- check extraction --------------------------------------------------------
 
+/**
+ * Whether a finished command is a pass/fail VERDICT on the turn (so it can flip
+ * the tier and surface in the receipt). It is NOT a verdict when:
+ *  - it was backgrounded with a trailing `&` (a dev server, a file watcher) — it
+ *    is started to run ALONGSIDE the work, not to assert an outcome, and its exit
+ *    status reflects the shell/teardown, not success; or
+ *  - the harness had to terminate it (a signal-coded exit > 128, e.g. a server
+ *    killed at turn end).
+ * Treating those as failed checks is the bug where a finished landing page (whose
+ * only "failure" was `python3 -m http.server &` exiting non-zero) rendered as a
+ * red error. Such commands are simply omitted from the checks.
+ */
+function isVerdictCommand(command: string, exit: number | null): boolean {
+  const trimmed = command.trimEnd();
+  const backgrounded = trimmed.endsWith('&') && !trimmed.endsWith('&&');
+  const signalTerminated = exit !== null && exit > 128;
+  return !backgrounded && !signalTerminated;
+}
+
 function checksFrom(events: ExcaliburEvent[]): TurnCheck[] {
   const checks: TurnCheck[] = [];
   for (const event of events) {
     if (event.type === 'command_completed') {
       const label = str(event, 'command') ?? '(command)';
       const exit = num(event, 'exitCode');
+      // Fire-and-forget / terminated commands aren't verdicts — skip them so they
+      // never poison the turn tier or surface a red "exit N" in the receipt.
+      if (!isVerdictCommand(label, exit)) {
+        continue;
+      }
       checks.push({
         label,
         ok: exit === 0,
-        detail: exit === null ? null : exit === 0 ? 'exit 0' : `exit ${exit}`,
+        // A green ✓ already says the command passed — a bare "exit 0" is just
+        // noise, so only a non-zero exit carries a detail worth showing.
+        detail: exit === null || exit === 0 ? null : `exit ${exit}`,
       });
     } else if (event.type === 'test_result') {
       const status = str(event, 'status') ?? 'unknown';

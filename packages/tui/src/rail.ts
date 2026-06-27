@@ -36,6 +36,14 @@ export {
   type PlanPhase,
   type RenderPlanCardOptions,
 } from './rail-plan.js';
+export {
+  windowActiveEvents,
+  formatEarlier,
+  ACTIVE_EVENT_WINDOW,
+  EARLIER_INDICATOR,
+  type WindowedEvents,
+} from './rail-window.js';
+export { shimmerSpans, type ShimmerSpan } from './shimmer.js';
 export { detectColorTier, mix, paint, paintBg, stripAnsi, type ColorTier } from './color.js';
 export { parseDiffStat, formatDiffStat, type DiffStat } from './diff-stat.js';
 export {

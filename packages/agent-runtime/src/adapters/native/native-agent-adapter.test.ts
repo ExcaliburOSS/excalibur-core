@@ -644,6 +644,37 @@ describe('NativeAgentAdapter — role-based tool exposure', () => {
     const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
     expect(system).not.toContain('ADVERSARIAL reviewer');
   });
+
+  it('gives a writing role the default engineering-quality bar (structure + verify-it-runs)', async () => {
+    const gateway = new FakeGateway([{ content: 'done' }]);
+    await collect(new NativeAgentAdapter().run(makeInput(gateway))); // implementer (default)
+    const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
+    expect(system).toContain('production-quality bar');
+    expect(system).toContain('separate'); // separation of concerns, not one monolithic file
+    expect(system).toContain('VERIFY before declaring done');
+    // The guidance is general, not ad-hoc — and composes with (does not replace) narration.
+    expect(system).toContain('Narrate your work');
+  });
+
+  it('does NOT add the engineering bar to a read-only role (it observes, it does not build)', async () => {
+    const gateway = new FakeGateway([{ content: 'ok' }]);
+    await collect(new NativeAgentAdapter().run(makeInput(gateway, { role: 'reviewer' })));
+    const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
+    expect(system).not.toContain('production-quality bar');
+    expect(system).not.toContain('VERIFY before declaring done');
+  });
+
+  it('keeps the engineering bar for a custom-persona writing agent (persona + protocol)', async () => {
+    const gateway = new FakeGateway([{ content: 'done' }]);
+    await collect(
+      new NativeAgentAdapter().run(
+        makeInput(gateway, { systemPrompt: 'You are Merlin, a wise refactoring sage.' }),
+      ),
+    );
+    const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
+    expect(system).toContain('You are Merlin, a wise refactoring sage.');
+    expect(system).toContain('production-quality bar'); // appended body still applies
+  });
 });
 
 describe('NativeAgentAdapter — custom agent overrides (P1.7)', () => {

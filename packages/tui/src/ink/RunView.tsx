@@ -12,8 +12,10 @@ import {
 } from '../theme.js';
 import { renderTodos } from '../rail-todos.js';
 import type { ApprovalPrompt, Phase, PhaseEvent, RailModel } from '../rail-types.js';
+import { windowActiveEvents, formatEarlier } from '../rail-window.js';
+import { shimmerSpans } from '../shimmer.js';
 import { useColors } from './ThemeContext.js';
-import { DiffView } from './DiffView.js';
+import { DiffView, DEFAULT_PEEK_LINES } from './DiffView.js';
 import { stateGlyph, toneColor } from './phase-style.js';
 
 /**
@@ -37,6 +39,8 @@ export interface RunViewLabels {
   push?: string;
   noPush?: string;
   tasks?: string;
+  /** Collapse-indicator template for the live tail, with a `{count}` placeholder. */
+  earlier?: string;
 }
 
 export interface RunViewProps {
@@ -50,6 +54,13 @@ export interface RunViewProps {
   labels?: RunViewLabels;
   /** Terminal columns, for width-adaptive inline diffs (default 80). */
   width?: number;
+  /**
+   * Terminal rows (default 24). The live (non-`<Static>`) region is height-capped
+   * to fit within them: if Ink's dynamic output grows TALLER than the screen, its
+   * repaint erases up into the scrollback above it — wiping earlier output. The
+   * active-phase window + a rows-aware diff peek keep the live region on-screen.
+   */
+  rows?: number;
   /** Route completed phases through `<Static>` (default true; off for tests). */
   useStatic?: boolean;
   /** The current turn's prose as it streams in (typed out live), or ''. */
@@ -76,7 +87,18 @@ function annotationFor(phase: Phase): string {
   return parts.length > 0 ? `  ${parts.join(' · ')}` : '';
 }
 
-function EventRow({ event, colors }: { event: PhaseEvent; colors: Palette }): ReactElement {
+function EventRow({
+  event,
+  colors,
+  shimmer = false,
+  spinnerFrame = 0,
+}: {
+  event: PhaseEvent;
+  colors: Palette;
+  /** Sweep a live accent crest across the text — the in-progress action (RUN-FIX-2). */
+  shimmer?: boolean;
+  spinnerFrame?: number;
+}): ReactElement {
   // Narration is the agent TALKING to the user — flowing, wrapped prose in the
   // foreground colour (italic), with no tool glyph. It reads like a sentence in
   // the conversation, distinct from the mechanical glyph+verb action lines.
@@ -100,7 +122,19 @@ function EventRow({ event, colors }: { event: PhaseEvent; colors: Palette }): Re
     <Box>
       <Text color={colors.rail}>{` ${glyph.railV}   `}</Text>
       <Text color={tone}>{`${g} `}</Text>
-      <Text color={tone}>{event.text}</Text>
+      {shimmer ? (
+        // Nested <Text> spans keep the line one wrapping run while each segment
+        // carries its own colour — the crest that travels across it each tick.
+        <Text>
+          {shimmerSpans(event.text, spinnerFrame, colors, tone).map((span, index) => (
+            <Text key={index} color={span.hex}>
+              {span.text}
+            </Text>
+          ))}
+        </Text>
+      ) : (
+        <Text color={tone}>{event.text}</Text>
+      )}
       {event.note !== undefined && event.note.length > 0 ? (
         <Text color={colors.muted}>{`  ${event.note}`}</Text>
       ) : null}
@@ -117,6 +151,8 @@ function PhaseNode({
   tier,
   mode,
   width,
+  peekLines,
+  earlierLabel,
 }: {
   phase: Phase;
   active: boolean;
@@ -126,11 +162,35 @@ function PhaseNode({
   tier?: ColorTier;
   mode?: ThemeMode;
   width: number;
+  /** Lines of the most-recent diff to peek by default (rows-aware; RUN-FIX-7). */
+  peekLines?: number;
+  /** Localized "⋯ {count} earlier" template for the collapse indicator. */
+  earlierLabel?: string;
 }): ReactElement {
   const node = stateGlyph(phase.state, spinnerFrame, colors);
   const annotation = annotationFor(phase);
   const paddedName = annotation.length > 0 ? phase.name.padEnd(NAME_WIDTH) : phase.name;
   const nameColor = active ? colors.text : colors.muted;
+
+  // The active phase shows only its most-recent tail, so the header (the breathing
+  // "Working…" node) never scrolls off as actions pile up (RUN-FIX-2).
+  const allEvents = phase.events ?? [];
+  const windowed = active
+    ? windowActiveEvents(allEvents)
+    : { hidden: 0, events: allEvents, offset: 0 };
+  const evs = windowed.events;
+  // The most-recent change with a diff peeks its body by default; older diffs in
+  // the tail stay summarised by the `+N −M` note on their row (RUN-FIX-3).
+  let lastDiffIdx = -1;
+  for (let i = evs.length - 1; i >= 0; i -= 1) {
+    if ((evs[i]!.diff ?? '').length > 0) {
+      lastDiffIdx = i;
+      break;
+    }
+  }
+  // The in-progress action is the last event while the phase is genuinely running.
+  const inProgressIdx = active && phase.state === 'running' && evs.length > 0 ? evs.length - 1 : -1;
+
   return (
     <Box flexDirection="column">
       <Box>
@@ -140,22 +200,43 @@ function PhaseNode({
         </Text>
         {annotation.length > 0 ? <Text color={colors.muted}>{annotation}</Text> : null}
       </Box>
+      {active && windowed.hidden > 0 ? (
+        <Box>
+          <Text color={colors.rail}>{` ${glyph.railV}   `}</Text>
+          <Text color={colors.muted}>{formatEarlier(windowed.hidden, earlierLabel)}</Text>
+        </Box>
+      ) : null}
       {active
-        ? (phase.events ?? []).map((event, index) => (
-            <Box key={index} flexDirection="column">
-              <EventRow event={event} colors={colors} />
-              {event.diff !== undefined && event.diff.length > 0 ? (
-                <DiffView
-                  diff={event.diff}
-                  expanded={diffsExpanded}
+        ? evs.map((event, index) => {
+            const hasDiff = (event.diff ?? '').length > 0;
+            const showDiff = hasDiff && (diffsExpanded || index === lastDiffIdx);
+            const peek =
+              !diffsExpanded && index === lastDiffIdx
+                ? (peekLines ?? DEFAULT_PEEK_LINES)
+                : undefined;
+            const shimmer = index === inProgressIdx && event.kind !== 'narration';
+            return (
+              <Box key={windowed.offset + index} flexDirection="column">
+                <EventRow
+                  event={event}
                   colors={colors}
-                  width={width}
-                  {...(tier !== undefined ? { tier } : {})}
-                  {...(mode !== undefined ? { mode } : {})}
+                  shimmer={shimmer}
+                  spinnerFrame={spinnerFrame}
                 />
-              ) : null}
-            </Box>
-          ))
+                {showDiff ? (
+                  <DiffView
+                    diff={event.diff ?? ''}
+                    expanded={diffsExpanded}
+                    colors={colors}
+                    width={width}
+                    {...(peek !== undefined ? { peek } : {})}
+                    {...(tier !== undefined ? { tier } : {})}
+                    {...(mode !== undefined ? { mode } : {})}
+                  />
+                ) : null}
+              </Box>
+            );
+          })
         : null}
     </Box>
   );
@@ -314,6 +395,12 @@ export function RunView(props: RunViewProps): ReactElement {
   const useStatic = props.useStatic ?? true;
   const diffsExpanded = props.diffsExpanded ?? false;
   const width = props.width ?? 80;
+  const rows = props.rows ?? 24;
+  // Cap the default diff peek so the live region (header + windowed events +
+  // peek + status) stays within the terminal — otherwise Ink's repaint erases up
+  // into the scrollback above (RUN-FIX-7). Reserve ~14 rows for the rest of the
+  // live chrome; never shrink the peek below a useful glance.
+  const diffPeekLines = Math.max(6, Math.min(DEFAULT_PEEK_LINES, rows - 14));
   const approval = props.approval ?? model.approval ?? null;
   const streamingNarration = props.streamingNarration ?? '';
   const interruptDraft = props.interruptDraft ?? '';
@@ -343,8 +430,10 @@ export function RunView(props: RunViewProps): ReactElement {
       colors={colors}
       diffsExpanded={diffsExpanded}
       width={width}
+      peekLines={diffPeekLines}
       {...(tier !== undefined ? { tier } : {})}
       {...(mode !== undefined ? { mode } : {})}
+      {...(labels?.earlier !== undefined ? { earlierLabel: labels.earlier } : {})}
     />
   );
 

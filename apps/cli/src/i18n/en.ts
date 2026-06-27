@@ -1093,7 +1093,7 @@ export const EN: Catalog = {
   'agent-turn.gerund-architect': 'Designing…',
   'agent-turn.gerund-reviewer': 'Reviewing…',
   'agent-turn.gerund-tester': 'Writing tests…',
-  'agent-turn.gerund-default': 'Working…',
+  'agent-turn.gerund-default': 'Working on your task…',
   // Arthurian flavor variants (opt-in via ui.flavor: arthurian).
   'agent-turn.gerund-planner-arthurian': 'Consulting the wise…',
   'agent-turn.gerund-architect-arthurian': 'Drawing the battle plans…',
@@ -1142,6 +1142,7 @@ export const EN: Catalog = {
   'rail.applied': 'applied',
   'rail.conflict': 'conflict',
   'rail.tasks': 'Tasks',
+  'rail.earlier': '⋯ {count} earlier',
 
   // auto-accept (approval UX)
   'agent-turn.auto_enabled':

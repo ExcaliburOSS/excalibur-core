@@ -15,6 +15,7 @@ import {
   type ThemeMode,
 } from './theme.js';
 import type { Phase, PhaseEvent, RailModel } from './rail-types.js';
+import { windowActiveEvents, formatEarlier } from './rail-window.js';
 
 /**
  * Pure text rendering of the LIVING RAIL — the NO_COLOR / CI / non-TTY fallback
@@ -112,9 +113,10 @@ export interface RenderRailOptions {
   expandAll?: boolean;
   /**
    * Localized status words (i18n). English defaults keep the golden snapshots +
-   * the pure form byte-identical; the CLI passes translated labels.
+   * the pure form byte-identical; the CLI passes translated labels. `earlier` is
+   * the live-tail collapse indicator template (a `{count}` placeholder).
    */
-  labels?: { push?: string; noPush?: string; tasks?: string };
+  labels?: { push?: string; noPush?: string; tasks?: string; earlier?: string };
 }
 
 /** Renders the rail model to an array of text lines. */
@@ -153,12 +155,25 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
     // The active phase expands its event stream; completed ones collapse —
     // unless `expandAll` (the inspect/replay surface wants the full history).
     if (isActive || options.expandAll === true) {
-      const evs = phase.events ?? [];
       // The live phase's connector fades from the accent at the node down into
       // the rail tone — a sense of energy flowing down the active timeline. The
       // full-history surface (`expandAll`) has no single live node, so it stays
       // flat.
       const flowing = isActive && options.expandAll !== true;
+      // Live, the active phase shows only its most-recent tail (older actions
+      // collapse behind a "⋯ N earlier" line) so the phase node stays on screen;
+      // the full-history surface keeps every event.
+      const all = phase.events ?? [];
+      const windowed = flowing ? windowActiveEvents(all) : { hidden: 0, events: all, offset: 0 };
+      const evs = windowed.events;
+      if (windowed.hidden > 0) {
+        lines.push(
+          ` ${c(RAIL, palette.rail)}   ${c(
+            formatEarlier(windowed.hidden, options.labels?.earlier),
+            palette.muted,
+          )}`.trimEnd(),
+        );
+      }
       evs.forEach((event, ei) => {
         const railHex = flowing
           ? mix(palette.accentDim, palette.rail, evs.length > 1 ? ei / (evs.length - 1) : 0)

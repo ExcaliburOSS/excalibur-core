@@ -61,9 +61,11 @@ function railEventFor(event: ExcaliburEvent): PhaseEvent | null {
       return { text: `$ ${str(p, 'command')}`, tone: 'muted', kind: 'command' };
     case 'command_completed': {
       const exit = typeof p['exitCode'] === 'number' ? (p['exitCode'] as number) : null;
-      return exit === null
+      // A clean exit needs no line: the `$ command` above already stands and a
+      // bare "exit 0" reads like noise. Only a non-zero exit is worth surfacing.
+      return exit === null || exit === 0
         ? null
-        : { text: `exit ${exit}`, tone: exit === 0 ? 'success' : 'warn', kind: 'exit' };
+        : { text: `exit ${exit}`, tone: 'warn', kind: 'exit' };
     }
     case 'test_result':
       return { text: `tests ${str(p, 'status') || 'passed'}`, tone: 'success', kind: 'test' };

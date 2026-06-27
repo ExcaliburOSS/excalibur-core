@@ -12,8 +12,9 @@ import { glyph, type Palette, type ThemeMode } from '../theme.js';
  * string-width and re-serializes the SGR verbatim, so the diff keeps its own
  * colours (a styled parent `<Text>` would let chalk re-open and clobber them).
  *
- * Collapsed by default (Space toggles via the store); height-capped so a large
- * diff never blows past the live region.
+ * Shows a PEEK by default — the first {@link DiffViewProps.peek} lines of the
+ * change so its content is visible at a glance — and the full body (Space toggles
+ * via the store). Height-capped so a large diff never blows past the live region.
  */
 
 export interface DiffViewProps {
@@ -26,12 +27,24 @@ export interface DiffViewProps {
   width?: number;
   /** Max diff body lines shown when expanded (rest summarised). */
   maxLines?: number;
+  /**
+   * When set (and not expanded), show the first `peek` lines of the diff instead
+   * of a bare "space to expand" stub — so the change is visible by default. The
+   * rail wires this onto the most-recent change only, to keep the live tail short.
+   */
+  peek?: number;
 }
 
 const RAIL_PREFIX = ` ${glyph.railV}   `;
 const RAIL_RESERVED = 6;
 const DEFAULT_WIDTH = 80;
 const DEFAULT_MAX_LINES = 24;
+/**
+ * Lines of the most-recent diff shown by default (a generous peek, not the stub).
+ * The rail caps this to the terminal height (RUN-FIX-7), so on a tall terminal you
+ * get the whole ~25-line glance and on a short one it shrinks to fit.
+ */
+export const DEFAULT_PEEK_LINES = 25;
 
 /** One indented row: a rail connector + a passthrough (or muted) cell. */
 function Row({
@@ -56,11 +69,13 @@ function Row({
 }
 
 export function DiffView(props: DiffViewProps): ReactElement | null {
-  const { diff, expanded, colors, tier, mode, width, maxLines } = props;
+  const { diff, expanded, colors, tier, mode, width, maxLines, peek } = props;
   if (diff.trim().length === 0) {
     return null;
   }
-  if (!expanded) {
+  // Not expanded and no peek requested → the legacy one-line stub (used for older
+  // changes in the tail, whose `+N −M` summary already rides on their event row).
+  if (!expanded && peek === undefined) {
     return <Row colors={colors} muted>{`${glyph.diffExpand} space to expand diff`}</Row>;
   }
 
@@ -72,9 +87,20 @@ export function DiffView(props: DiffViewProps): ReactElement | null {
     layout: 'auto',
     ...(mode !== undefined ? { mode } : {}),
   });
-  const cap = maxLines ?? DEFAULT_MAX_LINES;
+  const cap = expanded ? (maxLines ?? DEFAULT_MAX_LINES) : (peek ?? DEFAULT_PEEK_LINES);
   const shown = lines.slice(0, cap);
   const hidden = lines.length - shown.length;
+
+  // The footer hint: when expanded, offer to collapse; when peeking, offer to
+  // expand the rest (and nothing at all when the whole diff already fits the peek
+  // — the change is fully visible, so no chrome is needed).
+  const footer = expanded
+    ? hidden > 0
+      ? `… +${hidden} more lines (space to collapse)`
+      : `${glyph.diffCollapse} space to collapse`
+    : hidden > 0
+      ? `… +${hidden} more lines (space to expand)`
+      : null;
 
   return (
     <Box flexDirection="column">
@@ -83,11 +109,11 @@ export function DiffView(props: DiffViewProps): ReactElement | null {
           {line}
         </Row>
       ))}
-      <Row colors={colors} muted>
-        {hidden > 0
-          ? `… +${hidden} more lines (space to collapse)`
-          : `${glyph.diffCollapse} space to collapse`}
-      </Row>
+      {footer !== null ? (
+        <Row colors={colors} muted>
+          {footer}
+        </Row>
+      ) : null}
     </Box>
   );
 }

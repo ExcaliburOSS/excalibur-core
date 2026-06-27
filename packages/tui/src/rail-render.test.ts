@@ -58,6 +58,33 @@ describe('renderRail', () => {
     expect(status).toContain('qwen');
   });
 
+  it('windows the active phase to its most-recent tail with a "N earlier" indicator', () => {
+    const events = Array.from({ length: 9 }, (_, i) => ({ text: `action ${i}` }));
+    const text = renderRail(
+      model({ phases: [{ id: 'b', name: 'Implement', state: 'running', events }] }),
+    ).join('\n');
+    expect(text).toContain('⋯ 4 earlier');
+    expect(text).toContain('action 8'); // most-recent visible
+    expect(text).toContain('action 4'); // first of the visible tail
+    expect(text).not.toContain('action 0'); // collapsed away
+    // expandAll (logs/replay) keeps the FULL history — no windowing there.
+    const full = renderRail(
+      model({ phases: [{ id: 'b', name: 'Implement', state: 'running', events }] }),
+      { expandAll: true },
+    ).join('\n');
+    expect(full).toContain('action 0');
+    expect(full).not.toContain('earlier');
+  });
+
+  it('honours a localized "earlier" label for the collapse indicator', () => {
+    const events = Array.from({ length: 8 }, (_, i) => ({ text: `paso ${i}` }));
+    const text = renderRail(
+      model({ phases: [{ id: 'b', name: 'Implement', state: 'running', events }] }),
+      { labels: { earlier: '⋯ {count} anteriores' } },
+    ).join('\n');
+    expect(text).toContain('⋯ 3 anteriores');
+  });
+
   it('does NOT expand a non-active (pending/completed) phase', () => {
     const lines = renderRail(
       model({

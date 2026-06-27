@@ -146,6 +146,56 @@ describe('<RunView>', () => {
     expect(frame).toContain('add idempotency key');
   });
 
+  it('collapses the active phase to its most-recent tail with a "N earlier" indicator', () => {
+    // 9 events on the running phase → only the last 5 show, behind a collapse
+    // indicator, so the breathing phase header never scrolls off (RUN-FIX-2).
+    const events = Array.from({ length: 9 }, (_, i) => ({
+      text: `step number ${i}`,
+      tone: 'muted' as const,
+      kind: 'tool' as const,
+    }));
+    const frame = frameOf({
+      model: model({
+        phases: [{ id: 'impl', name: 'Implement', state: 'running', events }],
+      }),
+      spinnerFrame: 0,
+      useStatic: false,
+    });
+    expect(frame).toContain('⋯ 4 earlier');
+    expect(frame).toContain('step number 8'); // the most-recent (in-progress) action
+    expect(frame).toContain('step number 4'); // first of the visible tail
+    expect(frame).not.toContain('step number 0'); // collapsed away
+    expect(frame).not.toContain('step number 3');
+  });
+
+  it('caps the default diff peek to the terminal height so it never eats the scrollback (RUN-FIX-7)', () => {
+    const body = Array.from({ length: 40 }, (_, i) => `+bigline ${i}`).join('\n');
+    const big = `diff --git a/f.ts b/f.ts\n--- a/f.ts\n+++ b/f.ts\n@@ -0,0 +1,40 @@\n${body}\n`;
+    const writeModel = model({
+      phases: [
+        {
+          id: 'impl',
+          name: 'Implement',
+          state: 'running',
+          events: [{ text: 'write f.ts', tone: 'accent', kind: 'write', diff: big }],
+        },
+      ],
+    });
+    const countBody = (frame: string): number =>
+      frame.split('\n').filter((l) => l.includes('bigline')).length;
+    const short = countBody(
+      frameOf({ model: writeModel, spinnerFrame: 0, useStatic: false, rows: 20 }),
+    );
+    const tall = countBody(
+      frameOf({ model: writeModel, spinnerFrame: 0, useStatic: false, rows: 60 }),
+    );
+    // A short terminal shows fewer peeked lines than a tall one, and the peek is
+    // always bounded (never the whole 40-line diff) — so the live region fits.
+    expect(short).toBeGreaterThan(0);
+    expect(short).toBeLessThan(tall);
+    expect(tall).toBeLessThanOrEqual(25); // DEFAULT_PEEK_LINES ceiling
+  });
+
   it('with <Static> on, the live region holds the active + pending tail (no crash)', () => {
     const { lastFrame, frames } = render(
       <ThemeProvider colors={darkColors}>
@@ -220,9 +270,10 @@ describe('<RunView> inline diff', () => {
         },
       ],
     });
+    // By default the most-recent change PEEKS its body (RUN-FIX-3) — the diff is
+    // visible without pressing space, not hidden behind an "expand" stub.
     const collapsed = frameOf({ model: patchModel, spinnerFrame: 0, useStatic: false });
-    expect(collapsed).toContain('expand diff');
-    expect(collapsed).not.toContain('rate * amount');
+    expect(collapsed).toContain('rate * amount');
 
     const expanded = frameOf({
       model: patchModel,
@@ -253,12 +304,12 @@ describe('<RunView> inline diff', () => {
         },
       ],
     });
-    // Collapsed by default: the write line + a hint, no body.
+    // By default the latest change peeks its body right under the write line
+    // (RUN-FIX-3) — visible without pressing space.
     const collapsed = frameOf({ model: writeModel, spinnerFrame: 0, useStatic: false });
     expect(collapsed).toContain('write src/calc.ts');
-    expect(collapsed).toContain('expand diff');
-    expect(collapsed).not.toContain('rate * amount');
-    // Space (diffsExpanded) reveals the highlighted body right under the write.
+    expect(collapsed).toContain('rate * amount');
+    // Space (diffsExpanded) keeps the highlighted body right under the write.
     const expanded = frameOf({
       model: writeModel,
       spinnerFrame: 0,

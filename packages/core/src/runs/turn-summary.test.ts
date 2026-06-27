@@ -161,6 +161,91 @@ describe('buildTurnSummary', () => {
     expect(summary.checks.every((c) => c.label !== 'tests' || !c.ok)).toBe(true);
   });
 
+  it('does NOT fail a successful turn over a backgrounded command (e.g. a dev server)', () => {
+    // The bug: `python3 -m http.server &` exited non-zero and flipped a finished
+    // landing page to a red "failed" turn. A backgrounded command is fire-and-
+    // forget, not a verdict — the turn stays `action`, with no fix_failures hint.
+    const summary = run((runId) => [
+      createEvent({
+        runId,
+        type: 'patch_generated',
+        payload: { diff: ADD_DIFF, filesAffected: ['src/billing/charge.test.ts'] },
+      }),
+      createEvent({
+        runId,
+        type: 'command_completed',
+        payload: { command: 'python3 -m http.server 8765 &', exitCode: 1 },
+      }),
+      createEvent({
+        runId,
+        type: 'assistant_message',
+        payload: { content: 'Landing page is up.' },
+      }),
+    ]);
+
+    expect(summary.tier).toBe('action');
+    expect(summary.nextHint).toEqual({ kind: 'apply', runId: summary.runId });
+    expect(summary.checks).toHaveLength(0); // the backgrounded command is not a check
+  });
+
+  it('does NOT fail over a signal-terminated command (a server the harness killed)', () => {
+    const summary = run((runId) => [
+      createEvent({
+        runId,
+        type: 'patch_generated',
+        payload: { diff: ADD_DIFF, filesAffected: ['src/billing/charge.test.ts'] },
+      }),
+      createEvent({
+        runId,
+        type: 'command_completed',
+        payload: { command: 'npm run dev', exitCode: 143 }, // 128 + SIGTERM
+      }),
+      createEvent({ runId, type: 'assistant_message', payload: { content: 'done' } }),
+    ]);
+
+    expect(summary.tier).toBe('action');
+    expect(summary.checks).toHaveLength(0);
+  });
+
+  it('keeps a real non-zero command as a failing verdict (a genuine build/test failure still fails)', () => {
+    const summary = run((runId) => [
+      createEvent({
+        runId,
+        type: 'patch_generated',
+        payload: { diff: MOD_DIFF, filesAffected: ['src/billing/charge.ts'] },
+      }),
+      createEvent({
+        runId,
+        type: 'command_completed',
+        payload: { command: 'npm run build', exitCode: 2 },
+      }),
+      createEvent({ runId, type: 'assistant_message', payload: { content: 'build broke' } }),
+    ]);
+
+    expect(summary.tier).toBe('failed');
+    expect(summary.nextHint).toEqual({ kind: 'fix_failures' });
+  });
+
+  it('omits the "exit 0" detail on a passing command (a green ✓ already says it passed)', () => {
+    const summary = run((runId) => [
+      createEvent({
+        runId,
+        type: 'patch_generated',
+        payload: { diff: MOD_DIFF, filesAffected: ['src/billing/charge.ts'] },
+      }),
+      createEvent({
+        runId,
+        type: 'command_completed',
+        payload: { command: 'npm run build', exitCode: 0 },
+      }),
+      createEvent({ runId, type: 'assistant_message', payload: { content: 'built' } }),
+    ]);
+
+    const check = summary.checks.find((c) => c.label === 'npm run build');
+    expect(check?.ok).toBe(true);
+    expect(check?.detail).toBeNull();
+  });
+
   it('classifies an answer turn (no changes) with no next hint', () => {
     const summary = run((runId) => [
       createEvent({

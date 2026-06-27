@@ -51,12 +51,13 @@ describe('reduceRail', () => {
       'Implement:completed',
     ]);
     expect(rail.phases[0]?.detail).toBe('1 file');
-    // Implement's within-phase events (model_call folds into cost, not a line).
+    // Implement's within-phase events (model_call folds into cost, not a line; a
+    // clean `exit 0` is suppressed as noise — RUN-FIX-5).
     const implTexts = rail.phases[1]?.events?.map((e) => e.text) ?? [];
-    expect(implTexts).toEqual(['write src/a.ts', '$ pnpm test', 'exit 0', 'tests passed']);
+    expect(implTexts).toEqual(['write src/a.ts', '$ pnpm test', 'tests passed']);
     // Each event carries its semantic kind (→ a per-tool glyph at render time).
     const implKinds = rail.phases[1]?.events?.map((e) => e.kind) ?? [];
-    expect(implKinds).toEqual(['write', 'command', 'exit', 'test']);
+    expect(implKinds).toEqual(['write', 'command', 'test']);
     expect(rail.status.costCents).toBe(3);
     expect(rail.status.model).toBe('qwen');
     expect(rail.status.elapsedMs).toBeGreaterThan(0);
