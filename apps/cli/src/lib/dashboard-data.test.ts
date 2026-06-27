@@ -1,10 +1,19 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { RunManager, SessionStore, ScheduleStore } from '@excalibur/core';
+import {
+  RunManager,
+  SessionStore,
+  ScheduleStore,
+  savePlan,
+  updatePlanStep,
+  plansDir,
+} from '@excalibur/core';
 import { createEvent } from '@excalibur/shared';
 import { LocalWorkItemProvider } from '@excalibur/work-items';
 import {
   buildBoard,
   buildOrchestrations,
+  buildPlanDetail,
+  buildPlans,
   buildSchedules,
   buildSessions,
   buildSessionDetail,
@@ -372,5 +381,46 @@ describe('dashboard-data (store → DTO mappers)', () => {
       ?.items.find((i) => i.key === item.key);
     expect(card?.activeRunId).toBeNull();
     expect(card?.checklist).toEqual([]);
+  });
+
+  it('maps a plan to structured progress + phases + resumable (PLAN3/PLAN4)', () => {
+    const file = savePlan(repoRoot, {
+      task: 'Ship the thing',
+      planMarkdown: '## Setup\n1. Install\n2. Configure\n\n## Build\n1. Compile',
+      status: 'approved',
+      planRunId: 'run_p',
+      now: new Date('2026-06-27T09:00:00.000Z'),
+    });
+    const id = file.slice(plansDir(repoRoot).length + 1, -'.md'.length);
+    updatePlanStep(repoRoot, id, 'p1.s1', 'done', 'run_step1');
+
+    // List summary carries the roll-up + resumable flag.
+    const summary = buildPlans(repoRoot).find((p) => p.id === id);
+    expect(summary?.progress).toEqual({ total: 3, done: 1 });
+    expect(summary?.resumable).toBe(true);
+
+    // Detail carries the phase/step tree, per-step status + run id, and next step.
+    const detail = buildPlanDetail(repoRoot, id);
+    expect(detail?.phases.map((p) => p.title)).toEqual(['Setup', 'Build']);
+    expect(detail?.phases[0]?.steps[0]).toMatchObject({
+      id: 'p1.s1',
+      status: 'done',
+      runId: 'run_step1',
+    });
+    expect(detail?.phases[0]?.steps[1]?.status).toBe('pending');
+    expect(detail?.nextStepId).toBe('p1.s2');
+    expect(detail?.body).toContain('Install');
+
+    // An executed plan is not resumable.
+    const done = savePlan(repoRoot, {
+      task: 'Already shipped',
+      planMarkdown: '1. only step',
+      status: 'executed',
+      planRunId: 'run_q',
+      execRunId: 'run_e',
+      now: new Date('2026-06-27T10:00:00.000Z'),
+    });
+    const doneId = done.slice(plansDir(repoRoot).length + 1, -'.md'.length);
+    expect(buildPlans(repoRoot).find((p) => p.id === doneId)?.resumable).toBe(false);
   });
 });

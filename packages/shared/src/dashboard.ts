@@ -230,6 +230,32 @@ export interface WorkItemDetail {
   plans: PlanRefDto[];
 }
 
+/** Per-step status from the structured plan model (PLAN1) — surfaced for the
+ * dashboard plan tree + progress (PLAN3/PLAN4). */
+export type PlanStepStatusDto = 'pending' | 'active' | 'done' | 'blocked' | 'skipped';
+
+/** One step of a structured plan (PLAN3 dashboard view). */
+export interface PlanStepDto {
+  id: string;
+  title: string;
+  status: PlanStepStatusDto;
+  /** The run that did this step, when one is recorded. */
+  runId: string | null;
+}
+
+/** One phase of a structured plan (a group of steps). */
+export interface PlanPhaseDto {
+  id: string;
+  title: string;
+  steps: PlanStepDto[];
+}
+
+/** Step-completion roll-up for a plan (drives the progress bar). */
+export interface PlanProgressDto {
+  total: number;
+  done: number;
+}
+
 /** A saved plan as it appears in the Plans list (D3). */
 export interface PlanSummary {
   /** Filename-without-`.md` id (e.g. `20260622-101500-ship-d3`). */
@@ -239,11 +265,19 @@ export interface PlanSummary {
   created: string | null;
   planRun: string | null;
   execRun: string | null;
+  /** Step roll-up from the structured plan (total/done) — for the list progress bar. */
+  progress: PlanProgressDto;
+  /** Approved but with a still-pending step → can be picked up at its next step (PLAN3). */
+  resumable: boolean;
 }
 
-/** A plan with its markdown body (D3 drill-in). */
+/** A plan with its markdown body + the structured phase/step tree (D3 drill-in). */
 export interface PlanDetail extends PlanSummary {
   body: string;
+  /** The structured plan (phases → steps with per-step status) for the plan tree. */
+  phases: PlanPhaseDto[];
+  /** The next unfinished step's id, when the plan is resumable (else null). */
+  nextStepId: string | null;
 }
 
 /** One plan-shaping recommendation toggled into scope (D — dashboard panel). */

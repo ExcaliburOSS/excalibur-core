@@ -1,7 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { fetchPlans, fetchPlan, fetchHealth, shapePlan, startRun, ApiError } from '../lib/api';
-  import type { PlanSummary, PlanDetail, PlanShapeView } from '../lib/contracts';
+  import type {
+    PlanSummary,
+    PlanDetail,
+    PlanProgressDto,
+    PlanShapeView,
+    PlanStepStatusDto,
+  } from '../lib/contracts';
   import { navigate } from '../lib/router.svelte';
   import { t } from '../lib/i18n';
   import Modal from '../lib/Modal.svelte';
@@ -133,6 +139,14 @@
     const d = new Date(iso);
     return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
   };
+
+  /** Completion percentage (0–100) for a plan's step roll-up. */
+  const pct = (p: PlanProgressDto): number =>
+    p.total === 0 ? 0 : Math.round((p.done / p.total) * 100);
+
+  /** A glyph for each structured-step status (mirrors the TUI step markers). */
+  const stepGlyph = (s: PlanStepStatusDto): string =>
+    s === 'done' ? '✓' : s === 'active' ? '▸' : s === 'blocked' ? '✗' : s === 'skipped' ? '⊘' : '○';
 </script>
 
 {#if id.length > 0}
@@ -147,10 +161,56 @@
       <h1>{detail.task}</h1>
       <div class="dmeta">
         <span class="st st-{detail.status}">{t('plan.status.' + detail.status)}</span>
+        {#if detail.resumable}
+          <span class="resume" title={t('plan.resumableHint')}>↻ {t('plan.resumable')}</span>
+        {/if}
         {#if detail.created}<span class="faint">{when(detail.created)}</span>{/if}
       </div>
+      {#if detail.progress.total > 0}
+        <div class="progress">
+          <div class="track"><div class="fill" style={`width:${pct(detail.progress)}%`}></div></div>
+          <span class="pcount faint"
+            >{t('plan.progress', { done: detail.progress.done, total: detail.progress.total })}</span
+          >
+        </div>
+      {/if}
     </header>
-    <pre class="body">{detail.body}</pre>
+
+    {#if detail.phases.length > 0 && detail.progress.total > 0}
+      <section class="tree">
+        <div class="sublabel">{t('plan.steps')}</div>
+        {#each detail.phases as phase (phase.id)}
+          <div class="phase">
+            <div class="phname">{phase.title}</div>
+            <ul class="steps">
+              {#each phase.steps as step (step.id)}
+                <li
+                  class="step step-{step.status}"
+                  class:next={step.id === detail.nextStepId}
+                  title={t('plan.step.' + step.status)}
+                >
+                  <span class="glyph">{stepGlyph(step.status)}</span>
+                  <span class="sttl">{step.title}</span>
+                  {#if step.id === detail.nextStepId}
+                    <span class="nexttag">{t('plan.nextStep')}</span>
+                  {/if}
+                  {#if step.runId}
+                    <a class="runlink faint" href={`#/runs/${encodeURIComponent(step.runId)}`}
+                      >{step.runId.slice(0, 10)}</a
+                    >
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {/each}
+      </section>
+    {/if}
+
+    <details class="mdblock" open={detail.progress.total === 0}>
+      <summary class="faint">{t('plan.markdown')}</summary>
+      <pre class="body">{detail.body}</pre>
+    </details>
   {/if}
 {:else}
   <!-- List -->
@@ -180,6 +240,18 @@
         <li>
           <a class="row" href={`#/plans/${encodeURIComponent(plan.id)}`}>
             <span class="ttl">{plan.task}</span>
+            {#if plan.resumable}
+              <span class="rdot" title={t('plan.resumableHint')} aria-label={t('plan.resumable')}
+              ></span>
+            {/if}
+            {#if plan.progress.total > 0}
+              <span class="miniprog" title={t('plan.progress', { done: plan.progress.done, total: plan.progress.total })}>
+                <span class="minitrack"
+                  ><span class="minifill" style={`width:${pct(plan.progress)}%`}></span></span
+                >
+                <span class="faint mininum">{plan.progress.done}/{plan.progress.total}</span>
+              </span>
+            {/if}
             <span class="st st-{plan.status}">{t('plan.status.' + plan.status)}</span>
             <span class="faint when">{when(plan.created)}</span>
             <span class="chev faint">›</span>
@@ -454,5 +526,176 @@
   }
   .state.bad {
     color: var(--bad);
+  }
+
+  /* Resumable badge (detail) + dot (list) */
+  .resume {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    color: var(--accent);
+    border: 1px solid var(--accent-dim);
+    white-space: nowrap;
+  }
+  .rdot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+    flex-shrink: 0;
+  }
+
+  /* Progress bar (detail header) */
+  .progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .track {
+    flex: 1;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    overflow: hidden;
+    max-width: 360px;
+  }
+  .fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+    transition: width var(--transition);
+  }
+  .pcount {
+    font-family: var(--mono);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  /* Mini progress in a list row */
+  .miniprog {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .minitrack {
+    width: 56px;
+    height: 5px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    overflow: hidden;
+  }
+  .minifill {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  }
+  .mininum {
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  /* Structured plan tree (detail) */
+  .tree {
+    margin-bottom: 18px;
+  }
+  .phase {
+    margin-bottom: 14px;
+  }
+  .phname {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .step {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 12px;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel);
+    font-size: 13px;
+  }
+  .step .glyph {
+    font-family: var(--mono);
+    width: 14px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .step .sttl {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .step-done {
+    border-left-color: var(--ok);
+  }
+  .step-done .glyph {
+    color: var(--ok);
+  }
+  .step-done .sttl {
+    color: var(--muted);
+  }
+  .step-active {
+    border-left-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+  }
+  .step-active .glyph {
+    color: var(--accent);
+  }
+  .step-blocked {
+    border-left-color: var(--bad);
+  }
+  .step-blocked .glyph {
+    color: var(--bad);
+  }
+  .step-skipped .sttl {
+    color: var(--muted);
+    text-decoration: line-through;
+  }
+  .step.next {
+    border-left-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent-dim) inset;
+  }
+  .nexttag {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 1px 6px;
+    border-radius: 999px;
+    color: var(--accent);
+    border: 1px solid var(--accent-dim);
+    flex-shrink: 0;
+  }
+  .runlink {
+    font-family: var(--mono);
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+
+  /* Collapsible raw markdown */
+  .mdblock {
+    margin-top: 8px;
+  }
+  .mdblock > summary {
+    cursor: pointer;
+    font-size: 12px;
+    margin-bottom: 8px;
+    user-select: none;
   }
 </style>

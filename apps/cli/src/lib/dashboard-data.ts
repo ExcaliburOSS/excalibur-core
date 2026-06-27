@@ -1,11 +1,14 @@
 import {
   RunManager,
   listPlans,
+  nextPendingStep,
+  planProgress,
   readPlan,
   DiscoveryManager,
   SessionStore,
   ScheduleStore,
   describeSpec,
+  type StoredPlan,
 } from '@excalibur/core';
 import type { LocalRun } from '@excalibur/shared';
 import {
@@ -429,23 +432,9 @@ export async function addCommentTo(
 }
 
 /** Plans list for the Plans & Discovery view (D3), newest first. */
-export function buildPlans(repoRoot: string): PlanSummary[] {
-  return listPlans(repoRoot).map((p) => ({
-    id: p.id,
-    task: p.task,
-    status: p.status,
-    created: p.created,
-    planRun: p.planRun,
-    execRun: p.execRun,
-  }));
-}
-
-/** One plan with its markdown body (D3 drill-in), or null if unknown. */
-export function buildPlanDetail(repoRoot: string, id: string): PlanDetail | null {
-  const p = readPlan(repoRoot, id);
-  if (p === null) {
-    return null;
-  }
+/** The list-level summary (id/status/dates + structured progress + resumable). */
+function planSummaryOf(p: StoredPlan): PlanSummary {
+  const { total, done } = planProgress(p.plan);
   return {
     id: p.id,
     task: p.task,
@@ -453,7 +442,36 @@ export function buildPlanDetail(repoRoot: string, id: string): PlanDetail | null
     created: p.created,
     planRun: p.planRun,
     execRun: p.execRun,
+    progress: { total, done },
+    // Approved + a still-pending step → it can be resumed where it left off (PLAN3).
+    resumable: p.status === 'approved' && nextPendingStep(p.plan) !== null,
+  };
+}
+
+export function buildPlans(repoRoot: string): PlanSummary[] {
+  return listPlans(repoRoot).map(planSummaryOf);
+}
+
+/** One plan with its markdown body + the structured phase/step tree (D3 drill-in). */
+export function buildPlanDetail(repoRoot: string, id: string): PlanDetail | null {
+  const p = readPlan(repoRoot, id);
+  if (p === null) {
+    return null;
+  }
+  return {
+    ...planSummaryOf(p),
     body: p.body,
+    phases: p.plan.phases.map((phase) => ({
+      id: phase.id,
+      title: phase.title,
+      steps: phase.steps.map((s) => ({
+        id: s.id,
+        title: s.title,
+        status: s.status,
+        runId: s.runId ?? null,
+      })),
+    })),
+    nextStepId: nextPendingStep(p.plan)?.step.id ?? null,
   };
 }
 
