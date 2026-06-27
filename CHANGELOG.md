@@ -6,6 +6,50 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-06-27
+
+The **planning overhaul** release: Excalibur's plans go from prose to a
+structured, durable, trackable, recallable artifact — world-class for very large
+multi-phase projects — and the live dashboard gains the plan tree, the agile
+backlog, and the sprint burndown.
+
+### Added
+
+- **Structured plans (source of truth).** An approved plan is now a structured
+  model — phases → steps with per-step status, dependencies, and acceptance — saved
+  as a `<id>.plan.json` sidecar alongside the human `.md`. Everything below builds
+  on it.
+- **Durable resume-at-step.** A large multi-phase plan executes step by step, each
+  step checkpointed to disk, so an interrupted run (Ctrl-C, a crash, closing the
+  laptop) resumes at the next unfinished step instead of redoing everything. The
+  shell proactively offers to pick an unfinished plan back up at launch, and
+  `excalibur plans resume [id]` resumes on demand.
+- **Live plan tree.** A breathing plan ribbon is pinned above the run rail in the
+  TUI (phases → steps with live status and a done/total roll-up), and the dashboard
+  Plans view renders the same tree with a progress bar, a "next step" marker, and a
+  "resumable" badge.
+- **Plans become work-items.** Approving a plan materializes it into the kanban: the
+  plan becomes an **epic**, each step a sub-task, and each step's dependencies become
+  first-class **`blockedBy`** edges between work-items. The board live-tracks
+  execution as steps run. `excalibur plans tasks [id]` materializes on demand.
+- **Advanced backlog — sprints, estimates, burndown.** Work-items gain a story-point
+  `estimate`; a new sprint store time-boxes work; `excalibur sprints`
+  (list/create/start/complete/assign/show) drives it from the terminal with an ASCII
+  burndown, and the dashboard adds a Sprints view with an SVG burndown chart.
+- **Richer plan memory.** A finished plan now writes a structured, recall-friendly
+  memory — outcome digest plus the **files it touched** as the relevance key — so an
+  executed plan primes future work on the same files (the old capture was never
+  recalled). Partial/blocked plans are remembered too.
+- **Structured re-plan diff.** `excalibur plans diff [idA] [idB]` shows what changed
+  between two plan versions — steps added/removed/renamed/moved — matched by title so
+  an inserted step doesn't read as "everything after it changed".
+
+### Changed
+
+- **`excalibur serve` leads with the dashboard.** The startup banner now headlines
+  the clickable dashboard URL in the Cobalt sword-blue accent
+  (`◆ Excalibur Live Dashboard: <url>`).
+
 ## [1.5.0] - 2026-06-27
 
 A conversational-shell + reach release: the agent can work across directories,
