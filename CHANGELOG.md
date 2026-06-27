@@ -6,6 +6,42 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-06-27
+
+A conversational-shell + reach release: the agent can work across directories,
+never leaves you watching a silent cursor, and the prompt gains a real command
+menu.
+
+### Added
+
+- **Work across directories.** The agent is no longer confined to the working
+  directory: `read_file` / `list_files` can read anywhere (a sibling project, an
+  absolute or `../` path), and `write_file` / `edit` / a command's working
+  directory can change other directories too. **Out-of-tree writes are confirmed
+  first** at the permission gate (allowed on approval); secret files (`.env`,
+  keys, credentials) are still refused and the destructive-command floor +
+  `O_NOFOLLOW` leaf guard stay hard.
+- **A `/` command menu.** Typing `/` lists every command with a brief
+  description and filters as you type; ↑/↓ highlight a row and Tab/→ autocompletes
+  it. Replaces the old model-powered ghost autocomplete.
+- **A contextual placeholder** — a dim hint inside the empty prompt that adapts to
+  context (a first-run invitation vs. a follow-up hint) and disappears as you type.
+
+### Changed
+
+- **Always-on narration.** A pulsing "thinking" indicator with rotating, friendly
+  status phrases now covers every previously-silent wait (understanding the
+  request, shaping a plan, mapping scope, breaking work into steps), and the
+  narration guidance mandates continuous, plain-language narration — never a
+  silent cursor.
+
+### Fixed
+
+- **The up-arrow no longer duplicates the line.** The raw line editor clears its
+  full (wrapped) multi-row block on each repaint instead of a single row.
+- More user-facing copy reworded from "run" to "task" / "execute the task".
+- Removed a stray black line across the welcome sword's blade.
+
 ## [1.4.1] - 2026-06-27
 
 A conversational-shell polish release — the m-shell now talks like a
