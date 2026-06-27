@@ -133,7 +133,10 @@ function gradient(text: string, tier: ColorTier): string {
 function swordBlock(tier: ColorTier, availCells: number): string[] {
   const guardW = 8; // sub-cols (=4 cells)
   const guardH = 18; // sub-rows (=9 cells)
-  const bladeH = 5; // sub-rows
+  // EVEN height + even bladeTop ((18-6)/2 = 6) keeps the blade BODY on whole cells
+  // (rows 6–11 → 3 full cells), so no half-block row cuts a black line across it.
+  // The tip still feathers via half-blocks — that's the point, not the body.
+  const bladeH = 6; // sub-rows (=3 cells)
   const stepLen = 2; // sub-cols per taper step
   const tipCells = 2; // the taper below spans 4 sub-cols = 2 cells
   const maxBladeCells = Math.max(6, availCells - guardW / 2 - tipCells);
