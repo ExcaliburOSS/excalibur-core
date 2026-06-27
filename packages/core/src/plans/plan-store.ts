@@ -1,6 +1,32 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EXCALIBUR_DIR } from '../config/load-config';
+import {
+  findStep,
+  isStructuredPlan,
+  parsePlanMarkdown,
+  renderPlanMarkdown,
+  type PlanStepStatus,
+  type StructuredPlan,
+} from './plan-model';
+
+// Aliased at the boundary: the orchestrator (capability DAG) already exports a
+// `PlanStep`/`PlanPhase`, so the STRUCTURED-PLAN step/phase types are surfaced as
+// `StructuredPlanStep`/`StructuredPlanPhase` to avoid a name clash in @excalibur/core.
+export type {
+  PlanStep as StructuredPlanStep,
+  PlanStepStatus,
+  PlanPhase as StructuredPlanPhase,
+  StructuredPlan,
+} from './plan-model';
+export {
+  parsePlanMarkdown,
+  renderPlanMarkdown,
+  planProgress,
+  nextPendingStep,
+  findStep,
+  isStructuredPlan,
+} from './plan-model';
 
 /**
  * The PLANS folder — approved plans are persisted as portable markdown at
@@ -18,6 +44,12 @@ export interface SavePlanInput {
   task: string;
   /** The plan body (markdown — numbered phases/subphases as produced). */
   planMarkdown: string;
+  /**
+   * The STRUCTURED plan (source of truth). When provided, the `.md` body is
+   * rendered FROM it; otherwise it is derived from `planMarkdown`. Either way it
+   * is persisted as the `<id>.plan.json` sidecar.
+   */
+  plan?: StructuredPlan;
   status: PlanStatus;
   /** The (replayable) plan run id. */
   planRunId: string;
@@ -68,9 +100,11 @@ export function savePlan(repoRoot: string, input: SavePlanInput): string {
   mkdirSync(dir, { recursive: true });
   // Never overwrite a prior plan that landed in the same second with the same
   // slug — disambiguate with a numeric suffix.
-  let file = join(dir, `${base}.md`);
+  let name = base;
+  let file = join(dir, `${name}.md`);
   for (let n = 2; existsSync(file); n += 1) {
-    file = join(dir, `${base}-${n}.md`);
+    name = `${base}-${n}`;
+    file = join(dir, `${name}.md`);
   }
 
   const frontmatter = [
@@ -84,9 +118,35 @@ export function savePlan(repoRoot: string, input: SavePlanInput): string {
     '',
   ].join('\n');
 
-  const body = `# Plan: ${input.task}\n\n${input.planMarkdown.trim()}\n`;
+  // The structured plan is the source of truth: use the provided structure, or
+  // derive one from the prose so even a plain-markdown plan gets a queryable shape.
+  const structured = input.plan ?? parsePlanMarkdown(input.planMarkdown);
+  const bodyMarkdown =
+    input.plan !== undefined ? renderPlanMarkdown(input.plan) : input.planMarkdown.trim();
+  const body = `# Plan: ${input.task}\n\n${bodyMarkdown}\n`;
   writeFileSync(file, `${frontmatter}${body}`, 'utf8');
+  // Sidecar: the machine-addressable phases/steps/status next to the human .md.
+  writeFileSync(join(dir, `${name}.plan.json`), `${JSON.stringify(structured, null, 2)}\n`, 'utf8');
   return file;
+}
+
+/** Absolute path to a plan's structured sidecar (`<id>.plan.json`). */
+export function planSidecarPath(repoRoot: string, id: string): string {
+  return join(plansDir(repoRoot), `${id}.plan.json`);
+}
+
+/** Reads & validates a plan's structured sidecar, or null when absent/corrupt. */
+function readSidecar(repoRoot: string, id: string): StructuredPlan | null {
+  const file = planSidecarPath(repoRoot, id);
+  if (!existsSync(file)) {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    return isStructuredPlan(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 /** A parsed plan artifact (frontmatter + markdown body), as read back from disk. */
@@ -101,6 +161,12 @@ export interface StoredPlan {
   created: string | null;
   /** The markdown body (without the frontmatter block). */
   body: string;
+  /**
+   * The STRUCTURED plan (phases/steps/status/deps) — read from the `<id>.plan.json`
+   * sidecar (source of truth) when present, else derived from the markdown body for
+   * back-compat with plans written before the structured model.
+   */
+  plan: StructuredPlan;
 }
 
 const PLAN_STATUSES: ReadonlySet<string> = new Set([
@@ -120,7 +186,7 @@ function unquote(raw: string): string {
 }
 
 /** Splits a plan file into its (simple) frontmatter map and the body markdown. */
-function parsePlanFile(id: string, content: string): StoredPlan | null {
+function parsePlanFile(id: string, content: string): Omit<StoredPlan, 'plan'> | null {
   const match = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(content);
   if (match === null) {
     return null; // not a frontmatter doc → skip
@@ -159,9 +225,53 @@ export function readPlan(repoRoot: string, id: string): StoredPlan | null {
     return null;
   }
   try {
-    return parsePlanFile(id, readFileSync(file, 'utf8'));
+    const base = parsePlanFile(id, readFileSync(file, 'utf8'));
+    if (base === null) {
+      return null;
+    }
+    // The sidecar JSON is the source of truth; fall back to deriving the structure
+    // from the prose body for plans written before the structured model.
+    const plan = readSidecar(repoRoot, id) ?? parsePlanMarkdown(base.body);
+    return { ...base, plan };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Updates ONE step's status (and optionally the run that executed it) in a plan's
+ * structured sidecar — the durable state a resume reads to continue at the right
+ * step. Creates the sidecar from the derived structure if a plan predates it.
+ * Returns false when the plan or step does not exist. Never throws on IO.
+ */
+export function updatePlanStep(
+  repoRoot: string,
+  id: string,
+  stepId: string,
+  status: PlanStepStatus,
+  runId?: string,
+): boolean {
+  const stored = readPlan(repoRoot, id);
+  if (stored === null) {
+    return false;
+  }
+  const hit = findStep(stored.plan, stepId);
+  if (hit === null) {
+    return false;
+  }
+  hit.step.status = status;
+  if (runId !== undefined) {
+    hit.step.runId = runId;
+  }
+  try {
+    writeFileSync(
+      planSidecarPath(repoRoot, id),
+      `${JSON.stringify(stored.plan, null, 2)}\n`,
+      'utf8',
+    );
+    return true;
+  } catch {
+    return false;
   }
 }
 

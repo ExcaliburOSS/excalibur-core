@@ -1,7 +1,20 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { makeTempDir, removeDir } from '../test-utils';
-import { listPlans, plansDir, readPlan, savePlan, slugify } from './plan-store';
+import {
+  listPlans,
+  planSidecarPath,
+  plansDir,
+  readPlan,
+  savePlan,
+  slugify,
+  updatePlanStep,
+} from './plan-store';
+
+/** The plan id (filename without `.md`) from a saved plan's absolute path. */
+function idOf(repo: string, file: string): string {
+  return file.slice(plansDir(repo).length + 1, -'.md'.length);
+}
 
 describe('slugify', () => {
   it('produces a filesystem-safe, capped slug', () => {
@@ -25,7 +38,9 @@ describe('savePlan', () => {
       });
       expect(file.startsWith(plansDir(repo))).toBe(true);
       expect(existsSync(file)).toBe(true);
-      expect(readdirSync(plansDir(repo))).toHaveLength(1);
+      // The human .md plus its structured sidecar.
+      expect(readdirSync(plansDir(repo)).filter((f) => f.endsWith('.md'))).toHaveLength(1);
+      expect(readdirSync(plansDir(repo)).some((f) => f.endsWith('.plan.json'))).toBe(true);
 
       const md = readFileSync(file, 'utf8');
       // Frontmatter carries the queryable metadata.
@@ -112,6 +127,100 @@ describe('listPlans / readPlan (D3 reader)', () => {
       // Path-traversal ids are refused.
       expect(readPlan(repo, '../../etc/passwd')).toBeNull();
       expect(readPlan(repo, 'a/b')).toBeNull();
+    } finally {
+      removeDir(repo);
+    }
+  });
+});
+
+describe('structured plan model (PLAN1)', () => {
+  it('writes a <id>.plan.json sidecar and readPlan exposes the structure', () => {
+    const repo = makeTempDir();
+    try {
+      const file = savePlan(repo, {
+        task: 'Build the thing',
+        planMarkdown: '## Setup\n1. Install\n2. Configure\n\n## Build\n- Compile',
+        status: 'approved',
+        planRunId: 'run_p',
+        now: new Date('2026-06-20T09:00:00.000Z'),
+      });
+      const id = idOf(repo, file);
+      expect(existsSync(planSidecarPath(repo, id))).toBe(true);
+      const stored = readPlan(repo, id);
+      expect(stored?.plan.phases.map((p) => p.title)).toEqual(['Setup', 'Build']);
+      expect(stored?.plan.phases[0]?.steps.map((s) => s.title)).toEqual(['Install', 'Configure']);
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('renders the .md body FROM an explicitly provided structured plan', () => {
+    const repo = makeTempDir();
+    try {
+      const file = savePlan(repo, {
+        task: 'Structured authoring',
+        planMarkdown: 'ignored when a structured plan is provided',
+        plan: {
+          version: 1,
+          phases: [
+            {
+              id: 'p1',
+              title: 'Plan',
+              steps: [{ id: 'p1.s1', title: 'Step one', status: 'pending' }],
+            },
+          ],
+        },
+        status: 'approved',
+        planRunId: 'run_p',
+        now: new Date('2026-06-20T10:00:00.000Z'),
+      });
+      const md = readFileSync(file, 'utf8');
+      expect(md).toContain('- [ ] Step one');
+      expect(md).not.toContain('ignored when a structured plan is provided');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('back-compat: derives the structure from a plan .md that has no sidecar', () => {
+    const repo = makeTempDir();
+    try {
+      const file = savePlan(repo, {
+        task: 'Old plan',
+        planMarkdown: '1. legacy step',
+        status: 'executed',
+        planRunId: 'run_p',
+        now: new Date('2026-06-20T11:00:00.000Z'),
+      });
+      const id = idOf(repo, file);
+      // Simulate a plan written before the structured model: drop the sidecar.
+      rmSync(planSidecarPath(repo, id));
+      const stored = readPlan(repo, id);
+      expect(existsSync(planSidecarPath(repo, id))).toBe(false);
+      expect(stored?.plan.phases[0]?.steps[0]?.title).toBe('legacy step');
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('updatePlanStep flips a step status + run id, persists, and is read back', () => {
+    const repo = makeTempDir();
+    try {
+      const file = savePlan(repo, {
+        task: 'Track me',
+        planMarkdown: '1. first\n2. second',
+        status: 'approved',
+        planRunId: 'run_p',
+        now: new Date('2026-06-20T12:00:00.000Z'),
+      });
+      const id = idOf(repo, file);
+      expect(updatePlanStep(repo, id, 'p1.s1', 'done', 'run_exec_1')).toBe(true);
+      const step = readPlan(repo, id)?.plan.phases[0]?.steps.find((s) => s.id === 'p1.s1');
+      expect(step?.status).toBe('done');
+      expect(step?.runId).toBe('run_exec_1');
+      // Unknown step / unknown plan → false.
+      expect(updatePlanStep(repo, id, 'nope', 'done')).toBe(false);
+      expect(updatePlanStep(repo, 'missing-plan', 'p1.s1', 'done')).toBe(false);
     } finally {
       removeDir(repo);
     }
