@@ -1,6 +1,13 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { listPlans, planProgress, plansDir, readPlan } from '@excalibur/core';
+import {
+  diffPlans,
+  listPlans,
+  planProgress,
+  plansDir,
+  readPlan,
+  renderPlanDiff,
+} from '@excalibur/core';
 import type { AutonomyLevel } from '@excalibur/shared';
 import { parse as parseYaml } from 'yaml';
 import type { Command } from 'commander';
@@ -152,11 +159,75 @@ function planTasksAction(deps: CliDeps, id: string | undefined): void {
   deps.ui.info(deps.t('plans.tasks_footer', { count: Object.keys(result.stepWorkItemIds).length }));
 }
 
+/** Colours one rendered plan-diff line by its leading change marker (PLAN7). */
+function colorDiffLine(line: string): string {
+  const trimmed = line.trimStart();
+  const markColor: Partial<Record<string, (s: string) => string>> = {
+    '+': pc.green,
+    '−': pc.red,
+    '~': pc.yellow,
+    '→': pc.cyan,
+  };
+  const color = markColor[trimmed[0] ?? ''];
+  return color !== undefined ? color(line) : line;
+}
+
 /**
- * `excalibur plans` — browse, resume, and materialize saved plans in
+ * `excalibur plans diff [idA] [idB]` — the structured re-plan diff (PLAN7): what
+ * changed between two plan versions (steps added/removed/renamed/moved). Defaults to
+ * the two newest plans (older → newer). Matches by title, so an inserted step doesn't
+ * read as "everything after it changed".
+ */
+function planDiffAction(deps: CliDeps, idA: string | undefined, idB: string | undefined): void {
+  const repoRoot = deps.cwd();
+  let oldPlan;
+  let newPlan;
+  if (idA !== undefined && idB !== undefined) {
+    oldPlan = readPlan(repoRoot, idA);
+    newPlan = readPlan(repoRoot, idB);
+  } else {
+    const all = listPlans(repoRoot);
+    if (all.length < 2) {
+      deps.ui.info(deps.t('plans.diff_need_two'));
+      return;
+    }
+    newPlan = all[0]; // newest
+    oldPlan = all[1]; // previous
+  }
+  if (oldPlan == null || newPlan == null) {
+    deps.ui.info(deps.t('plans.diff_missing'));
+    return;
+  }
+
+  deps.ui.heading(deps.t('plans.diff_heading', { from: oldPlan.id, to: newPlan.id }));
+  const diff = diffPlans(oldPlan.plan, newPlan.plan);
+  for (const line of renderPlanDiff(diff)) {
+    deps.ui.write(colorDiffLine(line));
+  }
+  // A compact phase-level note when phases themselves changed.
+  const phaseChanges = diff.phases.filter((p) => p.change !== 'unchanged');
+  if (phaseChanges.length > 0) {
+    deps.ui.write();
+    deps.ui.info(
+      deps.t('plans.diff_phases', {
+        changes: phaseChanges
+          .map((p) =>
+            p.change === 'renamed'
+              ? `${p.oldTitle} → ${p.title}`
+              : `${p.change[0]?.toUpperCase()}:${p.title}`,
+          )
+          .join(', '),
+      }),
+    );
+  }
+}
+
+/**
+ * `excalibur plans` — browse, resume, materialize, and diff saved plans in
  * `.excalibur/plans/`. `list` (default) shows status/task/date; `resume` picks an
  * unfinished plan up at its next step (PLAN3); `tasks` materializes the plan into
- * the kanban as an epic + sub-tasks (PLAN2). The `.md` + JSON sidecar are portable.
+ * the kanban as an epic + sub-tasks (PLAN2); `diff` compares two plan versions
+ * (PLAN7). The `.md` + JSON sidecar are portable.
  */
 export function registerPlansCommand(program: Command, deps: CliDeps): void {
   const plans = program
@@ -183,4 +254,11 @@ export function registerPlansCommand(program: Command, deps: CliDeps): void {
     .description('materialize a plan into the kanban (epic + sub-tasks + deps)')
     .argument('[id]', 'plan id (defaults to the newest plan)')
     .action((id: string | undefined) => planTasksAction(deps, id));
+
+  plans
+    .command('diff')
+    .description('show what changed between two plan versions (PLAN7)')
+    .argument('[idA]', 'the older plan id (defaults to the previous plan)')
+    .argument('[idB]', 'the newer plan id (defaults to the newest plan)')
+    .action((idA: string | undefined, idB: string | undefined) => planDiffAction(deps, idA, idB));
 }

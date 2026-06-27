@@ -115,6 +115,16 @@ export {
 } from './sprints/burndown';
 export { buildPlanMemoryEntry, planFilesTouched, type PlanMemoryInput } from './plans/plan-memory';
 export {
+  diffPlans,
+  renderPlanDiff,
+  type PlanDiff,
+  type PlanStepDiff,
+  type PlanPhaseDiff,
+  type PlanStepChange,
+  type PlanPhaseChange,
+  type PlanDiffSummary,
+} from './plans/plan-diff';
+export {
   planVerificationMesh,
   aggregateMesh,
   MESH_LENSES,
