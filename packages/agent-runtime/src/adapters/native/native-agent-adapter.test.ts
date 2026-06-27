@@ -650,8 +650,8 @@ describe('NativeAgentAdapter — role-based tool exposure', () => {
     await collect(new NativeAgentAdapter().run(makeInput(gateway))); // implementer (default)
     const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
     expect(system).toContain('production-quality bar');
-    expect(system).toContain('separate'); // separation of concerns, not one monolithic file
-    expect(system).toContain('VERIFY before declaring done');
+    expect(system).toContain('separated into their own modules'); // separation of concerns
+    expect(system).toContain('Before declaring done, VERIFY'); // verify-it-runs, first
     // The guidance is general, not ad-hoc — and composes with (does not replace) narration.
     expect(system).toContain('Narrate your work');
   });
@@ -661,7 +661,7 @@ describe('NativeAgentAdapter — role-based tool exposure', () => {
     await collect(new NativeAgentAdapter().run(makeInput(gateway, { role: 'reviewer' })));
     const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
     expect(system).not.toContain('production-quality bar');
-    expect(system).not.toContain('VERIFY before declaring done');
+    expect(system).not.toContain('Before declaring done, VERIFY');
   });
 
   it('keeps the engineering bar for a custom-persona writing agent (persona + protocol)', async () => {

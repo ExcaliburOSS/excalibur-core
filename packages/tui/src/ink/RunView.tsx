@@ -12,7 +12,7 @@ import {
 } from '../theme.js';
 import { renderTodos } from '../rail-todos.js';
 import type { ApprovalPrompt, Phase, PhaseEvent, RailModel } from '../rail-types.js';
-import { windowActiveEvents, formatEarlier } from '../rail-window.js';
+import { windowActiveEvents, formatEarlier, ACTIVE_EVENT_WINDOW } from '../rail-window.js';
 import { shimmerSpans } from '../shimmer.js';
 import { useColors } from './ThemeContext.js';
 import { DiffView, DEFAULT_PEEK_LINES } from './DiffView.js';
@@ -151,7 +151,7 @@ function PhaseNode({
   tier,
   mode,
   width,
-  peekLines,
+  diffBudget,
   earlierLabel,
 }: {
   phase: Phase;
@@ -162,8 +162,9 @@ function PhaseNode({
   tier?: ColorTier;
   mode?: ThemeMode;
   width: number;
-  /** Lines of the most-recent diff to peek by default (rows-aware; RUN-FIX-7). */
-  peekLines?: number;
+  /** Max lines the most-recent diff may occupy — rows-aware so the live region
+   * never exceeds the viewport (RUN-FIX-7); 0 falls back to the one-line stub. */
+  diffBudget: number;
   /** Localized "⋯ {count} earlier" template for the collapse indicator. */
   earlierLabel?: string;
 }): ReactElement {
@@ -208,11 +209,14 @@ function PhaseNode({
       ) : null}
       {active
         ? evs.map((event, index) => {
-            const hasDiff = (event.diff ?? '').length > 0;
-            const showDiff = hasDiff && (diffsExpanded || index === lastDiffIdx);
+            // Only the MOST-RECENT change renders its body inline (collapsed peek
+            // OR expanded), both bounded by `diffBudget`, so neither the peek nor a
+            // Space-expand can grow the live region past the viewport. Older diffs
+            // keep just their `+N −M` note on the row.
+            const isLatestDiff = (event.diff ?? '').length > 0 && index === lastDiffIdx;
             const peek =
-              !diffsExpanded && index === lastDiffIdx
-                ? (peekLines ?? DEFAULT_PEEK_LINES)
+              !diffsExpanded && diffBudget > 0
+                ? Math.min(DEFAULT_PEEK_LINES, diffBudget)
                 : undefined;
             const shimmer = index === inProgressIdx && event.kind !== 'narration';
             return (
@@ -223,12 +227,13 @@ function PhaseNode({
                   shimmer={shimmer}
                   spinnerFrame={spinnerFrame}
                 />
-                {showDiff ? (
+                {isLatestDiff ? (
                   <DiffView
                     diff={event.diff ?? ''}
                     expanded={diffsExpanded}
                     colors={colors}
                     width={width}
+                    maxLines={diffBudget}
                     {...(peek !== undefined ? { peek } : {})}
                     {...(tier !== undefined ? { tier } : {})}
                     {...(mode !== undefined ? { mode } : {})}
@@ -396,11 +401,6 @@ export function RunView(props: RunViewProps): ReactElement {
   const diffsExpanded = props.diffsExpanded ?? false;
   const width = props.width ?? 80;
   const rows = props.rows ?? 24;
-  // Cap the default diff peek so the live region (header + windowed events +
-  // peek + status) stays within the terminal — otherwise Ink's repaint erases up
-  // into the scrollback above (RUN-FIX-7). Reserve ~14 rows for the rest of the
-  // live chrome; never shrink the peek below a useful glance.
-  const diffPeekLines = Math.max(6, Math.min(DEFAULT_PEEK_LINES, rows - 14));
   const approval = props.approval ?? model.approval ?? null;
   const streamingNarration = props.streamingNarration ?? '';
   const interruptDraft = props.interruptDraft ?? '';
@@ -421,6 +421,29 @@ export function RunView(props: RunViewProps): ReactElement {
         })
       : [];
 
+  // Budget the most-recent diff to the rows the rest of the live (non-`<Static>`)
+  // region does NOT already claim, so Ink's repaint never erases the scrollback
+  // above it (RUN-FIX-7). We subtract the ACTUAL chrome — todos, streaming
+  // narration (wrapped), each live phase header, the windowed event tail + its
+  // "earlier" line, the status block, and any approval/interrupt rows — not a
+  // constant, plus a small margin for an above-rail ribbon. Below a useful floor
+  // the diff drops to its one-line stub rather than overflow.
+  const narrationRows =
+    streamingNarration.length > 0
+      ? Math.max(1, Math.ceil(streamingNarration.length / Math.max(20, width - 6)))
+      : 0;
+  const liveChrome =
+    2 + // status hairline + metrics line
+    todoLines.length +
+    narrationRows +
+    liveTail.length + // each live phase node's header line
+    (ACTIVE_EVENT_WINDOW + 1) + // up to N event rows + the "⋯ N earlier" line
+    (approval !== null ? 2 : 0) +
+    (interruptNotice.length > 0 ? 2 : 0) +
+    (interruptDraft.length > 0 ? 2 : 0) +
+    2; // headroom (above-rail ribbon / safety)
+  const diffBudget = Math.max(0, rows - liveChrome);
+
   const renderPhase = (phase: Phase): ReactElement => (
     <PhaseNode
       key={phase.id}
@@ -430,7 +453,7 @@ export function RunView(props: RunViewProps): ReactElement {
       colors={colors}
       diffsExpanded={diffsExpanded}
       width={width}
-      peekLines={diffPeekLines}
+      diffBudget={diffBudget}
       {...(tier !== undefined ? { tier } : {})}
       {...(mode !== undefined ? { mode } : {})}
       {...(labels?.earlier !== undefined ? { earlierLabel: labels.earlier } : {})}

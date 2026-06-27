@@ -152,23 +152,23 @@ export function parseDiffStat(diff: string): ChangedFile[] {
 // --- check extraction --------------------------------------------------------
 
 /**
- * Whether a finished command is a pass/fail VERDICT on the turn (so it can flip
- * the tier and surface in the receipt). It is NOT a verdict when:
- *  - it was backgrounded with a trailing `&` (a dev server, a file watcher) — it
- *    is started to run ALONGSIDE the work, not to assert an outcome, and its exit
- *    status reflects the shell/teardown, not success; or
- *  - the harness had to terminate it (a signal-coded exit > 128, e.g. a server
- *    killed at turn end).
- * Treating those as failed checks is the bug where a finished landing page (whose
- * only "failure" was `python3 -m http.server &` exiting non-zero) rendered as a
- * red error. Such commands are simply omitted from the checks.
+ * A command backgrounded with a trailing `&` (a dev server, a file watcher) is
+ * fire-and-forget — started to run ALONGSIDE the work, not to assert an outcome —
+ * so its exit status is not a pass/fail verdict. A trailing `# comment` is ignored
+ * before the check so it doesn't mask the `&`.
  */
-function isVerdictCommand(command: string, exit: number | null): boolean {
-  const trimmed = command.trimEnd();
-  const backgrounded = trimmed.endsWith('&') && !trimmed.endsWith('&&');
-  const signalTerminated = exit !== null && exit > 128;
-  return !backgrounded && !signalTerminated;
+function isBackgroundCommand(command: string): boolean {
+  const trimmed = command.replace(/\s+#.*$/, '').trimEnd();
+  return trimmed.endsWith('&') && !trimmed.endsWith('&&');
 }
+
+/**
+ * Exit codes that mean a command was STOPPED, not that it failed: SIGINT (130) and
+ * SIGTERM (143) — an interrupt/terminate, e.g. a foreground server told to quit.
+ * A genuine crash (SIGABRT 134, SIGBUS 135, SIGFPE 136, SIGKILL/OOM 137, SIGSEGV
+ * 139) keeps its code and still counts as a failure — honesty-first.
+ */
+const TERMINATION_EXITS = new Set([130, 143]);
 
 function checksFrom(events: ExcaliburEvent[]): TurnCheck[] {
   const checks: TurnCheck[] = [];
@@ -176,9 +176,20 @@ function checksFrom(events: ExcaliburEvent[]): TurnCheck[] {
     if (event.type === 'command_completed') {
       const label = str(event, 'command') ?? '(command)';
       const exit = num(event, 'exitCode');
-      // Fire-and-forget / terminated commands aren't verdicts — skip them so they
-      // never poison the turn tier or surface a red "exit N" in the receipt.
-      if (!isVerdictCommand(label, exit)) {
+      // A command is a pass/fail VERDICT only if it genuinely RAN to a real exit
+      // code. It is NOT a verdict — and so never flips a successful turn to a red
+      // "failed" — when it never ran (denied/skipped at the gate), is fire-and-
+      // forget (backgrounded), has no clean exit code (killed/aborted → executor
+      // sentinel < 0, or unrecorded → null), or was merely interrupted/terminated
+      // (130/143). This kills the false-red bug for both backgrounded dev servers
+      // AND user-denied/unapproved commands.
+      if (event.payload['denied'] === true || event.payload['skipped'] === true) {
+        continue;
+      }
+      if (isBackgroundCommand(label)) {
+        continue;
+      }
+      if (exit === null || exit < 0 || TERMINATION_EXITS.has(exit)) {
         continue;
       }
       checks.push({
@@ -186,7 +197,7 @@ function checksFrom(events: ExcaliburEvent[]): TurnCheck[] {
         ok: exit === 0,
         // A green ✓ already says the command passed — a bare "exit 0" is just
         // noise, so only a non-zero exit carries a detail worth showing.
-        detail: exit === null || exit === 0 ? null : `exit ${exit}`,
+        detail: exit === 0 ? null : `exit ${exit}`,
       });
     } else if (event.type === 'test_result') {
       const status = str(event, 'status') ?? 'unknown';

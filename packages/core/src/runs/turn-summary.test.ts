@@ -207,6 +207,77 @@ describe('buildTurnSummary', () => {
     expect(summary.checks).toHaveLength(0);
   });
 
+  it('does NOT fail over a DENIED command (it never ran — review HIGH)', () => {
+    // A gate-denied command emits {exitCode:-1, denied:true}: it never ran, so it
+    // is not evidence of failure and must not flip the turn to a red ✗.
+    const summary = run((runId) => [
+      createEvent({
+        runId,
+        type: 'patch_generated',
+        payload: { diff: ADD_DIFF, filesAffected: ['src/billing/charge.test.ts'] },
+      }),
+      createEvent({
+        runId,
+        type: 'command_completed',
+        payload: { command: 'rm -rf /', exitCode: -1, denied: true },
+      }),
+      createEvent({ runId, type: 'assistant_message', payload: { content: 'done' } }),
+    ]);
+    expect(summary.tier).toBe('action');
+    expect(summary.checks).toHaveLength(0);
+  });
+
+  it('does NOT fail over a SKIPPED (unapproved) command', () => {
+    const summary = run((runId) => [
+      createEvent({
+        runId,
+        type: 'patch_generated',
+        payload: { diff: ADD_DIFF, filesAffected: ['src/billing/charge.test.ts'] },
+      }),
+      createEvent({
+        runId,
+        type: 'command_completed',
+        payload: { command: 'npm publish', exitCode: -1, skipped: true },
+      }),
+      createEvent({ runId, type: 'assistant_message', payload: { content: 'done' } }),
+    ]);
+    expect(summary.tier).toBe('action');
+    expect(summary.checks).toHaveLength(0);
+  });
+
+  it('KEEPS a genuine crash (SIGSEGV 139) as a failing verdict — honesty-first', () => {
+    // 134–139 are real crashes (not harness teardown), so they must still fail.
+    const summary = run((runId) => [
+      createEvent({
+        runId,
+        type: 'patch_generated',
+        payload: { diff: MOD_DIFF, filesAffected: ['src/billing/charge.ts'] },
+      }),
+      createEvent({
+        runId,
+        type: 'command_completed',
+        payload: { command: 'npm test', exitCode: 139 },
+      }),
+      createEvent({ runId, type: 'assistant_message', payload: { content: 'segfault' } }),
+    ]);
+    expect(summary.tier).toBe('failed');
+    expect(summary.checks.some((c) => c.label === 'npm test' && !c.ok)).toBe(true);
+  });
+
+  it('does NOT fail over an unknown/missing exit code (unknown ≠ failure)', () => {
+    const summary = run((runId) => [
+      createEvent({
+        runId,
+        type: 'patch_generated',
+        payload: { diff: ADD_DIFF, filesAffected: ['src/billing/charge.test.ts'] },
+      }),
+      createEvent({ runId, type: 'command_completed', payload: { command: 'some-tool' } }),
+      createEvent({ runId, type: 'assistant_message', payload: { content: 'done' } }),
+    ]);
+    expect(summary.tier).toBe('action');
+    expect(summary.checks).toHaveLength(0);
+  });
+
   it('keeps a real non-zero command as a failing verdict (a genuine build/test failure still fails)', () => {
     const summary = run((runId) => [
       createEvent({

@@ -1214,7 +1214,7 @@ export const ES: Catalog = {
   'rail.applied': 'aplicados',
   'rail.conflict': 'conflicto',
   'rail.tasks': 'Tareas',
-  'rail.earlier': '⋯ {count} anteriores',
+  'rail.earlier': '⋯ {count} más arriba',
 
   // auto-accept (approval UX)
   'agent-turn.auto_enabled':

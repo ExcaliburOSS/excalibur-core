@@ -73,8 +73,9 @@ export function DiffView(props: DiffViewProps): ReactElement | null {
   if (diff.trim().length === 0) {
     return null;
   }
-  // Not expanded and no peek requested → the legacy one-line stub (used for older
-  // changes in the tail, whose `+N −M` summary already rides on their event row).
+  // Not expanded and no peek requested → the one-line stub. The rail omits the
+  // DiffView entirely for older changes (only the latest one renders a body), so
+  // this branch is for direct/standalone DiffView use or a zero-height budget.
   if (!expanded && peek === undefined) {
     return <Row colors={colors} muted>{`${glyph.diffExpand} space to expand diff`}</Row>;
   }

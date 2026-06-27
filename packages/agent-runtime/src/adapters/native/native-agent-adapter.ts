@@ -265,22 +265,21 @@ function engineeringGuidance(role: AgentRole): string[] {
     return [];
   }
   return [
-    'Work to a professional, production-quality bar on EVERY task, however small —',
-    'never a throwaway or a quick hack.',
-    'Structure the work properly: use a sensible project and file layout and separate',
-    'concerns into their own files and modules (styles, scripts, assets, components,',
-    'config) instead of cramming everything into one monolithic file. Follow the',
-    'conventions and idioms of the language and framework, and — in an existing repo —',
-    'the surrounding code. Write clear, maintainable code with real error handling and',
-    'good names; no dead code or copy-paste filler.',
+    'Hold every task to a professional, production-quality bar — never a throwaway or',
+    'a quick hack, however small the request.',
+    'Before declaring done, VERIFY the work: build it, run the tests and any',
+    'linters/formatters, and for anything runnable actually run it and confirm it',
+    'behaves (for a service, start it, check it responds, then stop it). Do not just',
+    'write files and walk away.',
+    'Structure the work the way a senior engineer would: a sensible project and file',
+    'layout with concerns separated into their own modules and files (not one',
+    'monolithic file), idiomatic to the language and framework, and — in an existing',
+    'repo — consistent with the surrounding code. Clear names and real error handling;',
+    'no dead code or copy-paste filler.',
     'Design for the people who use it: usability and accessibility for the end user,',
-    'and developer experience (easy to read, run, and extend) for whoever comes next.',
-    'VERIFY before declaring done: build it, run the tests and any linters/formatters,',
-    'and for anything runnable (an app, a site, a server, a script) actually run or',
-    'serve it and confirm it works — do not just write files and stop. Leaving a dev',
-    'server or watcher running in the background to verify is fine; it is not a failure.',
-    'If doing it right needs missing pieces (a build step, config, a folder, a',
-    'dependency), create them rather than cutting corners to finish faster.',
+    'and a clean, runnable, easy-to-extend result for the next developer.',
+    'If doing it right needs a missing piece (a build step, config, a folder, a',
+    'dependency), create it rather than cutting corners to finish faster.',
   ];
 }
 
