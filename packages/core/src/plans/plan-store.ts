@@ -4,6 +4,7 @@ import { EXCALIBUR_DIR } from '../config/load-config';
 import {
   findStep,
   isStructuredPlan,
+  nextPendingStep,
   parsePlanMarkdown,
   renderPlanMarkdown,
   type PlanStepStatus,
@@ -298,4 +299,50 @@ export function listPlans(repoRoot: string): StoredPlan[] {
     }
   }
   return plans;
+}
+
+/**
+ * Updates the plan's OVERALL status (the `.md` frontmatter) — e.g. flip `approved`
+ * → `executed` once every step is done. Rewrites just the `status:` line. Returns
+ * false when the plan does not exist or has no parseable frontmatter status.
+ */
+export function setPlanStatus(repoRoot: string, id: string, status: PlanStatus): boolean {
+  if (id.length === 0 || id.includes('/') || id.includes('\\') || id.includes('..')) {
+    return false;
+  }
+  const file = join(plansDir(repoRoot), `${id}.md`);
+  if (!existsSync(file)) {
+    return false;
+  }
+  try {
+    const lines = readFileSync(file, 'utf8').split('\n');
+    let inFrontmatter = false;
+    for (let i = 0; i < lines.length; i += 1) {
+      if (lines[i] === '---') {
+        if (!inFrontmatter) {
+          inFrontmatter = true;
+          continue;
+        }
+        break; // end of frontmatter — `status:` was not found
+      }
+      if (inFrontmatter && /^status:\s*/.test(lines[i] ?? '')) {
+        lines[i] = `status: ${status}`;
+        writeFileSync(file, lines.join('\n'), 'utf8');
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Plans that are RESUMABLE: approved but not finished (a step is still pending),
+ * newest first. The shell offers to pick these up where they left off (PLAN3).
+ */
+export function resumablePlans(repoRoot: string): StoredPlan[] {
+  return listPlans(repoRoot).filter(
+    (plan) => plan.status === 'approved' && nextPendingStep(plan.plan) !== null,
+  );
 }

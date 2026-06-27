@@ -67,6 +67,8 @@ export {
   plansDir,
   slugify,
   updatePlanStep,
+  setPlanStatus,
+  resumablePlans,
   planSidecarPath,
   parsePlanMarkdown,
   renderPlanMarkdown,
@@ -82,6 +84,13 @@ export {
   type StructuredPlanStep,
   type PlanStepStatus,
 } from './plans/plan-store';
+export {
+  runStructuredPlan,
+  type PlanStepExecutor,
+  type PlanStepResult,
+  type RunStructuredPlanOptions,
+  type RunStructuredPlanResult,
+} from './plans/plan-runner';
 export {
   planVerificationMesh,
   aggregateMesh,

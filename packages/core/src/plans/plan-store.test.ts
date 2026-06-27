@@ -6,7 +6,9 @@ import {
   planSidecarPath,
   plansDir,
   readPlan,
+  resumablePlans,
   savePlan,
+  setPlanStatus,
   slugify,
   updatePlanStep,
 } from './plan-store';
@@ -221,6 +223,77 @@ describe('structured plan model (PLAN1)', () => {
       // Unknown step / unknown plan → false.
       expect(updatePlanStep(repo, id, 'nope', 'done')).toBe(false);
       expect(updatePlanStep(repo, 'missing-plan', 'p1.s1', 'done')).toBe(false);
+    } finally {
+      removeDir(repo);
+    }
+  });
+});
+
+describe('setPlanStatus / resumablePlans (PLAN3)', () => {
+  it('rewrites just the frontmatter status line and is read back', () => {
+    const repo = makeTempDir();
+    try {
+      const file = savePlan(repo, {
+        task: 'Flip me',
+        planMarkdown: '1. one\n2. two',
+        status: 'approved',
+        planRunId: 'run_p',
+        now: new Date('2026-06-27T09:00:00.000Z'),
+      });
+      const id = idOf(repo, file);
+      expect(readPlan(repo, id)?.status).toBe('approved');
+      expect(setPlanStatus(repo, id, 'executed')).toBe(true);
+      expect(readPlan(repo, id)?.status).toBe('executed');
+      // The body is untouched.
+      expect(readPlan(repo, id)?.body).toContain('two');
+      // Unknown / unsafe ids → false.
+      expect(setPlanStatus(repo, 'missing-plan', 'executed')).toBe(false);
+      expect(setPlanStatus(repo, '../escape', 'executed')).toBe(false);
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('lists approved plans with a still-pending step, newest first', () => {
+    const repo = makeTempDir();
+    try {
+      // Approved + unfinished → resumable.
+      const live = savePlan(repo, {
+        task: 'Resume me',
+        planMarkdown: '1. alpha\n2. beta',
+        status: 'approved',
+        planRunId: 'run_a',
+        now: new Date('2026-06-27T09:00:00.000Z'),
+      });
+      const liveId = idOf(repo, live);
+      // Approved but fully done → NOT resumable.
+      const finished = savePlan(repo, {
+        task: 'All done',
+        planMarkdown: '1. only',
+        status: 'approved',
+        planRunId: 'run_b',
+        now: new Date('2026-06-27T08:00:00.000Z'),
+      });
+      const finishedId = idOf(repo, finished);
+      updatePlanStep(repo, finishedId, 'p1.s1', 'done');
+      // Executed → never resumable regardless of steps.
+      savePlan(repo, {
+        task: 'Already executed',
+        planMarkdown: '1. x',
+        status: 'executed',
+        planRunId: 'run_c',
+        execRunId: 'run_e',
+        now: new Date('2026-06-27T10:00:00.000Z'),
+      });
+
+      const resumable = resumablePlans(repo);
+      expect(resumable.map((p) => p.id)).toEqual([liveId]);
+      expect(resumable[0]?.task).toBe('Resume me');
+
+      // Once its last step is done, it drops off the resumable list.
+      updatePlanStep(repo, liveId, 'p1.s1', 'done');
+      updatePlanStep(repo, liveId, 'p1.s2', 'done');
+      expect(resumablePlans(repo)).toEqual([]);
     } finally {
       removeDir(repo);
     }
