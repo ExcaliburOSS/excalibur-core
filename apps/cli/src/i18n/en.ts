@@ -252,6 +252,7 @@ export const EN: Catalog = {
   'insights.col-cost': 'COST',
   'insights.col-tokens': 'TOKENS',
   'insights.since-invalid': 'Ignoring --since "{window}": use a window like 7d or 24h.',
+  'serve.dashboard': 'Excalibur Live Dashboard:',
   'serve.listening': 'Excalibur server listening on {base} (read-only).',
   'serve.token': '  token: {token}',
   'serve.example': '  try: curl {base}/api/runs?token={token}',

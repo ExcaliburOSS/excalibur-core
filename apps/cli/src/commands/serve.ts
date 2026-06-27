@@ -18,6 +18,7 @@ import {
 } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
+import { accent, accentBright } from '../lib/accent';
 import { loadConfigContext, loadGatewayContext } from '../lib/context';
 import { buildSchedules } from '../lib/dashboard-data';
 import { computeScope } from '../lib/scope';
@@ -176,6 +177,9 @@ export function registerServeCommand(program: Command, deps: CliDeps): void {
         });
         server.listen(port, host, () => {
           const base = `http://${host}:${port}`;
+          // The headline: the clickable dashboard URL, in the Cobalt sword-blue.
+          const dashUrl = `${base}/?token=${token}`;
+          deps.ui.write(`${accentBright('◆ ' + deps.t('serve.dashboard'))}  ${accent(dashUrl)}`);
           deps.ui.success(deps.t('serve.listening', { base }));
           deps.ui.write(deps.t('serve.token', { token }));
           deps.ui.write(deps.t('serve.example', { base, token }));
