@@ -1062,10 +1062,14 @@ export class Ui {
       }
     };
 
-    // Physical rows the last paint occupied (input line + any menu rows), so a
-    // wrapped prompt or an open menu is cleared in FULL on the next paint. (A
-    // single-line clear left stale rows behind — what duplicated the line on ↑.)
-    let prevRows = 0;
+    // Input rows the last paint occupied. The cursor is parked on the LAST input
+    // row (the menu, when open, renders BELOW it and the cursor is moved back up
+    // over it), so the next paint steps up by `prevInputRows - 1` to the FIRST
+    // input row and then erases to end-of-screen — wiping input + menu in one shot
+    // WITHOUT walking the prompt up the screen. (Stepping up by the FULL block
+    // height, input + menu, is what scrolled the prompt up on every keystroke while
+    // the slash menu was open.)
+    let prevInputRows = 1;
 
     const paint = (): void => {
       if (currentPrompt === null || !state.awaiting) {
@@ -1089,10 +1093,13 @@ export class Ui {
       const menuRows = menuItems.length;
 
       let seq = '';
-      if (prevRows > 1) {
-        seq += `${ESC}[${prevRows - 1}A`; // up to the first row of the old block
+      if (prevInputRows > 1) {
+        // Up to the FIRST input row — NEVER above it, so the erase below can't
+        // reach the welcome/conversation. (The cursor is parked on the last input
+        // row; the menu lives below and is wiped by the erase, not by moving up.)
+        seq += `${ESC}[${prevInputRows - 1}A`;
       }
-      seq += `${CR}${ESC}[0J`; // col 0, erase to end of screen → wipe the old block
+      seq += `${CR}${ESC}[0J`; // col 0, erase from the first input row to end of screen
       seq += currentPrompt + body + menuStr;
       // Park the cursor back on the INPUT line at the insertion point.
       if (menuRows > 0) {
@@ -1111,7 +1118,10 @@ export class Ui {
         }
       }
       out.write(seq);
-      prevRows = inputRows + menuRows;
+      // Track INPUT rows only (where the cursor parks) — NOT the menu rows. Using
+      // the full block height here is what walked the prompt up the screen and let
+      // the erase eat conversation lines on every keystroke with the menu open.
+      prevInputRows = inputRows;
     };
     const repaint = paint;
 
@@ -1273,9 +1283,11 @@ export class Ui {
       process.removeListener('SIGTERM', onTermSignal);
       process.removeListener('SIGHUP', onTermSignal);
       restoreCooked();
-      if (prevRows > 1) out.write(`${ESC}[${prevRows - 1}A`);
-      out.write(`${CR}${ESC}[0J`); // wipe any half-drawn (possibly wrapped) prompt
-      prevRows = 0;
+      // Step up only to the FIRST input row (never above it), then erase to end of
+      // screen — wipes the prompt + any open menu without touching the scrollback.
+      if (prevInputRows > 1) out.write(`${ESC}[${prevInputRows - 1}A`);
+      out.write(`${CR}${ESC}[0J`); // wipe any half-drawn (possibly wrapped) prompt + menu
+      prevInputRows = 1;
       rawActive = false;
     };
 
@@ -1318,7 +1330,7 @@ export class Ui {
           ? placeholderOf()
           : (placeholderOf ?? '');
       recomputeMenu();
-      prevRows = 0;
+      prevInputRows = 1;
       paint();
       return new Promise((resolve) => {
         waiters.push((line) => {

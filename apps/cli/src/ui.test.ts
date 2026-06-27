@@ -164,4 +164,98 @@ describe('Ui.openLineEditor (M-Shell Slice A)', () => {
     expect(() => off()).not.toThrow();
     editor.close();
   });
+
+  it('the slash-menu repaint never erases content above the prompt', async () => {
+    // A tiny terminal model: apply the editor's raw bytes to a grid and check the
+    // lines printed BEFORE the prompt survive. The buggy menu repaint walked the
+    // cursor up by the FULL block height (input + menu) and erased the welcome on
+    // every keystroke; this pins it to never reach above the input's first row.
+    const applyVT = (bytes: string, rows = 40, cols = 160): string[] => {
+      const grid = Array.from({ length: rows }, () => new Array<string>(cols).fill(' '));
+      let r = 0;
+      let c = 0;
+      for (let i = 0; i < bytes.length; ) {
+        const ch = bytes[i] as string;
+        if (ch === '\x1b' && bytes[i + 1] === '[') {
+          let j = i + 2;
+          let p = '';
+          while (j < bytes.length && /[0-9;]/.test(bytes[j] as string)) {
+            p += bytes[j];
+            j += 1;
+          }
+          const cmd = bytes[j] as string;
+          const n = Number.parseInt(p.split(';')[0] ?? '', 10);
+          const amount = Number.isNaN(n) ? (cmd === 'J' || cmd === 'K' ? 0 : 1) : n;
+          if (cmd === 'A') r = Math.max(0, r - amount);
+          else if (cmd === 'B') r = Math.min(rows - 1, r + amount);
+          else if (cmd === 'C') c = Math.min(cols - 1, c + amount);
+          else if (cmd === 'D') c = Math.max(0, c - amount);
+          else if (cmd === 'J' && amount === 0) {
+            for (let cc = c; cc < cols; cc += 1) grid[r]![cc] = ' ';
+            for (let rr = r + 1; rr < rows; rr += 1)
+              for (let cc = 0; cc < cols; cc += 1) grid[rr]![cc] = ' ';
+          } else if (cmd === 'K') {
+            const from = amount === 2 ? 0 : c;
+            for (let cc = from; cc < cols; cc += 1) grid[r]![cc] = ' ';
+          }
+          i = j + 1;
+          continue;
+        }
+        if (ch === '\n') {
+          r = Math.min(rows - 1, r + 1);
+          c = 0;
+          i += 1;
+          continue;
+        }
+        if (ch === '\r') {
+          c = 0;
+          i += 1;
+          continue;
+        }
+        grid[r]![c] = ch;
+        c += 1;
+        if (c >= cols) {
+          c = 0;
+          r = Math.min(rows - 1, r + 1);
+        }
+        i += 1;
+      }
+      return grid.map((row) => row.join('').replace(/\s+$/, ''));
+    };
+
+    const out = new Sink();
+    const stdin = new PassThrough();
+    // Make the stream look like a TTY so the editor takes the raw per-keypress
+    // paint path — the slash menu only renders on a real terminal.
+    (stdin as unknown as { isTTY: boolean }).isTTY = true;
+    (stdin as unknown as { setRawMode: (m: boolean) => void }).setRawMode = () => undefined;
+    const ui = new Ui({ stdout: out, stderr: new Sink(), stdin, interactive: true });
+    ui.write('WELCOME-ALPHA');
+    ui.write('WELCOME-BETA');
+    ui.write('WELCOME-GAMMA');
+    const editor = ui.openLineEditor({
+      commands: [
+        { name: 'plan', description: 'plan a build' },
+        { name: 'play', description: 'play something' },
+        { name: 'patch', description: 'apply a patch' },
+      ],
+    });
+    const pending = editor.question('> ');
+    for (const chunk of ['/', 'p', 'l', 'a', 'n']) {
+      stdin.write(chunk);
+      await new Promise((res) => setTimeout(res, 5));
+    }
+
+    const screen = applyVT(out.data);
+    // The lines above the prompt are untouched by the menu repaint.
+    expect(screen.some((l) => l.includes('WELCOME-ALPHA'))).toBe(true);
+    expect(screen.some((l) => l.includes('WELCOME-BETA'))).toBe(true);
+    expect(screen.some((l) => l.includes('WELCOME-GAMMA'))).toBe(true);
+    // The prompt still shows what was typed.
+    expect(screen.some((l) => l.includes('> /plan'))).toBe(true);
+
+    stdin.write('\r'); // Enter (raw mode) submits
+    await pending;
+    editor.close();
+  });
 });
