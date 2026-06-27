@@ -277,7 +277,7 @@ export const EN: Catalog = {
     'Diagnostics: skipping the repair pass — the run hit its budget cap (a repair would spend the budget again).',
   'status.no-discovery-sessions':
     'No local discovery sessions. Start one with: excalibur discovery "<idea>"',
-  'status.no-runs': 'No local runs yet. Start one with: excalibur run "<task>"',
+  'status.no-runs': 'No local tasks yet. Start one with: excalibur run "<task>"',
   'status.rewind-hint': 'Rewind any run like a video: excalibur rewind <id>',
   'status.counts': 'Patches: {patches} · Interactions: {interactions} · Runs: {runs}',
   'status.next-steps-heading': 'Useful next steps:',
@@ -334,16 +334,16 @@ export const EN: Catalog = {
     "No saved plans yet. Approve a plan in plan mode and it's saved to .excalibur/plans/.",
   'plans.heading': 'Saved plans ({count}) · newest first:',
   'plans.footer': 'Each plan is portable markdown — re-run or fork it from its run.',
-  'session-log.empty': 'No runs in this session yet.',
-  'session-log.heading': 'Session log · {runs} runs · {cost} total',
+  'session-log.empty': 'No tasks in this session yet.',
+  'session-log.heading': 'Session log · {runs} tasks · {cost} total',
   'session-log.untitled': '(untitled)',
-  'session-log.footer': 'Type a run number to open its time-machine · q to exit',
+  'session-log.footer': 'Type a task number to open its time-machine · q to exit',
   'session-log.prompt': '  log> ',
   'session-log.invalid': 'Enter a number between 1 and {max}, or q.',
   'changes.heading': 'Changes · {runId}',
-  'changes.noFileChanges': '  No file changes recorded for this run.',
+  'changes.noFileChanges': '  No file changes recorded for this task.',
   'changes.diffstat': '  {files} file{plural} · +{insertions} −{deletions}',
-  'changes.noUnifiedDiff': '  (no unified diff recorded for this run)',
+  'changes.noUnifiedDiff': '  (no unified diff recorded for this task)',
 
   // cmux
   'cmux.stub':
@@ -414,7 +414,7 @@ export const EN: Catalog = {
     'Fork {forkRunId} created. Inspect it in its worktree, or replay it: excalibur replay {forkRunId}',
 
   // logs
-  'logs.noRuns': 'No local runs yet. Start one with: excalibur run "<task>"',
+  'logs.noRuns': 'No local tasks yet. Start one with: excalibur run "<task>"',
   'logs.heading': '{id} — {title} ({status})',
   'logs.noEvents': 'No events recorded.',
 
@@ -426,7 +426,7 @@ export const EN: Catalog = {
   'patch.next': 'Next: excalibur apply {id} · excalibur branch {id} · excalibur reject {id}',
 
   // pr
-  'pr.noRuns': 'No local runs yet. Start one with: excalibur run "<task>"',
+  'pr.noRuns': 'No local tasks yet. Start one with: excalibur run "<task>"',
   'pr.saved': 'Saved to {path}',
   'pr.ghRequired':
     'pr-create needs the GitHub CLI. Install it from https://cli.github.com and run `gh auth login`.',
@@ -722,14 +722,14 @@ export const EN: Catalog = {
   'agent-turn.fork_reused':
     'Reused {tokens} cached tokens ({cost}) — only the new instruction runs live.',
   'agent-turn.fork_worktree': 'Worktree {worktree} · branch {branch}',
-  'agent-turn.undo_no_changes': 'Run {runId} recorded no file changes — nothing to undo.',
+  'agent-turn.undo_no_changes': 'Task {runId} recorded no file changes — nothing to undo.',
   'agent-turn.undo_cannot_reverse':
-    "Cannot undo: the run's changes do not reverse-apply cleanly to your working tree ({reason}). The tree has changed since the run; resolve it first.",
+    "Cannot undo: the task's changes do not reverse-apply cleanly to your working tree ({reason}). The tree has changed since the task; resolve it first.",
   'agent-turn.undo_warn':
-    "This reverts your working tree to run {runId}'s state at step {step}/{total}.",
+    "This reverts your working tree to task {runId}'s state at step {step}/{total}.",
   'agent-turn.undo_proceed': 'Proceed?',
   'agent-turn.undo_cancelled': 'Undo cancelled. Nothing was changed.',
-  'agent-turn.undo_reverted_full': "✓ Working tree reverted — the run's changes were undone.",
+  'agent-turn.undo_reverted_full': "✓ Working tree reverted — the task's changes were undone.",
   'agent-turn.undo_cannot_reapply':
     'Could not reconstruct step {step} ({reason}). Your working tree was left UNCHANGED.',
   'agent-turn.undo_reverted_step': '✓ Working tree reverted to step {step}.',
@@ -805,15 +805,15 @@ export const EN: Catalog = {
     "That reads as a goal to complete. Pursue it across turns until an evaluator says it's done (max {max})?",
   'repl.remember-usage': 'Usage: /remember <a decision, rejection, risk or convention to remember>',
   'repl.remember-saved':
-    'Remembered ({detail}). Future runs touching these paths will be primed with it.',
+    'Remembered ({detail}). Future tasks touching these paths will be primed with it.',
   'repl.remember-reinforced':
     'Reinforced an existing memory ({detail}) — evidence ×{count}. It compounds: the more it recurs, the more confident Excalibur is.',
   'repl.remember-failed': 'Could not save memory: {reason}',
   'repl.compact-nothing': 'Nothing to compact yet — the recent context already fits.',
   'repl.compacted-manual':
-    'Compacted {n} earlier turn(s) → summary · {before}→{after} tokens. Full detail stays in the run history.',
+    'Compacted {n} earlier turn(s) → summary · {before}→{after} tokens. Full detail stays in the task history.',
   'repl.compacted-auto':
-    'Auto-compacted {n} earlier turn(s) → summary · {before}→{after} tokens. Full detail stays in the run history.',
+    'Auto-compacted {n} earlier turn(s) → summary · {before}→{after} tokens. Full detail stays in the task history.',
   'repl.compaction-failed': 'Compaction failed: {reason}',
   'repl.compacting': 'Compacting context…',
   'repl.compacting-overflow': 'Context full — compacting and retrying…',
@@ -867,7 +867,7 @@ export const EN: Catalog = {
     '  (keep `excalibur schedule run` or `excalibur serve` alive for it to fire.)',
   'repl.auto-build-parallel':
     'Auto-orchestrating: {count} independent workstreams → a parallel swarm.',
-  'repl.auto-build-sequential': 'Auto-orchestrating: a single workstream → one focused run.',
+  'repl.auto-build-sequential': 'Auto-orchestrating: a single workstream → one focused task.',
   'repl.orchestration-hint':
     'Tip: ask me to "show the orchestration" or "pause it" anytime — or open its live chronogram in the dashboard.',
   'repl.plan-shape-intro': 'Shaping the plan — pick which related work to fold in (space toggles):',
@@ -896,8 +896,39 @@ export const EN: Catalog = {
   // AO9-3 proactive pre-plan auto-scope (shown while shaping a large plan)
   'repl.scope-prescan': '• scoping the codebase first (read-only) to ground the plan…',
   'repl.scope-grounded': '✓ grounded the plan in {subsystems} subsystem(s) of the codebase',
+  'thinking.understand.a': 'Understanding what you are asking',
+  'thinking.understand.b': 'Thinking about how to approach this',
+  'thinking.understand.c': 'Getting the full picture',
+  'thinking.plan.a': 'Estimating the scope',
+  'thinking.plan.b': 'Looking at the relevant code',
+  'thinking.plan.c': 'Shaping the plan',
+  'thinking.decompose.a': 'Breaking the work into steps',
+  'thinking.decompose.b': 'Organising the workstreams',
+  'repl.ph.start': 'What would you like to build or fix? · type / for commands',
+  'repl.ph.next': 'Ask for a change, review with /changes, or start something new',
+  'cmd.help': 'Show all commands',
+  'cmd.plan': 'Plan before building',
+  'cmd.discovery': 'Clarify an ambiguous idea',
+  'cmd.swarm': 'Work on subtasks in parallel',
+  'cmd.explore': 'Compare alternative approaches',
+  'cmd.bg': 'Work on a task in the background',
+  'cmd.threads': 'List background tasks',
+  'cmd.goal': 'Pursue a goal across turns',
+  'cmd.loop': 'Repeat an instruction periodically',
+  'cmd.changes': 'Show files a task changed',
+  'cmd.rewind': 'Step back through a task',
+  'cmd.replay': 'Replay a task step by step',
+  'cmd.fork': 'Fork the latest task and continue',
+  'cmd.undo': 'Undo the latest task',
+  'cmd.log': 'Open the session log',
+  'cmd.remember': 'Save a decision or convention',
+  'cmd.compact': 'Condense older context',
+  'cmd.auto': 'Toggle full autonomy',
+  'cmd.model': 'Switch the model',
+  'cmd.clear': 'Clear the screen',
+  'cmd.exit': 'Exit Excalibur',
   'repl.bg-usage':
-    'Usage: /bg <task> — runs the task in the background (its own recorded run) while you keep working.',
+    'Usage: /bg <task> — runs the task in the background (its own recorded task) while you keep working.',
   'repl.bg-started': '▸ background: {title} — running (use /threads to check on it)',
   'repl.bg-followup': '↳ chaining follow-up: {title}',
   'repl.interrupt-reask': '↩ Back to what I was asking: {question}',
@@ -932,15 +963,15 @@ export const EN: Catalog = {
   'repl.help-threads': '  /threads       list the background threads (running + finished)',
   'repl.help-discovery': '  /discovery <idea>  clarify an ambiguous idea before building',
   'repl.help-rewind':
-    '  /rewind [id]   rewind a run step-by-step (time-machine; defaults to latest) · Esc-Esc',
+    '  /rewind [id]   rewind a task step-by-step (time-machine; defaults to latest) · Esc-Esc',
   'repl.help-changes':
-    '  /changes [id]  show the full changed-file list for a run (defaults to latest)',
+    '  /changes [id]  show the full changed-file list for a task (defaults to latest)',
   'repl.help-fork':
-    '  /fork <instr>  fork the latest run (reuse its cached context) and run <instr> live',
-  'repl.help-undo': '  /undo          revert the working tree by undoing the latest run (gated)',
+    '  /fork <instr>  fork the latest task (reuse its cached context) and run <instr> live',
+  'repl.help-undo': '  /undo          revert the working tree by undoing the latest task (gated)',
   'repl.help-compact': '  /compact       condense older turns into a summary (frees context)',
   'repl.help-remember':
-    '  /remember <x>  save a decision/risk/convention; future runs touching those paths are primed',
+    '  /remember <x>  save a decision/risk/convention; future tasks touching those paths are primed',
   'repl.help-model': '  /model         show the active provider/model',
   'repl.help-clear': '  /clear         clear the screen (keeps the session)',
   'repl.help-exit': '  /exit, /quit   close the session and leave',
@@ -955,7 +986,7 @@ export const EN: Catalog = {
   'repl.unknown-command': 'Unknown command: /{name}. Try /help.',
   'repl.discovery-usage': 'Usage: /discovery <idea>. Describe the idea to clarify before building.',
   'repl.changes-heading': 'Changes · {runId}',
-  'repl.changes-none': '  No file changes recorded for this run.',
+  'repl.changes-none': '  No file changes recorded for this task.',
   'repl.changes-metrics-one': '  {files} file · +{insertions} −{deletions}',
   'repl.changes-metrics-many': '  {files} files · +{insertions} −{deletions}',
   'repl.changes-footer': '  Full diff: excalibur changes --diff   ·   rewind: /rewind',
@@ -970,13 +1001,13 @@ export const EN: Catalog = {
   'repl.welcome-whats-new': 'Model-first agent loop in the shell, inline approvals, plan-mode.',
 
   // replay-scrubber
-  'replay-scrubber.noLocalRuns': 'No local runs yet. Start one with: excalibur run "<task>"',
+  'replay-scrubber.noLocalRuns': 'No local tasks yet. Start one with: excalibur run "<task>"',
   'replay-scrubber.header': '⏮  Rewind {id} — {title}',
   'replay-scrubber.headerMeta': '{workflow} · L{level} · {status} · {count} steps · total {cost}',
   'replay-scrubber.phaseNamed': 'phase {name}',
   'replay-scrubber.noPhase': 'no phase',
   'replay-scrubber.stepPosition': 'step {current}/{total}',
-  'replay-scrubber.noEvents': 'No events recorded for this run.',
+  'replay-scrubber.noEvents': 'No events recorded for this task.',
   'replay-scrubber.totalCost': 'Total cost: {cost}',
   'replay-scrubber.costSoFar': '  cost so far: {cost}',
   'replay-scrubber.recent': '  recent:',
@@ -991,10 +1022,10 @@ export const EN: Catalog = {
   'replay-scrubber.forkCancelled': 'Fork cancelled — no instruction given.',
   'replay-scrubber.forkCreated': 'Fork {id} created — replay it: excalibur replay {id}',
   'replay-scrubber.whyStep': 'Why step {step}? {summary}',
-  'replay-scrubber.noDiffInRun': '(no diff reconstructable at this point in the run)',
+  'replay-scrubber.noDiffInRun': '(no diff reconstructable at this point in the task)',
   'replay-scrubber.noFurtherKind': 'No further {kind} step after here.',
   'replay-scrubber.noFurtherPhase': 'No further phase boundary after here.',
-  'replay-scrubber.noEventsNothing': 'No events recorded for this run — nothing to replay.',
+  'replay-scrubber.noEventsNothing': 'No events recorded for this task — nothing to replay.',
   'replay-scrubber.replayPrompt': 'replay › ',
   'replay-scrubber.gotoUsage': 'Usage: g <n> (1..{max}).',
   'replay-scrubber.pinUsage': 'Usage: pin <note> — annotate the current step.',

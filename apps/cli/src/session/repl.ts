@@ -73,6 +73,8 @@ import { runConfiguredCommandCheck } from '../lib/verify-command';
 import { runProportionalMesh } from '../lib/verify-mesh';
 import { runResearchFlow } from '../lib/research';
 import { autoScopeForPlanning, runScopeFlow } from '../lib/scope';
+import { withThinking, understandingPhrases, planningPhrases, decomposePhrases } from './thinking';
+import { slashCommands } from './commands';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
 import { buildSessionLog, formatSessionLog } from '../lib/session-log';
 import { buildStartupContext } from '../lib/startup-context';
@@ -381,10 +383,15 @@ export async function runInteractiveSession(
   const dashboard = await startSessionDashboard(deps, repoRoot, config);
 
   const history = store.loadPromptHistory().slice().reverse(); // readline wants newest-first
+  // Has the user submitted anything yet this session? Drives the CONTEXTUAL
+  // placeholder (a first-run invitation vs a follow-up hint) — re-evaluated each
+  // prompt by the editor.
+  let interacted = false;
   const editor = deps.ui.openLineEditor({
     history,
-    ghostCommands: GHOST_COMMANDS,
-    suggest: buildSuggester(deps, runtime),
+    // The `/` command menu (filters as you type) + a dim CONTEXTUAL placeholder.
+    commands: slashCommands(deps.t),
+    placeholder: () => deps.t(interacted ? 'repl.ph.next' : 'repl.ph.start'),
   });
   // LLM intent classifier (multi-language), resolved ONCE. undefined → no fast
   // model / opted out → the shell stays model-first (everything a plain turn).
@@ -591,6 +598,9 @@ export async function runInteractiveSession(
       const line = await editor.question(accent('› '));
       if (line === null) {
         break; // EOF / Ctrl-D
+      }
+      if (line.trim().length > 0) {
+        interacted = true; // next prompt shows the follow-up placeholder
       }
       // Esc-Esc at the prompt opens the rewind time-machine over the latest run
       // (same flow as `/rewind`, no id). The scrubber drives its own question()
@@ -810,14 +820,16 @@ export async function runInteractiveSession(
       const decision: TurnDecision =
         classifyIntent === undefined
           ? { intent: 'chat', confidence: 'high' }
-          : await classifyTurnDecision(
-              text,
-              {
-                interactive: deps.ui.isInteractive(),
-                mock: runtime.model === 'mock',
-                level: runtime.autonomyLevel,
-              },
-              classifyIntent,
+          : await withThinking(deps, understandingPhrases(deps.t), () =>
+              classifyTurnDecision(
+                text,
+                {
+                  interactive: deps.ui.isInteractive(),
+                  mock: runtime.model === 'mock',
+                  level: runtime.autonomyLevel,
+                },
+                classifyIntent,
+              ),
             );
       const intent = decision.intent;
 
@@ -1016,98 +1028,6 @@ export async function runInteractiveSession(
   return 0;
 }
 
-/** Slash commands the INSTANT ghost completes (no leading `/`). */
-const GHOST_COMMANDS = [
-  'help',
-  'plan',
-  'discovery',
-  'rewind',
-  'replay',
-  'changes',
-  'log',
-  'fork',
-  'undo',
-  'auto',
-  'compact',
-  'remember',
-  'goal',
-  'loop',
-  'swarm',
-  'explore',
-  'bg',
-  'threads',
-  'model',
-  'clear',
-  'exit',
-  'quit',
-];
-
-/**
- * The MODEL-powered ghost suggester (opt-out via `EXCALIBUR_GHOST=off`). Returns
- * undefined when disabled; otherwise an async fn that asks the session's FAST
- * model for a short, redacted completion of the buffer.
- *
- * It routes to the `cheap` (fast/low-cost) provider when one is paired — that
- * provider runs the fast model with reasoning pinned off (its `extraBody`), so
- * the ghost is snappy and cheap even when the main model is a slow reasoner.
- * With no distinct fast model it falls back to the default and self-gates on
- * SPEED: a short `timeoutMs` + small `maxTokens` means a fast model shows a
- * ghost while a slow/reasoning flagship (e.g. kimi-k2.7-code) simply times out →
- * no ghost, bounded cost. The editor also debounces + cancels per keystroke, and
- * a mock/unconfigured provider yields no ghost (instant slash-completion still works).
- */
-function buildSuggester(
-  deps: CliDeps,
-  runtime: SessionRuntime,
-): ((buffer: string, signal: AbortSignal) => Promise<string | null>) | undefined {
-  if (deps.env['EXCALIBUR_GHOST'] === 'off') {
-    return undefined;
-  }
-  // Resolve the gateway ONCE (don't re-stat/parse providers.yaml per keystroke).
-  const gateway = loadGatewayContext(runtime.repoRoot);
-  if (!gateway.configured) {
-    return undefined; // no real model → no model ghost (instant ghost still works)
-  }
-  // Route the ghost to the FAST `cheap` model when one is paired (low latency +
-  // cost; its config also pins reasoning-off). Fall back to the default when no
-  // distinct fast model exists (single-model configs) — there it self-gates on
-  // speed: a slow/reasoning default times out → no ghost.
-  const ghostProvider = gateway.cheapProviderName ?? gateway.providerName;
-  const providerType = (gateway.providers.providers as Record<string, { type?: string }>)[
-    ghostProvider
-  ]?.type;
-  if (providerType === 'mock') {
-    return undefined; // the mock is a test double — never a ghost source
-  }
-  return async (buffer: string, signal: AbortSignal): Promise<string | null> => {
-    try {
-      const output = await gateway.gateway.chat({
-        provider: ghostProvider,
-        messages: [
-          {
-            role: 'system',
-            content:
-              "You autocomplete a developer's half-typed input to a coding agent. Reply with ONLY " +
-              'the text that should CONTINUE their input (the suffix) — no quotes, no preamble, at ' +
-              'most ~8 words. If there is no sensible continuation, reply with nothing.',
-          },
-          { role: 'user', content: redactSecrets(buffer) },
-        ],
-        maxTokens: 24,
-        timeoutMs: 2000, // a live ghost must be fast; slow/reasoning models time out → no ghost
-        metadata: { kind: 'ghost' },
-        signal,
-      });
-      const raw = output.content.trim();
-      const suffix = (raw.startsWith(buffer) ? raw.slice(buffer.length) : raw).split('\n')[0] ?? '';
-      const trimmed = suffix.slice(0, 60);
-      return trimmed.length > 0 ? trimmed : null;
-    } catch {
-      return null; // a background suggestion must never disrupt the prompt
-    }
-  };
-}
-
 /**
  * The LLM intent classifier backing conversational routing — multi-language, via
  * the FAST/cheap model (low latency; reasoning pinned off). Returns undefined
@@ -1257,11 +1177,13 @@ async function shapePlan(
 
   let shape: PlanShape;
   try {
-    shape = await planShape(
-      text,
-      { interactive: true, mock: false, level: runtime.autonomyLevel },
-      model,
-      signal,
+    shape = await withThinking(deps, planningPhrases(deps.t), () =>
+      planShape(
+        text,
+        { interactive: true, mock: false, level: runtime.autonomyLevel },
+        model,
+        signal,
+      ),
     );
   } catch {
     return text;
@@ -1293,12 +1215,14 @@ async function shapePlan(
       deps.ui.info(
         deps.t('repl.scope-grounded', { subsystems: String(scoped.map.subsystems.length) }),
       );
-      const grounded = await planShape(
-        text,
-        { interactive: true, mock: false, level: runtime.autonomyLevel },
-        model,
-        signal,
-        scoped.markdown,
+      const grounded = await withThinking(deps, planningPhrases(deps.t), () =>
+        planShape(
+          text,
+          { interactive: true, mock: false, level: runtime.autonomyLevel },
+          model,
+          signal,
+          scoped.markdown,
+        ),
       );
       // Keep the grounded shape only when it still has something to act on.
       if (grounded.recommendations.length > 0 || grounded.questions.length > 0) {
@@ -1748,10 +1672,12 @@ async function dispatchAutoBuild(
     try {
       const gateway = loadGatewayContext(runtime.repoRoot);
       requireConfiguredModel(gateway, deps.t); // a swarm of mock agents is pointless
-      const subtasks = await decomposeTask(gateway.gateway, text, {
-        provider: gateway.providerName,
-        signal,
-      });
+      const subtasks = await withThinking(deps, decomposePhrases(deps.t), () =>
+        decomposeTask(gateway.gateway, text, {
+          provider: gateway.providerName,
+          signal,
+        }),
+      );
       if (chooseBuildShape({ isRepo, subtaskCount: subtasks.length }) === 'swarm') {
         deps.ui.info(deps.t('repl.auto-build-parallel', { count: subtasks.length }));
         await runSwarmFlow(

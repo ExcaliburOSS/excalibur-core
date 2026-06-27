@@ -309,7 +309,7 @@ describe('NativeAgentAdapter — confirmation gate', () => {
 });
 
 describe('NativeAgentAdapter — path traversal', () => {
-  it('rejects a write outside the workdir without touching the fs', async () => {
+  it('a write outside the workdir needs confirmation (declined without a confirmer)', async () => {
     const escapePath = '../../etc/excalibur-pwned';
     const gateway = new FakeGateway([
       { toolCalls: [toolCall('c1', 'write_file', { path: escapePath, content: 'pwn' })] },
@@ -317,21 +317,50 @@ describe('NativeAgentAdapter — path traversal', () => {
     ]);
     const events = await collect(new NativeAgentAdapter().run(makeInput(gateway)));
 
+    // No confirmer → the out-of-tree write is declined → nothing is written.
     expect(existsSync(join(tmpRepo, escapePath))).toBe(false);
-    const fileWrite = events.find((e) => e.type === 'file_write');
-    expect(fileWrite?.payload['ok']).toBe(false);
-    expect(String(fileWrite?.payload['result'])).toContain('escapes the working directory');
+    const decision = events.find(
+      (e) => e.type === 'policy_decision' && e.payload['kind'] === 'confirmation',
+    );
+    expect(decision?.payload['decision']).toBe('deny');
+    expect(String(decision?.payload['message'])).toMatch(/outside the working directory|declined/i);
   });
 
-  it('rejects an absolute read path', async () => {
-    const gateway = new FakeGateway([
-      { toolCalls: [toolCall('c1', 'read_file', { path: '/etc/passwd' })] },
-      { content: 'cannot read' },
-    ]);
-    const events = await collect(new NativeAgentAdapter().run(makeInput(gateway)));
-    const read = events.find((e) => e.type === 'file_read');
-    expect(read?.payload['ok']).toBe(false);
-    expect(String(read?.payload['result'])).toContain('absolute paths are not allowed');
+  it('writes outside the workdir when the user confirms', async () => {
+    const outside = mkdtempSync(join(tmpdir(), 'excalibur-sibling-'));
+    try {
+      const target = join(outside, 'created.txt');
+      const gateway = new FakeGateway([
+        { toolCalls: [toolCall('c1', 'write_file', { path: target, content: 'hello outside' })] },
+        { content: 'done' },
+      ]);
+      await collect(
+        new NativeAgentAdapter().run(makeInput(gateway, { confirm: () => Promise.resolve(true) })),
+      );
+      expect(existsSync(target)).toBe(true);
+      expect(readFileSync(target, 'utf8')).toContain('hello outside');
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('allows reading a file OUTSIDE the working directory (absolute path)', async () => {
+    // Reads are no longer confined to the working dir — the agent must be able
+    // to review a sibling project / a file the user names. Writes stay confined.
+    const outside = mkdtempSync(join(tmpdir(), 'excalibur-ext-'));
+    writeFileSync(join(outside, 'doc.txt'), 'external content');
+    try {
+      const gateway = new FakeGateway([
+        { toolCalls: [toolCall('c1', 'read_file', { path: join(outside, 'doc.txt') })] },
+        { content: 'read it' },
+      ]);
+      const events = await collect(new NativeAgentAdapter().run(makeInput(gateway)));
+      const read = events.find((e) => e.type === 'file_read');
+      expect(read?.payload['ok']).toBe(true);
+      expect(String(read?.payload['result'])).toContain('external content');
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 });
 

@@ -42,12 +42,19 @@ const relativePathSchema = z
   .min(1, 'path must not be empty')
   .describe('Repository-relative file path');
 
+// Reads may leave the working directory: an absolute path or a `../sibling/…`
+// path is accepted (the user often points the agent at another project).
+const readablePathSchema = z
+  .string()
+  .min(1, 'path must not be empty')
+  .describe('File path — repository-relative, absolute, or ../ into a sibling directory');
+
 export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
   {
     name: 'read_file',
     description:
-      'Read the contents of a file in the repository. Reads are subject to blocked-path rules (e.g. .env, key material).',
-    parameters: z.object({ path: relativePathSchema }).strict(),
+      'Read the contents of any file. The path may be repository-relative, an absolute path, or a `../sibling/…` path — reads are NOT confined to the working directory, so you can review a sibling project or any file the user points you at. Only secret files (.env, keys, credentials) are refused.',
+    parameters: z.object({ path: readablePathSchema }).strict(),
   },
   {
     name: 'write_file',
@@ -82,14 +89,16 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
   {
     name: 'list_files',
     description:
-      'List files under a directory, optionally filtered by a glob pattern. Defaults to the repository root.',
+      'List files under a directory, optionally filtered by a glob pattern. Defaults to the repository root. The path may be repository-relative, absolute, or `../` into a sibling directory (listing is not confined to the working directory).',
     parameters: z
       .object({
         path: z
           .string()
           .min(1)
           .optional()
-          .describe('Repository-relative directory to list (defaults to the root)'),
+          .describe(
+            'Directory to list — repository-relative, absolute, or ../ into a sibling (defaults to the root)',
+          ),
         glob: z.string().min(1).optional().describe('Optional glob filter, e.g. "src/**/*.ts"'),
       })
       .strict(),

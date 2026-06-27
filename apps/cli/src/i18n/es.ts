@@ -337,24 +337,24 @@ export const ES: Catalog = {
   'theme.usage': 'Elige uno con `excalibur theme <nombre>` (se guarda en .excalibur/config.yaml).',
   'theme.unknown': 'Tema desconocido «{name}». Elige uno de: {names}.',
   'theme.set': 'Tema cambiado a {name} (guardado). Reinicia el shell para verlo en todas partes.',
-  'verify.no-changes': 'El run {runId} no cambió nada que verificar.',
+  'verify.no-changes': 'La tarea {runId} no cambió nada que verificar.',
   'verify.plan': 'Malla de verificación — {reason}.',
   'verify.running': 'Corriendo verificadores adversariales aislados: {lenses}…',
   'plans.none':
     'Aún no hay planes guardados. Aprueba un plan en modo plan y se guarda en .excalibur/plans/.',
   'plans.heading': 'Planes guardados ({count}) · más recientes primero:',
-  'plans.footer': 'Cada plan es markdown portable — reejecútalo o forkéalo desde su run.',
-  'session-log.empty': 'Aún no hay runs en esta sesión.',
-  'session-log.heading': 'Registro de sesión · {runs} runs · {cost} total',
+  'plans.footer': 'Cada plan es markdown portable — reejecútalo o forkéalo desde su tarea.',
+  'session-log.empty': 'Aún no hay tareas en esta sesión.',
+  'session-log.heading': 'Registro de sesión · {runs} tareas · {cost} total',
   'session-log.untitled': '(sin título)',
   'session-log.footer':
-    'Escribe el número de un run para abrir su máquina del tiempo · q para salir',
+    'Escribe el número de una tarea para abrir su máquina del tiempo · q para salir',
   'session-log.prompt': '  log> ',
   'session-log.invalid': 'Escribe un número entre 1 y {max}, o q.',
   'changes.heading': 'Cambios · {runId}',
-  'changes.noFileChanges': '  No se registraron cambios de archivos para esta ejecución.',
+  'changes.noFileChanges': '  No se registraron cambios de archivos para esta tarea.',
   'changes.diffstat': '  {files} archivo{plural} · +{insertions} −{deletions}',
-  'changes.noUnifiedDiff': '  (no se registró ningún diff unificado para esta ejecución)',
+  'changes.noUnifiedDiff': '  (no se registró ningún diff unificado para esta tarea)',
 
   // cmux
   'cmux.stub':
@@ -721,7 +721,7 @@ export const ES: Catalog = {
   'run-pipeline.estimateFromRuns': '(según {count} tarea(s) previas)',
   'run-pipeline.estimateHeuristic': '(estimación)',
   'run-pipeline.estimateOverBudget':
-    'Aviso: la estimación {cost} supera tu --budget {budget} — la ejecución parará en el tope.',
+    'Aviso: la estimación {cost} supera tu --budget {budget} — la tarea parará en el tope.',
   'run-pipeline.runPromptGate': '[Enter] continuar  [m] cambiar modo  [c] cancelar',
   'run-pipeline.runCancelled': 'Tarea cancelada.',
   'run-pipeline.executionModePrompt': 'Modo de ejecución:',
@@ -778,15 +778,15 @@ export const ES: Catalog = {
     'Se reutilizaron {tokens} tokens en caché ({cost}) — solo la nueva instrucción se ejecuta en vivo.',
   'agent-turn.fork_worktree': 'Árbol de trabajo {worktree} · rama {branch}',
   'agent-turn.undo_no_changes':
-    'La ejecución {runId} no registró cambios de archivos — no hay nada que deshacer.',
+    'La tarea {runId} no registró cambios de archivos — no hay nada que deshacer.',
   'agent-turn.undo_cannot_reverse':
-    'No se puede deshacer: los cambios de la ejecución no se revierten limpiamente sobre tu árbol de trabajo ({reason}). El árbol cambió desde la ejecución; resuélvelo primero.',
+    'No se puede deshacer: los cambios de la tarea no se revierten limpiamente sobre tu árbol de trabajo ({reason}). El árbol cambió desde la tarea; resuélvelo primero.',
   'agent-turn.undo_warn':
-    'Esto revierte tu árbol de trabajo al estado de la ejecución {runId} en el paso {step}/{total}.',
+    'Esto revierte tu árbol de trabajo al estado de la tarea {runId} en el paso {step}/{total}.',
   'agent-turn.undo_proceed': '¿Continuar?',
   'agent-turn.undo_cancelled': 'Deshacer cancelado. No se cambió nada.',
   'agent-turn.undo_reverted_full':
-    '✓ Árbol de trabajo revertido — los cambios de la ejecución se deshicieron.',
+    '✓ Árbol de trabajo revertido — los cambios de la tarea se deshicieron.',
   'agent-turn.undo_cannot_reapply':
     'No se pudo reconstruir el paso {step} ({reason}). Tu árbol de trabajo quedó SIN CAMBIOS.',
   'agent-turn.undo_reverted_step': '✓ Árbol de trabajo revertido al paso {step}.',
@@ -863,15 +863,15 @@ export const ES: Catalog = {
     'Esto parece un objetivo a completar. ¿Perseguirlo a lo largo de varios turnos hasta que un evaluador diga que está hecho (máx. {max})?',
   'repl.remember-usage': 'Uso: /remember <una decisión, rechazo, riesgo o convención que recordar>',
   'repl.remember-saved':
-    'Recordado ({detail}). Las próximas ejecuciones que toquen estas rutas lo tendrán presente.',
+    'Recordado ({detail}). Las próximas tareas que toquen estas rutas lo tendrán presente.',
   'repl.remember-reinforced':
     'Reforzada una memoria existente ({detail}) — evidencia ×{count}. Compone: cuanto más se repite, más seguro está Excalibur.',
   'repl.remember-failed': 'No se pudo guardar la memoria: {reason}',
   'repl.compact-nothing': 'Nada que compactar todavía: el contexto reciente ya cabe.',
   'repl.compacted-manual':
-    'Compactados {n} turno(s) anteriores → resumen · {before}→{after} tokens. El detalle completo permanece en el historial de ejecuciones.',
+    'Compactados {n} turno(s) anteriores → resumen · {before}→{after} tokens. El detalle completo permanece en el historial de tareas.',
   'repl.compacted-auto':
-    'Compactados automáticamente {n} turno(s) anteriores → resumen · {before}→{after} tokens. El detalle completo permanece en el historial de ejecuciones.',
+    'Compactados automáticamente {n} turno(s) anteriores → resumen · {before}→{after} tokens. El detalle completo permanece en el historial de tareas.',
   'repl.compaction-failed': 'Falló la compactación: {reason}',
   'repl.compacting': 'Compactando contexto…',
   'repl.compacting-overflow': 'Contexto lleno — compactando y reintentando…',
@@ -958,8 +958,39 @@ export const ES: Catalog = {
   // AO9-3 auto-scope proactivo previo al plan (durante el shaping de un plan grande)
   'repl.scope-prescan': '• analizando primero el código (solo lectura) para fundamentar el plan…',
   'repl.scope-grounded': '✓ plan fundamentado en {subsystems} subsistema(s) del código',
+  'thinking.understand.a': 'Entendiendo lo que me pides',
+  'thinking.understand.b': 'Pensando cómo enfocarlo',
+  'thinking.understand.c': 'Haciéndome una idea del conjunto',
+  'thinking.plan.a': 'Estimando el alcance',
+  'thinking.plan.b': 'Mirando el código relevante',
+  'thinking.plan.c': 'Dando forma al plan',
+  'thinking.decompose.a': 'Dividiendo el trabajo en pasos',
+  'thinking.decompose.b': 'Organizando los frentes de trabajo',
+  'repl.ph.start': '¿Qué quieres construir o arreglar? · escribe / para comandos',
+  'repl.ph.next': 'Pide un cambio, revisa con /changes, o empieza algo nuevo',
+  'cmd.help': 'Ver todos los comandos',
+  'cmd.plan': 'Planifica antes de construir',
+  'cmd.discovery': 'Aclara una idea ambigua',
+  'cmd.swarm': 'Trabaja subtareas en paralelo',
+  'cmd.explore': 'Compara enfoques alternativos',
+  'cmd.bg': 'Trabaja una tarea en segundo plano',
+  'cmd.threads': 'Lista las tareas en segundo plano',
+  'cmd.goal': 'Persigue un objetivo a lo largo de turnos',
+  'cmd.loop': 'Repite una instrucción periódicamente',
+  'cmd.changes': 'Muestra los archivos que cambió una tarea',
+  'cmd.rewind': 'Retrocede por una tarea',
+  'cmd.replay': 'Reproduce una tarea paso a paso',
+  'cmd.fork': 'Bifurca la última tarea y continúa',
+  'cmd.undo': 'Deshace la última tarea',
+  'cmd.log': 'Abre el registro de sesión',
+  'cmd.remember': 'Guarda una decisión o convención',
+  'cmd.compact': 'Condensa el contexto antiguo',
+  'cmd.auto': 'Activa/desactiva la autonomía total',
+  'cmd.model': 'Cambia el modelo',
+  'cmd.clear': 'Limpia la pantalla',
+  'cmd.exit': 'Salir de Excalibur',
   'repl.bg-usage':
-    'Uso: /bg <tarea> — ejecuta la tarea en segundo plano (su propia ejecución registrada) mientras sigues trabajando.',
+    'Uso: /bg <tarea> — ejecuta la tarea en segundo plano (su propia tarea registrada) mientras sigues trabajando.',
   'repl.bg-started': '▸ segundo plano: {title} — en curso (usa /threads para verlo)',
   'repl.bg-followup': '↳ encadenando seguimiento: {title}',
   'repl.interrupt-reask': '↩ Volviendo a lo que te preguntaba: {question}',
@@ -995,13 +1026,13 @@ export const ES: Catalog = {
   'repl.help-loop': '  /loop [--every s] [--times n] <prompt>  reejecuta periódicamente hasta ESC',
   'repl.help-discovery': '  /discovery <idea>  aclara una idea ambigua antes de construir',
   'repl.help-rewind':
-    '  /rewind [id]   rebobina una ejecución paso a paso (máquina del tiempo; por defecto la última) · Esc-Esc',
+    '  /rewind [id]   rebobina una tarea paso a paso (máquina del tiempo; por defecto la última) · Esc-Esc',
   'repl.help-changes':
-    '  /changes [id]  muestra la lista completa de archivos cambiados de una ejecución (por defecto la última)',
+    '  /changes [id]  muestra la lista completa de archivos cambiados de una tarea (por defecto la última)',
   'repl.help-fork':
-    '  /fork <instr>  bifurca la última ejecución (reusa su contexto en caché) y ejecuta <instr> en vivo',
+    '  /fork <instr>  bifurca la última tarea (reusa su contexto en caché) y ejecuta <instr> en vivo',
   'repl.help-undo':
-    '  /undo          revierte el árbol de trabajo deshaciendo la última ejecución (con aprobación)',
+    '  /undo          revierte el árbol de trabajo deshaciendo la última tarea (con aprobación)',
   'repl.help-compact':
     '  /compact       condensa los turnos antiguos en un resumen (libera contexto)',
   'repl.help-remember':
@@ -1022,7 +1053,7 @@ export const ES: Catalog = {
   'repl.unknown-command': 'Comando desconocido: /{name}. Prueba /help.',
   'repl.discovery-usage': 'Uso: /discovery <idea>. Describe la idea a aclarar antes de construir.',
   'repl.changes-heading': 'Cambios · {runId}',
-  'repl.changes-none': '  No se registraron cambios de archivos para esta ejecución.',
+  'repl.changes-none': '  No se registraron cambios de archivos para esta tarea.',
   'repl.changes-metrics-one': '  {files} archivo · +{insertions} −{deletions}',
   'repl.changes-metrics-many': '  {files} archivos · +{insertions} −{deletions}',
   'repl.changes-footer': '  Diff completo: excalibur changes --diff   ·   rebobinar: /rewind',
@@ -1046,7 +1077,7 @@ export const ES: Catalog = {
   'replay-scrubber.phaseNamed': 'fase {name}',
   'replay-scrubber.noPhase': 'sin fase',
   'replay-scrubber.stepPosition': 'paso {current}/{total}',
-  'replay-scrubber.noEvents': 'No se registraron eventos para esta ejecución.',
+  'replay-scrubber.noEvents': 'No se registraron eventos para esta tarea.',
   'replay-scrubber.totalCost': 'Coste total: {cost}',
   'replay-scrubber.costSoFar': '  coste hasta ahora: {cost}',
   'replay-scrubber.recent': '  recientes:',

@@ -1,5 +1,5 @@
 import { PassThrough } from 'node:stream';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   initialRawState,
   instantGhost,
@@ -368,7 +368,7 @@ describe('raw editor shell (fake TTY)', () => {
     expect(stdin.rawCalls).toContain(false); // cooked mode restored
   });
 
-  it('renders an instant slash-command ghost and accepts it with Tab', async () => {
+  it('shows the slash-command menu, filters as you type, and Tab autocompletes', async () => {
     const stdin = fakeTty();
     const out = memOut();
     const ui = new Ui({
@@ -376,44 +376,45 @@ describe('raw editor shell (fake TTY)', () => {
       stdout: out as unknown as NodeJS.WritableStream,
       interactive: true,
     });
-    const editor = ui.openLineEditor({ ghostCommands: ['replay', 'review'] });
+    const editor = ui.openLineEditor({
+      commands: [
+        { name: 'replay', description: 'Replay a task' },
+        { name: 'remember', description: 'Save a note' },
+        { name: 'plan', description: 'Plan first' },
+      ],
+    });
     opened.push(editor);
 
     const pending = editor.question('› ');
     stdin.emit('keypress', '/', { sequence: '/' });
-    stdin.emit('keypress', 'r', { name: 'r', sequence: 'r' });
-    stdin.emit('keypress', 'e', { name: 'e', sequence: 'e' });
-    expect(out.text).toContain('play'); // ghost for "/re" → replay
+    // The full menu: each command name + its brief description.
+    expect(out.text).toContain('/replay');
+    expect(out.text).toContain('Replay a task');
+    expect(out.text).toContain('/plan');
 
-    stdin.emit('keypress', '\t', { name: 'tab' }); // accept → "/replay"
+    stdin.emit('keypress', 'r', { name: 'r', sequence: 'r' });
+    stdin.emit('keypress', 'e', { name: 'e', sequence: 'e' }); // "/re" filters to replay + remember
+    stdin.emit('keypress', '', { name: 'down' }); // highlight the 2nd match (remember)
+    stdin.emit('keypress', '\t', { name: 'tab' }); // autocomplete the highlighted command
     stdin.emit('keypress', '\r', { name: 'return' });
-    await expect(pending).resolves.toBe('/replay');
+    await expect(pending).resolves.toBe('/remember ');
   });
 
-  it('shows a model-ghost suggestion after the debounce, when there is no instant ghost', async () => {
-    vi.useFakeTimers();
-    try {
-      const stdin = fakeTty();
-      const out = memOut();
-      const suggest = vi.fn(async () => 'the payment module');
-      const ui = new Ui({
-        stdin,
-        stdout: out as unknown as NodeJS.WritableStream,
-        interactive: true,
-      });
-      const editor = ui.openLineEditor({ suggest });
-      opened.push(editor);
+  it('shows a dim contextual placeholder on the empty line', () => {
+    const stdin = fakeTty();
+    const out = memOut();
+    const ui = new Ui({
+      stdin,
+      stdout: out as unknown as NodeJS.WritableStream,
+      interactive: true,
+    });
+    const editor = ui.openLineEditor({ placeholder: 'Describe a task' });
+    opened.push(editor);
 
-      void editor.question('› ');
-      stdin.emit('keypress', 'r', { name: 'r', sequence: 'r' });
-      stdin.emit('keypress', 'e', { name: 'e', sequence: 'e' }); // "re" — not a slash, so no instant ghost
-      await vi.advanceTimersByTimeAsync(320); // fire the debounced suggest + resolve it
-
-      expect(suggest).toHaveBeenCalled();
-      expect(out.text).toContain('the payment module');
-    } finally {
-      vi.useRealTimers();
-    }
+    void editor.question('› ');
+    expect(out.text).toContain('Describe a task'); // hint shown inside the empty line
+    stdin.emit('keypress', 'h', { name: 'h', sequence: 'h' });
+    expect(out.text).toContain('h'); // typing renders the buffer
   });
 
   it('Esc-Esc at the prompt resolves the read with the rewind sentinel', async () => {

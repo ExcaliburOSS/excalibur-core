@@ -107,30 +107,44 @@ describe('executeNativeTool — read_file', () => {
     expect(result.result).not.toContain(key);
   });
 
-  it('denies a blocked path (.env)', async () => {
+  it('refuses to read a secret file (.env) — the read floor', async () => {
     writeFileSync(join(dir, '.env'), 'SECRET=1');
     const result = await executeNativeTool('read_file', { path: '.env' }, ctx());
     expect(result.ok).toBe(false);
-    expect(result.result).toContain('permission denied');
+    expect(result.result).toMatch(/secret|refusing/i);
   });
 
-  it('rejects absolute and traversal paths', async () => {
-    const abs = await executeNativeTool('read_file', { path: '/etc/passwd' }, ctx());
-    expect(abs.ok).toBe(false);
-    expect(abs.result).toContain('absolute');
-    const up = await executeNativeTool('read_file', { path: '../../etc/passwd' }, ctx());
-    expect(up.ok).toBe(false);
-    expect(up.result).toContain('escapes the working directory');
+  it('reads files OUTSIDE the working directory (a sibling project)', async () => {
+    // Reads are no longer confined: the agent must be able to review a sibling
+    // project or any file the user points it at (writes stay confined).
+    const outside = mkdtempSync(join(tmpdir(), 'excalibur-sibling-'));
+    try {
+      writeFileSync(join(outside, 'notes.md'), '# hello sibling');
+      const absRead = await executeNativeTool(
+        'read_file',
+        { path: join(outside, 'notes.md') },
+        ctx(),
+      );
+      expect(absRead.ok).toBe(true);
+      expect(absRead.result).toContain('hello sibling');
+      // …but a secret file outside the tree is still refused.
+      writeFileSync(join(outside, '.env'), 'SECRET=1');
+      const secret = await executeNativeTool('read_file', { path: join(outside, '.env') }, ctx());
+      expect(secret.ok).toBe(false);
+      expect(secret.result).toMatch(/secret|refusing/i);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
-  it('refuses to follow a symlink that escapes the tree', async () => {
+  it('reads through a symlink that points outside the tree (reads are not confined)', async () => {
     const outside = mkdtempSync(join(tmpdir(), 'excalibur-outside-'));
-    writeFileSync(join(outside, 'target.txt'), 'leaked');
+    writeFileSync(join(outside, 'target.txt'), 'sibling-content');
     try {
       symlinkSync(join(outside, 'target.txt'), join(dir, 'link.txt'));
       const result = await executeNativeTool('read_file', { path: 'link.txt' }, ctx());
-      expect(result.ok).toBe(false);
-      expect(result.result).toContain('symlink');
+      expect(result.ok).toBe(true);
+      expect(result.result).toContain('sibling-content');
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }
@@ -418,14 +432,27 @@ describe('executeNativeTool — write_file', () => {
     expect(existsSync(join(dir, '.env'))).toBe(false);
   });
 
-  it('rejects a traversal write without touching the fs', async () => {
-    const result = await executeNativeTool(
-      'write_file',
-      { path: '../escape.txt', content: 'x' },
-      ctx(),
-    );
-    expect(result.ok).toBe(false);
-    expect(existsSync(join(dir, '../escape.txt'))).toBe(false);
+  it('writes OUTSIDE the working directory (confirmation is a higher-layer gate)', async () => {
+    // The executor no longer confines writes — the loop's permission gate asks
+    // for confirmation on out-of-tree writes. Here we drive the executor directly,
+    // so the write goes through; only secret files are refused outright.
+    const outside = mkdtempSync(join(tmpdir(), 'excalibur-wsibling-'));
+    try {
+      const target = join(outside, 'created.txt');
+      const result = await executeNativeTool('write_file', { path: target, content: 'x' }, ctx());
+      expect(result.ok).toBe(true);
+      expect(existsSync(target)).toBe(true);
+
+      const secret = await executeNativeTool(
+        'write_file',
+        { path: join(outside, '.env'), content: 'SECRET=1' },
+        ctx(),
+      );
+      expect(secret.ok).toBe(false);
+      expect(secret.result).toMatch(/secret|refusing/i);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it('refuses to write through a symlink that points outside the tree (O_NOFOLLOW)', async () => {

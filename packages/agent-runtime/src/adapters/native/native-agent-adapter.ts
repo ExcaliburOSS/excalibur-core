@@ -35,7 +35,11 @@ import {
   type ExtensionToolContext,
   type ExtensionToolLogger,
 } from '../../tools/extension-tools';
-import { executeNativeTool, type ToolExecutionContext } from '../../tools/execute-tool';
+import {
+  executeNativeTool,
+  isOutsideWorkdir,
+  type ToolExecutionContext,
+} from '../../tools/execute-tool';
 import { loadSkillIndex, type SkillEntry } from '../../tools/skills-reader';
 import { resolveLocalSearxng } from '../../tools/web/searxng-manager';
 import { browserReaderFrom } from '../../tools/web/browser-fetch';
@@ -263,8 +267,12 @@ function systemPromptFor(input: AgentRunInput): string {
     header,
     ...adversarialPreamble(input.role),
     `Working directory: ${input.workdir}.`,
-    'You can call the provided tools to read and change the repository. Tool results',
-    'are authoritative — obey them and adapt when a tool reports an error or a',
+    'You can call the provided tools to read and change the repository. You are NOT',
+    'confined to the working directory: an absolute path or a `../sibling/…` path',
+    'works for reading AND writing, so you can review or modify another project the',
+    'user points you at. (Writing outside the working directory asks the user to',
+    'confirm first — that is expected; proceed when approved.) Tool results are',
+    'authoritative — obey them and adapt when a tool reports an error or a',
     'permission denial.',
     'For any task with more than one step, FIRST call `update_tasks` with the full',
     'checklist (each step as a separate item), then keep it current as you work:',
@@ -291,14 +299,17 @@ function systemPromptFor(input: AgentRunInput): string {
  */
 function narrationGuidance(_role: AgentRole): string[] {
   return [
-    'Narrate your work like a thoughtful pair-programmer thinking out loud: first',
-    'person, warm, and concise. Before a MEANINGFUL action, say in one short',
-    'sentence what you are about to do and why; after a key finding or decision,',
-    'say what you learned and what it changes. Narrate at the moments that matter —',
-    'starting out, finding the cause, choosing an approach, changing direction,',
-    'wrapping up — and stay quiet during routine steps (a run of plain reads or',
-    'lists needs no play-by-play). Keep it human and brief: a sentence or two,',
-    'never a paragraph, and never restate tool output the user already sees.',
+    'Narrate your work continuously, like a friendly pair-programmer thinking out',
+    'loud, so the user is NEVER left watching a silent cursor. Open every turn with',
+    'one short sentence about what you are doing right now (e.g. "Let me understand',
+    'what you are asking…" / "Checking how this part of the code works…"). Before',
+    'each meaningful action — reading or changing files, running a command, launching',
+    'sub-agents — say in one short, plain-language sentence what you are about to do',
+    'and why; after a key finding or decision, say what you learned and what it',
+    'changes. Keep each note to a sentence or two, warm and free of internal jargon,',
+    'and never restate raw tool output the user already sees.',
+    'Call the unit of work a "task" (Spanish: "tarea"). NEVER call it a "run" or an',
+    '"ejecución" — say "work on the task" / "trabajar en la tarea", never "start a run".',
     'Write this narration in the SAME language the user used.',
   ];
 }
@@ -759,7 +770,13 @@ export class NativeAgentAdapter implements AgentAdapter {
     });
 
     // Confirm-or-decline gate for any tool the engine marks requiresConfirmation.
-    const gate = this.confirmationGate(ctx.permissions, toolName, call.arguments, ctx.config);
+    const gate = this.confirmationGate(
+      ctx.permissions,
+      toolName,
+      call.arguments,
+      ctx.config,
+      ctx.workdir,
+    );
     // A HARD DENY (e.g. permissions.tools.apply_patch = false, or a blocked
     // path) is never overridable by confirmation — short-circuit like a decline.
     if (!gate.allowed) {
@@ -1161,6 +1178,7 @@ export class NativeAgentAdapter implements AgentAdapter {
     name: NativeToolName,
     args: Record<string, unknown>,
     config: ExcaliburConfig,
+    workdir: string,
   ): { allowed: boolean; requiresConfirmation: boolean; reason: string } {
     const pass = (d: {
       allowed: boolean;
@@ -1180,7 +1198,19 @@ export class NativeAgentAdapter implements AgentAdapter {
       };
     }
     if (name === 'write_file' || name === 'edit') {
-      return pass(permissions.checkPath(String(args['path'] ?? ''), 'write'));
+      const p = String(args['path'] ?? '');
+      const decision = permissions.checkPath(p, 'write');
+      // A write OUTSIDE the working directory is allowed but ALWAYS confirmed: the
+      // agent can change a sibling project when asked, but never silently leaves
+      // the working directory (under auto-accept the confirmer decides).
+      if (decision.allowed && isOutsideWorkdir(workdir, p)) {
+        return {
+          allowed: true,
+          requiresConfirmation: true,
+          reason: `Writing outside the working directory: "${p}".`,
+        };
+      }
+      return pass(decision);
     }
     if (name === 'read_file' || name === 'list_files') {
       return pass(permissions.checkPath(String(args['path'] ?? '.'), 'read'));

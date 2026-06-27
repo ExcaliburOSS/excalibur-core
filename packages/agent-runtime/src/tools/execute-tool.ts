@@ -259,6 +259,70 @@ function assertConfined(workdir: string, relPath: string): { abs: string } | { e
   return { abs };
 }
 
+// Secret files we refuse to READ even outside the working tree (the read floor).
+const SECRET_BASENAMES = new Set([
+  'credentials',
+  '.npmrc',
+  '.netrc',
+  '.pgpass',
+  'id_rsa',
+  'id_dsa',
+  'id_ecdsa',
+  'id_ed25519',
+]);
+const SECRET_EXT = /\.(pem|key|pfx|p12|keystore|jks|ppk)$/i;
+function isSecretPath(abs: string): boolean {
+  const base = path.basename(abs).toLowerCase();
+  if (SECRET_BASENAMES.has(base)) return true;
+  if (base.startsWith('.env')) return true; // .env, .env.local, .env.production…
+  return SECRET_EXT.test(base);
+}
+
+/**
+ * Resolves a path for a READ. Unlike {@link assertConfined}, reads may target
+ * files OUTSIDE the working directory — a coding agent routinely needs to look
+ * at a sibling project or a file the user points it at by absolute/`../` path.
+ * Writes still go through {@link assertConfined} (confined by default); reads
+ * only get a secret-file floor so credentials never leak.
+ */
+function resolveReadable(workdir: string, p: string): { abs: string } | { error: string } {
+  if (typeof p !== 'string' || p.length === 0) {
+    return { error: 'empty path' };
+  }
+  const abs = path.isAbsolute(p) ? path.resolve(p) : path.resolve(path.resolve(workdir), p);
+  if (isSecretPath(abs)) {
+    return { error: `refusing to read a secret file: "${p}"` };
+  }
+  return { abs };
+}
+
+/**
+ * Resolves a path for a WRITE. Like {@link resolveReadable}, writes are NOT
+ * confined to the working directory — when the user asks the agent to change a
+ * sibling project (or anywhere), it must be able to. Out-of-tree writes are
+ * surfaced for CONFIRMATION at the loop's permission gate, not blocked here;
+ * this only refuses clobbering an obvious secret file. The leaf is still opened
+ * `O_NOFOLLOW` by the callers, so a symlinked final component can't be tunnelled.
+ */
+function resolveWritable(workdir: string, p: string): { abs: string } | { error: string } {
+  if (typeof p !== 'string' || p.length === 0) {
+    return { error: 'empty path' };
+  }
+  const abs = path.isAbsolute(p) ? path.resolve(p) : path.resolve(path.resolve(workdir), p);
+  if (isSecretPath(abs)) {
+    return { error: `refusing to write a secret file: "${p}"` };
+  }
+  return { abs };
+}
+
+/** True when `p` resolves OUTSIDE `workdir` (used to gate out-of-tree writes). */
+export function isOutsideWorkdir(workdir: string, p: string): boolean {
+  if (typeof p !== 'string' || p.length === 0) return false;
+  const root = path.resolve(workdir);
+  const abs = path.isAbsolute(p) ? path.resolve(p) : path.resolve(root, p);
+  return !(abs === root || abs.startsWith(root + path.sep));
+}
+
 /** Validates raw args against the tool's zod schema; returns parsed args or an error. */
 function validate(
   name: NativeToolName,
@@ -422,22 +486,24 @@ function runProcess(
 
 function execReadFile(args: Record<string, unknown>, ctx: ToolExecutionContext): ToolResult {
   const relPath = args['path'] as string;
-  const confined = assertConfined(ctx.workdir, relPath);
-  if ('error' in confined) {
-    return fail(`rejected: ${confined.error}`);
+  // Reads may leave the working directory (sibling projects, files the user
+  // points at). Writes stay confined; this only guards against secret files.
+  const resolved = resolveReadable(ctx.workdir, relPath);
+  if ('error' in resolved) {
+    return fail(`rejected: ${resolved.error}`);
   }
   const decision = ctx.permissions.checkPath(relPath, 'read');
   if (!decision.allowed) {
     return fail(`permission denied: ${decision.reason}`);
   }
-  if (!existsSync(confined.abs)) {
+  if (!existsSync(resolved.abs)) {
     return fail(`file not found: "${relPath}"`);
   }
-  const stat = statSync(confined.abs);
+  const stat = statSync(resolved.abs);
   if (stat.isDirectory()) {
     return fail(`"${relPath}" is a directory, not a file`);
   }
-  let content = readFileSync(confined.abs, 'utf8');
+  let content = readFileSync(resolved.abs, 'utf8');
   let truncated = false;
   if (Buffer.byteLength(content) > MAX_READ_BYTES) {
     content = content.slice(0, MAX_READ_BYTES);
@@ -449,7 +515,9 @@ function execReadFile(args: Record<string, unknown>, ctx: ToolExecutionContext):
 function execWriteFile(args: Record<string, unknown>, ctx: ToolExecutionContext): ToolResult {
   const relPath = args['path'] as string;
   const fileContent = args['content'] as string;
-  const confined = assertConfined(ctx.workdir, relPath);
+  // Writes are not confined to the working dir (out-of-tree writes are confirmed
+  // at the loop's permission gate); only secret files are refused outright.
+  const confined = resolveWritable(ctx.workdir, relPath);
   if ('error' in confined) {
     return fail(`rejected: ${confined.error}`);
   }
@@ -499,7 +567,8 @@ function execEdit(args: Record<string, unknown>, ctx: ToolExecutionContext): Too
   const oldString = args['oldString'] as string;
   const newString = args['newString'] as string;
   const replaceAll = args['replaceAll'] === true;
-  const confined = assertConfined(ctx.workdir, relPath);
+  // Not confined (out-of-tree edits are confirmed at the gate); secrets refused.
+  const confined = resolveWritable(ctx.workdir, relPath);
   if ('error' in confined) {
     return fail(`rejected: ${confined.error}`);
   }
@@ -563,18 +632,24 @@ function execEdit(args: Record<string, unknown>, ctx: ToolExecutionContext): Too
 function execListFiles(args: Record<string, unknown>, ctx: ToolExecutionContext): ToolResult {
   const relDir = (args['path'] as string | undefined) ?? '.';
   const glob = args['glob'] as string | undefined;
-  const confined = assertConfined(ctx.workdir, relDir);
-  if ('error' in confined) {
-    return fail(`rejected: ${confined.error}`);
+  // Listing, like reading, may target a directory outside the working tree.
+  const resolved = resolveReadable(ctx.workdir, relDir);
+  if ('error' in resolved) {
+    return fail(`rejected: ${resolved.error}`);
   }
   const decision = ctx.permissions.checkPath(relDir === '.' ? '.' : relDir, 'read');
   if (!decision.allowed) {
     return fail(`permission denied: ${decision.reason}`);
   }
-  if (!existsSync(confined.abs)) {
+  if (!existsSync(resolved.abs)) {
     return fail(`directory not found: "${relDir}"`);
   }
-  const root = path.resolve(ctx.workdir);
+  const confined = resolved;
+  // In-tree listings stay relative to the working dir (repo-relative paths the
+  // user expects); out-of-tree listings are relative to the directory listed.
+  const workdirAbs = path.resolve(ctx.workdir);
+  const inTree = confined.abs === workdirAbs || confined.abs.startsWith(workdirAbs + path.sep);
+  const root = inTree ? workdirAbs : confined.abs;
   const entries: string[] = [];
   const walk = (absDir: string, depth: number): void => {
     if (entries.length >= MAX_LIST_ENTRIES || depth > MAX_WALK_DEPTH) {
@@ -728,11 +803,13 @@ async function execRunCommand(
   }
   let cwd = path.resolve(ctx.workdir);
   if (relCwd !== undefined) {
-    const confined = assertConfined(ctx.workdir, relCwd);
-    if ('error' in confined) {
-      return fail(`rejected: ${confined.error}`);
+    // A command may run in another directory (out-of-tree work is confirmed at
+    // the gate; the destructive-command floor still applies regardless of cwd).
+    const resolved = resolveWritable(ctx.workdir, relCwd);
+    if ('error' in resolved) {
+      return fail(`rejected: ${resolved.error}`);
     }
-    cwd = confined.abs;
+    cwd = resolved.abs;
   }
   // Sandbox (M3): when configured, the command runs inside an ephemeral Docker
   // container (only the repo mounted, no host secrets/network) — a second line of

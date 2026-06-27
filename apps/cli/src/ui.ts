@@ -1,14 +1,7 @@
 import * as readline from 'node:readline';
 import pc from 'picocolors';
 import { Spinner, isTtyStream } from './lib/spinner';
-import {
-  initialRawState,
-  instantGhost,
-  reduceKey,
-  renderInput,
-  type ParsedKey,
-  type RawInputState,
-} from './lib/raw-input';
+import { initialRawState, reduceKey, type ParsedKey, type RawInputState } from './lib/raw-input';
 import {
   computeWindow,
   reduceSelectKey,
@@ -128,6 +121,19 @@ export interface LineEditorOptions {
    * responsible for redaction + opt-out + cheap-model routing.
    */
   suggest?: (buffer: string, signal: AbortSignal) => Promise<string | null>;
+  /**
+   * A dim hint shown inside an empty MAIN prompt line (there is no active
+   * autocomplete). A function is RE-EVALUATED each time a prompt opens, so the
+   * hint can be CONTEXTUAL to what just happened; a string is fixed. It vanishes
+   * the moment the user types and is never shown on a sub-prompt.
+   */
+  placeholder?: string | (() => string);
+  /**
+   * Slash commands for the in-line command MENU: when the buffer is a single
+   * `/token`, the editor lists the matching commands (name + brief description)
+   * and filters them as the user types. ↑/↓ highlight, Tab/→ autocompletes.
+   */
+  commands?: { name: string; description: string }[];
 }
 
 /**
@@ -1025,84 +1031,132 @@ export class Ui {
     const sigintHandlers = new Set<() => void>();
     const escapeHandlers = new Set<() => void>();
     let rawActive = false;
-    const ghostCommands = options.ghostCommands ?? [];
-    const suggest = options.suggest;
-    let suggestTimer: ReturnType<typeof setTimeout> | null = null;
-    let suggestController: AbortController | null = null;
-    let suggestSeq = 0; // monotonic: only the LATEST request may paint a ghost
-    const GHOST_DEBOUNCE_MS = 280;
-
-    const repaint = (): void => {
-      if (currentPrompt !== null && state.awaiting) {
-        out.write(renderInput(state, currentPrompt));
-      }
+    // Autocomplete/model-ghost suggestions were removed (they suggested noise).
+    // Instead: a dim CONTEXTUAL placeholder on the empty line, and a deterministic
+    // slash-command MENU that filters as you type `/…`. `suggest` / `ghostCommands`
+    // options are accepted for compatibility but ignored.
+    const placeholderOf = options.placeholder;
+    let currentPlaceholder = '';
+    const commands = options.commands ?? [];
+    const stripAnsi = (s: string): string => s.replace(new RegExp(ESC + '\\[[0-9;]*m', 'g'), '');
+    const termCols = (): number => {
+      const c = (out as { columns?: number }).columns;
+      return typeof c === 'number' && c > 0 ? c : 80;
     };
 
-    /** Cancels any pending/in-flight model-ghost request. */
-    const cancelSuggest = (): void => {
-      if (suggestTimer !== null) {
-        clearTimeout(suggestTimer);
-        suggestTimer = null;
-      }
-      if (suggestController !== null) {
-        suggestController.abort();
-        suggestController = null;
-      }
-    };
-
-    /**
-     * Recomputes ghost-text for the current buffer: the INSTANT slash-completion
-     * synchronously, then (debounced) an async MODEL suggestion that fills in
-     * when there's no instant ghost and the buffer is still unchanged.
-     */
-    const refreshGhost = (): void => {
-      cancelSuggest();
-      const seq = ++suggestSeq;
-      if (!state.awaiting) {
+    // Slash-command menu: active when the buffer is a single `/token` on the MAIN
+    // line. `menuItems` are the commands whose name starts with the typed token.
+    const SLASH_RE = /^\/[^\s]*$/;
+    let menuItems: { name: string; description: string }[] = [];
+    let menuIndex = 0;
+    const recomputeMenu = (): void => {
+      if (this.inSubPrompt || commands.length === 0 || !SLASH_RE.test(state.buffer)) {
+        menuItems = [];
+        menuIndex = 0;
         return;
       }
-      state = { ...state, ghost: instantGhost(state.buffer, ghostCommands) };
-      if (suggest === undefined || state.ghost.length > 0 || state.buffer.trim().length === 0) {
-        return; // instant ghost wins, or nothing to suggest
-      }
-      const at = state.buffer;
-      suggestTimer = setTimeout(() => {
-        const controller = new AbortController();
-        suggestController = controller;
-        void suggest(at, controller.signal)
-          .then((completion) => {
-            // Apply only if THIS is still the latest request, the user hasn't
-            // typed since, we're still at the prompt, and no instant ghost took
-            // over — so a stale (even same-text, cross-prompt) resolve can't paint.
-            if (
-              seq === suggestSeq &&
-              completion !== null &&
-              completion.length > 0 &&
-              state.awaiting &&
-              state.buffer === at &&
-              state.ghost === ''
-            ) {
-              state = { ...state, ghost: completion };
-              repaint();
-            }
-          })
-          .catch(() => undefined);
-      }, GHOST_DEBOUNCE_MS);
-      if (typeof (suggestTimer as { unref?: () => void }).unref === 'function') {
-        (suggestTimer as { unref: () => void }).unref();
+      const typed = state.buffer.slice(1).toLowerCase();
+      menuItems = commands.filter((c) => c.name.startsWith(typed));
+      if (menuIndex >= menuItems.length) {
+        menuIndex = 0;
       }
     };
+
+    // Physical rows the last paint occupied (input line + any menu rows), so a
+    // wrapped prompt or an open menu is cleared in FULL on the next paint. (A
+    // single-line clear left stale rows behind — what duplicated the line on ↑.)
+    let prevRows = 0;
+
+    const paint = (): void => {
+      if (currentPrompt === null || !state.awaiting) {
+        return;
+      }
+      const cols = termCols();
+      const showPlaceholder =
+        state.buffer.length === 0 && currentPlaceholder.length > 0 && !this.inSubPrompt;
+      const body = showPlaceholder ? pc.dim(currentPlaceholder) : state.buffer;
+      const promptVis = stripAnsi(currentPrompt).length;
+      const bodyVis = showPlaceholder ? currentPlaceholder.length : state.buffer.length;
+      const inputRows = Math.max(1, Math.ceil(Math.max(1, promptVis + bodyVis) / cols));
+
+      // The command menu, one row per match (highlighted row in accent).
+      let menuStr = '';
+      for (let i = 0; i < menuItems.length; i += 1) {
+        const it = menuItems[i] as { name: string; description: string };
+        const head = i === menuIndex ? pc.cyan(`▸ /${it.name}`) : pc.dim(`  /${it.name}`);
+        menuStr += `\n${head}  ${pc.dim(it.description)}`;
+      }
+      const menuRows = menuItems.length;
+
+      let seq = '';
+      if (prevRows > 1) {
+        seq += `${ESC}[${prevRows - 1}A`; // up to the first row of the old block
+      }
+      seq += `${CR}${ESC}[0J`; // col 0, erase to end of screen → wipe the old block
+      seq += currentPrompt + body + menuStr;
+      // Park the cursor back on the INPUT line at the insertion point.
+      if (menuRows > 0) {
+        // Slash tokens are short → the input is a single row; go up over the menu.
+        seq += `${ESC}[${menuRows}A${CR}`;
+        const col = promptVis + state.cursor;
+        if (col > 0) {
+          seq += `${ESC}[${col}C`;
+        }
+      } else {
+        const back = showPlaceholder
+          ? currentPlaceholder.length
+          : state.buffer.length - state.cursor;
+        if (back > 0) {
+          seq += `${ESC}[${back}D`;
+        }
+      }
+      out.write(seq);
+      prevRows = inputRows + menuRows;
+    };
+    const repaint = paint;
 
     const onKeypress = (_str: string | undefined, key: ParsedKey | undefined): void => {
       if (key === undefined) {
         return;
       }
       try {
+        // The slash-command menu intercepts navigation/accept keys BEFORE the
+        // reducer: ↑/↓ move the highlight (not history), Tab/→-at-end fills in
+        // the highlighted command. Everything else falls through to edit + filter.
+        if (menuItems.length > 0 && key.ctrl !== true && key.meta !== true) {
+          if (key.name === 'up') {
+            menuIndex = (menuIndex - 1 + menuItems.length) % menuItems.length;
+            paint();
+            return;
+          }
+          if (key.name === 'down') {
+            menuIndex = (menuIndex + 1) % menuItems.length;
+            paint();
+            return;
+          }
+          const atEnd = state.cursor >= state.buffer.length;
+          if (key.name === 'tab' || (key.name === 'right' && atEnd)) {
+            const chosen = menuItems[menuIndex];
+            if (chosen !== undefined) {
+              const buf = `/${chosen.name} `;
+              state = {
+                ...state,
+                buffer: buf,
+                cursor: buf.length,
+                ghost: '',
+                historyIndex: -1,
+                draft: '',
+              };
+              recomputeMenu();
+              paint();
+            }
+            return;
+          }
+        }
         const result = reduceKey(state, key);
         state = result.state;
         switch (result.action.type) {
           case 'submit': {
-            cancelSuggest();
             out.write('\n'); // commit the typed line below the prompt
             currentPrompt = null;
             const waiter = waiters.shift();
@@ -1113,7 +1167,6 @@ export class Ui {
             return;
           }
           case 'eof': {
-            cancelSuggest();
             out.write('\n');
             closed = true;
             currentPrompt = null;
@@ -1133,7 +1186,6 @@ export class Ui {
               repaint();
               return;
             }
-            cancelSuggest();
             out.write('\n');
             currentPrompt = null;
             waiters.shift()?.(REWIND_SENTINEL);
@@ -1148,7 +1200,6 @@ export class Ui {
               repaint();
               return;
             }
-            cancelSuggest();
             out.write('\n');
             currentPrompt = null;
             waiters.shift()?.(LOG_SENTINEL);
@@ -1165,9 +1216,8 @@ export class Ui {
             }
             return;
           case 'none':
-            // The reducer cleared the ghost on an edit; recompute it (instant +
-            // debounced model) before repainting the line.
-            refreshGhost();
+            // Re-filter the command menu (buffer may have changed) and re-render.
+            recomputeMenu();
             repaint();
             return;
         }
@@ -1223,7 +1273,9 @@ export class Ui {
       process.removeListener('SIGTERM', onTermSignal);
       process.removeListener('SIGHUP', onTermSignal);
       restoreCooked();
-      out.write(`${CR}${ESC}[2K`); // wipe any half-drawn prompt line
+      if (prevRows > 1) out.write(`${ESC}[${prevRows - 1}A`);
+      out.write(`${CR}${ESC}[0J`); // wipe any half-drawn (possibly wrapped) prompt
+      prevRows = 0;
       rawActive = false;
     };
 
@@ -1258,7 +1310,16 @@ export class Ui {
         ghost: '',
         queue: this.inSubPrompt ? state.queue : '',
       };
-      out.write(renderInput(state, prompt));
+      // Re-evaluate the contextual placeholder for THIS prompt (a function hint
+      // adapts to what just happened); the menu reflects any queued slash text.
+      currentPlaceholder = this.inSubPrompt
+        ? ''
+        : typeof placeholderOf === 'function'
+          ? placeholderOf()
+          : (placeholderOf ?? '');
+      recomputeMenu();
+      prevRows = 0;
+      paint();
       return new Promise((resolve) => {
         waiters.push((line) => {
           state = { ...state, awaiting: false };
@@ -1299,7 +1360,6 @@ export class Ui {
           this.resumeEditor = null;
         }
         closed = true; // set first (mirrors the eof path) so no re-entrant read races
-        cancelSuggest();
         disableRaw();
         while (waiters.length > 0) {
           waiters.shift()?.(null);
