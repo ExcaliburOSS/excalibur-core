@@ -66,6 +66,18 @@ describe('parseTurnIntent', () => {
     expect(parseTurnIntent('schedule')).toBe('schedule'); // AO8-4
     expect(parseTurnIntent('mission')).toBe('mission'); // meta-orchestrator route (M6)
     expect(parseTurnIntent('scope')).toBe('scope'); // AO9-3 understand-first route
+    expect(parseTurnIntent('edit')).toBe('edit'); // RUN-FIX-10 small-change route
+  });
+
+  it('prefers the LAST recognized label, skipping confidence words and stray prose (RUN-FIX-10)', () => {
+    // The decision format is "<category> <confidence>": the confidence word is not
+    // an intent, so the category still wins.
+    expect(parseTurnIntent('edit high')).toBe('edit');
+    expect(parseTurnIntent('chat low')).toBe('chat');
+    // A reasoning model may mention a category word in its prose before the final
+    // label; the trailing label must win over the earlier stray mention.
+    expect(parseTurnIntent('the user wants to chat about a refactor, so: edit high')).toBe('edit');
+    expect(parseTurnIntent('this looks like an edit but is really a question — chat')).toBe('chat');
   });
 });
 

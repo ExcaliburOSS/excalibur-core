@@ -68,7 +68,10 @@ export function parseStructuralInput(text: string): StructuralInput {
  * (multi-language), NEVER by keyword/regex: a French/German/… user gets the same
  * proactive routing as an English one.
  *
- * - `chat`: a question / explanation / single direct change → a normal turn.
+ * - `chat`: a question / explanation — NO files are created or changed.
+ * - `edit`: one small, direct code/file change → the gated workflow engine
+ *   (fast-fix), so even a quick change in the m-shell gets the same quality
+ *   (tests/typecheck/verify) as `excalibur run`, never a bare loop (RUN-FIX-10).
  * - `plan`: a multi-step build worth planning first (plan → approve → execute).
  * - `swarm`: many independent parallelizable subtasks → fan out to agents.
  * - `bg`: a long-running task to run in the background.
@@ -83,6 +86,7 @@ export function parseStructuralInput(text: string): StructuralInput {
  */
 export type TurnIntent =
   | 'chat'
+  | 'edit'
   | 'plan'
   | 'swarm'
   | 'bg'
@@ -96,6 +100,7 @@ export type TurnIntent =
 
 const TURN_INTENTS: readonly TurnIntent[] = [
   'chat',
+  'edit',
   'plan',
   'swarm',
   'bg',
@@ -129,7 +134,8 @@ export function buildIntentPrompt(text: string): string {
   return [
     'You are an intent classifier for a coding-agent CLI. Read the user request in ANY language',
     'and choose the SINGLE best category:',
-    '- chat: a question, explanation, or one small direct change the agent can just do.',
+    '- chat: a question or explanation — answering it does NOT create or change any file.',
+    '- edit: ONE small, direct code/file change (create or modify a file, fix a bug, add a function) — no planning needed, but real code is written.',
     '- plan: a multi-step build/change worth planning first.',
     '- swarm: many independent, parallelizable subtasks.',
     '- bg: a long-running task to run in the background.',
@@ -140,17 +146,29 @@ export function buildIntentPrompt(text: string): string {
     '- orchestration: VIEW, PAUSE or RESUME an EXISTING parallel run — its swarm/orchestration/chronogram/timeline (not new work).',
     '- schedule: run a task on a RECURRING cadence ("every morning", "cada 2 horas", "nightly", "daily at 9", "each hour run X").',
     '- mission: a BIG, multi-faceted goal needing SEVERAL kinds of work composed and driven to completion autonomously — e.g. "build feature X end to end (design, implement across modules, test, verify, open a PR)", a large migration, "ship the whole thing". Choose this over plan/swarm/goal when the work needs MULTIPLE different phases, not just one.',
-    'Answer with ONLY the category word (chat, plan, swarm, bg, research, goal, explore, scope, orchestration, schedule, or mission).',
+    'Answer with ONLY the category word (chat, edit, plan, swarm, bg, research, goal, explore, scope, orchestration, schedule, or mission).',
     '',
     `Request: ${text}`,
   ].join('\n');
 }
 
-/** Maps a model answer to a {@link TurnIntent}; anything unrecognized → `chat`. */
+/**
+ * Maps a model answer to a {@link TurnIntent}; anything unrecognized → `chat`.
+ * Prefers the LAST recognized token, not the first: the label sits at/near the end
+ * of both the single-word ("edit") and two-word ("edit high") answer formats — and
+ * of a reasoning model's trailing label — so a category word that appears earlier
+ * inside the model's prose (e.g. "edit" or "plan" in a sentence) does not win over
+ * the actual answer. Confidence words (high/medium/low) are not intents, so they
+ * are skipped naturally.
+ */
 export function parseTurnIntent(modelOutput: string): TurnIntent {
   const tokens = modelOutput.toLowerCase().match(/[a-z]+/g) ?? [];
-  const found = tokens.find((t) => (TURN_INTENTS as readonly string[]).includes(t));
-  return (found as TurnIntent | undefined) ?? 'chat';
+  for (let i = tokens.length - 1; i >= 0; i -= 1) {
+    if ((TURN_INTENTS as readonly string[]).includes(tokens[i] as string)) {
+      return tokens[i] as TurnIntent;
+    }
+  }
+  return 'chat';
 }
 
 /**
@@ -171,7 +189,8 @@ export function buildDecisionPrompt(text: string): string {
   return [
     'You are an intent classifier for a coding-agent CLI. Read the user request in ANY language',
     'and choose the SINGLE best category AND your confidence in that choice:',
-    '- chat: a question, explanation, or one small direct change the agent can just do.',
+    '- chat: a question or explanation — answering it does NOT create or change any file.',
+    '- edit: ONE small, direct code/file change (create or modify a file, fix a bug, add a function) — no planning needed, but real code is written.',
     '- plan: a multi-step build/change worth planning first.',
     '- swarm: many independent, parallelizable subtasks.',
     '- bg: a long-running task to run in the background.',
@@ -236,10 +255,12 @@ export function riskOfShape(intent: TurnIntent): ShapeRisk {
     case 'scope':
     case 'orchestration':
       return 'low';
+    case 'edit':
     case 'plan':
     case 'swarm':
     case 'bg':
     case 'schedule':
+      // edit = one small direct code change (a real mutation, but reversible);
       // schedule = add a recurring job: a reversible config write (you can remove
       // it), but it commits to FUTURE autonomous runs → confirm unless autonomy is
       // granted, like a build.
@@ -254,6 +275,12 @@ export function riskOfShape(intent: TurnIntent): ShapeRisk {
       // costly run. Highest impact → narrate-and-act under full autonomy, ask
       // otherwise (decidePosture maps high-risk this way).
       return 'high';
+    default: {
+      // Exhaustiveness guard: a future TurnIntent must be classified here, not
+      // silently fall through to an undefined risk.
+      const _exhaustive: never = intent;
+      return _exhaustive;
+    }
   }
 }
 

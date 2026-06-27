@@ -196,9 +196,21 @@ function PhaseNode({
     <Box flexDirection="column">
       <Box>
         <Text color={node.color}>{` ${node.char} `}</Text>
-        <Text color={nameColor} bold={active}>
-          {paddedName}
-        </Text>
+        {active && phase.state === 'running' ? (
+          // The live phase title pulses an accent crest left→right (RUN-FIX-9) —
+          // so the header itself reads as "happening now", not a static label.
+          <Text bold>
+            {shimmerSpans(paddedName, spinnerFrame, colors, colors.text).map((span, index) => (
+              <Text key={index} color={span.hex}>
+                {span.text}
+              </Text>
+            ))}
+          </Text>
+        ) : (
+          <Text color={nameColor} bold={active}>
+            {paddedName}
+          </Text>
+        )}
         {annotation.length > 0 ? <Text color={colors.muted}>{annotation}</Text> : null}
       </Box>
       {active && windowed.hidden > 0 ? (

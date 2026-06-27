@@ -83,6 +83,22 @@ export interface RunTaskOptions {
   agent?: string;
   /** Internal: this IS the diagnostics-repair run — do not trigger another (recursion guard). */
   internalRepair?: boolean;
+  /**
+   * Conversational mode (RUN-FIX-10): the interactive m-shell drives the SAME
+   * gated workflow engine as `excalibur run`, but slims the chrome to the
+   * conversational rail (compact status footer, the "⋯ N earlier" tail label) and
+   * skips the one-shot CLI onboarding prompts (the dirty-tree nudge and the
+   * discovery offer) that would be noise mid-conversation. So a build typed in the
+   * shell gets the complexity-sized workflow + Verify/Review + mesh + claims, with
+   * the friendly interface — never a degraded single loop.
+   */
+  conversational?: boolean;
+  /**
+   * Abort signal (the shell's per-turn ESC controller). Forwarded to the engine
+   * so cancelling the turn ends the run at the next phase boundary and kills any
+   * in-flight tool; also aborted by the rail's own ESC.
+   */
+  signal?: AbortSignal;
 }
 
 /** Maps a resolved custom agent onto the engine's agent-override shape. */
@@ -283,6 +299,10 @@ export async function runTask(
 ): Promise<RunRecord | null> {
   const repoRoot = deps.cwd();
   const yes = options.yes === true;
+  // Conversational (m-shell, RUN-FIX-10): the shell already routed/decided, so the
+  // one-shot CLI chrome — the plan-card gate, the run-dir line, the footer — is
+  // skipped; the live rail + warm receipt speak instead.
+  const conversational = options.conversational === true;
 
   // Self-contained custom agent (P1.7): resolve `--agent <name>` early so an
   // unknown name fails before any work, with a clear message.
@@ -337,6 +357,7 @@ export async function runTask(
   let useIntentDefaults = true;
   if (
     intent.recommendDiscoveryFirst &&
+    options.conversational !== true && // the shell already routed/decided — no onboarding offer
     options.workflow === undefined &&
     explicitLevel === undefined &&
     explicitStyle === undefined
@@ -408,8 +429,11 @@ export async function runTask(
     config.ui?.customTheme,
   );
 
-  // The intent-driven run prompt (onboarding §6).
-  for (;;) {
+  // The intent-driven run prompt (onboarding §6). Skipped in the conversational
+  // m-shell: the shell already routed/decided the build, so the plan-card gate
+  // would be run-tracker chrome the conversation must not speak — proceed with the
+  // chosen workflow and let the live rail show the phases.
+  for (; !conversational; ) {
     // Swarm sizing (pre-plan estimate). The developer never picks the count;
     // the allocator does, explainably. Shown only when it sizes to >1 — and
     // honestly: the parallel fan-out itself executes in a later milestone, so
@@ -579,7 +603,10 @@ export async function runTask(
     ...(workItemId !== undefined ? { workItemId } : {}),
   });
   deps.ui.write();
-  deps.ui.info(deps.t('run-pipeline.runDir', { id: run.id, dir: run.dir }));
+  if (!conversational) {
+    // Run-tracker line ("Task run_X → <dir>") — CLI chrome the m-shell never speaks.
+    deps.ui.info(deps.t('run-pipeline.runDir', { id: run.id, dir: run.dir }));
+  }
 
   const interactive = deps.ui.isInteractive() && !yes;
 
@@ -597,17 +624,50 @@ export async function runTask(
     push: deps.t('rail.push'),
     noPush: deps.t('rail.noPush'),
     tasks: deps.t('rail.tasks'),
+    // The "⋯ N earlier" collapse indicator for the live tail (RUN-FIX-2).
+    earlier: deps.t('rail.earlier'),
   };
   // An agentic run mutates the real tree — nudge to a clean, revertible start.
-  warnDirtyTree(deps, repoRoot);
+  // The conversational shell already lives in the repo; the nudge is one-shot-CLI
+  // noise mid-conversation, so it is skipped there.
+  if (!conversational) {
+    warnDirtyTree(deps, repoRoot);
+  }
+
+  // ESC (the shell's per-turn controller) and the rail's own ESC both abort the
+  // run; the merged signal is forwarded to the engine (ends at the next phase
+  // boundary + kills in-flight tools).
+  const runController = new AbortController();
+  const onParentAbort = (): void => runController.abort();
+  if (options.signal !== undefined) {
+    if (options.signal.aborted) {
+      runController.abort();
+    } else {
+      options.signal.addEventListener('abort', onParentAbort, { once: true });
+    }
+  }
 
   // The live rail renders with Ink (<RunView>) on a TTY; a piped/CI stdout
   // streams plain per-event lines + a static renderRail recap. Both fold the
-  // SAME reduceRail, so live = scrub = replay.
+  // SAME reduceRail, so live = scrub = replay. The conversational shell slims the
+  // footer to time · tokens · cost (drops the level/safety/push/model jargon).
   let inkHandle: RunViewHandle | null = null;
   if (deps.ui.isOutputTty()) {
+    // The Ink rail OWNS stdin for the run: suspend the caller's raw editor first so
+    // the REPL editor and Ink's useInput don't both consume the same keystrokes
+    // (a no-op for standalone `excalibur run`, which has no raw editor). Paired with
+    // resumeInput() in the finally below.
+    deps.ui.suspendInput();
     const ink = await loadInkUi();
-    inkHandle = ink.mountRunView({ palette, tier, mode, reduce: reduceOpts, labels: railLabels });
+    inkHandle = ink.mountRunView({
+      palette,
+      tier,
+      mode,
+      reduce: reduceOpts,
+      labels: railLabels,
+      ...(conversational ? { compactStatus: true } : {}),
+    });
+    inkHandle.onEscape(() => runController.abort());
   }
 
   deps.ui.write();
@@ -624,57 +684,68 @@ export async function runTask(
 
   // A const snapshot so the narration closure narrows cleanly (inkHandle is a let).
   const liveInk = inkHandle;
-  const record = await executeLocalRun({
-    repoRoot,
-    runManager,
-    run,
-    definition: choice.definition,
-    gateway: gatewayContext.gateway,
-    adapter: new NativeAgentAdapter(),
-    config,
-    // Extension-contributed tools harvested from activation, executed by the
-    // native loop alongside the native tools. Omitted when no extension adds one.
-    ...(extensionTools.length > 0 ? { extensionTools } : {}),
-    // Custom agent (P1.7): persona, model, sampling and guardrails applied to
-    // every agent_work phase. Omitted → the workflow's role + configured model.
-    ...(customAgent !== null ? { agent: agentOverrides(customAgent) } : {}),
-    // Hard budget cap: a `--budget` flag (USD→cents) overrides config.budget.maxRunUsd.
-    ...(options.budgetUsd !== undefined
-      ? { budgetCents: Math.round(options.budgetUsd * 100) }
-      : {}),
-    // Without a confirm fn the engine auto-approves ({ auto: true }) —
-    // exactly what --yes / non-interactive runs want.
-    ...(interactive ? { confirm } : {}),
-    // Free-text human channel for the `question` tool (P1.8b). Only when a human
-    // is at a plain prompt (not under the Ink rail, which owns stdin); otherwise
-    // the tool gracefully tells the model to proceed autonomously.
-    ...(interactive && inkHandle === null
-      ? { ask: (question: string): Promise<string> => deps.ui.ask(question) }
-      : {}),
-    onEvent: (event): void => {
-      if (inkHandle !== null) {
-        inkHandle.push(event);
-        return;
-      }
-      const line = describeEvent(deps.t, event);
-      if (line !== null) {
-        deps.ui.write(line);
-      }
-    },
-    // Live narration: type the model's prose out as it streams, into the Ink rail
-    // (only when the rail is up — a TTY). Piped/non-TTY runs stay non-streamed.
-    ...(liveInk !== null
-      ? {
-          onNarration: ({ content }: { content: string }): void => liveInk.streamNarration(content),
+  let record: RunRecord;
+  try {
+    record = await executeLocalRun({
+      repoRoot,
+      runManager,
+      run,
+      signal: runController.signal,
+      definition: choice.definition,
+      gateway: gatewayContext.gateway,
+      adapter: new NativeAgentAdapter(),
+      config,
+      // Extension-contributed tools harvested from activation, executed by the
+      // native loop alongside the native tools. Omitted when no extension adds one.
+      ...(extensionTools.length > 0 ? { extensionTools } : {}),
+      // Custom agent (P1.7): persona, model, sampling and guardrails applied to
+      // every agent_work phase. Omitted → the workflow's role + configured model.
+      ...(customAgent !== null ? { agent: agentOverrides(customAgent) } : {}),
+      // Hard budget cap: a `--budget` flag (USD→cents) overrides config.budget.maxRunUsd.
+      ...(options.budgetUsd !== undefined
+        ? { budgetCents: Math.round(options.budgetUsd * 100) }
+        : {}),
+      // Without a confirm fn the engine auto-approves ({ auto: true }) —
+      // exactly what --yes / non-interactive runs want.
+      ...(interactive ? { confirm } : {}),
+      // Free-text human channel for the `question` tool (P1.8b). Only when a human
+      // is at a plain prompt (not under the Ink rail, which owns stdin); otherwise
+      // the tool gracefully tells the model to proceed autonomously.
+      ...(interactive && inkHandle === null
+        ? { ask: (question: string): Promise<string> => deps.ui.ask(question) }
+        : {}),
+      onEvent: (event): void => {
+        if (inkHandle !== null) {
+          inkHandle.push(event);
+          return;
         }
-      : {}),
-  });
+        const line = describeEvent(deps.t, event);
+        if (line !== null) {
+          deps.ui.write(line);
+        }
+      },
+      // Live narration: type the model's prose out as it streams, into the Ink rail
+      // (only when the rail is up — a TTY). Piped/non-TTY runs stay non-streamed.
+      ...(liveInk !== null
+        ? {
+            onNarration: ({ content }: { content: string }): void =>
+              liveInk.streamNarration(content),
+          }
+        : {}),
+    });
+  } finally {
+    // Always restore the terminal + stdin ownership, even on a throw: unmount the
+    // rail (leaves the final frame in scrollback via <Static>) and resume the
+    // caller's raw editor; drop the parent-signal listener so a finished run's
+    // controller is not pinned alive.
+    if (inkHandle !== null) {
+      inkHandle.unmount();
+      deps.ui.resumeInput();
+    }
+    options.signal?.removeEventListener('abort', onParentAbort);
+  }
 
-  if (inkHandle !== null) {
-    // Unmount leaves the final frame (completed phases already in scrollback via
-    // <Static>) and fully releases stdin/raw mode.
-    inkHandle.unmount();
-  } else {
+  if (inkHandle === null) {
     // Non-TTY recap: a static rail of the recorded stream.
     deps.ui.write();
     for (const line of renderRail(reduceRail(runManager.readEvents(run.id), reduceOpts), {
@@ -686,14 +757,19 @@ export async function runTask(
     }
   }
 
-  deps.ui.write();
-  if (record.status === 'completed') {
-    deps.ui.success(deps.t('run-pipeline.runCompleted', { id: run.id }));
-  } else {
-    deps.ui.warn(deps.t('run-pipeline.runFinishedStatus', { id: run.id, status: record.status }));
+  // The one-shot CLI footer (run id · artifacts · "inspect with") is run-tracker
+  // jargon the conversational m-shell must NOT speak — there, the caller renders
+  // the warm turn receipt instead. `excalibur run` keeps the full footer.
+  if (!conversational) {
+    deps.ui.write();
+    if (record.status === 'completed') {
+      deps.ui.success(deps.t('run-pipeline.runCompleted', { id: run.id }));
+    } else {
+      deps.ui.warn(deps.t('run-pipeline.runFinishedStatus', { id: run.id, status: record.status }));
+    }
+    deps.ui.info(deps.t('run-pipeline.artifacts', { dir: run.dir }));
+    deps.ui.info(deps.t('run-pipeline.inspectWith', { id: run.id }));
   }
-  deps.ui.info(deps.t('run-pipeline.artifacts', { dir: run.dir }));
-  deps.ui.info(deps.t('run-pipeline.inspectWith', { id: run.id }));
 
   // P1.10 — self-correction against REAL compiler diagnostics. With --diagnostics,
   // after the run, typecheck the result; if errors remain, run ONE bounded repair

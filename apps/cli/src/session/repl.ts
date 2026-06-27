@@ -3,6 +3,7 @@ import {
   buildSessionSeed,
   buildStatusLineModel,
   buildTurnSummary,
+  type TurnSummary,
   changeGlyph,
   classifyOrchestrationAction,
   classifyScheduleExtraction,
@@ -67,6 +68,8 @@ import {
   safetyLine,
 } from '../lib/context';
 import { runDiscoveryFlow } from '../commands/discovery';
+import { runTask } from '../lib/run-pipeline';
+import { renderTurnReceipt } from '../lib/turn-receipt';
 import { chooseBuildShape, decomposeTask, runSwarmFlow } from '../lib/swarm';
 import { renderChronogramView } from '../commands/orchestration';
 import { latestOrchestrationRunId, setOrchestrationPaused } from '../lib/orchestration-manifest';
@@ -1042,9 +1045,17 @@ export async function runInteractiveSession(
         } else if (intent === 'plan' || intent === 'mission') {
           // Plan, posture ASK → the deliberate plan → approve → execute gate.
           await dispatchPlan(deps, runtime, text, ctrl.signal, seed);
+        } else if (intent === 'edit' && decision.confidence !== 'low') {
+          // RUN-FIX-10 — even ONE small direct code change runs the GATED workflow
+          // engine (complexity-sized, typically fast-fix), so an m-shell edit gets
+          // the SAME tests/typecheck/verify quality as `excalibur run`, never a bare
+          // loop. Per-edit approval is handled inline by the rail when not auto. A
+          // LOW-confidence "edit" guess falls through to a normal conversational
+          // turn rather than spinning up a whole workflow on a maybe-question.
+          await runConversationalBuild(deps, runtime, text, ctrl.signal);
         } else {
-          // chat · research-declined → a direct model-first turn (the model still
-          // has web_search/web_fetch/research tools).
+          // chat (pure Q&A) · research-declined → a direct model-first conversational
+          // turn (the model still has web_search/web_fetch/research tools).
           await dispatchAgentTurn(deps, runtime, text, ctrl.signal, seed);
         }
       } catch (error) {
@@ -1680,6 +1691,53 @@ async function dispatchAgentTurn(
   await recordAssistantTurn(deps, runtime, result);
 }
 
+/**
+ * RUN-FIX-10 — runs a BUILD typed in the m-shell through the SAME gated workflow
+ * engine as `excalibur run` (classifyTaskIntent → selectWorkflow → executeLocalRun),
+ * so the complexity-sized workflow (fast-fix … structured-feature) with its
+ * Verify/Document/Review phases + verification mesh + claim ledger actually runs —
+ * plus the budget cap, real run-record fidelity and diagnostics the bare loop
+ * lacked. The conversational rail, live narration, inline approvals and the warm
+ * turn receipt are kept: the shell is the friendlier interface to the SAME
+ * functionality, never a degraded single loop. The run is recorded as an assistant
+ * turn so session memory/history continue across turns.
+ */
+async function runConversationalBuild(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  text: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const record = await runTask(deps, text, {
+    conversational: true,
+    level: runtime.autonomyLevel,
+    yes: runtime.approvals.auto,
+    signal,
+  });
+  if (record === null) {
+    return; // cancelled before any work (already surfaced by runTask)
+  }
+  let summary: TurnSummary;
+  try {
+    summary = buildTurnSummary(loadReplay(runtime.repoRoot, record.id));
+  } catch {
+    return; // a sparse/partial log — nothing to receipt
+  }
+  // The warm conversational receipt (the m-shell never speaks the CLI run footer).
+  renderTurnReceipt(deps, summary, { now: new Date(), model: runtime.model });
+  // Record the build as an assistant turn so session history/memory continue.
+  // NOTE: no `inputTokens` — those are this RUN's own ephemeral context, unrelated
+  // to the session conversation size the ctx% gauge tracks, so we must not feed
+  // them into the session-level compaction gate.
+  await recordAssistantTurn(deps, runtime, {
+    text: summary.narrative,
+    model: runtime.model,
+    costCents: summary.metrics.costCents,
+    runId: record.id,
+    mutated: summary.changedFiles.length > 0,
+  });
+}
+
 /** Dispatches an auto plan-mode turn (plan → gate → execute). */
 async function dispatchPlan(
   deps: CliDeps,
@@ -1718,7 +1776,9 @@ async function dispatchAutoBuild(
   runtime: SessionRuntime,
   text: string,
   signal: AbortSignal,
-  seed: ChatMessage[],
+  // The conversation seed is no longer threaded into the build: a gated workflow
+  // run (RUN-FIX-10) builds its own context, so the bare-loop seed is unused.
+  _seed: ChatMessage[],
 ): Promise<void> {
   // Plan-shaping: co-create the scope (clarifying Qs + multi-select recommendations)
   // before decomposing/building; the choices refine the task that gets decomposed.
@@ -1757,7 +1817,10 @@ async function dispatchAutoBuild(
     }
   }
   deps.ui.info(deps.t('repl.auto-build-sequential'));
-  await dispatchAgentTurn(deps, runtime, text, signal, seed);
+  // RUN-FIX-10 — a single-workstream build runs the GATED workflow engine (the
+  // same one `excalibur run` uses), not a bare agent loop: complexity-sized
+  // phases + Verify/Review + verification mesh + claim ledger, under the warm rail.
+  await runConversationalBuild(deps, runtime, text, signal);
 
   // AO4f-2 — give the SEQUENTIAL auto-build the same adversarial review the swarm
   // path gets (AO4f-1). The turn already applied as it went (no merge gate to
