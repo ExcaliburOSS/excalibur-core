@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { plansDir, readPlan } from '@excalibur/core';
+import { listPlans, planProgress, plansDir, readPlan } from '@excalibur/core';
 import type { AutonomyLevel } from '@excalibur/shared';
 import { parse as parseYaml } from 'yaml';
 import type { Command } from 'commander';
@@ -8,6 +8,7 @@ import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
 import { loadConfigContext, loadGatewayContext, requireConfiguredModel } from '../lib/context';
+import { materializePlanIntoWorkItems } from '../lib/plan-work-items';
 import { findResumablePlan, resumePlanTurn, type AgentTurnDeps } from '../session/agent-turn';
 
 interface PlanFrontmatter {
@@ -109,15 +110,58 @@ async function resumePlanAction(
   await resumePlanTurn(turn, plan.id);
 }
 
+const stepGlyph = (status: string): string =>
+  status === 'done' ? '✓' : status === 'active' ? '▸' : status === 'blocked' ? '✗' : '○';
+
 /**
- * `excalibur plans` — browse + resume saved plans in `.excalibur/plans/`. The
- * list (default) shows status/task/date; `resume` picks an unfinished plan back
- * up at its next step. The plan markdown + JSON sidecar are portable + re-runnable.
+ * `excalibur plans tasks [id]` — materialize a plan into the kanban as an epic +
+ * per-step sub-tasks with dependency edges (PLAN2), then print the tree with each
+ * step's work-item key. Idempotent (re-running never duplicates). Defaults to the
+ * newest plan.
+ */
+function planTasksAction(deps: CliDeps, id: string | undefined): void {
+  const repoRoot = deps.cwd();
+  const plan = id !== undefined ? readPlan(repoRoot, id) : (listPlans(repoRoot)[0] ?? null);
+  if (plan === null) {
+    deps.ui.info(deps.t('plans.none'));
+    return;
+  }
+  const { total } = planProgress(plan.plan);
+  if (total === 0) {
+    deps.ui.info(deps.t('plans.tasks_empty'));
+    return;
+  }
+
+  const result = materializePlanIntoWorkItems(repoRoot, plan.id, plan.plan, plan.task);
+  const epic = result.epicWorkItemId ?? plan.plan.epicWorkItemId ?? '—';
+  deps.ui.heading(deps.t('plans.tasks_heading', { epic, task: plan.task }));
+  for (const phase of plan.plan.phases) {
+    if (phase.title.length > 0) {
+      deps.ui.write(`  ${pc.bold(phase.title)}`);
+    }
+    for (const step of phase.steps) {
+      const key = step.workItemId ?? '—';
+      const deps_ = (step.deps ?? [])
+        .map((d) => result.stepWorkItemIds[d])
+        .filter((k): k is string => k !== undefined);
+      const dep = deps_.length > 0 ? pc.dim(` ⟂ needs ${deps_.join(', ')}`) : '';
+      deps.ui.write(`   ${stepGlyph(step.status)} ${pc.cyan(key)}  ${step.title}${dep}`);
+    }
+  }
+  deps.ui.write();
+  deps.ui.info(deps.t('plans.tasks_footer', { count: Object.keys(result.stepWorkItemIds).length }));
+}
+
+/**
+ * `excalibur plans` — browse, resume, and materialize saved plans in
+ * `.excalibur/plans/`. `list` (default) shows status/task/date; `resume` picks an
+ * unfinished plan up at its next step (PLAN3); `tasks` materializes the plan into
+ * the kanban as an epic + sub-tasks (PLAN2). The `.md` + JSON sidecar are portable.
  */
 export function registerPlansCommand(program: Command, deps: CliDeps): void {
   const plans = program
     .command('plans')
-    .description('browse & resume saved plans (.excalibur/plans)');
+    .description('browse, resume & materialize saved plans (.excalibur/plans)');
 
   plans
     .command('list', { isDefault: true })
@@ -133,4 +177,10 @@ export function registerPlansCommand(program: Command, deps: CliDeps): void {
     .action((id: string | undefined, options: ResumeOptions) =>
       resumePlanAction(deps, id, options),
     );
+
+  plans
+    .command('tasks')
+    .description('materialize a plan into the kanban (epic + sub-tasks + deps)')
+    .argument('[id]', 'plan id (defaults to the newest plan)')
+    .action((id: string | undefined) => planTasksAction(deps, id));
 }

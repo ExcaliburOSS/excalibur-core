@@ -11,6 +11,7 @@ import {
   setPlanStatus,
   slugify,
   updatePlanStep,
+  writePlanSidecar,
 } from './plan-store';
 
 /** The plan id (filename without `.md`) from a saved plan's absolute path. */
@@ -294,6 +295,34 @@ describe('setPlanStatus / resumablePlans (PLAN3)', () => {
       updatePlanStep(repo, liveId, 'p1.s1', 'done');
       updatePlanStep(repo, liveId, 'p1.s2', 'done');
       expect(resumablePlans(repo)).toEqual([]);
+    } finally {
+      removeDir(repo);
+    }
+  });
+
+  it('writePlanSidecar overwrites the sidecar (workItemId/epic links survive)', () => {
+    const repo = makeTempDir();
+    try {
+      const file = savePlan(repo, {
+        task: 'Materialize me',
+        planMarkdown: '1. first\n2. second',
+        status: 'approved',
+        planRunId: 'run_p',
+        now: new Date('2026-06-27T12:00:00.000Z'),
+      });
+      const id = idOf(repo, file);
+      const stored = readPlan(repo, id)!;
+      // Stamp PLAN2 links onto the in-memory plan and persist them.
+      stored.plan.epicWorkItemId = 'WI-1';
+      stored.plan.phases[0]!.steps[0]!.workItemId = 'WI-2';
+      expect(writePlanSidecar(repo, id, stored.plan)).toBe(true);
+
+      const back = readPlan(repo, id);
+      expect(back?.plan.epicWorkItemId).toBe('WI-1');
+      expect(back?.plan.phases[0]?.steps[0]?.workItemId).toBe('WI-2');
+      // Unsafe / unknown ids → false.
+      expect(writePlanSidecar(repo, '../escape', stored.plan)).toBe(false);
+      expect(writePlanSidecar(repo, 'missing-plan', stored.plan)).toBe(false);
     } finally {
       removeDir(repo);
     }

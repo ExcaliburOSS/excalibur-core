@@ -67,6 +67,7 @@ import { describeEvent } from '../lib/run-pipeline';
 import { renderTurnReceipt } from '../lib/turn-receipt';
 import { ActionRenderer, activityFor } from '../lib/action-render';
 import { setAutoApprove } from '../lib/config-file';
+import { materializePlanIntoWorkItems, syncStepWorkItemLane } from '../lib/plan-work-items';
 import { loadInkUi } from '../ink/load';
 
 /**
@@ -1024,6 +1025,25 @@ async function executeApprovedPlan(
     /* if the checkpoint can't be written we still execute (resume just won't persist) */
   }
 
+  // PLAN2 — materialize the plan into the kanban: the plan becomes an EPIC, each
+  // step a tracked sub-task with its deps as dependency edges. Idempotent + best-
+  // effort (a work-items write must never abort the approved execution).
+  if (planId !== null) {
+    try {
+      const wi = materializePlanIntoWorkItems(turn.repoRoot, planId, plan, task);
+      if (wi.created > 0 && wi.epicWorkItemId !== null) {
+        turn.deps.ui.info(
+          turn.deps.t('agent-turn.plan_workitems', {
+            epic: wi.epicWorkItemId,
+            count: Object.keys(wi.stepWorkItemIds).length,
+          }),
+        );
+      }
+    } catch {
+      /* materialization is best-effort; the plan still executes */
+    }
+  }
+
   turn.deps.ui.write();
   turn.deps.ui.info(turn.deps.t('agent-turn.plan_steps_header', { count: total }));
   return driveStructuredPlan(turn, adapter, runManager, { ...input, planId });
@@ -1125,6 +1145,11 @@ async function driveStructuredPlan(
         } catch {
           /* the on-disk checkpoint is best-effort; execution continues regardless */
         }
+      }
+      // PLAN2 — live-sync the step's linked work-item onto the matching kanban lane
+      // (active → in_progress, done → done), so the board tracks execution.
+      if (step.workItemId !== undefined) {
+        syncStepWorkItemLane(turn.repoRoot, step.workItemId, step.status);
       }
       if (step.status === 'active') {
         turn.deps.ui.write();

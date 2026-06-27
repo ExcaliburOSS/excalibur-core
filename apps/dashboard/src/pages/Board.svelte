@@ -457,6 +457,20 @@
               </div>
               <div class="title">{item.title}</div>
 
+              {#if item.childCount > 0 || item.parentKey || item.blockedBy.length > 0}
+                <div class="rels">
+                  {#if item.childCount > 0}
+                    <span class="rel epic" title={t('workItem.subtasks')}>▸ {item.childCount}</span>
+                  {/if}
+                  {#if item.parentKey}<span class="rel">▸ {item.parentKey}</span>{/if}
+                  {#if item.blockedBy.length > 0}
+                    <span class="rel dep" title={item.blockedBy.join(', ')}
+                      >⟂ {item.blockedBy.length}</span
+                    >
+                  {/if}
+                </div>
+              {/if}
+
               {#if item.checklist.length > 0}
                 <div class="checklist">
                   <div class="progress">
@@ -1008,5 +1022,29 @@
   .runs {
     font-size: 11px;
     white-space: nowrap;
+  }
+  /* PLAN2 — epic/parent/blocked relation chips on a card */
+  .rels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 6px;
+  }
+  .rel {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+  .rel.epic {
+    color: var(--accent-2);
+    border-color: rgba(77, 163, 255, 0.3);
+  }
+  .rel.dep {
+    color: var(--warn);
+    border-color: color-mix(in srgb, var(--warn) 35%, var(--line));
   }
 </style>

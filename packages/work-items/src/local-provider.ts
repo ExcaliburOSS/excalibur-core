@@ -46,6 +46,8 @@ export interface CreateWorkItemInput {
   assignee?: string | null;
   /** Parent work-item key, for sub-tasks. */
   parentExternalId?: string | null;
+  /** Work-item keys this item is blocked by (dependency edges — PLAN2). */
+  blockedBy?: string[];
 }
 
 /** Fields a {@link LocalWorkItemProvider.updateWorkItem} may patch (all optional). */
@@ -58,6 +60,8 @@ export interface UpdateWorkItemInput {
   assignee?: string | null;
   parentExternalId?: string | null;
   order?: number;
+  /** Work-item keys this item is blocked by (dependency edges — PLAN2). */
+  blockedBy?: string[];
 }
 
 /** A kanban lane plus its items, in board order. */
@@ -165,6 +169,9 @@ export class LocalWorkItemProvider implements WorkItemProvider {
       updatedAt: ts,
       // Append to the end of its lane so the board has a stable rank.
       order: this.nextOrder(laneOf(status)),
+      ...(input.blockedBy !== undefined && input.blockedBy.length > 0
+        ? { blockedBy: input.blockedBy }
+        : {}),
       raw: { local: true },
     };
     this.write(item);
@@ -201,6 +208,7 @@ export class LocalWorkItemProvider implements WorkItemProvider {
     if (patch.assignee !== undefined) item.assignee = userFromName(patch.assignee);
     if (patch.parentExternalId !== undefined) item.parentExternalId = patch.parentExternalId;
     if (patch.order !== undefined) item.order = patch.order;
+    if (patch.blockedBy !== undefined) item.blockedBy = patch.blockedBy;
     item.updatedAt = this.now().toISOString();
     this.write(item);
     return item;

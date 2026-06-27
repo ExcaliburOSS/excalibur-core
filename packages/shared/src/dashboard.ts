@@ -60,6 +60,12 @@ export interface WorkItemSummary {
   /** Kanban rank within the lane (lower = higher). */
   order: number;
   updatedAt: string | null;
+  /** The epic this is a sub-task of (PLAN2 plan epic), or null. */
+  parentKey: string | null;
+  /** Number of direct sub-tasks (>0 marks this card as an epic). */
+  childCount: number;
+  /** Work-item keys this item is blocked by — dependency edges (PLAN2). */
+  blockedBy: string[];
   /**
    * The id of an in-flight run advancing this item (`running` /
    * `waiting_approval`), or null. When set, the card shows a live indicator.
@@ -220,13 +226,17 @@ export interface WorkItemDetail {
   createdAt: string | null;
   updatedAt: string | null;
   parentKey: string | null;
+  /** Direct sub-tasks (PLAN2 — when this item is an epic), board order. */
+  children: WorkItemSummary[];
+  /** Work-item keys this item is blocked by — dependency edges (PLAN2). */
+  blockedBy: string[];
   /** Runs that advanced this item (newest first). */
   runs: RunSummary[];
   links: WorkItemLinkDto[];
   comments: WorkItemCommentDto[];
   /** The user-authored checklist (acceptance criteria / subtasks). */
   authoredChecklist: AuthoredChecklistItemDto[];
-  /** Plans linked to this item (D3 fills the link; D0 ships the shape). */
+  /** Plans linked to this item (PLAN2 fills the link). */
   plans: PlanRefDto[];
 }
 
@@ -241,6 +251,8 @@ export interface PlanStepDto {
   status: PlanStepStatusDto;
   /** The run that did this step, when one is recorded. */
   runId: string | null;
+  /** The materialized work-item key for this step (PLAN2), or null. */
+  workItemId: string | null;
 }
 
 /** One phase of a structured plan (a group of steps). */

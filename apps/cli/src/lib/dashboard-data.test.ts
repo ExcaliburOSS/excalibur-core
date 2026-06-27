@@ -3,6 +3,7 @@ import {
   RunManager,
   SessionStore,
   ScheduleStore,
+  readPlan,
   savePlan,
   updatePlanStep,
   plansDir,
@@ -20,6 +21,7 @@ import {
   buildThreads,
   buildWorkItemDetail,
 } from './dashboard-data';
+import { materializePlanIntoWorkItems } from './plan-work-items';
 import { makeTempDir, removeDir } from '../test-utils';
 
 describe('dashboard-data (store → DTO mappers)', () => {
@@ -422,5 +424,53 @@ describe('dashboard-data (store → DTO mappers)', () => {
     });
     const doneId = done.slice(plansDir(repoRoot).length + 1, -'.md'.length);
     expect(buildPlans(repoRoot).find((p) => p.id === doneId)?.resumable).toBe(false);
+  });
+
+  it('materializes a plan into an epic + sub-tasks the board & detail surface (PLAN2)', async () => {
+    const file = savePlan(repoRoot, {
+      task: 'Wire OAuth',
+      planMarkdown: 'ignored',
+      plan: {
+        version: 1,
+        phases: [
+          {
+            id: 'p1',
+            title: 'Setup',
+            steps: [
+              { id: 'p1.s1', title: 'Add config', status: 'pending' },
+              { id: 'p1.s2', title: 'Add provider', status: 'pending', deps: ['p1.s1'] },
+            ],
+          },
+        ],
+      },
+      status: 'approved',
+      planRunId: 'run_p',
+      now: new Date('2026-06-27T09:00:00.000Z'),
+    });
+    const planId = file.slice(plansDir(repoRoot).length + 1, -'.md'.length);
+    const plan = readPlan(repoRoot, planId)!.plan;
+
+    const result = materializePlanIntoWorkItems(repoRoot, planId, plan, 'Wire OAuth');
+    expect(result.created).toBe(3); // 1 epic + 2 steps
+    const epic = result.epicWorkItemId!;
+
+    // The board carries the epic (childCount=2) and its sub-tasks (parentKey=epic).
+    const cards = buildBoard(repoRoot).lanes.flatMap((l) => l.items);
+    const epicCard = cards.find((c) => c.key === epic);
+    expect(epicCard?.childCount).toBe(2);
+    const sub = cards.filter((c) => c.parentKey === epic);
+    expect(sub).toHaveLength(2);
+    // The dependent sub-task carries a blockedBy edge.
+    const dependent = cards.find((c) => c.blockedBy.length > 0);
+    expect(dependent?.blockedBy).toEqual([result.stepWorkItemIds['p1.s1']]);
+
+    // The epic detail lists its children + the plan reverse-link.
+    const detail = await buildWorkItemDetail(repoRoot, epic);
+    expect(detail?.children.map((c) => c.title)).toEqual(['Add config', 'Add provider']);
+    expect(detail?.plans.map((p) => p.id)).toEqual([planId]);
+
+    // The plan detail now carries each step's materialized work-item id.
+    const planDetail = buildPlanDetail(repoRoot, planId);
+    expect(planDetail?.phases[0]?.steps[0]?.workItemId).toBe(result.stepWorkItemIds['p1.s1']);
   });
 });

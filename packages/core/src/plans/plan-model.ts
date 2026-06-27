@@ -40,6 +40,8 @@ export interface StructuredPlan {
   /** Schema version — bump on a breaking shape change. */
   version: 1;
   phases: PlanPhase[];
+  /** The EPIC work-item the plan was materialized into (PLAN2), once it was. */
+  epicWorkItemId?: string;
 }
 
 const ALL_STATUSES: ReadonlySet<string> = new Set([

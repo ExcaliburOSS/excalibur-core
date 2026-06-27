@@ -30,6 +30,7 @@ import {
   type DiscoverySummary,
   type OrchestrationSummary,
   type PlanDetail,
+  type PlanRefDto,
   type PlanSummary,
   type BackgroundThreadView,
   type RunSummary,
@@ -137,6 +138,7 @@ function summarize(
   item: NormalizedWorkItem,
   runs: LocalRun[],
   manager: RunManager,
+  childCount = 0,
 ): WorkItemSummary {
   const { activeRunId, checklist } = activeChecklist(runs, manager);
   return {
@@ -152,6 +154,9 @@ function summarize(
     updatedAt: item.updatedAt,
     activeRunId,
     checklist,
+    parentKey: item.parentExternalId,
+    childCount,
+    blockedBy: item.blockedBy ?? [],
   };
 }
 
@@ -253,10 +258,22 @@ export function buildBoard(repoRoot: string): BoardResponse {
   for (const bucket of runsByItem.values()) {
     bucket.sort((a, b) => b.record.startedAt.localeCompare(a.record.startedAt)); // newest first
   }
-  const lanes: DashboardBoardLane[] = provider.board().map((column) => ({
+  const board = provider.board();
+  // Count direct sub-tasks per parent so an epic card can show a child badge (PLAN2).
+  const childCount = new Map<string, number>();
+  for (const column of board) {
+    for (const item of column.items) {
+      if (item.parentExternalId !== null) {
+        childCount.set(item.parentExternalId, (childCount.get(item.parentExternalId) ?? 0) + 1);
+      }
+    }
+  }
+  const lanes: DashboardBoardLane[] = board.map((column) => ({
     lane: column.lane,
     label: WORK_ITEM_LANE_LABELS[column.lane],
-    items: column.items.map((item) => summarize(item, runsByItem.get(item.key) ?? [], manager)),
+    items: column.items.map((item) =>
+      summarize(item, runsByItem.get(item.key) ?? [], manager, childCount.get(item.key) ?? 0),
+    ),
   }));
   return { lanes, generatedAt: new Date().toISOString() };
 }
@@ -276,6 +293,12 @@ export async function buildWorkItemDetail(
   }
   const manager = new RunManager(repoRoot);
   const runs = manager.runsForWorkItem(item.key).map((run) => runSummary(run, manager));
+  // Sub-tasks of this item (PLAN2 — an epic's steps), in board order.
+  const all = await provider.listWorkItems({ integrationId: 'local' });
+  const children = all
+    .filter((c) => c.parentExternalId === item.key)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .map((c) => summarize(c, manager.runsForWorkItem(c.key), manager));
   return {
     key: item.key,
     title: item.title,
@@ -290,6 +313,8 @@ export async function buildWorkItemDetail(
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
     parentKey: item.parentExternalId,
+    children,
+    blockedBy: item.blockedBy ?? [],
     runs,
     links: item.links.map((l) => ({ type: l.type, url: safeLinkUrl(l.url), title: l.title })),
     comments: item.comments.map((c) => ({
@@ -302,9 +327,26 @@ export async function buildWorkItemDetail(
       text: c.text,
       done: c.done,
     })),
-    // Plans are linked in D3; D0 ships the (empty) contract slot.
-    plans: [],
+    // Plans this item belongs to (PLAN2 — its epic or a step links here).
+    plans: plansForWorkItem(repoRoot, item.key),
   };
+}
+
+/** Plans whose epic OR a step is this work-item key (PLAN2 reverse link), newest first. */
+function plansForWorkItem(repoRoot: string, key: string): PlanRefDto[] {
+  return listPlans(repoRoot)
+    .filter(
+      (p) =>
+        p.plan.epicWorkItemId === key ||
+        p.plan.phases.some((ph) => ph.steps.some((s) => s.workItemId === key)),
+    )
+    .map((p) => ({
+      id: p.id,
+      status: p.status,
+      createdAt: p.created,
+      planRun: p.planRun,
+      execRun: p.execRun,
+    }));
 }
 
 /** Raised by {@link moveWorkItemLane} for an invalid target lane (→ 400). */
@@ -469,6 +511,7 @@ export function buildPlanDetail(repoRoot: string, id: string): PlanDetail | null
         title: s.title,
         status: s.status,
         runId: s.runId ?? null,
+        workItemId: s.workItemId ?? null,
       })),
     })),
     nextStepId: nextPendingStep(p.plan)?.step.id ?? null,

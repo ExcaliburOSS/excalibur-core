@@ -70,6 +70,7 @@ export {
   setPlanStatus,
   resumablePlans,
   planSidecarPath,
+  writePlanSidecar,
   parsePlanMarkdown,
   renderPlanMarkdown,
   planProgress,
@@ -91,6 +92,13 @@ export {
   type RunStructuredPlanOptions,
   type RunStructuredPlanResult,
 } from './plans/plan-runner';
+export {
+  materializePlanWorkItems,
+  type PlanMaterializeOps,
+  type MaterializeWorkItemInput,
+  type MaterializePlanOptions,
+  type PlanMaterializeResult,
+} from './plans/plan-materializer';
 export {
   planVerificationMesh,
   aggregateMesh,

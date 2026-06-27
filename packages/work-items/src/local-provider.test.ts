@@ -34,6 +34,27 @@ describe('LocalWorkItemProvider', () => {
     expect(got.status).toBe('open');
   });
 
+  it('persists blockedBy dependency edges on create and update (PLAN2)', async () => {
+    const root = freshRepo();
+    const p = new LocalWorkItemProvider(root, { now: clock() });
+    const dep = p.createWorkItem({ title: 'dependency' }); // WI-1
+    const blocked = p.createWorkItem({ title: 'blocked', blockedBy: [dep.key] }); // WI-2
+    expect(blocked.blockedBy).toEqual(['WI-1']);
+    // persisted on disk
+    const onDisk = JSON.parse(
+      readFileSync(join(root, '.excalibur', 'work-items', 'WI-2.json'), 'utf8'),
+    );
+    expect(onDisk.blockedBy).toEqual(['WI-1']);
+    // an item with no deps has no blockedBy key (back-compat)
+    const free = JSON.parse(
+      readFileSync(join(root, '.excalibur', 'work-items', 'WI-1.json'), 'utf8'),
+    );
+    expect(free.blockedBy).toBeUndefined();
+    // update can set/replace the edges
+    const edited = p.updateWorkItem('WI-1', { blockedBy: ['WI-2'] });
+    expect(edited.blockedBy).toEqual(['WI-2']);
+  });
+
   it('lists newest-first and filters by status, query and labels', async () => {
     const root = freshRepo();
     const p = new LocalWorkItemProvider(root, { now: clock() });

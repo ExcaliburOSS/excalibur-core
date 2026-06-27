@@ -115,6 +115,13 @@ export type NormalizedWorkItem = {
    * from the run-derived live checklist the dashboard rolls up from a run.
    */
   checklist?: NormalizedWorkItemChecklistItem[];
+  /**
+   * Work-item keys this item is BLOCKED BY (a dependency edge — this item can't
+   * start until they're done). Local-only, set by the plan materializer (PLAN2:
+   * a plan step's deps become its sub-task's `blockedBy`). Optional so existing
+   * `.excalibur/work-items/*.json` keep loading.
+   */
+  blockedBy?: string[];
   raw: unknown;
 };
 
@@ -140,6 +147,7 @@ export const normalizedWorkItemSchema = z.object({
   updatedAt: z.string().nullable(),
   order: z.number().optional(),
   checklist: z.array(normalizedWorkItemChecklistItemSchema).optional(),
+  blockedBy: z.array(z.string()).optional(),
   raw: z.unknown(),
 });
 

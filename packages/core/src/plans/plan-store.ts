@@ -136,6 +136,27 @@ export function planSidecarPath(repoRoot: string, id: string): string {
   return join(plansDir(repoRoot), `${id}.plan.json`);
 }
 
+/**
+ * Overwrites a plan's structured sidecar with `plan` (the source of truth). Used
+ * after the plan materializer (PLAN2) stamps `workItemId`/`epicWorkItemId` onto the
+ * in-memory plan, so the links survive. Returns false on an unsafe/unknown id.
+ */
+export function writePlanSidecar(repoRoot: string, id: string, plan: StructuredPlan): boolean {
+  if (id.length === 0 || id.includes('/') || id.includes('\\') || id.includes('..')) {
+    return false;
+  }
+  const file = planSidecarPath(repoRoot, id);
+  if (!existsSync(file)) {
+    return false;
+  }
+  try {
+    writeFileSync(file, `${JSON.stringify(plan, null, 2)}\n`, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Reads & validates a plan's structured sidecar, or null when absent/corrupt. */
 function readSidecar(repoRoot: string, id: string): StructuredPlan | null {
   const file = planSidecarPath(repoRoot, id);

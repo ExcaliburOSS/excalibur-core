@@ -194,6 +194,11 @@
                   {#if step.id === detail.nextStepId}
                     <span class="nexttag">{t('plan.nextStep')}</span>
                   {/if}
+                  {#if step.workItemId}
+                    <a class="wilink" href={`#/work-items/${encodeURIComponent(step.workItemId)}`}
+                      >{step.workItemId}</a
+                    >
+                  {/if}
                   {#if step.runId}
                     <a class="runlink faint" href={`#/runs/${encodeURIComponent(step.runId)}`}
                       >{step.runId.slice(0, 10)}</a
@@ -686,6 +691,15 @@
     font-family: var(--mono);
     font-size: 11px;
     flex-shrink: 0;
+  }
+  .wilink {
+    font-family: var(--mono);
+    font-size: 11px;
+    flex-shrink: 0;
+    color: var(--accent);
+    padding: 0 6px;
+    border: 1px solid var(--accent-dim);
+    border-radius: 999px;
   }
 
   /* Collapsible raw markdown */

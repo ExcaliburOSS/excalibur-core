@@ -207,6 +207,14 @@
       {#if item.priority}<span class="badge prio-{item.priority}">{prettyPriority(item.priority)}</span
         >{/if}
       {#if item.assignee}<span class="badge">@{item.assignee}</span>{/if}
+      {#if item.parentKey}
+        <a class="badge epic" href={`#/work-items/${encodeURIComponent(item.parentKey)}`}
+          >▸ {item.parentKey}</a
+        >
+      {/if}
+      {#if item.children.length > 0}
+        <span class="badge epic">{t('workItem.epicOf', { count: item.children.length })}</span>
+      {/if}
       {#each item.labels as label (label)}<span class="badge label">{label}</span>{/each}
     </div>
     {#if writable}
@@ -228,6 +236,46 @@
 
   {#if item.description}
     <p class="desc">{item.description}</p>
+  {/if}
+
+  {#if item.blockedBy.length > 0}
+    <div class="deprow">
+      <span class="deplabel faint">{t('workItem.blockedBy')}</span>
+      {#each item.blockedBy as dep (dep)}
+        <a class="badge dep" href={`#/work-items/${encodeURIComponent(dep)}`}>⟂ {dep}</a>
+      {/each}
+    </div>
+  {/if}
+
+  {#if item.plans.length > 0}
+    <section>
+      <h2>{t('workItem.plans')} <span class="faint">({item.plans.length})</span></h2>
+      <ul class="links">
+        {#each item.plans as plan (plan.id)}
+          <li>
+            <a class="rlink" href={`#/plans/${encodeURIComponent(plan.id)}`}>{plan.id}</a>
+            <span class="badge st-{plan.status}">{t('plan.status.' + plan.status)}</span>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
+
+  {#if item.children.length > 0}
+    <section>
+      <h2>{t('workItem.subtasks')} <span class="faint">({item.children.length})</span></h2>
+      <ul class="subtasks">
+        {#each item.children as child (child.key)}
+          <li>
+            <a class="rlink mono" href={`#/work-items/${encodeURIComponent(child.key)}`}
+              >{child.key}</a
+            >
+            <span class="ctitle">{child.title}</span>
+            <span class="lane sm">{t('lane.' + child.lane)}</span>
+          </li>
+        {/each}
+      </ul>
+    </section>
   {/if}
 
   {#if item.authoredChecklist.length > 0 || writable}
@@ -612,6 +660,51 @@
     display: flex;
     align-items: baseline;
     gap: 8px;
+  }
+  /* PLAN2 — epic chip, dependency edges, sub-tasks */
+  .badge.epic {
+    background: var(--accent-soft);
+    border-color: rgba(77, 163, 255, 0.3);
+    color: var(--accent-2);
+    font-family: var(--mono);
+  }
+  .deprow {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .deplabel {
+    font-size: 12px;
+  }
+  .badge.dep {
+    font-family: var(--mono);
+    color: var(--warn);
+    border-color: color-mix(in srgb, var(--warn) 35%, var(--line));
+  }
+  .subtasks {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .subtasks li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .ctitle {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lane.sm {
+    font-size: 10px;
+    padding: 1px 7px;
   }
   .comments li {
     background: var(--panel);

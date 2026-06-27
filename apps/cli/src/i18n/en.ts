@@ -335,6 +335,9 @@ export const EN: Catalog = {
   'plans.heading': 'Saved plans ({count}) · newest first:',
   'plans.footer': 'Each plan is portable markdown — re-run or fork it from its run.',
   'plans.resume_none': 'No unfinished plan to resume.',
+  'plans.tasks_empty': 'That plan has no steps to materialize.',
+  'plans.tasks_heading': 'Plan tasks · {epic} — {task}',
+  'plans.tasks_footer': 'Materialized {count} sub-task(s). Open the board to track them.',
   'session-log.empty': 'No tasks in this session yet.',
   'session-log.heading': 'Session log · {runs} tasks · {cost} total',
   'session-log.untitled': '(untitled)',
@@ -717,6 +720,8 @@ export const EN: Catalog = {
   'agent-turn.plan_cancelled': 'Plan cancelled. Nothing was changed.',
   'agent-turn.plan_saved': 'Plan saved to .excalibur/plans/{file} and recorded in memory.',
   'agent-turn.execute_header': '◆ Making the changes…',
+  'agent-turn.plan_workitems':
+    '◇ Tracking this plan as {epic} with {count} sub-tasks on the board.',
   'agent-turn.plan_steps_header': '◆ Working through the plan — {count} steps, one at a time.',
   'agent-turn.plan_step_running': '  ▸ {step}',
   'agent-turn.plan_step_done': '  ✓ {step}',

@@ -345,6 +345,9 @@ export const ES: Catalog = {
   'plans.heading': 'Planes guardados ({count}) · más recientes primero:',
   'plans.footer': 'Cada plan es markdown portable — reejecútalo o forkéalo desde su tarea.',
   'plans.resume_none': 'No hay ningún plan sin terminar para retomar.',
+  'plans.tasks_empty': 'Ese plan no tiene pasos que materializar.',
+  'plans.tasks_heading': 'Tareas del plan · {epic} — {task}',
+  'plans.tasks_footer': 'Materializadas {count} sub-tarea(s). Abre el tablero para seguirlas.',
   'session-log.empty': 'Aún no hay tareas en esta sesión.',
   'session-log.heading': 'Registro de sesión · {runs} tareas · {cost} total',
   'session-log.untitled': '(sin título)',
@@ -772,6 +775,8 @@ export const ES: Catalog = {
   'agent-turn.plan_cancelled': 'Plan cancelado. No se cambió nada.',
   'agent-turn.plan_saved': 'Plan guardado en .excalibur/plans/{file} y registrado en memoria.',
   'agent-turn.execute_header': '◆ Aplicando los cambios…',
+  'agent-turn.plan_workitems':
+    '◇ Siguiendo este plan como {epic} con {count} sub-tareas en el tablero.',
   'agent-turn.plan_steps_header': '◆ Avanzando el plan — {count} pasos, uno a uno.',
   'agent-turn.plan_step_running': '  ▸ {step}',
   'agent-turn.plan_step_done': '  ✓ {step}',
