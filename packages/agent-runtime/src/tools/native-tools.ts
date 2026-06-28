@@ -484,13 +484,13 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
   {
     name: 'verify',
     description:
-      "Run Excalibur's adversarial VERIFICATION MESH over the current working-tree changes (multiple lenses — correctness, security, regression, spec, reproduce) and return any issues found. Read-only (it judges the diff, changes nothing). Call it proactively to self-check your work BEFORE you declare a task done, especially for risky or non-trivial edits.",
+      "Get your current working-tree changes framed for SELF-VERIFICATION across Excalibur's adversarial lenses (correctness, security, regression, spec, reproduce). Returns the redacted diff + a checklist; YOU then verify it in this turn and report issues. Read-only (no file changes). Call it proactively to self-check BEFORE declaring a task done, especially for risky or non-trivial edits.",
     parameters: z.object({}).strict(),
   },
   {
     name: 'review',
     description:
-      'Produce a focused code REVIEW of the current working-tree changes (bugs, risks, style, missing tests) without modifying anything. Read-only. Use it proactively to critique your own diff before finishing, or when the user asks for a review of the pending changes.',
+      'Get your current working-tree changes framed for a focused SELF-REVIEW (bugs, security, edge cases, missing tests, style). Returns the redacted diff + reviewer guidance; YOU then critique it in this turn. Read-only (no file changes). Use it proactively before finishing, or when the user asks to review the pending changes.',
     parameters: z.object({}).strict(),
   },
 ];

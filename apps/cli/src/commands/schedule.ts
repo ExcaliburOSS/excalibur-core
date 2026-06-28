@@ -13,6 +13,7 @@ import { generateId } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
 import { loadConfigContext, loadGatewayContext, requireConfiguredModel } from '../lib/context';
+import { buildManagementToolset } from '../lib/management-tools';
 
 /**
  * AO8-3 — `excalibur schedule` — autonomous scheduled jobs (the OSS analog of
@@ -124,6 +125,8 @@ export function registerScheduleCommand(program: Command, deps: CliDeps): void {
                 task: job.task,
                 gateway: gateway.gateway,
                 config,
+                // Proactive management tools so a scheduled run pulls project state too.
+                management: buildManagementToolset(deps, repoRoot),
                 model: gateway.providerName,
               });
               deps.ui.write(deps.t('schedule.fired', { runId: handle.runId }));

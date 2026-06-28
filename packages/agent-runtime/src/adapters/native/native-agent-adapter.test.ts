@@ -153,7 +153,11 @@ describe('NativeAgentAdapter — real tool loop', () => {
       { content: 'Done: added src/added.ts and ran the build.' },
     ]);
 
-    const events = await collect(new NativeAgentAdapter().run(makeInput(gateway)));
+    // Wire an (empty) management toolset so the FULL native catalog is offered —
+    // the management tools are only advertised when a host provides them.
+    const events = await collect(
+      new NativeAgentAdapter().run(makeInput(gateway, { management: {} })),
+    );
 
     // The file was REALLY created in the temp repo.
     expect(existsSync(join(tmpRepo, 'src/added.ts'))).toBe(true);
@@ -646,31 +650,22 @@ describe('NativeAgentAdapter — role-based tool exposure', () => {
     const gateway = new FakeGateway([{ content: 'plan complete' }]);
     await collect(new NativeAgentAdapter().run(makeInput(gateway, { role: 'reviewer' })));
     const offered = gateway.received[0]?.tools?.map((t) => t.name) ?? [];
+    // The 11 management tools are NOT offered here: this run wires no
+    // ManagementToolset, so they are filtered out (no dead "unavailable" tools).
     expect(offered.sort()).toEqual([
       'git_diff',
-      'insights',
-      'list_agents',
       'list_files',
-      'list_skills',
       'lsp',
-      'plans',
-      'project_status',
       'question',
       'read_file',
       'research',
-      'review',
-      'run_logs',
       'search_code',
-      'sessions',
       'skill',
-      'sprint_status',
       'update_tasks',
-      'verify',
       'web_crawl',
       'web_extract',
       'web_fetch',
       'web_search',
-      'work_items',
     ]);
     expect(offered).not.toContain('write_file');
     expect(offered).not.toContain('run_command');

@@ -1,3 +1,5 @@
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { RunManager } from '@excalibur/core';
 import { LocalWorkItemProvider } from '@excalibur/work-items';
@@ -49,5 +51,24 @@ describe('buildManagementToolset', () => {
     await expect(tools.sprintStatus!({})).resolves.toMatch(/no active sprint/i);
     await expect(tools.plans!({})).resolves.toMatch(/no saved plans/i);
     await expect(tools.workItems!({})).resolves.toMatch(/no work items/i);
+  });
+
+  it('verify/review return the working-tree diff for the agent to self-check (no model call)', async () => {
+    // A clean tree → nothing to check.
+    const clean = buildManagementToolset(defaultDeps({ cwd: () => repo }), repo);
+    await expect(clean.verify!({})).resolves.toMatch(/nothing to verify/i);
+    await expect(clean.review!({})).resolves.toMatch(/nothing to review/i);
+
+    // A real change → the diff is handed back, framed for self-verification.
+    writeFileSync(
+      join(repo, 'src', 'service.ts'),
+      'export function release(id: string): string {\n  return id.trim();\n}\n',
+    );
+    const tools = buildManagementToolset(defaultDeps({ cwd: () => repo }), repo);
+    const verify = await tools.verify!({});
+    expect(verify).toMatch(/service\.ts/);
+    expect(verify).toMatch(/working-tree diff/i);
+    const review = await tools.review!({});
+    expect(review).toMatch(/service\.ts/);
   });
 });

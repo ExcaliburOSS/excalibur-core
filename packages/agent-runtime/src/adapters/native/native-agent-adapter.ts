@@ -251,10 +251,20 @@ function mergeAgentPermissions(
 }
 
 /** Builds the JSON-Schema tool specs the gateway sends to the model. */
-function toolSpecsFor(role: AgentRole, allowedTools?: ReadonlyArray<string>): ToolSpec[] {
-  const base: ReadonlyArray<NativeToolName> = READ_ONLY_ROLES.has(role)
+function toolSpecsFor(
+  role: AgentRole,
+  allowedTools?: ReadonlyArray<string>,
+  hasManagement = false,
+): ToolSpec[] {
+  const roleBase: ReadonlyArray<NativeToolName> = READ_ONLY_ROLES.has(role)
     ? READ_ONLY_TOOLS
     : NATIVE_TOOL_NAMES;
+  // Don't ADVERTISE the management tools when the host didn't wire a
+  // ManagementToolset (serve/acp/scheduler/swarm) — otherwise the model sees tools
+  // that always answer "not available in this context". Only offer them when live.
+  const base: ReadonlyArray<NativeToolName> = hasManagement
+    ? roleBase
+    : roleBase.filter((name) => !MANAGEMENT_TOOLS.has(name));
   // A custom agent's `tools:` allowlist can only NARROW the role's floor (it
   // intersects — a read-only role can never be widened to mutate). Names that
   // aren't native tools simply don't match and are dropped.
@@ -596,10 +606,16 @@ export class NativeAgentAdapter implements AgentAdapter {
       // cannot shadow a built-in tool.
       const extensionTools: ReadonlyArray<ExtensionTool> = input.extensionTools ?? [];
       const extByName = extensionToolsByName(extensionTools);
+      // Dispatch is native-first, so an extension tool whose name clashes with a
+      // native one is already DEAD — drop its spec too, so the provider never gets
+      // two function specs with the same name (a malformed/ambiguous tool list).
+      const extSpecs = extensionToolSpecs(extensionTools, {
+        readOnlyRole: READ_ONLY_ROLES.has(input.role),
+      }).filter((spec) => !isNativeToolName(spec.name));
       const tools = [
-        ...toolSpecsFor(input.role, input.allowedTools),
+        ...toolSpecsFor(input.role, input.allowedTools, input.management !== undefined),
         ...mcp.specs,
-        ...extensionToolSpecs(extensionTools, { readOnlyRole: READ_ONLY_ROLES.has(input.role) }),
+        ...extSpecs,
       ];
 
       for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {

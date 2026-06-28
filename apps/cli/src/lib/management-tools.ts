@@ -1,7 +1,6 @@
 import {
   DiscoveryManager,
   InteractionStore,
-  MESH_LENSES,
   PatchStore,
   RunManager,
   SessionStore,
@@ -12,10 +11,10 @@ import {
   listPlans,
   loadCustomAgents,
   planProgress,
-  planVerificationMesh,
   readPlan,
   type BurndownItem,
 } from '@excalibur/core';
+import { redactSecrets } from '@excalibur/model-gateway';
 import type { ExcaliburEvent } from '@excalibur/shared';
 import {
   LocalWorkItemProvider,
@@ -25,9 +24,10 @@ import {
 } from '@excalibur/work-items';
 import type { ManagementToolset } from '@excalibur/agent-runtime';
 import type { CliDeps } from '../deps';
-import { loadConfigContext, loadGatewayContext } from './context';
 import { scanSkills } from './isd';
-import { runVerificationMesh } from './verification';
+
+/** A bounded, redacted slice of the working-tree diff for the self-check tools. */
+const DIFF_BUDGET = 24_000;
 
 /**
  * The host implementation of the agent-callable MANAGEMENT tools (the proactive
@@ -36,11 +36,22 @@ import { runVerificationMesh } from './verification';
  * state into its conversation. agent-runtime declares the shape; this layer (the
  * CLI, which owns the stores) provides the behaviour and is injected per run.
  *
- * Read-only by construction — every method only reads stores. The work-item
+ * Read-only by construction — every method only reads stores (or, for
+ * verify/review, returns the diff for the AGENT to self-check in its OWN budgeted,
+ * counted, redacted loop — never a nested/uncounted model call). The work-item
  * store is namespaced `integrationId: 'local'`, matching the `--local` provider
  * the `work-items` command uses.
+ *
+ * `workdir` defaults to `repoRoot` but is passed explicitly for a fork-from-cache
+ * turn (the agent edits the worktree, not the repo root), so verify/review read
+ * the diff the agent is ACTUALLY producing while the store reads stay on repoRoot.
  */
-export function buildManagementToolset(deps: CliDeps, repoRoot: string): ManagementToolset {
+export function buildManagementToolset(
+  deps: CliDeps,
+  repoRoot: string,
+  opts: { workdir?: string } = {},
+): ManagementToolset {
+  const workdir = opts.workdir ?? repoRoot;
   return {
     async projectStatus({ discovery }): Promise<string> {
       const runs = new RunManager(repoRoot).listRuns();
@@ -86,17 +97,20 @@ export function buildManagementToolset(deps: CliDeps, repoRoot: string): Managem
           return `No work item found with key "${key}".`;
         }
       }
+      const wantLane = status !== undefined && status.length > 0;
       let items = await provider.listWorkItems({
         integrationId: 'local',
         ...(query !== undefined ? { query } : {}),
         ...(labels !== undefined && labels.length > 0 ? { labels } : {}),
-        limit: limit ?? 20,
+        // When filtering by lane (client-side, below), fetch a generous bound first
+        // — capping BEFORE the filter would silently drop matching items.
+        limit: wantLane ? 500 : (limit ?? 20),
       });
-      if (status !== undefined && status.length > 0) {
+      if (wantLane) {
         const want = status.toLowerCase();
-        items = items.filter(
-          (i) => laneOf(i.status) === want || (i.status ?? '').toLowerCase() === want,
-        );
+        items = items
+          .filter((i) => laneOf(i.status) === want || (i.status ?? '').toLowerCase() === want)
+          .slice(0, limit ?? 20);
       }
       if (items.length === 0) {
         return 'No work items match.';
@@ -165,10 +179,10 @@ export function buildManagementToolset(deps: CliDeps, repoRoot: string): Managem
     },
 
     async insights({ sinceDays }): Promise<string> {
+      // Clamp the window (≤100y) so a huge sinceDays can't produce an out-of-range Date.
+      const days = sinceDays !== undefined && sinceDays > 0 ? Math.min(sinceDays, 36_500) : 0;
       const opts =
-        sinceDays !== undefined && sinceDays > 0
-          ? { sinceIso: new Date(Date.now() - sinceDays * 86_400_000).toISOString() }
-          : {};
+        days > 0 ? { sinceIso: new Date(Date.now() - days * 86_400_000).toISOString() } : {};
       const r = collectInsights(repoRoot, opts);
       if (r.totalRuns === 0) {
         return 'No runs recorded yet — nothing to report.';
@@ -268,70 +282,44 @@ export function buildManagementToolset(deps: CliDeps, repoRoot: string): Managem
         .join('\n');
     },
 
-    async verify(): Promise<string> {
-      const diff = getLocalDiff(repoRoot);
+    // verify/review return the (redacted) working-tree diff + a framing checklist
+    // for the agent to self-check IN ITS OWN loop. They deliberately make NO nested
+    // model call: that would spend through a separate gateway invisible to the run's
+    // hard budget cap + cost accounting, and could ship an unredacted diff to the
+    // provider. The agent's own turn is budgeted, counted and redacted.
+    verify(): Promise<string> {
+      const diff = getLocalDiff(workdir);
       if (diff.trim().length === 0) {
-        return 'Nothing to verify — the working tree has no changes.';
+        return Promise.resolve('Nothing to verify — the working tree has no changes.');
       }
-      const gw = loadGatewayContext(repoRoot);
-      if (gw.providerName === 'mock') {
-        return 'verify needs a real configured model (the mock provider is active).';
-      }
-      const { config } = loadConfigContext(repoRoot);
-      const plan = planVerificationMesh({
-        taskType: 'feature',
-        sensitive: false,
-        affectedUnits: countDiffFiles(diff),
-        autonomyLevel: 4,
-        hasTests: typeof config.commands?.test === 'string',
-        mode: 'always', // an explicit verify request always runs ≥1 lens
-      });
-      const result = await runVerificationMesh({
-        diff,
-        lenses: plan.lenses,
-        gateway: gw.gateway,
-        provider: gw.providerName,
-      });
-      const head = result.blocked
-        ? `Verification FOUND issues (${plan.lenses.map((l) => MESH_LENSES[l].label).join(', ')}):`
-        : `Verification passed (${plan.lenses.map((l) => MESH_LENSES[l].label).join(', ')}).`;
-      const issues = result.issues
-        .map(
-          (i) =>
-            `  [${i.severity.toUpperCase()}] ${i.file !== undefined ? `${i.file} — ` : ''}${i.problem}` +
-            `${i.fix !== undefined ? ` → ${i.fix}` : ''}`,
-        )
-        .join('\n');
-      return issues.length > 0 ? `${head}\n${issues}` : `${head}\n${result.summary}`;
+      return Promise.resolve(
+        'Verify YOUR current working-tree changes across these adversarial lenses, then report ' +
+          'any issues you find (with file + fix):\n' +
+          '- correctness (logic, edge cases, error handling)\n' +
+          '- security (injection, secrets, unsafe input)\n' +
+          '- regression (does it break existing behaviour)\n' +
+          '- spec (does it actually do what was asked)\n' +
+          '- reproducibility (does it build/typecheck/test)\n\n' +
+          `Working-tree diff:\n${redactSecrets(diff).slice(0, DIFF_BUDGET)}`,
+      );
     },
 
-    async review(): Promise<string> {
-      const diff = getLocalDiff(repoRoot);
+    review(): Promise<string> {
+      const diff = getLocalDiff(workdir);
       if (diff.trim().length === 0) {
-        return 'Nothing to review — the working tree has no changes.';
+        return Promise.resolve('Nothing to review — the working tree has no changes.');
       }
-      const gw = loadGatewayContext(repoRoot);
-      if (gw.providerName === 'mock') {
-        return 'review needs a real configured model (the mock provider is active).';
-      }
-      const out = await gw.gateway.chat({
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are a meticulous senior code reviewer. Review the working-tree diff for ' +
-              'bugs, security issues, edge cases, missing tests and style. Be concise and ' +
-              'specific — cite files and lines. If it looks good, say so briefly.',
-          },
-          { role: 'user', content: `Review these changes:\n\n${diff.slice(0, 24_000)}` },
-        ],
-      });
-      return out.content.trim().length > 0 ? out.content.trim() : 'No review feedback.';
+      return Promise.resolve(
+        'Review YOUR current working-tree changes like a meticulous senior reviewer — bugs, ' +
+          'security, edge cases, missing tests, style. Be specific (cite files/lines); if it ' +
+          'looks good, say so briefly.\n\n' +
+          `Working-tree diff:\n${redactSecrets(diff).slice(0, DIFF_BUDGET)}`,
+      );
     },
   };
 }
 
-/** A one-line description of a run event for the `run_logs` tool. */
+/** A one-line, secret-redacted description of a run event for the `run_logs` tool. */
 function describeRunEvent(e: ExcaliburEvent): string {
   const p = (e.payload ?? {}) as Record<string, unknown>;
   const detail =
@@ -342,13 +330,8 @@ function describeRunEvent(e: ExcaliburEvent): string {
         : typeof p['command'] === 'string'
           ? p['command']
           : '';
-  return `${e.type}${detail !== '' ? `: ${String(detail).slice(0, 80)}` : ''}`;
-}
-
-/** Counts the files a unified diff touches (`diff --git` headers). */
-function countDiffFiles(diff: string): number {
-  const m = diff.match(/^diff --git /gm);
-  return m !== null ? m.length : 1;
+  // A command/title can carry a token or URL secret — redact before it reaches the model.
+  return redactSecrets(`${e.type}${detail !== '' ? `: ${String(detail).slice(0, 80)}` : ''}`);
 }
 
 /** Projects a work-item into a burndown item (mirrors the `sprints` command). */

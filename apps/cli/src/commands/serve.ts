@@ -19,6 +19,8 @@ import {
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
 import { accent, accentBright } from '../lib/accent';
+import { defaultDeps } from '../deps';
+import { buildManagementToolset } from '../lib/management-tools';
 import { loadConfigContext, loadGatewayContext } from '../lib/context';
 import { buildSchedules } from '../lib/dashboard-data';
 import { computeScope } from '../lib/scope';
@@ -46,6 +48,9 @@ export function buildWriteHandler(repoRoot: string): ServeWriteHandler {
         task: input.task,
         gateway,
         config,
+        // Proactive management tools so a served run pulls project state too
+        // (no CliDeps here — a default one against this repoRoot is enough).
+        management: buildManagementToolset(defaultDeps({ cwd: () => repoRoot }), repoRoot),
         // Resolved provider (providers.yaml default) so the run uses the real
         // configured model rather than falling back to the `mock` provider.
         model: providerName,

@@ -11,6 +11,7 @@ import {
   NativeAgentAdapter,
   type AgentAdapter,
   type ExtensionTool,
+  type ManagementToolset,
 } from '@excalibur/agent-runtime';
 import type { WorkflowDefinition } from '@excalibur/workflow-schema';
 import { RunManager } from '../runs/run-manager';
@@ -82,6 +83,13 @@ export interface StartRunOptions {
   adapter?: AgentAdapter;
   /** Extension-contributed tools (the caller activates extensions). */
   extensionTools?: ExtensionTool[];
+  /**
+   * Host-injected proactive management tools (project status / work-items /
+   * sprints / plans / …), forwarded to the run so headless/autonomous runs
+   * (serve, acp, scheduler) get the SAME proactive surface as the m-shell. The
+   * CLI builds it against the local stores; omitted → those tools report unavailable.
+   */
+  management?: ManagementToolset;
   /** Hard budget cap in cents. */
   budgetCents?: number;
   /** Links the run to a work item (the work-item-centric cycle). */
@@ -230,6 +238,7 @@ export class RunController {
       onEvent: (event) => exec.onEvent(event),
       confirm: (question) => exec.confirm(question),
       signal: exec.signal,
+      ...(options.management !== undefined ? { management: options.management } : {}),
       ...(options.extensionTools !== undefined && options.extensionTools.length > 0
         ? { extensionTools: options.extensionTools }
         : {}),

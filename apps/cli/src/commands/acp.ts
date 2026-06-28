@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import { RunController } from '@excalibur/core';
 import type { CliDeps } from '../deps';
 import { loadConfigContext, loadGatewayContext } from '../lib/context';
+import { buildManagementToolset } from '../lib/management-tools';
 import { runAcpServer } from '../lib/acp-server';
 
 /**
@@ -41,6 +42,8 @@ export function registerAcpCommand(program: Command, deps: CliDeps): void {
             task: prompt,
             gateway,
             config,
+            // Proactive management tools so an editor-driven run pulls project state too.
+            management: buildManagementToolset(deps, cwd),
             model: providerName,
           });
         },

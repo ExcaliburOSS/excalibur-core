@@ -509,7 +509,11 @@ async function driveLoop(
     signal: ctrl.signal,
     // Proactive foundation: the agent can pull real project state (status,
     // work-items, sprints, plans) into its reasoning via read-only native tools.
-    management: buildManagementToolset(deps, turn.repoRoot),
+    // The diff-based self-check tools (verify/review) read the EFFECTIVE workdir
+    // (a fork worktree differs from repoRoot), while store reads stay on repoRoot.
+    management: buildManagementToolset(deps, turn.repoRoot, {
+      workdir: options.workdir ?? turn.repoRoot,
+    }),
     ...(agent?.model !== undefined ? { model: agent.model } : {}),
     ...(agent?.temperature !== undefined ? { temperature: agent.temperature } : {}),
     ...(agent?.systemPrompt !== undefined ? { systemPrompt: agent.systemPrompt } : {}),
