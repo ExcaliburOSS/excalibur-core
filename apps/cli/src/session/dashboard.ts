@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { Server } from 'node:http';
 import type { ExcaliburConfig } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
+import { accent, accentBright } from '../lib/accent';
 import { buildWriteHandler } from '../commands/serve';
 import { createExcaliburServer } from '../lib/serve';
 
@@ -81,7 +82,9 @@ export async function startSessionDashboard(
     if (listening) {
       server.unref?.(); // don't keep the process alive for the dashboard alone
       const url = `http://${host}:${port}/?token=${token}`;
-      deps.ui.info(deps.t('dashboard.up', { url }));
+      // Accent-branded banner, identical to `excalibur serve` — printed as
+      // scrollback ABOVE the input box (the box's rules wrap only the live input).
+      deps.ui.write(`${accentBright('◆ ' + deps.t('serve.dashboard'))}  ${accent(url)}`);
       return {
         url,
         stop: (): void => {

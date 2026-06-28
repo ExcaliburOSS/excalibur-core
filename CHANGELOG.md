@@ -6,6 +6,25 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-06-28
+
+Input-box rendering fixes (the framed prompt from 1.8.0).
+
+### Fixed
+
+- The top/bottom accent rules now span the **full terminal width** in solid
+  accent colour (they were a short fixed-width stub), and re-span instantly on a
+  terminal **resize**.
+- The framed box now wraps **only** the live input — the rules are drawn by the
+  editor as one unit, so scrollback (the dashboard banner, conversation) stays
+  ABOVE the box instead of being trapped inside it.
+- The m-shell's auto-started dashboard prints the accent-branded
+  `◆ Excalibur Live Dashboard: <url>` banner (matching `excalibur serve`), as
+  scrollback above the box.
+- The indicator row under the box drops the model/provider and shows the useful
+  key shortcuts (`/ commands · ? help · ⇥ threads · ↓ log`) alongside the
+  autonomy + permissions.
+
 ## [1.8.0] - 2026-06-28
 
 The **proactive primary-surface** release. The m-shell is Excalibur's primary,

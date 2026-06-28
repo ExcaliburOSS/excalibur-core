@@ -1063,6 +1063,7 @@ export const ES: Catalog = {
   'repl.bg-active': '{n} en 2º plano',
   'repl.paused-count': '{n} en pausa',
   'repl.input-hints': '? ayuda',
+  'repl.input-shortcuts': '/ comandos · ? ayuda · ⇥ hilos · ↓ registro',
   'repl.input-auto': 'auto-acepta',
   'repl.threads-none': 'No hay hilos en segundo plano en esta sesión. Inicia uno con /bg <tarea>.',
   'repl.threads-header':

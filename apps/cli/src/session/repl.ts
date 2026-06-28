@@ -405,7 +405,11 @@ export async function runInteractiveSession(
     // The `/` command menu (filters as you type) + a dim CONTEXTUAL placeholder.
     commands: slashCommands(deps.t),
     placeholder: () => deps.t(interacted ? 'repl.ph.next' : 'repl.ph.start'),
-    // RUN-FIX-11: the framed footer below the input (bottom hairline + indicators).
+    // The framed input box, drawn by the editor so the rules bracket ONLY the live
+    // input (never scrollback): a full-width accent rule ABOVE the prompt…
+    header: () => [inputHairline()],
+    // …and BELOW it the closing rule + a one-row indicator line (autonomy ·
+    // permissions · shortcuts — NOT the model/provider).
     footer: () => buildInputFooter(deps, runtime),
   });
   // LLM intent classifier (multi-language), resolved ONCE. undefined → no fast
@@ -3138,8 +3142,11 @@ export function renderRunRule(label: string, width: number): string {
 
 /** The accent hairline that frames the input (RUN-FIX-11): a bright accent head
  * fading into a dim rule — the rail's divider language. Fixed width fits ≥ 80 cols. */
+/** A full-width accent rule that brackets the input box (top + bottom), spanning
+ *  the WHOLE terminal in accent colour — drawn by the editor as part of the box. */
 function inputHairline(): string {
-  return ` ${accent('───')}${pc.dim('─'.repeat(46))}`;
+  const cols = Math.max(8, process.stdout.columns ?? 80);
+  return accent('─'.repeat(cols));
 }
 
 /**
@@ -3175,8 +3182,11 @@ function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
     deps.ui.info(buildDenseStatus(deps, runtime));
     return;
   }
+  // The framed box (top rule + prompt + bottom rule + hint) is drawn ENTIRELY by
+  // the editor now (header + footer), so the rules bracket ONLY the live input and
+  // never trap scrollback. Here we just leave a blank line of breathing room above
+  // the box; it stays as scrollback while the editor redraws the box below it.
   deps.ui.write();
-  deps.ui.write(inputHairline());
 }
 
 /**
@@ -3203,10 +3213,13 @@ function buildInputFooter(deps: CliDeps, runtime: SessionRuntime): string[] {
   // the safety preset + an "auto" flag when auto-accept is on.
   const preset = runtime.config.safety?.preset ?? 'standard-safe';
   const perms = `${preset}${runtime.approvals.auto ? ` · ${deps.t('repl.input-auto')}` : ''}`;
-  const hint =
-    `  ${accent('◆')} ${accent(status.model)} ${pc.dim('·')} ${status.autonomy} ${pc.dim('·')} ` +
-    `${pc.dim(perms)}${pc.dim(contextUsageLabel(runtime))}${bg}${paused} ` +
-    `${pc.dim(`· ${deps.t('repl.input-hints')}`)}`;
+  // The indicator row UNDER the box: autonomy + permissions (the live posture) on
+  // the left, the useful key SHORTCUTS on the right. Deliberately NO model/provider
+  // — the active model lives in the welcome + `/model`, not on every prompt.
+  const left = `${accent('◆')} ${status.autonomy} ${pc.dim('·')} ${pc.dim(perms)}${pc.dim(
+    contextUsageLabel(runtime),
+  )}${bg}${paused}`;
+  const hint = `  ${left}   ${pc.dim(deps.t('repl.input-shortcuts'))}`;
   return [inputHairline(), hint];
 }
 

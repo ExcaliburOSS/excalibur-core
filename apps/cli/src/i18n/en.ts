@@ -1001,6 +1001,7 @@ export const EN: Catalog = {
   'repl.bg-active': '{n} bg',
   'repl.paused-count': '{n} paused',
   'repl.input-hints': '? help',
+  'repl.input-shortcuts': '/ commands · ? help · ⇥ threads · ↓ log',
   'repl.input-auto': 'auto-accept',
   'repl.threads-none': 'No background threads this session. Start one with /bg <task>.',
   'repl.threads-header':

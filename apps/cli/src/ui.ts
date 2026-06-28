@@ -143,6 +143,14 @@ export interface LineEditorOptions {
    * sub-prompt and while the slash menu is open. Lines must be single visual rows.
    */
   footer?: () => string[];
+  /**
+   * A persistent HEADER framed ABOVE the MAIN input line — the input box's TOP
+   * rule. Drawn by the editor as part of the SAME redraw as the prompt + footer,
+   * so the framed box wraps ONLY the live input (never scrollback/history above
+   * it). Re-evaluated every paint; skipped on a sub-prompt and while the slash
+   * menu is open. Lines must be single visual rows.
+   */
+  header?: () => string[];
 }
 
 /**
@@ -1097,12 +1105,23 @@ export class Ui {
     // Rows the input itself occupied in the last paint (≥ 1). Used when a read
     // ends to drop BELOW the input and erase the framed footer (RUN-FIX-11).
     let lastInputRows = 1;
+    // Rows the framed HEADER (top rule) occupied last paint, so the close/erase
+    // math can account for the rows ABOVE the prompt.
+    let lastHeaderRows = 0;
 
     const paint = (): void => {
       if (currentPrompt === null || !state.awaiting) {
         return;
       }
       const cols = termCols();
+      // The framed HEADER (top rule) — drawn ABOVE the prompt as part of the SAME
+      // redraw, so the box wraps ONLY the live input (scrollback/history stays above).
+      const headerLines = options.header !== undefined && !this.inSubPrompt ? options.header() : [];
+      const headerStr = headerLines.map((l) => `${l}\n`).join('');
+      const headerRows = headerLines.reduce(
+        (sum, l) => sum + Math.max(1, Math.ceil(Math.max(1, stripAnsi(l).length) / cols)),
+        0,
+      );
       const showPlaceholder =
         state.buffer.length === 0 && currentPlaceholder.length > 0 && !this.inSubPrompt;
       const body = showPlaceholder ? pc.dim(currentPlaceholder) : state.buffer;
@@ -1132,23 +1151,25 @@ export class Ui {
         0,
       );
 
-      // The cursor's row/column inside the input block (0-indexed from the first
-      // input row). With a footer below, the cursor always steps back up to it.
+      // The cursor's row/column inside the input block (0-indexed from the FIRST
+      // input row, i.e. below the header). With header + footer, the cursor steps
+      // back to it after the box is redrawn.
       const cursorAbs = promptVis + (showPlaceholder ? 0 : state.cursor);
-      const cursorRow = Math.floor(cursorAbs / cols);
+      const cursorRowInInput = Math.floor(cursorAbs / cols);
       const cursorCol = cursorAbs % cols;
 
       let seq = '';
       if (prevCursorRow > 0) {
-        // Up to the FIRST input row — NEVER above it, so the erase below can't reach
-        // the welcome/conversation.
+        // Up to the BOX TOP (the header's first row) — NEVER above it, so the erase
+        // below can't reach the welcome/conversation/scrollback.
         seq += `${ESC}[${prevCursorRow}A`;
       }
-      seq += `${CR}${ESC}[0J`; // col 0, erase from the first input row to end of screen
-      seq += currentPrompt + body + footerStr;
-      // Park the cursor back on the input line at the insertion point: step up over
-      // the rows below the cursor (the rest of the wrapped input + the whole footer).
-      const downBelowCursor = inputRows - 1 - cursorRow + footerRows;
+      seq += `${CR}${ESC}[0J`; // col 0, erase from the box top to end of screen
+      seq += headerStr + currentPrompt + body + footerStr;
+      // Park the cursor back on the input line at the insertion point: from the last
+      // written row, step up over the rest of the wrapped input + the whole footer
+      // (the header is ABOVE the cursor, so it doesn't enter this count).
+      const downBelowCursor = inputRows - 1 - cursorRowInInput + footerRows;
       if (downBelowCursor > 0) {
         seq += `${ESC}[${downBelowCursor}A`;
       }
@@ -1157,8 +1178,11 @@ export class Ui {
         seq += `${ESC}[${cursorCol}C`;
       }
       out.write(seq);
-      prevCursorRow = cursorRow;
+      // prevCursorRow is measured from the BOX TOP (header), so the next paint steps
+      // up to the header and redraws the WHOLE box.
+      prevCursorRow = headerRows + cursorRowInInput;
       lastInputRows = inputRows;
+      lastHeaderRows = headerRows;
     };
     const repaint = paint;
 
@@ -1167,10 +1191,13 @@ export class Ui {
     // fresh line so the typed message stays and the next output starts clean. Used
     // in place of a bare `\n` now that a footer may sit below the input (RUN-FIX-11).
     const closeFrame = (): void => {
-      const down = Math.max(1, lastInputRows - prevCursorRow);
+      // From the parked cursor (rows-from-box-top), drop to just BELOW the input
+      // (past the header + input rows) and erase the framed footer there.
+      const down = Math.max(1, lastHeaderRows + lastInputRows - prevCursorRow);
       out.write(`${CR}${ESC}[${down}B${ESC}[0J`);
       prevCursorRow = 0;
       lastInputRows = 1;
+      lastHeaderRows = 0;
     };
 
     const onKeypress = (_str: string | undefined, key: ParsedKey | undefined): void => {
@@ -1305,6 +1332,15 @@ export class Ui {
       process.exit(143);
     };
 
+    // Terminal RESIZE: redraw the framed box at the new width so the full-width
+    // accent rules re-span the terminal the instant the window changes (only while
+    // a prompt is open; the next paint reads the live `termCols()`).
+    const onResize = (): void => {
+      if (currentPrompt !== null && state.awaiting && !this.inSubPrompt) {
+        repaint();
+      }
+    };
+
     const enableRaw = (): void => {
       if (rawActive || input.isTTY !== true) {
         return;
@@ -1315,6 +1351,7 @@ export class Ui {
       }
       input.resume();
       input.on('keypress', onKeypress);
+      (out as NodeJS.WriteStream).on?.('resize', onResize);
       // `exit` covers normal/crash exits; the signal hooks cover SIGTERM/SIGHUP.
       process.on('exit', restoreCooked);
       process.once('SIGTERM', onTermSignal);
@@ -1327,6 +1364,7 @@ export class Ui {
         return;
       }
       input.removeListener('keypress', onKeypress);
+      (out as NodeJS.WriteStream).removeListener?.('resize', onResize);
       process.removeListener('exit', restoreCooked);
       process.removeListener('SIGTERM', onTermSignal);
       process.removeListener('SIGHUP', onTermSignal);
