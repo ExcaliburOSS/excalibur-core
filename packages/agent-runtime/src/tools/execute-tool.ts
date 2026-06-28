@@ -30,6 +30,7 @@ import { buildProvenanceRecord, type ProvenanceRecord } from './web/provenance';
 import type { WebCache } from './web/cache';
 import { lspAvailabilityFor, type LspSession } from '../lsp';
 import { readSkillBody, type SkillEntry } from './skills-reader';
+import type { ManagementToolset } from '../types';
 
 /**
  * Real native-tool executors (OSS-7, M2) — the security-critical core of the
@@ -125,6 +126,13 @@ export interface ToolExecutionContext {
    */
   skillApproval?: 'open' | 'approved';
   approvedSkills?: ReadonlyArray<string>;
+  /**
+   * Host-injected MANAGEMENT capabilities (project status, work-items, sprints,
+   * plans) backing the read-only management tools — the proactive foundation.
+   * The CLI/core layer (which owns the stores) provides it; absent → those tools
+   * report they are unavailable in this context.
+   */
+  management?: ManagementToolset;
 }
 
 export interface ToolResult {
@@ -1557,6 +1565,28 @@ function execSkill(args: Record<string, unknown>, ctx: ToolExecutionContext): To
   return ok(`# Skill: ${match.name}\n\n${body}`);
 }
 
+/**
+ * Bridges a read-only MANAGEMENT tool to its host-injected implementation
+ * (`ctx.management.*`). The host (CLI/core) owns the stores and returns the
+ * agent-facing text; absent → the capability is unavailable here (a plain CLI
+ * subcommand still works, but this in-loop tool needs the host to wire it).
+ */
+async function execManagement(
+  ctx: ToolExecutionContext,
+  method: keyof ManagementToolset,
+  label: string,
+  args: Record<string, unknown>,
+): Promise<ToolResult> {
+  const fn = ctx.management?.[method] as
+    | ((a: Record<string, unknown>) => Promise<string>)
+    | undefined;
+  if (fn === undefined) {
+    return fail(`\`${label}\` is not available in this context.`);
+  }
+  const text = await fn(args);
+  return ok(text.trim().length > 0 ? text : `${label}: (nothing to report)`);
+}
+
 export async function executeNativeTool(
   name: NativeToolName,
   rawArgs: unknown,
@@ -1608,6 +1638,28 @@ export async function executeNativeTool(
         return await execQuestion(args, ctx);
       case 'skill':
         return execSkill(args, ctx);
+      case 'project_status':
+        return await execManagement(ctx, 'projectStatus', 'project_status', args);
+      case 'work_items':
+        return await execManagement(ctx, 'workItems', 'work_items', args);
+      case 'sprint_status':
+        return await execManagement(ctx, 'sprintStatus', 'sprint_status', args);
+      case 'plans':
+        return await execManagement(ctx, 'plans', 'plans', args);
+      case 'insights':
+        return await execManagement(ctx, 'insights', 'insights', args);
+      case 'run_logs':
+        return await execManagement(ctx, 'runLogs', 'run_logs', args);
+      case 'list_agents':
+        return await execManagement(ctx, 'listAgents', 'list_agents', args);
+      case 'list_skills':
+        return await execManagement(ctx, 'listSkills', 'list_skills', args);
+      case 'sessions':
+        return await execManagement(ctx, 'sessions', 'sessions', args);
+      case 'verify':
+        return await execManagement(ctx, 'verify', 'verify', args);
+      case 'review':
+        return await execManagement(ctx, 'review', 'review', args);
       default: {
         // Exhaustiveness guard: every NativeToolName is handled above.
         const exhaustive: never = name;

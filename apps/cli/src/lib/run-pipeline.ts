@@ -49,6 +49,7 @@ import {
   safetyLine,
 } from './context';
 import { diagnosticsContextSource, runDiagnostics } from './diagnostics';
+import { buildManagementToolset } from './management-tools';
 import { warnDirtyTree } from './run-safety';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { pushLatestRun } from '../commands/login';
@@ -698,6 +699,9 @@ export async function runTask(
       // Extension-contributed tools harvested from activation, executed by the
       // native loop alongside the native tools. Omitted when no extension adds one.
       ...(extensionTools.length > 0 ? { extensionTools } : {}),
+      // Proactive management tools: a gated build can pull project state (status /
+      // work-items / sprints / plans / verify …) into its reasoning, same as a chat.
+      management: buildManagementToolset(deps, repoRoot),
       // Custom agent (P1.7): persona, model, sampling and guardrails applied to
       // every agent_work phase. Omitted → the workflow's role + configured model.
       ...(customAgent !== null ? { agent: agentOverrides(customAgent) } : {}),

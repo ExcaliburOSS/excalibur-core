@@ -841,6 +841,12 @@ export interface SwarmFlowOptions {
   grade?: boolean;
   /** Cancels the in-flight swarm (ESC / Ctrl-C). */
   signal?: AbortSignal;
+  /**
+   * When set, ESC/Ctrl-C in the live lanes panel calls this (the caller wires it
+   * to its abort controller). Lets `/orchestrate` from the m-shell cancel from
+   * the panel itself; omitted → the panel stays output-only (no stdin handoff).
+   */
+  onEscape?: () => void;
   /** Internal: suppress the proactive "retry failed lanes?" offer (set on the
    * retry run itself, so a failed retry never loops the offer). */
   noResumeOffer?: boolean;
@@ -1002,7 +1008,16 @@ export async function runSwarmFlow(
   let inkLanes: LanesViewHandle | null = null;
   if (deps.ui.isOutputTty()) {
     const ink = await loadInkUi();
-    inkLanes = ink.mountLanesView({ palette, tier, mode, labels: railLabels, lanes: laneSpecs });
+    inkLanes = ink.mountLanesView({
+      palette,
+      tier,
+      mode,
+      labels: railLabels,
+      lanes: laneSpecs,
+      // ESC/Ctrl-C in the panel cancels the orchestration (opt-in: only when the
+      // caller wired an abort, e.g. `/orchestrate` from the m-shell).
+      ...(options.onEscape !== undefined ? { onEscape: options.onEscape } : {}),
+    });
   }
   let result;
   try {

@@ -116,7 +116,37 @@ const READ_ONLY_TOOLS: ReadonlyArray<NativeToolName> = [
   'question',
   // Loading a skill's instructions is read-only progressive disclosure.
   'skill',
+  // Management/awareness reads (project status, work-items, sprints, plans,
+  // insights, run logs, agents/skills, sessions) are pure store reads, and
+  // verify/review only JUDGE the working-tree diff (no mutation) — every role,
+  // including planners/reviewers, may pull them.
+  'project_status',
+  'work_items',
+  'sprint_status',
+  'plans',
+  'insights',
+  'run_logs',
+  'list_agents',
+  'list_skills',
+  'sessions',
+  'verify',
+  'review',
 ];
+
+/** The host-backed MANAGEMENT tools (read-only awareness + judge-only verify/review). */
+const MANAGEMENT_TOOLS: ReadonlySet<NativeToolName> = new Set<NativeToolName>([
+  'project_status',
+  'work_items',
+  'sprint_status',
+  'plans',
+  'insights',
+  'run_logs',
+  'list_agents',
+  'list_skills',
+  'sessions',
+  'verify',
+  'review',
+]);
 
 /** Roles that get the read-only tool subset (they observe, they do not change the tree). */
 const READ_ONLY_ROLES: ReadonlySet<AgentRole> = new Set<AgentRole>([
@@ -172,6 +202,17 @@ function eventTypeForTool(name: NativeToolName): ExcaliburEventType {
     case 'lsp':
     case 'question':
     case 'skill':
+    case 'project_status':
+    case 'work_items':
+    case 'sprint_status':
+    case 'plans':
+    case 'insights':
+    case 'run_logs':
+    case 'list_agents':
+    case 'list_skills':
+    case 'sessions':
+    case 'verify':
+    case 'review':
       return 'tool_call';
   }
 }
@@ -436,6 +477,9 @@ export class NativeAgentAdapter implements AgentAdapter {
       gateway: input.gateway,
       ...(input.model !== undefined ? { model: input.model } : {}),
       ...(input.provider !== undefined ? { provider: input.provider } : {}),
+      // Host-injected management capabilities (project status / work-items /
+      // sprints / plans) backing the read-only awareness tools.
+      ...(input.management !== undefined ? { management: input.management } : {}),
       // web_crawl: one shared cache + rate limiter for the whole run, so a
       // multi-page crawl reuses cached pages and spaces requests per host.
       webCache: new WebCache(
@@ -1227,6 +1271,15 @@ export class NativeAgentAdapter implements AgentAdapter {
         allowed: true,
         requiresConfirmation: false,
         reason: 'checklist update (no side effect)',
+      };
+    }
+    if (MANAGEMENT_TOOLS.has(name)) {
+      // Management/awareness reads + verify/review (judge-only) are read-only —
+      // never gated.
+      return {
+        allowed: true,
+        requiresConfirmation: false,
+        reason: 'project state read (no side effect)',
       };
     }
     if (name === 'write_file' || name === 'edit') {

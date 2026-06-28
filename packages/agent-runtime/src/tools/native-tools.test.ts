@@ -27,6 +27,17 @@ const PINNED_NAMES: NativeToolName[] = [
   'lsp',
   'question',
   'skill',
+  'project_status',
+  'work_items',
+  'sprint_status',
+  'plans',
+  'insights',
+  'run_logs',
+  'list_agents',
+  'list_skills',
+  'sessions',
+  'verify',
+  'review',
 ];
 
 describe('NATIVE_TOOLS', () => {

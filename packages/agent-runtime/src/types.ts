@@ -127,6 +127,53 @@ export interface AgentRunInput {
    * but the project's denials always still apply).
    */
   permissions?: ExcaliburConfig['permissions'];
+  /**
+   * Injected MANAGEMENT capabilities (project status, work-items, sprints,
+   * plans, …) the agent can call as native tools mid-conversation. The proactive
+   * foundation: the agent uses Excalibur's own features per the situation without
+   * the user typing a command. Implemented by the host (the CLI/core layer, which
+   * owns the stores) since agent-runtime must not depend on @excalibur/core.
+   * Absent → the management tools report they are unavailable in this context.
+   */
+  management?: ManagementToolset;
+}
+
+/**
+ * Host-provided implementations of Excalibur's management capabilities, surfaced
+ * to the model as read-only native tools (so the agent proactively pulls project
+ * state into its reasoning). Each method returns the agent-facing TEXT result;
+ * an omitted method means the host does not offer that capability here. Args are
+ * plain so this stays free of any `@excalibur/core` type dependency.
+ */
+export interface ManagementToolset {
+  /** Project status rollup: runs/patches/interactions, latest activity, work-item lanes. */
+  projectStatus?(args: { discovery?: boolean }): Promise<string>;
+  /** Query the work-item backlog (board or filtered), or fetch one by key. */
+  workItems?(args: {
+    status?: string;
+    query?: string;
+    labels?: string[];
+    limit?: number;
+    key?: string;
+  }): Promise<string>;
+  /** The active (or named) sprint with its burndown summary. */
+  sprintStatus?(args: { sprintId?: string }): Promise<string>;
+  /** List saved plans, or show one (steps + progress) by id. */
+  plans?(args: { id?: string }): Promise<string>;
+  /** Aggregate usage insights (runs/cost/tokens, per-model/-workflow/-day). */
+  insights?(args: { sinceDays?: number }): Promise<string>;
+  /** Summarize a past run's recorded event log (a runId, or the latest). */
+  runLogs?(args: { runId?: string; limit?: number }): Promise<string>;
+  /** List the project's self-contained custom agents. */
+  listAgents?(args: Record<string, never>): Promise<string>;
+  /** List the project's skills with trust level + enablement. */
+  listSkills?(args: Record<string, never>): Promise<string>;
+  /** List recent sessions, or summarize one by id. */
+  sessions?(args: { id?: string }): Promise<string>;
+  /** Run the verification mesh over the current working-tree diff. */
+  verify?(args: Record<string, never>): Promise<string>;
+  /** Produce a focused review of the current working-tree diff. */
+  review?(args: Record<string, never>): Promise<string>;
 }
 
 /** A request to a human/approver to confirm a mutating tool invocation. */

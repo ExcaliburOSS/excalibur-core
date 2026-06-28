@@ -211,6 +211,49 @@ describe('NativeAgentAdapter — real tool loop', () => {
     );
     expect(assistantMsg?.toolCalls?.[0]?.name).toBe('write_file');
   });
+
+  it('routes a management tool call to the injected ManagementToolset and feeds its result back', async () => {
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('m1', 'project_status', { discovery: false })] },
+      { content: 'The project has activity.' },
+    ]);
+    let calledWith: unknown = null;
+    const management = {
+      projectStatus: (args: { discovery?: boolean }): Promise<string> => {
+        calledWith = args;
+        return Promise.resolve('PROJECT-STATUS-MARKER: 3 runs, 0 work items');
+      },
+    };
+
+    const events = await collect(new NativeAgentAdapter().run(makeInput(gateway, { management })));
+
+    // The host implementation was actually invoked (the proactive-tools wiring:
+    // input.management → toolCtx.management → executeNativeTool → execManagement).
+    expect(calledWith).toEqual({ discovery: false });
+
+    // Its result flowed back to the model as a role:tool message on the next turn.
+    const toolMsg = gateway.received[1]?.messages.find((m) => m.role === 'tool');
+    expect(String(toolMsg?.content)).toContain('PROJECT-STATUS-MARKER');
+
+    // A tool_call event names the management tool.
+    const toolEvent = events.find(
+      (e) => e.type === 'tool_call' && e.payload['tool'] === 'project_status',
+    );
+    expect(toolEvent).toBeDefined();
+
+    // project_status is offered to the model even on an implementer turn.
+    expect(gateway.received[0]?.tools?.map((t) => t.name)).toContain('project_status');
+  });
+
+  it('reports a management tool as unavailable when no ManagementToolset is injected', async () => {
+    const gateway = new FakeGateway([
+      { toolCalls: [toolCall('m1', 'work_items', {})] },
+      { content: 'ok' },
+    ]);
+    await collect(new NativeAgentAdapter().run(makeInput(gateway))); // no management wired
+    const toolMsg = gateway.received[1]?.messages.find((m) => m.role === 'tool');
+    expect(String(toolMsg?.content)).toMatch(/not available/i);
+  });
 });
 
 describe('NativeAgentAdapter — permission denial', () => {
@@ -605,18 +648,29 @@ describe('NativeAgentAdapter — role-based tool exposure', () => {
     const offered = gateway.received[0]?.tools?.map((t) => t.name) ?? [];
     expect(offered.sort()).toEqual([
       'git_diff',
+      'insights',
+      'list_agents',
       'list_files',
+      'list_skills',
       'lsp',
+      'plans',
+      'project_status',
       'question',
       'read_file',
       'research',
+      'review',
+      'run_logs',
       'search_code',
+      'sessions',
       'skill',
+      'sprint_status',
       'update_tasks',
+      'verify',
       'web_crawl',
       'web_extract',
       'web_fetch',
       'web_search',
+      'work_items',
     ]);
     expect(offered).not.toContain('write_file');
     expect(offered).not.toContain('run_command');

@@ -65,6 +65,7 @@ import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
 import { describeEvent } from '../lib/run-pipeline';
+import { buildManagementToolset } from '../lib/management-tools';
 import { renderTurnReceipt } from '../lib/turn-receipt';
 import { ActionRenderer, activityFor } from '../lib/action-render';
 import { setAutoApprove } from '../lib/config-file';
@@ -506,6 +507,9 @@ async function driveLoop(
     config: turn.config,
     gateway: turn.gateway,
     signal: ctrl.signal,
+    // Proactive foundation: the agent can pull real project state (status,
+    // work-items, sprints, plans) into its reasoning via read-only native tools.
+    management: buildManagementToolset(deps, turn.repoRoot),
     ...(agent?.model !== undefined ? { model: agent.model } : {}),
     ...(agent?.temperature !== undefined ? { temperature: agent.temperature } : {}),
     ...(agent?.systemPrompt !== undefined ? { systemPrompt: agent.systemPrompt } : {}),

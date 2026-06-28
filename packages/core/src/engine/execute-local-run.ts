@@ -9,6 +9,7 @@ import {
   type AgentAdapter,
   type ExtensionTool,
   type LspSession,
+  type ManagementToolset,
   type ToolExecutionContext,
 } from '@excalibur/agent-runtime';
 import type { ChatMessage, ChatOutput, ModelGateway } from '@excalibur/model-gateway';
@@ -94,6 +95,14 @@ export interface ExecuteLocalRunInput {
    * use the native tool set only. Additive.
    */
   extensionTools?: ExtensionTool[];
+  /**
+   * Host-injected MANAGEMENT capabilities (project status / work-items / sprints
+   * / plans / insights / verify / review …), forwarded to the agent adapter so a
+   * GATED run can also pull project state into its reasoning — the proactive
+   * foundation, identical to a conversational turn. The CLI builds it against the
+   * local stores; absent → those tools report unavailable. Additive.
+   */
+  management?: ManagementToolset;
   /**
    * Hard per-run budget ceiling in CENTS (overrides `config.budget.maxRunUsd`).
    * When the run's accumulated model spend reaches it, the next model call is
@@ -564,6 +573,9 @@ class LocalRunExecution {
       // Free-text human channel for the `question` tool (P1.8b). Forwarded only
       // when an interactive caller supplied it; otherwise the tool proceeds.
       ...(this.input.ask !== undefined ? { ask: this.input.ask } : {}),
+      // Proactive management tools (project status / work-items / verify / …) so a
+      // gated build can pull project state too, identical to a conversational turn.
+      ...(this.input.management !== undefined ? { management: this.input.management } : {}),
     });
 
     for await (const event of stream) {

@@ -28,6 +28,20 @@ export const NATIVE_TOOL_NAMES = [
   'lsp',
   'question',
   'skill',
+  // Management/awareness tools (proactive foundation): the agent pulls Excalibur's
+  // own project state into its reasoning mid-conversation. Read-only; backed by
+  // host-injected `ManagementToolset` callbacks (the CLI owns the stores).
+  'project_status',
+  'work_items',
+  'sprint_status',
+  'plans',
+  'insights',
+  'run_logs',
+  'list_agents',
+  'list_skills',
+  'sessions',
+  'verify',
+  'review',
 ] as const;
 export type NativeToolName = (typeof NATIVE_TOOL_NAMES)[number];
 
@@ -351,6 +365,133 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
           .describe('Skill name to load; omit to list all available skills'),
       })
       .strict(),
+  },
+  {
+    name: 'project_status',
+    description:
+      "Read this project's current Excalibur state: counts of runs/patches/interactions, the latest activity, and the work-item board by lane. Read-only. Call it proactively when the user asks where things stand / what's been done / what's next, or before planning, so you ground your answer in the real project state.",
+    parameters: z
+      .object({
+        discovery: z
+          .boolean()
+          .optional()
+          .describe('Also include recent discovery (clarification) sessions'),
+      })
+      .strict(),
+  },
+  {
+    name: 'work_items',
+    description:
+      'Browse the work-item backlog (the kanban tasks): list the board, filter by status/query/labels, or fetch one by key (e.g. WI-12). Read-only. Use it proactively to see what is planned, in progress, or blocked before you act, and to reference real task ids when you discuss the plan.',
+    parameters: z
+      .object({
+        status: z
+          .string()
+          .optional()
+          .describe('Filter by status/lane (e.g. todo, in_progress, done, blocked)'),
+        query: z.string().optional().describe('Free-text search over title/description'),
+        labels: z
+          .array(z.string())
+          .optional()
+          .describe('Filter to items carrying ALL these labels'),
+        limit: z.number().int().positive().optional().describe('Max items to return (default 20)'),
+        key: z
+          .string()
+          .optional()
+          .describe('Fetch a single work item by its key/id (overrides the filters)'),
+      })
+      .strict(),
+  },
+  {
+    name: 'sprint_status',
+    description:
+      'Read the active sprint (or a named one) with its burndown: total vs done story points, item count, and the ideal-vs-remaining trend. Read-only. Use it proactively when the user asks how the sprint/iteration is going or whether work is on track.',
+    parameters: z
+      .object({
+        sprintId: z
+          .string()
+          .optional()
+          .describe('A specific sprint id; omit for the active sprint'),
+      })
+      .strict(),
+  },
+  {
+    name: 'plans',
+    description:
+      'List the saved structured plans, or show one by id (its steps and per-step progress). Read-only. Use it proactively to recall an approved plan, check what step work is on, or reference the plan when the user asks about the roadmap. (To CREATE or run a plan, do the work directly — this only reads existing plans.)',
+    parameters: z
+      .object({
+        id: z.string().optional().describe('A plan id to show in detail; omit to list all plans'),
+      })
+      .strict(),
+  },
+  {
+    name: 'insights',
+    description:
+      "Aggregate usage insights across this project's runs: totals and per-model/-workflow/-day breakdowns of runs, cost, tokens, files changed and completion rate. Read-only. Use it when the user asks about usage, cost, or productivity trends.",
+    parameters: z
+      .object({
+        sinceDays: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe('Only include runs from the last N days (omit for all-time)'),
+      })
+      .strict(),
+  },
+  {
+    name: 'run_logs',
+    description:
+      'Read the recorded event log of a past run (a specific runId, or the latest) — the phases, tool calls, commands and their outcomes. Read-only. Use it to understand what a previous run actually did or why it failed, before reacting to it.',
+    parameters: z
+      .object({
+        runId: z.string().optional().describe('The run id to inspect; omit for the latest run'),
+        limit: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe('Max recent events to summarize (default 40)'),
+      })
+      .strict(),
+  },
+  {
+    name: 'list_agents',
+    description:
+      'List the self-contained custom agents defined for this project (`.excalibur/agents/*.md`) with their role/model. Read-only. Rarely needed mid-task — use it only when the user asks which custom agents exist or you must pick one.',
+    parameters: z.object({}).strict(),
+  },
+  {
+    name: 'list_skills',
+    description:
+      'List the project SKILLS known to Excalibur with their trust level and whether they are enabled (the configured-skills view). Read-only. Distinct from the `skill` tool, which LOADS a skill body; use this only to survey what skills exist and their status.',
+    parameters: z.object({}).strict(),
+  },
+  {
+    name: 'sessions',
+    description:
+      'List recent Excalibur sessions (id, title, turn count, model), or show one by id (its transcript summary). Read-only. Rarely needed mid-task — use it only when the user refers back to a past session.',
+    parameters: z
+      .object({
+        id: z
+          .string()
+          .optional()
+          .describe('A session id to summarize; omit to list recent sessions'),
+      })
+      .strict(),
+  },
+  {
+    name: 'verify',
+    description:
+      "Run Excalibur's adversarial VERIFICATION MESH over the current working-tree changes (multiple lenses — correctness, security, regression, spec, reproduce) and return any issues found. Read-only (it judges the diff, changes nothing). Call it proactively to self-check your work BEFORE you declare a task done, especially for risky or non-trivial edits.",
+    parameters: z.object({}).strict(),
+  },
+  {
+    name: 'review',
+    description:
+      'Produce a focused code REVIEW of the current working-tree changes (bugs, risks, style, missing tests) without modifying anything. Read-only. Use it proactively to critique your own diff before finishing, or when the user asks for a review of the pending changes.',
+    parameters: z.object({}).strict(),
   },
 ];
 
