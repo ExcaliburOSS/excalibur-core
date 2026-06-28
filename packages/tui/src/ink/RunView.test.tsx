@@ -114,6 +114,31 @@ describe('<RunView>', () => {
     expect(frame).toContain('[y/N/always]');
   });
 
+  it('persists a resolved approval line under a COMPLETED phase, but drops the action tail (RUN-FIX-13)', () => {
+    const frame = frameOf({
+      model: model({
+        phases: [
+          {
+            id: 'turn',
+            name: 'Working',
+            state: 'completed',
+            events: [
+              { text: 'read util.js', tone: 'muted', kind: 'read' },
+              { text: 'edit util.js? → aprobado', tone: 'success', kind: 'approval' },
+            ],
+          },
+        ],
+        done: true,
+      }),
+      spinnerFrame: 0,
+      useStatic: false,
+    });
+    // The transient action tail is dropped once the phase completes…
+    expect(frame).not.toContain('read util.js');
+    // …but the approval question + decision PERSISTS in scrollback.
+    expect(frame).toContain('edit util.js? → aprobado');
+  });
+
   it('shows a done marker when the run completed', () => {
     const phases = model().phases.map((p) => ({ ...p, state: 'completed' as const }));
     const frame = frameOf({
@@ -247,6 +272,21 @@ describe('<DiffView>', () => {
     const big = `diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -0,0 +1,40 @@\n${body}\n`;
     const frame = diffFrame({ diff: big, expanded: true, colors: darkColors, maxLines: 8 });
     expect(frame).toContain('more lines');
+  });
+
+  it('stays UNIFIED (− then + stacked, left-aligned) even on a WIDE terminal (RUN-FIX-13)', () => {
+    // On a wide terminal the old `auto` layout split into old|new columns, pairing
+    // the − and + onto ONE row (deletions left, additions right). Unified keeps them
+    // on SEPARATE, left-aligned rows. Guard: no single row carries both the del-only
+    // text (`= 0;`) and the add-only text (`rate * amount`).
+    const frame = diffFrame({ diff: SAMPLE_DIFF, expanded: true, colors: darkColors, width: 220 });
+    const pairedRow = frame
+      .split('\n')
+      .some((r) => r.includes('= 0;') && r.includes('rate * amount'));
+    expect(pairedRow).toBe(false);
+    // Both versions remain present, just stacked.
+    expect(frame).toContain('= 0;');
+    expect(frame).toContain('rate * amount');
   });
 });
 

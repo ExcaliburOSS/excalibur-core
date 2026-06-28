@@ -6,6 +6,55 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.3] - 2026-06-28
+
+Robustness + clarity. The m-shell can no longer be killed by an execution error,
+it fixes failing checks itself instead of delegating, and the rail is clearer
+(RUN-FIX-13 + RUN-FIX-14).
+
+### Fixed
+
+- **The interactive shell can NEVER be crashed by an execution error.** A stray
+  async fault deep in a run (a child-process error, an `EPIPE`, an unhandled
+  rejection) used to take Node — and the whole m-shell — down with it. A
+  top-level safety net now contains any escaped fault, surfaces it calmly, aborts
+  only the in-flight turn, and keeps the session alive.
+- **Excalibur fixes failing checks itself.** When a build's verification comes
+  back red, the shell now drives a bounded, focused self-heal run (diagnose the
+  root cause → fix → re-verify) instead of stopping and telling you to fix it.
+  The receipt hint is an honest status ("the checks above are still red"), never
+  a "you fix it" delegation.
+- **Every turn is spaced from your request — for real this time.** The blank line
+  now sits at the single dispatch point, so a gated **build** or a **mission**
+  (which mount different presenters than the conversational rail) get the same
+  air the chat turns already had. Mission steps breathe apart, and the mission
+  intro ("Interpreting your goal…") is localized, no longer hardcoded English.
+- Approvals on the **gated-workflow** path (and `excalibur run`) now persist their
+  real question + decision too (the reducer reads `message`/`question`), and a
+  finished/aborted run no longer renders a stale, unanswerable approval prompt in
+  its replay.
+
+- **Inline diffs are always unified now** — stacked − lines then + lines, all
+  left-aligned, full width. On a wide terminal the inline diff used to split into
+  old-left / new-right columns (and additions floated to the right with an empty
+  left column when there were no deletions); the live Ink rail now matches the
+  string rail and never does that. The word-level highlight, teal/coral tints and
+  gutter are unchanged. (`renderDiff`'s side-by-side layout stays available to
+  other callers.)
+- **Tool approvals persist in scrollback.** When Excalibur asks to run or edit
+  something, the question **and your answer** ("…? → approved/declined") now stay
+  as a permanent line in the conversation instead of vanishing the instant you
+  answer. Recorded as real run events, so a replay shows them identically.
+
+### Changed
+
+- **Workflow phase headers are descriptive, not a bare word.** Each gated-workflow
+  phase carries a present-continuous `gerund` shown next to its name while active
+  — "Context Discovery · reading the codebase to map what already exists",
+  "Implement · writing the change and keeping the project building", etc. — so a
+  20-second phase reads as a sentence about the work instead of a single static
+  label. (Deeper live per-phase narration in your language is the next step.)
+
 ## [1.8.2] - 2026-06-28
 
 Conversational-turn UX overhaul (RUN-FIX-12) — space, life, warmth, and a chrome

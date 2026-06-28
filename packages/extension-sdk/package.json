@@ -1,6 +1,6 @@
 {
   "name": "@excalibur-oss/extension-sdk",
-  "version": "1.8.2",
+  "version": "1.8.3",
   "description": "TypeScript SDK for building Excalibur programmatic extensions: defineExtension, ExtensionContext and the contribution interfaces",
   "license": "Apache-2.0",
   "author": "ExcaliburOSS",

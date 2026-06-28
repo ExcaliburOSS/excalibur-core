@@ -124,6 +124,7 @@ describe('renderTurnReceipt (light)', () => {
     } as TurnSummary);
     expect(out).toContain('npm test');
     expect(out).toContain('exit 1');
-    expect(out).toContain('address the failing checks');
+    // The hint is an honest STATUS, never a "you fix it" delegation (RUN-FIX-14).
+    expect(out).toContain('still red');
   });
 });

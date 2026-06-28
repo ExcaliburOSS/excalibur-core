@@ -6,8 +6,9 @@ import { glyph, type Palette, type ThemeMode } from '../theme.js';
 
 /**
  * `<DiffView>` — an inline, collapsible unified diff in the live rail. Reuses
- * the pure `renderDiff` (gutter, word-level highlight, width-adaptive
- * unified/side-by-side) and passes its PRE-COLOURED lines straight through a
+ * the pure `renderDiff` in `unified` layout (gutter, word-level highlight, − then
+ * + stacked + left-aligned — never the side-by-side split) and passes its
+ * PRE-COLOURED lines straight through a
  * `<Text>` with NO style props (`wrap="truncate-end"`) — Ink measures width with
  * string-width and re-serializes the SGR verbatim, so the diff keeps its own
  * colours (a styled parent `<Text>` would let chalk re-open and clobber them).
@@ -85,7 +86,14 @@ export function DiffView(props: DiffViewProps): ReactElement | null {
     tier: tier ?? 'none',
     palette: colors,
     width: Math.max(20, cols - RAIL_RESERVED),
-    layout: 'auto',
+    // ALWAYS unified (− lines then + lines, stacked + left-aligned), never the
+    // side-by-side split: on a wide terminal `auto` put deletions in a left column
+    // and additions in a right one, which read as broken when a change is
+    // additions-only (they floated to the right with an empty left column). The
+    // string rail (rail-render.ts) already renders unified — this aligns the Ink
+    // rail with it. `renderDiff`'s side-by-side path stays available to other
+    // callers (e.g. an explicit diff viewer) and keeps its own tests.
+    layout: 'unified',
     ...(mode !== undefined ? { mode } : {}),
   });
   const cap = expanded ? (maxLines ?? DEFAULT_MAX_LINES) : (peek ?? DEFAULT_PEEK_LINES);

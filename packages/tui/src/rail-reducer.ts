@@ -157,6 +157,11 @@ export function reduceRail(
           prev.state = 'completed';
         }
         const phase: Phase = { id, name: str(p, 'name') || id, state: 'running', events: [] };
+        // A descriptive `detail` set at START makes the ACTIVE header a sentence
+        // about the work ("Context Discovery · reading the codebase…") instead of a
+        // bare word; phase_completed may later overwrite it with an outcome detail.
+        const startDetail = str(p, 'detail');
+        if (startDetail.length > 0) phase.detail = startDetail;
         if (prev !== undefined) setDuration(prev); // prev just rolled to completed
         phases.push(phase);
         phaseById.set(id, phase);
@@ -174,7 +179,12 @@ export function reduceRail(
         break;
       }
       case 'approval_requested': {
-        approval = { question: str(p, 'message') || 'Approve?', options: '[y/N/always]' };
+        // The conversational gate sets `message`; the workflow engine sets `question`
+        // — accept either so BOTH paths show the real question (not the fallback).
+        approval = {
+          question: str(p, 'message') || str(p, 'question') || 'Approve?',
+          options: '[y/N/always]',
+        };
         const ph = phaseFor(event);
         if (ph !== undefined) ph.state = 'waiting';
         break;
@@ -184,6 +194,22 @@ export function reduceRail(
         approval = undefined;
         const ph = phaseFor(event);
         if (ph !== undefined && ph.state === 'waiting') ph.state = 'running';
+        // Commit the resolved Q&A as a PERSISTENT line (the live prompt above was
+        // transient and vanished on answer). `decision` is a host-localized label
+        // ("aprobado"/"rechazado"); fall back to a neutral English word. Tone +
+        // the "→ decision" suffix carry approve vs decline. This line is NOT popped
+        // (only trailing `narration` is) and is surfaced even for a completed phase
+        // (RunView) so it lands in scrollback.
+        const approved = event.type === 'approval_approved';
+        const question = str(p, 'message') || str(p, 'question');
+        if (question.length > 0) {
+          const decision = str(p, 'decision') || (approved ? 'approved' : 'declined');
+          pushEvent(ph, {
+            text: `${question} → ${decision}`,
+            tone: approved ? 'success' : 'warn',
+            kind: 'approval',
+          });
+        }
         break;
       }
       case 'error': {
@@ -198,6 +224,10 @@ export function reduceRail(
       }
       case 'run_completed':
         done = true;
+        // A finished run can never be answered — clear any approval still pending in
+        // the fold (e.g. a turn aborted mid-gate) so neither the final live frame nor
+        // a replay renders a stale, unanswerable "… needs approval [y/N/a]" prompt.
+        approval = undefined;
         for (const ph of phases) {
           if (ph.state === 'running' || ph.state === 'waiting') {
             ph.state = 'completed';

@@ -478,7 +478,14 @@ class LocalRunExecution {
       return true;
     }
     const approved = await this.input.confirm(question);
-    this.emit(approved ? 'approval_approved' : 'approval_rejected', { auto: false }, phaseId);
+    // Carry the question + decision so the rail can COMMIT a persistent "question →
+    // decision" line (RUN-FIX-13). Only on a REAL human decision — the auto-approve
+    // branch above stays bare so a `-y` run doesn't spam an approval line per gate.
+    this.emit(
+      approved ? 'approval_approved' : 'approval_rejected',
+      { question, decision: approved ? 'approved' : 'declined', auto: false },
+      phaseId,
+    );
     return approved;
   }
 
@@ -1059,7 +1066,18 @@ class LocalRunExecution {
         if (this.input.signal?.aborted === true) {
           return this.finish('cancelled');
         }
-        this.emit('phase_started', { name: phase.name, type: phase.type }, phase.id);
+        this.emit(
+          'phase_started',
+          {
+            name: phase.name,
+            type: phase.type,
+            // A present-continuous description of the work, shown next to the name
+            // in the live rail while active — so a phase reads as a sentence about
+            // what's happening, not a single static word (RUN-FIX-13).
+            ...(phase.gerund !== undefined ? { detail: phase.gerund } : {}),
+          },
+          phase.id,
+        );
 
         let outcome: 'completed' | 'skipped' | 'cancelled' = 'skipped';
         const attempts = phase.onFailure === 'retry' ? 1 + (phase.maxRetries ?? 1) : 1;

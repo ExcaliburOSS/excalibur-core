@@ -206,7 +206,7 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
   const restorePoint = captureRestorePoint(repoRoot);
 
   // 1) Interpret the need + auto-author the strategy (the brain).
-  deps.ui.info('Interpreting your goal and planning the strategy…');
+  deps.ui.info(deps.t('mission.interpreting'));
   const mission = await interpretMission(goal, {
     gateway: gateway.gateway,
     ...(planProvider !== null ? { provider: planProvider } : {}),
@@ -246,6 +246,9 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
   const executor: CapabilityExecutor = async (step, state) => {
     const level = capabilityLevel(step.capability, opts.autonomyLevel);
     const turn = baseTurn(level, toRibbon(state));
+    // A blank line before each step's header so the steps breathe apart instead of
+    // stacking line-on-line (RUN-FIX-14).
+    deps.ui.write();
     deps.ui.write(pc.cyan(`▶ ${step.capability}: ${step.objective}`));
 
     // `understand` uses the REAL AO9 scope engine: decompose the objective, fan

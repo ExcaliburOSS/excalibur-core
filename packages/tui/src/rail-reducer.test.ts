@@ -150,6 +150,34 @@ describe('reduceRail', () => {
     expect(approved.approval).toBeUndefined();
   });
 
+  it('commits the resolved approval as a persistent "question → decision" line (RUN-FIX-13)', () => {
+    const approved = reduceRail([
+      ev('phase_started', { name: 'turn' }, 'turn'),
+      ev('approval_requested', { message: 'edit charge.ts?' }, 'turn'),
+      ev('approval_approved', { message: 'edit charge.ts?', decision: 'aprobado' }, 'turn'),
+    ]);
+    const line = approved.phases[0]?.events?.find((e) => e.kind === 'approval');
+    expect(line).toBeDefined();
+    expect(line?.text).toBe('edit charge.ts? → aprobado');
+    expect(line?.tone).toBe('success');
+
+    const rejected = reduceRail([
+      ev('phase_started', { name: 'turn' }, 'turn'),
+      ev('approval_rejected', { message: 'rm -rf /?', decision: 'rechazado' }, 'turn'),
+    ]);
+    const rline = rejected.phases[0]?.events?.find((e) => e.kind === 'approval');
+    expect(rline?.text).toBe('rm -rf /? → rechazado');
+    expect(rline?.tone).toBe('warn');
+  });
+
+  it('shows a descriptive `detail` on the ACTIVE phase header from phase_started (RUN-FIX-13)', () => {
+    const rail = reduceRail([
+      ev('phase_started', { name: 'Context Discovery', detail: 'reading the codebase' }, 'ctx'),
+    ]);
+    expect(rail.phases[0]?.state).toBe('running');
+    expect(rail.phases[0]?.detail).toBe('reading the codebase');
+  });
+
   it('folds a patch_generated diff into a diffstat note on the patch node', () => {
     const diff = `diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1,2 @@\n-x\n+y\n+z\n`;
     const rail = reduceRail([

@@ -465,6 +465,38 @@ export async function runInteractiveSession(
     cancelInFlight();
   });
 
+  // SAFETY NET (RUN-FIX-14) — the interactive shell must NEVER die from an execution
+  // error. Node's DEFAULT for an unhandled promise rejection / uncaught exception is
+  // to print it and EXIT THE PROCESS, so a single stray async fault deep in a run (a
+  // child process 'error' event, an EPIPE on a closed pipe, a bug in a phase) would
+  // kill the whole m-shell mid-session — exactly the "se salió del shell por un error"
+  // failure the user must never see. We intercept BOTH: abort whatever turn was in
+  // flight so the prompt comes back, surface the fault calmly, and STAY ALIVE. Errors
+  // on the AWAITED turn path are still caught by the per-turn try/catch below; this
+  // only backstops the ones that escape it. Removed on session exit (the finally).
+  const onEscapedFault = (err: unknown): void => {
+    const reason = err instanceof Error ? err.message : String(err);
+    try {
+      // Unblock a faulting turn's chain so the user lands back at the prompt; idle
+      // → no-op. Best-effort: the net must never itself throw or exit.
+      if (inFlight !== null) {
+        inFlight.abort();
+        endTurn();
+      }
+    } catch {
+      /* swallow — staying alive is the contract */
+    }
+    try {
+      deps.ui.write();
+      deps.ui.warn(deps.t('repl.recovered-from-fault', { error: reason }));
+      printStatusLine(deps, runtime);
+    } catch {
+      /* surfacing is best-effort; never let it crash the net */
+    }
+  };
+  process.on('uncaughtException', onEscapedFault);
+  process.on('unhandledRejection', onEscapedFault);
+
   // INT-1 — the interrupt channel. A message the user types WHILE a turn streams
   // is triaged (steer/quick/new/stop/answer) and routed WITHOUT losing the work:
   // a steer folds in after, an independent request runs as a parallel `/bg`
@@ -983,6 +1015,12 @@ export async function runInteractiveSession(
       const planActs = intent === 'plan' && posture('plan') !== 'ask';
 
       const ctrl = beginTurn();
+      // One blank line ALWAYS sets the user's request apart from Excalibur's reply,
+      // for EVERY turn shape — conversational, gated build, mission, plan, swarm —
+      // since they mount different presenters (a build/mission goes through the
+      // workflow engine / mission driver, not the conversational rail). The single
+      // dispatch point guarantees the spacing the per-presenter code can't (RUN-FIX-14).
+      deps.ui.write();
       try {
         if (asGoal) {
           await executeGoalLoop(deps, runtime, text, seed, ctrl.signal);
@@ -1105,6 +1143,10 @@ export async function runInteractiveSession(
     runtime.shuttingDown = true;
     offSigint();
     offEscape();
+    // Remove the crash safety net (RUN-FIX-14) — once the session is closing, an
+    // escaped fault should follow normal process semantics, not be swallowed.
+    process.off('uncaughtException', onEscapedFault);
+    process.off('unhandledRejection', onEscapedFault);
     editor.close();
     dashboard?.stop();
     // Restore the user's terminal cursor colour (paired with setCursorAccent).
@@ -1735,7 +1777,7 @@ async function runConversationalBuild(
   text: string,
   signal: AbortSignal,
 ): Promise<void> {
-  const record = await runTask(deps, text, {
+  let record = await runTask(deps, text, {
     conversational: true,
     level: runtime.autonomyLevel,
     yes: runtime.approvals.auto,
@@ -1750,8 +1792,51 @@ async function runConversationalBuild(
   } catch {
     return; // a sparse/partial log — nothing to receipt
   }
-  // The warm conversational receipt (the m-shell never speaks the CLI run footer).
+
+  // PROACTIVE SELF-HEAL (RUN-FIX-14): Excalibur NEVER stops a build to tell the user
+  // to fix a failing check — it fixes them ITSELF. While a verification/test check is
+  // red (and we weren't cancelled), drive a focused, BOUNDED repair run that diagnoses
+  // and fixes the root cause, then re-verifies. Capped so a genuinely-unfixable failure
+  // can never loop forever — after the cap it surfaces the honest state, never "you fix it".
+  const MAX_HEAL_ATTEMPTS = 2;
+  for (
+    let attempt = 1;
+    attempt <= MAX_HEAL_ATTEMPTS && !signal.aborted && summary.checks.some((c) => !c.ok);
+    attempt += 1
+  ) {
+    const failing = summary.checks
+      .filter((c) => !c.ok)
+      .map((c) => `- ${c.label}${c.detail ? ` (${c.detail})` : ''}`)
+      .join('\n');
+    deps.ui.write();
+    deps.ui.info(
+      deps.t('repl.self-heal', { attempt: String(attempt), max: String(MAX_HEAL_ATTEMPTS) }),
+    );
+    const fixRecord = await runTask(deps, buildHealPrompt(text, failing), {
+      conversational: true,
+      level: runtime.autonomyLevel,
+      yes: runtime.approvals.auto,
+      signal,
+    });
+    if (fixRecord === null) {
+      break; // cancelled mid-heal
+    }
+    record = fixRecord;
+    try {
+      summary = buildTurnSummary(loadReplay(runtime.repoRoot, record.id));
+    } catch {
+      break;
+    }
+  }
+
+  // The warm conversational receipt (the m-shell never speaks the CLI run footer),
+  // reflecting the FINAL (post-heal) state.
   renderTurnReceipt(deps, summary, { now: new Date(), model: runtime.model });
+  // If checks are STILL red after the cap, say so honestly — Excalibur tried; it
+  // never silently dumps the problem back on the user with a "you fix it".
+  if (!signal.aborted && summary.checks.some((c) => !c.ok)) {
+    deps.ui.info(deps.t('repl.self-heal-exhausted', { max: String(MAX_HEAL_ATTEMPTS) }));
+  }
   // Record the build as an assistant turn so session history/memory continue.
   // NOTE: no `inputTokens` — those are this RUN's own ephemeral context, unrelated
   // to the session conversation size the ctx% gauge tracks, so we must not feed
@@ -1763,6 +1848,25 @@ async function runConversationalBuild(
     runId: record.id,
     mutated: summary.changedFiles.length > 0,
   });
+}
+
+/**
+ * The focused self-heal prompt (RUN-FIX-14): fix the ROOT CAUSE of the failing
+ * checks and re-verify — explicitly forbidding the model from gaming the checks
+ * (weakening/skipping tests) to make them pass.
+ */
+function buildHealPrompt(originalTask: string, failing: string): string {
+  return [
+    'A previous attempt at this task left verification FAILING.',
+    'Diagnose the ROOT CAUSE and FIX the code so every check passes — run the checks',
+    'yourself to read the real output, fix the code, and confirm they go green.',
+    'Do NOT weaken, skip, delete, or edit the checks/tests to make them pass.',
+    '',
+    `Original task: ${originalTask}`,
+    '',
+    'Failing checks:',
+    failing,
+  ].join('\n');
 }
 
 /** Dispatches an auto plan-mode turn (plan → gate → execute). */

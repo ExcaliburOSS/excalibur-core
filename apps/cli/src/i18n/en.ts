@@ -730,13 +730,15 @@ export const EN: Catalog = {
   'turn-receipt.minutes-ago': '{minutes}m ago',
   'turn-receipt.hours-ago': '{hours}h ago',
   'turn-receipt.hint-apply': 'review, then  excalibur apply {runId}',
-  'turn-receipt.hint-fix-failures': 'address the failing checks above',
+  'turn-receipt.hint-fix-failures': 'the checks above are still red',
   'turn-receipt.hint-branch': 'changes are on branch {branch}',
   'turn-receipt.hint-resolve-block': 'resolve the block to continue',
   'turn-receipt.and-more': '…and {extra} more · /changes',
 
   // agent-turn
   'agent-turn.tool_needs_approval': '  ⚠ {tool} needs approval: {reason}{detail}',
+  'agent-turn.decision-approved': 'approved',
+  'agent-turn.decision-declined': 'declined',
   'agent-turn.allow_action':
     '  Allow this action?  (y = yes · n = no · a = Auto mode, stop asking)',
   'agent-turn.plan_header': '◇ Planning…',
@@ -844,6 +846,13 @@ export const EN: Catalog = {
   'repl.resume-wrong-repo':
     'Session {id} belongs to {repoRoot}, not this repository. Start a new session here, or resume it from its own repo.',
   'repl.cancelled-back-to-prompt': 'Cancelled. Back to the prompt.',
+  'repl.recovered-from-fault':
+    '⚠ I hit an unexpected problem and contained it — the shell is fine, we can keep going. ({error})',
+  'repl.self-heal':
+    '◆ Some checks came back red — let me fix that myself (attempt {attempt} of {max})…',
+  'repl.self-heal-exhausted':
+    '◆ I tried {max} times but couldn’t get every check green — here’s where it stands; tell me how you’d like to proceed.',
+  'mission.interpreting': 'Interpreting your goal and planning the strategy…',
   'repl.ctrl-c-again': 'Press Ctrl-C again to exit.',
   'repl.goal-offer':
     "That reads as a goal to complete. Pursue it across turns until an evaluator says it's done (max {max})?",

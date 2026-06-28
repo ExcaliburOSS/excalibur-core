@@ -167,38 +167,45 @@ supportedAutonomyLevels: [3, 4]
 phases:
   - id: context
     name: Context Discovery
+    gerund: reading the codebase to map what already exists
     type: agent_output
     role: planner
     output: context.md
   - id: spec
     name: Spec
+    gerund: drafting the spec — the behaviour and acceptance criteria
     type: agent_output
     role: planner
     output: spec.md
     approval: optional
   - id: plan
     name: Plan
+    gerund: designing the step-by-step implementation plan
     type: agent_output
     role: planner
     output: plan.md
     approval: optional
   - id: implement
     name: Implement
+    gerund: writing the change and keeping the project building
     type: agent_work
     role: implementer
     worktree: true
     agents: 1
   - id: verify
     name: Verify
+    gerund: running the project checks
     type: command_group
     commandsFromConfig: true
   - id: review
     name: Review
+    gerund: reviewing the diff for correctness and quality
     type: agent_review
     role: reviewer
     output: review.md
   - id: pr_summary
     name: PR Summary
+    gerund: summarising the change for the pull request
     type: agent_output
     role: release
     output: pr-summary.md

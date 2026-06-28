@@ -785,13 +785,15 @@ export const ES: Catalog = {
   'turn-receipt.minutes-ago': 'hace {minutes}m',
   'turn-receipt.hours-ago': 'hace {hours}h',
   'turn-receipt.hint-apply': 'revisa y luego  excalibur apply {runId}',
-  'turn-receipt.hint-fix-failures': 'soluciona las verificaciones fallidas de arriba',
+  'turn-receipt.hint-fix-failures': 'las verificaciones de arriba siguen en rojo',
   'turn-receipt.hint-branch': 'los cambios están en la rama {branch}',
   'turn-receipt.hint-resolve-block': 'resuelve el bloqueo para continuar',
   'turn-receipt.and-more': '…y {extra} más · /changes',
 
   // agent-turn
   'agent-turn.tool_needs_approval': '  ⚠ {tool} necesita aprobación: {reason}{detail}',
+  'agent-turn.decision-approved': 'aprobado',
+  'agent-turn.decision-declined': 'rechazado',
   'agent-turn.allow_action':
     '  ¿Permitir esta acción?  (s = sí · n = no · a = modo Auto, deja de preguntar)',
   'agent-turn.plan_header': '◇ Planificando…',
@@ -902,6 +904,13 @@ export const ES: Catalog = {
   'repl.resume-wrong-repo':
     'La sesión {id} pertenece a {repoRoot}, no a este repositorio. Inicia una sesión nueva aquí o reanúdala desde su propio repositorio.',
   'repl.cancelled-back-to-prompt': 'Cancelado. De vuelta al prompt.',
+  'repl.recovered-from-fault':
+    '⚠ Me encontré con un problema inesperado y lo he contenido — el shell está bien, podemos seguir. ({error})',
+  'repl.self-heal':
+    '◆ Algunas verificaciones salieron en rojo — deja que lo arregle yo (intento {attempt} de {max})…',
+  'repl.self-heal-exhausted':
+    '◆ Lo intenté {max} veces pero no logré dejar todo en verde — aquí está cómo ha quedado; dime cómo quieres seguir.',
+  'mission.interpreting': 'Interpretando tu objetivo y trazando la estrategia…',
   'repl.ctrl-c-again': 'Pulsa Ctrl-C de nuevo para salir.',
   'repl.goal-offer':
     'Esto parece un objetivo a completar. ¿Perseguirlo a lo largo de varios turnos hasta que un evaluador diga que está hecho (máx. {max})?',

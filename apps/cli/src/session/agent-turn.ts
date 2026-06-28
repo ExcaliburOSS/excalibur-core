@@ -347,9 +347,6 @@ async function driveLoop(
   const useInk = externalView === null && turn.quiet !== true && deps.ui.isOutputTty();
   let view: RunViewHandle | null = externalView;
   if (useInk) {
-    // A blank line sets the user's request apart from Excalibur's reply — the rail
-    // opens with air above it, not jammed onto the line under what was typed.
-    deps.ui.write();
     deps.ui.suspendInput();
     const ink = await loadInkUi();
     const mode = detectThemeSync() ?? 'dark';
@@ -455,11 +452,38 @@ async function driveLoop(
     pendingQuestion = question;
     try {
       if (view !== null) {
+        // Persist the gate to the run (events.jsonl) so the Q&A survives in
+        // scrollback and replays identically: a transient prompt above + a
+        // committed "question → decision" line below (RUN-FIX-13). The request
+        // event also drives the prompt on a later replay (no live store there).
+        const requested = createEvent({
+          runId: run.id,
+          type: 'approval_requested',
+          phaseId: 'turn',
+          payload: { message: question },
+        });
+        runManager.appendEvent(run.id, requested);
+        view.push(requested);
         // The approval renders inline in the rail; y/Return → yes, a → auto, n → no.
         choice = await view.requestApproval({
           question,
           options: options.approvalDefaultYes ? '[Y/n/a]' : '[y/N/a]',
         });
+        // 'auto' counts as approval for this action too → record it as approved.
+        const granted = choice !== 'no';
+        const resolved = createEvent({
+          runId: run.id,
+          type: granted ? 'approval_approved' : 'approval_rejected',
+          phaseId: 'turn',
+          payload: {
+            message: question,
+            decision: deps.t(
+              granted ? 'agent-turn.decision-approved' : 'agent-turn.decision-declined',
+            ),
+          },
+        });
+        runManager.appendEvent(run.id, resolved);
+        view.push(resolved);
       } else {
         spinner!.stop(); // clear the transient line before the (permanent) prompt
         deps.ui.write(pc.yellow(question));

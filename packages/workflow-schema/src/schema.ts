@@ -30,6 +30,13 @@ export type PhaseOnFailure = z.infer<typeof phaseOnFailureSchema>;
 export interface WorkflowPhase {
   id: string;
   name: string;
+  /**
+   * A short present-continuous description of what the phase is DOING, shown
+   * next to the name in the live rail while the phase is active (e.g. "mapping
+   * the codebase, read-only") — so a phase reads as a sentence about the work,
+   * not a single static word for 20 seconds. Optional; absent → bare name.
+   */
+  gerund?: string;
   type: PhaseType;
   role?: AgentRole;
   /** Defaults to true; normalized to false when `optional: true` is declared. */
@@ -62,6 +69,7 @@ export interface WorkflowPhase {
 const workflowPhaseObjectSchema = z.object({
   id: z.string().min(1, 'phase id must be a non-empty string'),
   name: z.string().min(1, 'phase name must be a non-empty string'),
+  gerund: z.string().min(1).optional(),
   type: phaseTypeSchema,
   role: agentRoleSchema.optional(),
   required: z.boolean().optional(),

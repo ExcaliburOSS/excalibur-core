@@ -298,6 +298,7 @@ const unicodeEventGlyph: Record<PhaseEventKind, string> = {
   claim: '⊨',
   diagnostics: '⚠',
   narration: '“', // unused (narration renders as glyph-less prose) — type completeness only
+  approval: '◉', // a resolved approval gate (the committed Q → decision line)
   error: '✗',
 };
 
@@ -315,6 +316,7 @@ const asciiEventGlyph: Record<PhaseEventKind, string> = {
   claim: '=',
   diagnostics: '!',
   narration: '"', // unused (narration renders as glyph-less prose) — type completeness only
+  approval: '?', // a resolved approval gate (the committed Q → decision line)
   error: 'x',
 };
 

@@ -258,7 +258,15 @@ function PhaseNode({
               </Box>
             );
           })
-        : null}
+        : // A COMPLETED phase keeps only its header in <Static> scrollback — the
+          // transient action tail (reads/writes/narration) is intentionally dropped.
+          // EXCEPT resolved approvals: the question + the user's decision PERSIST, so
+          // the conversation keeps a permanent "you were asked X, you answered Y" record.
+          (phase.events ?? [])
+            .filter((event) => event.kind === 'approval')
+            .map((event, index) => (
+              <EventRow key={`approval-${index}`} event={event} colors={colors} />
+            ))}
     </Box>
   );
 }

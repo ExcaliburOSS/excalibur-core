@@ -31,6 +31,10 @@ export type PhaseEventKind =
   // narration). Rendered as flowing text, NOT a glyph+verb line — it is the agent
   // talking to the user, so the renderers give it a distinct, human treatment.
   | 'narration'
+  // A resolved tool-approval (the question + the user's decision), committed so it
+  // PERSISTS in scrollback instead of vanishing with the live prompt. The tone
+  // (success/warn) + the "→ decision" suffix carry approve vs decline.
+  | 'approval'
   | 'error';
 
 export interface PhaseEvent {
