@@ -1044,6 +1044,8 @@ export const ES: Catalog = {
   'repl.bg-failed': '✗ segundo plano falló: {title} — {error}',
   'repl.bg-active': '{n} en 2º plano',
   'repl.paused-count': '{n} en pausa',
+  'repl.input-hints': '? ayuda',
+  'repl.input-auto': 'auto-acepta',
   'repl.threads-none': 'No hay hilos en segundo plano en esta sesión. Inicia uno con /bg <tarea>.',
   'repl.threads-header':
     'Hilos — {running} en curso · {paused} en pausa · {done} hechos · {failed} fallidos',

@@ -134,6 +134,15 @@ export interface LineEditorOptions {
    * and filters them as the user types. ↑/↓ highlight, Tab/→ autocompletes.
    */
   commands?: { name: string; description: string }[];
+  /**
+   * A persistent FOOTER framed below the MAIN input line (RUN-FIX-11): each entry
+   * is one rendered line (e.g. an accent hairline + a hint row of model · autonomy
+   * · permissions · shortcuts). RE-EVALUATED on every paint so it reflects live
+   * state, and rendered with the SAME cursor-up / erase-to-end-of-screen mechanism
+   * as the slash menu (so the cursor parks back on the input). Skipped on a
+   * sub-prompt and while the slash menu is open. Lines must be single visual rows.
+   */
+  footer?: () => string[];
 }
 
 /**
@@ -1062,14 +1071,14 @@ export class Ui {
       }
     };
 
-    // Input rows the last paint occupied. The cursor is parked on the LAST input
-    // row (the menu, when open, renders BELOW it and the cursor is moved back up
-    // over it), so the next paint steps up by `prevInputRows - 1` to the FIRST
-    // input row and then erases to end-of-screen — wiping input + menu in one shot
-    // WITHOUT walking the prompt up the screen. (Stepping up by the FULL block
-    // height, input + menu, is what scrolled the prompt up on every keystroke while
-    // the slash menu was open.)
-    let prevInputRows = 1;
+    // The row (0-indexed from the FIRST input row) the cursor was parked on by the
+    // last paint. The next paint steps UP by `prevCursorRow` to the first input row,
+    // then erases to end-of-screen — wiping input + footer (the slash menu OR the
+    // framed hint, RUN-FIX-11) in one shot WITHOUT walking the prompt up the screen.
+    let prevCursorRow = 0;
+    // Rows the input itself occupied in the last paint (≥ 1). Used when a read
+    // ends to drop BELOW the input and erase the framed footer (RUN-FIX-11).
+    let lastInputRows = 1;
 
     const paint = (): void => {
       if (currentPrompt === null || !state.awaiting) {
@@ -1083,47 +1092,68 @@ export class Ui {
       const bodyVis = showPlaceholder ? currentPlaceholder.length : state.buffer.length;
       const inputRows = Math.max(1, Math.ceil(Math.max(1, promptVis + bodyVis) / cols));
 
-      // The command menu, one row per match (highlighted row in accent).
-      let menuStr = '';
-      for (let i = 0; i < menuItems.length; i += 1) {
-        const it = menuItems[i] as { name: string; description: string };
-        const head = i === menuIndex ? pc.cyan(`▸ /${it.name}`) : pc.dim(`  /${it.name}`);
-        menuStr += `\n${head}  ${pc.dim(it.description)}`;
+      // The footer below the input: the slash-command MENU when it is open,
+      // otherwise the persistent framed hint (RUN-FIX-11). Suppressed on a
+      // sub-prompt. One visual row per entry.
+      let footerLines: string[];
+      if (menuItems.length > 0) {
+        footerLines = menuItems.map((it, i) =>
+          i === menuIndex
+            ? `${pc.cyan(`▸ /${it.name}`)}  ${pc.dim(it.description)}`
+            : `${pc.dim(`  /${it.name}`)}  ${pc.dim(it.description)}`,
+        );
+      } else {
+        footerLines = options.footer !== undefined && !this.inSubPrompt ? options.footer() : [];
       }
-      const menuRows = menuItems.length;
+      const footerStr = footerLines.map((l) => `\n${l}`).join('');
+      // Count VISUAL rows, not array entries: a footer line wider than the terminal
+      // auto-wraps, and the cursor-up math below must account for those extra rows
+      // (else the cursor parks on the wrong line).
+      const footerRows = footerLines.reduce(
+        (sum, l) => sum + Math.max(1, Math.ceil(Math.max(1, stripAnsi(l).length) / cols)),
+        0,
+      );
+
+      // The cursor's row/column inside the input block (0-indexed from the first
+      // input row). With a footer below, the cursor always steps back up to it.
+      const cursorAbs = promptVis + (showPlaceholder ? 0 : state.cursor);
+      const cursorRow = Math.floor(cursorAbs / cols);
+      const cursorCol = cursorAbs % cols;
 
       let seq = '';
-      if (prevInputRows > 1) {
-        // Up to the FIRST input row — NEVER above it, so the erase below can't
-        // reach the welcome/conversation. (The cursor is parked on the last input
-        // row; the menu lives below and is wiped by the erase, not by moving up.)
-        seq += `${ESC}[${prevInputRows - 1}A`;
+      if (prevCursorRow > 0) {
+        // Up to the FIRST input row — NEVER above it, so the erase below can't reach
+        // the welcome/conversation.
+        seq += `${ESC}[${prevCursorRow}A`;
       }
       seq += `${CR}${ESC}[0J`; // col 0, erase from the first input row to end of screen
-      seq += currentPrompt + body + menuStr;
-      // Park the cursor back on the INPUT line at the insertion point.
-      if (menuRows > 0) {
-        // Slash tokens are short → the input is a single row; go up over the menu.
-        seq += `${ESC}[${menuRows}A${CR}`;
-        const col = promptVis + state.cursor;
-        if (col > 0) {
-          seq += `${ESC}[${col}C`;
-        }
-      } else {
-        const back = showPlaceholder
-          ? currentPlaceholder.length
-          : state.buffer.length - state.cursor;
-        if (back > 0) {
-          seq += `${ESC}[${back}D`;
-        }
+      seq += currentPrompt + body + footerStr;
+      // Park the cursor back on the input line at the insertion point: step up over
+      // the rows below the cursor (the rest of the wrapped input + the whole footer).
+      const downBelowCursor = inputRows - 1 - cursorRow + footerRows;
+      if (downBelowCursor > 0) {
+        seq += `${ESC}[${downBelowCursor}A`;
+      }
+      seq += CR;
+      if (cursorCol > 0) {
+        seq += `${ESC}[${cursorCol}C`;
       }
       out.write(seq);
-      // Track INPUT rows only (where the cursor parks) — NOT the menu rows. Using
-      // the full block height here is what walked the prompt up the screen and let
-      // the erase eat conversation lines on every keystroke with the menu open.
-      prevInputRows = inputRows;
+      prevCursorRow = cursorRow;
+      lastInputRows = inputRows;
     };
     const repaint = paint;
+
+    // Ends a read cleanly: from the parked cursor, drop to the row just BELOW the
+    // input and erase the framed footer (hairline + hint), leaving the cursor on a
+    // fresh line so the typed message stays and the next output starts clean. Used
+    // in place of a bare `\n` now that a footer may sit below the input (RUN-FIX-11).
+    const closeFrame = (): void => {
+      const down = Math.max(1, lastInputRows - prevCursorRow);
+      out.write(`${CR}${ESC}[${down}B${ESC}[0J`);
+      prevCursorRow = 0;
+      lastInputRows = 1;
+    };
 
     const onKeypress = (_str: string | undefined, key: ParsedKey | undefined): void => {
       if (key === undefined) {
@@ -1167,7 +1197,7 @@ export class Ui {
         state = result.state;
         switch (result.action.type) {
           case 'submit': {
-            out.write('\n'); // commit the typed line below the prompt
+            closeFrame(); // erase the framed footer; the typed line stays committed
             currentPrompt = null;
             const waiter = waiters.shift();
             // A submit only occurs while a line is being read (awaiting ⇒ a waiter
@@ -1177,7 +1207,7 @@ export class Ui {
             return;
           }
           case 'eof': {
-            out.write('\n');
+            closeFrame();
             closed = true;
             currentPrompt = null;
             while (waiters.length > 0) {
@@ -1196,7 +1226,7 @@ export class Ui {
               repaint();
               return;
             }
-            out.write('\n');
+            closeFrame();
             currentPrompt = null;
             waiters.shift()?.(REWIND_SENTINEL);
             return;
@@ -1210,7 +1240,7 @@ export class Ui {
               repaint();
               return;
             }
-            out.write('\n');
+            closeFrame();
             currentPrompt = null;
             waiters.shift()?.(LOG_SENTINEL);
             return;
@@ -1284,10 +1314,10 @@ export class Ui {
       process.removeListener('SIGHUP', onTermSignal);
       restoreCooked();
       // Step up only to the FIRST input row (never above it), then erase to end of
-      // screen — wipes the prompt + any open menu without touching the scrollback.
-      if (prevInputRows > 1) out.write(`${ESC}[${prevInputRows - 1}A`);
-      out.write(`${CR}${ESC}[0J`); // wipe any half-drawn (possibly wrapped) prompt + menu
-      prevInputRows = 1;
+      // screen — wipes the prompt + footer (menu or hint) without touching scrollback.
+      if (prevCursorRow > 0) out.write(`${ESC}[${prevCursorRow}A`);
+      out.write(`${CR}${ESC}[0J`); // wipe any half-drawn (possibly wrapped) prompt + footer
+      prevCursorRow = 0;
       rawActive = false;
     };
 
@@ -1330,7 +1360,7 @@ export class Ui {
           ? placeholderOf()
           : (placeholderOf ?? '');
       recomputeMenu();
-      prevInputRows = 1;
+      prevCursorRow = 0;
       paint();
       return new Promise((resolve) => {
         waiters.push((line) => {

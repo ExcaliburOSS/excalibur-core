@@ -982,6 +982,8 @@ export const EN: Catalog = {
   'repl.bg-failed': '✗ background failed: {title} — {error}',
   'repl.bg-active': '{n} bg',
   'repl.paused-count': '{n} paused',
+  'repl.input-hints': '? help',
+  'repl.input-auto': 'auto-accept',
   'repl.threads-none': 'No background threads this session. Start one with /bg <task>.',
   'repl.threads-header':
     'Threads — {running} running · {paused} paused · {done} done · {failed} failed',

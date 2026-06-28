@@ -399,6 +399,8 @@ export async function runInteractiveSession(
     // The `/` command menu (filters as you type) + a dim CONTEXTUAL placeholder.
     commands: slashCommands(deps.t),
     placeholder: () => deps.t(interacted ? 'repl.ph.next' : 'repl.ph.start'),
+    // RUN-FIX-11: the framed footer below the input (bottom hairline + indicators).
+    footer: () => buildInputFooter(deps, runtime),
   });
   // LLM intent classifier (multi-language), resolved ONCE. undefined → no fast
   // model / opted out → the shell stays model-first (everything a plain turn).
@@ -3018,7 +3020,21 @@ export function renderRunRule(label: string, width: number): string {
   return `${accent('─'.repeat(dashes))} ${accent('▶')} ${pc.bold(text)} ${accent('─')}`;
 }
 
-function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
+/** The accent hairline that frames the input (RUN-FIX-11): a bright accent head
+ * fading into a dim rule — the rail's divider language. Fixed width fits ≥ 80 cols. */
+function inputHairline(): string {
+  return ` ${accent('───')}${pc.dim('─'.repeat(46))}`;
+}
+
+/**
+ * The input frame's TOP rule, printed before each prompt (RUN-FIX-11). A blank
+ * line + an accent hairline separate the prompt from the live conversation above
+ * and give it room to breathe. The indicators (model · autonomy · permissions ·
+ * ctx · shortcuts) render in the editor FOOTER below the input ({@link buildInputFooter}).
+ */
+/** The single dense status line (autonomy · workflow · model · cost · safety · ctx ·
+ * bg · paused) — the non-TTY / CI form, where the framed editor footer never renders. */
+function buildDenseStatus(deps: CliDeps, runtime: SessionRuntime): string {
   const status = buildStatusLineModel({
     config: runtime.config,
     model: runtime.model,
@@ -3029,12 +3045,53 @@ function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
   const counts = fleetCounts(runtime.fleet);
   const bg =
     counts.active > 0 ? ` · ${accent(deps.t('repl.bg-active', { n: counts.active }))}` : '';
+  const paused =
+    counts.paused > 0 ? ` · ${pc.yellow(deps.t('repl.paused-count', { n: counts.paused }))}` : '';
+  return `${status.autonomy} · ${status.workflow} · ${status.model} · ${cost} · ${safetyLine(deps.t, runtime.config, runtime.approvals.auto)}${contextUsageLabel(runtime)}${bg}${paused}`;
+}
+
+function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
+  // On a TTY the indicators live in the editor FOOTER (RUN-FIX-11), so here we only
+  // draw the top accent rule + breathing room. On a NON-TTY (piped / CI), the live
+  // editor — and thus its footer — never renders, so keep the single dense status
+  // line (pre-RUN-FIX-11 behaviour) so the status is never lost.
+  if (!deps.ui.isOutputTty()) {
+    deps.ui.info(buildDenseStatus(deps, runtime));
+    return;
+  }
+  deps.ui.write();
+  deps.ui.write(inputHairline());
+}
+
+/**
+ * The framed footer rendered by the editor BELOW the input (RUN-FIX-11): the bottom
+ * accent hairline + a single hint row of model · autonomy · permissions · ctx · (bg ·
+ * paused ·) shortcuts. Re-evaluated each paint so it reflects live state. Kept to one
+ * visual row so the editor's cursor math stays exact.
+ */
+function buildInputFooter(deps: CliDeps, runtime: SessionRuntime): string[] {
+  const status = buildStatusLineModel({
+    config: runtime.config,
+    model: runtime.model,
+    costCents: runtime.costCents,
+    autonomyLevel: runtime.autonomyLevel,
+  });
+  const counts = fleetCounts(runtime.fleet);
+  const bg =
+    counts.active > 0 ? ` · ${accent(deps.t('repl.bg-active', { n: counts.active }))}` : '';
   // INT-5 — surface paused (interrupted) work so it is never silently forgotten.
   const paused =
     counts.paused > 0 ? ` · ${pc.yellow(deps.t('repl.paused-count', { n: counts.paused }))}` : '';
-  deps.ui.info(
-    `${status.autonomy} · ${status.workflow} · ${status.model} · ${cost} · ${safetyLine(deps.t, runtime.config, runtime.approvals.auto)}${contextUsageLabel(runtime)}${bg}${paused}`,
-  );
+  // COMPACT permissions for the one-row hint (the full safetyLine is a sentence —
+  // far too long; it would wrap and throw off the editor's footer-row math): just
+  // the safety preset + an "auto" flag when auto-accept is on.
+  const preset = runtime.config.safety?.preset ?? 'standard-safe';
+  const perms = `${preset}${runtime.approvals.auto ? ` · ${deps.t('repl.input-auto')}` : ''}`;
+  const hint =
+    `  ${accent('◆')} ${accent(status.model)} ${pc.dim('·')} ${status.autonomy} ${pc.dim('·')} ` +
+    `${pc.dim(perms)}${pc.dim(contextUsageLabel(runtime))}${bg}${paused} ` +
+    `${pc.dim(`· ${deps.t('repl.input-hints')}`)}`;
+  return [inputHairline(), hint];
 }
 
 /**
