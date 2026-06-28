@@ -96,6 +96,13 @@ export interface MultiSelectOptions {
   preselected?: number[];
   /** Dim navigation hint under the question (already translated). */
   navHint?: string;
+  /**
+   * Action hint shown BELOW the options (already translated) — repeats the
+   * "press Enter to confirm" cue where the eye lands after scanning the list, so
+   * the user is never left wondering how to commit. A `{count}` placeholder is
+   * filled with the live number of checked rows. Omitted → a built-in default.
+   */
+  confirmHint?: string;
   /** Effective picker keybindings (P1.13b) — defaults to the built-in arrow/jk set. */
   keymap?: SelectKeymap;
 }
@@ -802,6 +809,7 @@ export class Ui {
       preselected,
       options.navHint,
       options.keymap,
+      options.confirmHint,
     );
   }
 
@@ -812,6 +820,7 @@ export class Ui {
     preselected: number[],
     navHint?: string,
     keymap?: SelectKeymap,
+    confirmHint?: string,
   ): Promise<number[]> {
     const input = this.stdin as NodeJS.ReadStream;
     const out = this.stdout;
@@ -853,6 +862,15 @@ export class Ui {
       if (end < total) {
         lines.push(pc.dim(`  ▼ ${total - end} more`));
       }
+      // A confirm cue BELOW the list — where the eye rests after scanning the
+      // options — so "press Enter to confirm" is never only above the fold. The
+      // `{count}` reflects the live checked total; a cyan ⏎ draws the action.
+      const enter = ascii ? '>' : '⏎';
+      const filled = (
+        confirmHint ?? 'Press Enter to confirm ({count} selected) · Space toggle'
+      ).replace('{count}', String(state.selected.size));
+      lines.push('');
+      lines.push(`${pc.cyan(enter)} ${pc.dim(filled)}`);
       return lines;
     };
     const draw = (): void => {

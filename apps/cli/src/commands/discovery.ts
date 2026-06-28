@@ -177,6 +177,7 @@ export async function runDiscoveryFlow(deps: CliDeps, flow: DiscoveryFlowInput):
       const chosen = await deps.ui.multiSelect(deps.t('discovery.shapePrompt'), choices, {
         preselected,
         navHint: deps.t('repl.plan-shape-nav'),
+        confirmHint: deps.t('repl.plan-shape-confirm'),
       });
       const picked = new Set(chosen);
       tailored.recommendations.forEach((r, idx) => {

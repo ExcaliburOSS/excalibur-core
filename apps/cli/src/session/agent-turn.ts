@@ -347,6 +347,9 @@ async function driveLoop(
   const useInk = externalView === null && turn.quiet !== true && deps.ui.isOutputTty();
   let view: RunViewHandle | null = externalView;
   if (useInk) {
+    // A blank line sets the user's request apart from Excalibur's reply — the rail
+    // opens with air above it, not jammed onto the line under what was typed.
+    deps.ui.write();
     deps.ui.suspendInput();
     const ink = await loadInkUi();
     const mode = detectThemeSync() ?? 'dark';

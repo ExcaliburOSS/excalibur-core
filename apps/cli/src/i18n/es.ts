@@ -400,8 +400,9 @@ export const ES: Catalog = {
   'discovery.sessionCreated': 'Sesión de Discovery {id} ({inputType}) → {dir}',
   'discovery.answerPrompt':
     'Responde las preguntas a continuación — pulsa Enter para omitir cualquiera de ellas.',
-  'discovery.shapeConsider': 'Aspectos que quizá quieras incluir en el alcance (espacio marca):',
-  'discovery.shapePrompt': '¿Incluir en el alcance?',
+  'discovery.shapeConsider':
+    'Mientras miraba, surgieron algunos ángulos relacionados — marca los que quieras que mantenga en el alcance (espacio para marcar):',
+  'discovery.shapePrompt': '¿Cuáles quieres que mantenga en el alcance?',
   'discovery.doNotBuild':
     'Recomendación: no construir. La evidencia recopilada no justifica este trabajo — consulta recommendation.md para conocer los motivos. No se sugiere nada más.',
   'discovery.suggestedNextSteps': 'Próximos pasos sugeridos:',
@@ -974,9 +975,11 @@ export const ES: Catalog = {
   'repl.orchestration-hint':
     'Sugerencia: pídeme «muéstrame la orquestación» o «pausala» cuando quieras — o abre su cronograma en vivo en el dashboard.',
   'repl.plan-shape-intro':
-    'Dando forma al plan — elige qué trabajo relacionado incluir (espacio marca):',
-  'repl.plan-shape-prompt': '¿Incluir en el plan?',
+    'Antes de ponerme con ello, he visto algunas piezas relacionadas que podríamos incluir en el plan — marca las que te encajen (espacio para marcar):',
+  'repl.plan-shape-prompt': '¿Cuáles quieres que incluya en el plan?',
   'repl.plan-shape-nav': '↑/↓ mover · espacio marca · a/n todo/nada · enter confirma · esc omitir',
+  'repl.plan-shape-confirm':
+    'Pulsa Enter para confirmar ({count} seleccionados) · Espacio marca · Esc omitir',
   'repl.auto-build-review': 'Revisión adversarial del resultado ({lenses} lente(s))…',
   'repl.auto-build-review-high':
     'Sobrevivió un problema de severidad alta — revisa los cambios antes de fiarte de ellos.',

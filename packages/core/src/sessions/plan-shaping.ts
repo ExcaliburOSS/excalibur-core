@@ -104,6 +104,11 @@ export function buildPlanShapePrompt(request: string, scopeContext?: string): st
   return [
     'You triage whether a coding agent should SHAPE a plan with the user BEFORE building.',
     'Read the build request in ANY language. Reply IN THE SAME LANGUAGE as the request.',
+    'VOICE: write every question and recommendation in a WARM, friendly, conversational',
+    'tone — address the user directly and informally (Spanish: use «tú», NEVER «usted» or',
+    '«desea»), as a helpful teammate would, never a cold form field. A question should',
+    'sound like you genuinely want to get it right for them (e.g. «¿Qué diferenciadores',
+    'te gustaría destacar?» not «¿Cuáles son los diferenciadores que desea resaltar?»).',
     ...grounding,
     '',
     'Return ONLY this JSON object (no prose, no markdown, no code fences):',

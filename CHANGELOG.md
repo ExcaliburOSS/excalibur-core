@@ -6,6 +6,39 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.2] - 2026-06-28
+
+Conversational-turn UX overhaul (RUN-FIX-12) — space, life, warmth, and a chrome
+that follows your system language.
+
+### Fixed
+
+- **Spanish (and other) chrome auto-detected from the OS.** A Spanish macOS that
+  launches a shell with `LANG=C.UTF-8` (or unset) now gets Spanish chrome instead
+  of falling back to English — `detectCliLocale` consults the OS preferred
+  language (`AppleLocale` on macOS, `Intl` elsewhere) when the environment is
+  neutral. Gated to an **interactive terminal**, so scripted/piped/CI runs stay
+  deterministic and an explicit `LANG`/`EXCALIBUR_LANG` always wins.
+- **The turn breathes.** A blank line now separates your request from Excalibur's
+  reply, and every spoken paragraph floats on its own line — no more
+  line-on-line wall of text.
+
+### Changed
+
+- **A pulsing `●` leads every spoken line.** The live narration is marked by
+  Excalibur's signature accent dot, breathing along the accent ramp as it
+  streams — distinct from the `│`-railed mechanical action lines.
+- **Warmer, more human voice.** The narration guidance and the plan-shaping /
+  discovery question prompts now ask the model for a genuinely friendly,
+  teammate-like tone that addresses you directly and informally (Spanish: «tú»,
+  never the cold «usted»/«desea»), and opens each turn by echoing back what you
+  asked. The plan-shaping prompts themselves were reworded from terse
+  ("Include in the plan?") to inviting ("Which of these should I weave into the
+  plan?").
+- **The multi-select repeats the confirm cue below the options** — a
+  `⏎ Press Enter to confirm (N selected)` line where the eye lands after
+  scanning the list, not only above it.
+
 ## [1.8.1] - 2026-06-28
 
 Input-box rendering fixes (the framed prompt from 1.8.0).

@@ -382,18 +382,22 @@ function systemPromptFor(input: AgentRunInput): string {
  */
 function narrationGuidance(_role: AgentRole): string[] {
   return [
-    'Narrate your work continuously, like a friendly pair-programmer thinking out',
-    'loud, so the user is NEVER left watching a silent cursor. Open every turn with',
-    'one short sentence about what you are doing right now (e.g. "Let me understand',
-    'what you are asking…" / "Checking how this part of the code works…"). Before',
-    'each meaningful action — reading or changing files, running a command, launching',
-    'sub-agents — say in one short, plain-language sentence what you are about to do',
-    'and why; after a key finding or decision, say what you learned and what it',
-    'changes. Keep each note to a sentence or two, warm and free of internal jargon,',
-    'and never restate raw tool output the user already sees.',
-    'Call the unit of work a "task" (Spanish: "tarea"). NEVER call it a "run" or an',
-    '"ejecución" — say "work on the task" / "trabajar en la tarea", never "start a run".',
-    'Write this narration in the SAME language the user used.',
+    'Narrate your work like a warm, engaged pair-programmer sitting next to the user —',
+    'genuine, encouraging, human — so they are NEVER left watching a silent cursor.',
+    'Open EVERY turn by briefly echoing back what they asked, IN YOUR OWN WORDS, so',
+    'they feel heard before anything happens (e.g. "¡Buena idea! Vamos a montar esa',
+    'landing — primero miro cómo está hecho el proyecto…" / "Got it — you want X; let',
+    'me start by understanding Y…"). Address the user directly and personally ("tú" /',
+    '"you"); a touch of warmth or light enthusiasm is welcome, never robotic.',
+    'Before each meaningful action — reading or changing files, running a command,',
+    'launching sub-agents — say in one short, plain-language sentence what you are about',
+    'to do and why; after a key finding or decision, share what you learned and what it',
+    'changes, the way you would tell a teammate. Keep each note to a sentence or two,',
+    'free of internal jargon, and never restate raw tool output the user already sees.',
+    'Speak of the work warmly and plainly — call it a "task" (Spanish: "tarea") and',
+    'talk about "phases"/"fases" of the work. NEVER expose internal machinery: no "run"',
+    'or "ejecución", no run ids/paths, no role/level/autonomy labels.',
+    'Write this narration in the SAME language the user used (Spanish → Spanish).',
   ];
 }
 

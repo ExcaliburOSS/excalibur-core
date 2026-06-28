@@ -7,6 +7,8 @@ import {
   formatElapsed,
   formatTokens,
   glyph,
+  pulseColor,
+  pulseGlyph,
   type Palette,
   type ThemeMode,
 } from '../theme.js';
@@ -100,15 +102,17 @@ function EventRow({
   spinnerFrame?: number;
 }): ReactElement {
   // Narration is the agent TALKING to the user — flowing, wrapped prose in the
-  // foreground colour (italic), with no tool glyph. It reads like a sentence in
-  // the conversation, distinct from the mechanical glyph+verb action lines.
+  // foreground colour (italic), led by Excalibur's signature accent ● so each
+  // spoken paragraph reads as its own "bubble", distinct from the mechanical
+  // glyph+verb action lines. A blank line above gives every utterance air, so a
+  // turn breathes (space + rhythm) instead of stacking line-on-line.
   if (event.kind === 'narration') {
     return (
-      <Box>
-        {/* flexShrink=0 so the rail prefix keeps its full width when the prose
-            wraps (otherwise Yoga steals a space and the wrapped line mis-aligns). */}
+      <Box marginTop={1}>
+        {/* flexShrink=0 so the marker keeps its full width when the prose wraps
+            (otherwise Yoga steals a space and the wrapped line mis-aligns). */}
         <Box flexShrink={0}>
-          <Text color={colors.rail}>{` ${glyph.railV}   `}</Text>
+          <Text color={colors.accent} bold>{` ${pulseGlyph}   `}</Text>
         </Box>
         <Text color={colors.text} italic wrap="wrap">
           {event.text}
@@ -259,12 +263,25 @@ function PhaseNode({
   );
 }
 
-/** The current turn's prose as it streams in — typed out with a soft cursor. */
-function StreamingNarration({ text, colors }: { text: string; colors: Palette }): ReactElement {
+/**
+ * The current turn's prose as it streams in — typed out with a soft cursor, led
+ * by a PULSING accent ● (Excalibur's "speaking now" beat, breathing along the
+ * accent ramp via `spinnerFrame`) and floated on a blank line so the live
+ * utterance stands clear of whatever came before it.
+ */
+function StreamingNarration({
+  text,
+  colors,
+  spinnerFrame,
+}: {
+  text: string;
+  colors: Palette;
+  spinnerFrame: number;
+}): ReactElement {
   return (
-    <Box>
+    <Box marginTop={1}>
       <Box flexShrink={0}>
-        <Text color={colors.rail}>{` ${glyph.railV}   `}</Text>
+        <Text color={pulseColor(colors, spinnerFrame)} bold>{` ${pulseGlyph}   `}</Text>
       </Box>
       {/* The cursor lives INSIDE the wrapping text so it follows the last
           character onto the final wrapped line, not the end of the first row. */}
@@ -481,7 +498,7 @@ export function RunView(props: RunViewProps): ReactElement {
       )}
       {liveTail.map(renderPhase)}
       {streamingNarration.length > 0 ? (
-        <StreamingNarration text={streamingNarration} colors={colors} />
+        <StreamingNarration text={streamingNarration} colors={colors} spinnerFrame={spinnerFrame} />
       ) : null}
       {todoLines.length > 0 ? (
         <Box flexDirection="column">

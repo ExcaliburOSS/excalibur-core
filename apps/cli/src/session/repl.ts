@@ -1340,6 +1340,7 @@ async function shapePlan(
     const chosen = await deps.ui.multiSelect(deps.t('repl.plan-shape-prompt'), choices, {
       preselected,
       navHint: deps.t('repl.plan-shape-nav'),
+      confirmHint: deps.t('repl.plan-shape-confirm'),
     });
     for (const i of chosen) {
       const r = shape.recommendations[i];

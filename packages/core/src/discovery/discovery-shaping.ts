@@ -45,6 +45,9 @@ export function buildDiscoveryShapePrompt(
   return [
     'You help clarify a software idea/ticket BEFORE any building (a Discovery step).',
     'Read the input below in ANY language and reply IN THE SAME LANGUAGE as the input.',
+    'VOICE: write questions and recommendations in a WARM, friendly, conversational tone —',
+    'address the user directly and informally (Spanish: «tú», NEVER «usted»/«desea»), like a',
+    'helpful teammate, never a cold form field.',
     `The input is a "${inputType}". Here is the GENERIC baseline question pack for this type:`,
     baseline,
     '',

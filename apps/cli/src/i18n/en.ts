@@ -387,8 +387,9 @@ export const EN: Catalog = {
   // discovery
   'discovery.sessionCreated': 'Discovery session {id} ({inputType}) → {dir}',
   'discovery.answerPrompt': 'Answer the questions below — press Enter to skip any of them.',
-  'discovery.shapeConsider': 'Aspects you may want to fold into scope (space toggles):',
-  'discovery.shapePrompt': 'Include in scope?',
+  'discovery.shapeConsider':
+    'While I was looking, a few related angles stood out — mark any you would like me to keep in scope (space to mark):',
+  'discovery.shapePrompt': 'Which of these should I keep in scope?',
   'discovery.doNotBuild':
     'Recommendation: do not build. The evidence collected does not justify this work — see recommendation.md for the reasons. Nothing further is suggested.',
   'discovery.suggestedNextSteps': 'Suggested next steps:',
@@ -913,9 +914,11 @@ export const EN: Catalog = {
   'repl.auto-build-sequential': 'Auto-orchestrating: a single workstream → one focused task.',
   'repl.orchestration-hint':
     'Tip: ask me to "show the orchestration" or "pause it" anytime — or open its live chronogram in the dashboard.',
-  'repl.plan-shape-intro': 'Shaping the plan — pick which related work to fold in (space toggles):',
-  'repl.plan-shape-prompt': 'Include in the plan?',
+  'repl.plan-shape-intro':
+    'Before I dive in, here are a few related pieces we could fold into the plan — pick whichever feel right to you (space to mark):',
+  'repl.plan-shape-prompt': 'Which of these should I weave into the plan?',
   'repl.plan-shape-nav': '↑/↓ move · space toggle · a/n all/none · enter confirm · esc skip',
+  'repl.plan-shape-confirm': 'Press Enter to confirm ({count} selected) · Space toggle · Esc skip',
   'repl.auto-build-review': 'Adversarial review of the result ({lenses} lens(es))…',
   'repl.auto-build-review-high':
     'A high-severity issue survived review — inspect the changes before relying on them.',
