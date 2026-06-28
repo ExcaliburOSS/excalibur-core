@@ -47,6 +47,14 @@ export interface CliDeps {
   locale: Locale;
   /** Translator for the active locale — `t(key, vars)` (plan §"Idioma"). */
   t: Translator;
+  /**
+   * Optional cooperative-cancellation signal. The interactive shell sets this
+   * when it runs a command in-process (the m-shell↔CLI passthrough) so Ctrl-C
+   * cancels the command and returns to the prompt instead of killing the shell;
+   * commands that drive long work should thread it into their core call. Unset
+   * for a normal one-shot CLI invocation (the process exits anyway).
+   */
+  signal?: AbortSignal;
 }
 
 export function defaultDeps(overrides: Partial<CliDeps> = {}): CliDeps {
@@ -64,5 +72,6 @@ export function defaultDeps(overrides: Partial<CliDeps> = {}): CliDeps {
     includeUserGlobal: overrides.includeUserGlobal ?? true,
     locale,
     t: overrides.t ?? buildCliTranslator(locale),
+    ...(overrides.signal !== undefined ? { signal: overrides.signal } : {}),
   };
 }

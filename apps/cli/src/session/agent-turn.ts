@@ -135,6 +135,13 @@ export interface AgentTurnDeps {
   approvals?: ApprovalState;
   /** Cancels the in-flight turn (Ctrl-C). */
   signal?: AbortSignal;
+  /**
+   * Called when the user presses ESC during this turn's live view, IN ADDITION
+   * to aborting the local turn. A multi-step driver (a mission) sets it to abort
+   * the WHOLE run's controller so ESC cancels the entire mission, not just the
+   * current step. Absent for a normal turn (ESC just aborts that turn).
+   */
+  onEscape?: () => void;
   /** Injectable adapter (tests pass a fake-gateway-backed native adapter). */
   adapter?: AgentAdapter;
   /**
@@ -367,7 +374,10 @@ async function driveLoop(
         earlier: deps.t('rail.earlier'),
       },
     });
-    view.onEscape(() => ctrl.abort());
+    view.onEscape(() => {
+      ctrl.abort(); // abort THIS turn…
+      turn.onEscape?.(); // …and let a multi-step driver (mission) cancel the whole run
+    });
   }
   // Pin the mission ribbon above the rail (whether we mounted the view or the
   // caller supplied one), so each capability runs under the live plan DAG.

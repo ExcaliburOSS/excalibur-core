@@ -55,12 +55,17 @@ import { agentUsesGateway, resolveAgentAdapter } from '@excalibur/agent-runtime'
 import { estimateTokens, redactSecrets, type ChatMessage } from '@excalibur/model-gateway';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { generateId, type AutonomyLevel, type ExcaliburConfig } from '@excalibur/shared';
+import {
+  generateId,
+  isExcaliburError,
+  type AutonomyLevel,
+  type ExcaliburConfig,
+} from '@excalibur/shared';
 import { gaugeCells, paint } from '@excalibur/tui';
 import pc from 'picocolors';
 import { accent, resetCursorColor, setCursorAccent, shellPalette, shellTier } from '../lib/accent';
 import type { CliDeps } from '../deps';
-import { CliUsageError } from '../errors';
+import { CliUsageError, describeError } from '../errors';
 import {
   loadConfigContext,
   loadGatewayContext,
@@ -89,7 +94,8 @@ import { isContextOverflowError } from '../lib/context-overflow';
 import { listSwitchableProviders, providerHint } from '../lib/model-switch';
 import { resolveSelectKeymap } from '../lib/keymap';
 import { LOG_SENTINEL, REWIND_SENTINEL } from '../ui';
-import { CLI_VERSION } from '../program';
+import { CLI_VERSION, buildProgram } from '../program';
+import { CommanderError } from 'commander';
 import { renderWelcome, type WelcomeContext } from './welcome';
 import {
   findResumablePlan,
@@ -816,6 +822,17 @@ export async function runInteractiveSession(
             printStatusLine(deps, runtime);
             continue;
           }
+          // CLI-command passthrough (m-shell↔CLI parity): a `/work-items`,
+          // `/plans`, `/verify`, `/review`, `/mission`, `/schedule`, … runs the
+          // SAME command as `excalibur <name>`, in-process. Checked with the other
+          // BUILT-INS (before user custom commands) so a user-defined command can
+          // never silently shadow a core management command.
+          if (SHELL_CLI_PASSTHROUGH_COMMANDS.has(input.name)) {
+            store.appendPromptHistory(`/${input.name} ${input.argv.join(' ')}`.trim());
+            await runCliPassthrough(deps, input.name, input.argv);
+            printStatusLine(deps, runtime);
+            continue;
+          }
           // User-defined custom slash command (P1.6) — fallthrough AFTER built-ins
           // so a user command can never shadow one. Expand its template ($ARGUMENTS,
           // $1, !`cmd`, @file) and run it as a normal turn.
@@ -1043,6 +1060,9 @@ export async function runInteractiveSession(
             autonomyLevel: runtime.autonomyLevel,
             approvals: runtime.approvals,
             signal: ctrl.signal,
+            // ESC in any step's live view cancels the whole mission (the editor is
+            // suspended while a step's Ink view owns stdin, so route ESC here).
+            onEscape: () => ctrl.abort(),
           });
         } else if (intent === 'plan' || intent === 'mission') {
           // Plan, posture ASK → the deliberate plan → approve → execute gate.
@@ -2717,6 +2737,101 @@ async function handleModelsCommand(deps: CliDeps, runtime: SessionRuntime): Prom
   );
 }
 
+/**
+ * The direct-CLI commands made first-class in the m-shell as slash commands.
+ *
+ * The m-shell is Excalibur's PRIMARY surface (we benchmark against Claude Code
+ * and OpenCode, which are shells) — the `excalibur <command>` binaries are its
+ * scriptable projection, not a more-advanced tier. So every command capability
+ * MUST be reachable, at identical quality, from inside the shell: `/work-items
+ * list`, `/sprints`, `/plans resume <id>`, `/verify`, `/review`, `/mission …`,
+ * `/orchestrate …`, `/schedule list`, `/scope`, `/status`, `/stats`, `/logs`,
+ * `/insights`, `/agents`, `/skills`, `/session export …` each run the IDENTICAL
+ * action `excalibur <name>` runs — never a degraded shell-only stub. Names that
+ * already have bespoke REPL handling (help/model/models/agent/clear/exit,
+ * /discovery, /log, /changes, /replay/fork/undo, /swarm/explore/bg/threads/
+ * goal/loop/remember/compact/auto/rewind) are excluded so this never shadows
+ * them.
+ */
+const SHELL_CLI_PASSTHROUGH_COMMANDS = new Set<string>([
+  'work-items',
+  'sprints',
+  'plans',
+  'verify',
+  'review',
+  'mission',
+  'orchestrate',
+  'schedule',
+  'scope',
+  'status',
+  'stats',
+  'logs',
+  'insights',
+  'agents',
+  'skills',
+  'session',
+]);
+
+/**
+ * Runs a direct-CLI command in-process from the shell (parity passthrough). It
+ * rebuilds the commander program with the LIVE session's deps (so output sink,
+ * cwd, locale and config all match the running shell) and parses
+ * `<name> <argv…>` through it — the exact same action `excalibur <name>` runs.
+ *
+ * Ctrl-C contract: the shell's invariant is that Ctrl-C cancels in-flight work
+ * and returns to the prompt — it NEVER exits the shell while something is
+ * running. While a command runs the raw editor is suspended (cooked mode), so a
+ * Ctrl-C arrives as a real process SIGINT, not a keypress the editor can route.
+ * Without a listener Node's default action would terminate the whole shell, so
+ * we install a temporary one for the command's duration: it keeps the shell
+ * alive, aborts a cancellation signal threaded into the command (`deps.signal`,
+ * which long commands pass to their core call so they stop cooperatively), and
+ * prints the canonical "back to the prompt" line. Restored in `finally`.
+ *
+ * `exitOverride()` makes commander throw `CommanderError` for help/usage/version
+ * instead of killing the process — that text already printed via
+ * `configureOutput`, so it is expected control-flow and swallowed. A genuine
+ * action error is surfaced with the same shape the standalone CLI uses
+ * (message + ExcaliburError code), minus the `excalibur doctor` hint.
+ */
+async function runCliPassthrough(deps: CliDeps, name: string, argv: string[]): Promise<void> {
+  // A blocking daemon (e.g. `schedule run`, an unbounded scheduler loop) would
+  // SEIZE the single-threaded REPL until Ctrl-C and leak signal listeners — keep
+  // it out of the conversational shell; the user runs it in its own terminal.
+  if (name === 'schedule' && (argv[0] === 'run' || argv[0] === 'daemon')) {
+    deps.ui.warn(deps.t('repl.passthrough-daemon', { cmd: `excalibur ${name} ${argv[0]}` }));
+    return;
+  }
+
+  const controller = new AbortController();
+  let cancelled = false;
+  const onSigint = (): void => {
+    cancelled = true;
+    controller.abort();
+    deps.ui.write();
+    deps.ui.info(deps.t('repl.cancelled-back-to-prompt'));
+  };
+
+  deps.ui.suspendInput();
+  process.on('SIGINT', onSigint);
+  try {
+    const program = buildProgram({ ...deps, signal: controller.signal });
+    await program.parseAsync([name, ...argv], { from: 'user' });
+  } catch (error) {
+    if (cancelled) {
+      // User-cancelled — already acknowledged with the back-to-prompt line.
+    } else if (!(error instanceof CommanderError)) {
+      deps.ui.error(describeError(error));
+      if (isExcaliburError(error)) {
+        deps.ui.info(`(${error.code})`);
+      }
+    }
+  } finally {
+    process.removeListener('SIGINT', onSigint);
+    deps.ui.resumeInput();
+  }
+}
+
 /** Handles a built-in slash command; returns `'exit'` to leave the loop. */
 function handleSlashCommand(
   deps: CliDeps,
@@ -2743,6 +2858,7 @@ function handleSlashCommand(
       deps.ui.write(deps.t('repl.help-model'));
       deps.ui.write('  /models    switch the active model provider (interactive picker)');
       deps.ui.write('  /agent     select a custom agent for the session ( /agent <name> | off )');
+      deps.ui.write(deps.t('repl.help-manage'));
       deps.ui.write(deps.t('repl.help-clear'));
       deps.ui.write(deps.t('repl.help-exit'));
       deps.ui.write('');

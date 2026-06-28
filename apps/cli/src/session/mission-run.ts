@@ -163,6 +163,12 @@ export interface MissionRunOptions {
   autonomyLevel: AutonomyLevel;
   approvals: ApprovalState;
   signal: AbortSignal;
+  /**
+   * Cancels the WHOLE mission when the user presses ESC during any step's live
+   * view (the step's ESC aborts only that step otherwise). The caller wires it to
+   * the mission controller's `.abort()` so ESC and Ctrl-C cancel identically.
+   */
+  onEscape?: () => void;
   /** Hard budget ceiling in cents — the mission PAUSES when reached (resumable). */
   budgetCents?: number;
   /**
@@ -225,6 +231,8 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
     autonomyLevel: level,
     approvals: opts.approvals,
     signal,
+    // ESC in any step's live view cancels the WHOLE mission, not just that step.
+    ...(opts.onEscape !== undefined ? { onEscape: opts.onEscape } : {}),
     adapter,
     ribbon: ribbonModel,
   });

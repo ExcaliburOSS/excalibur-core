@@ -1028,8 +1028,26 @@ export const ES: Catalog = {
   'cmd.log': 'Abre el registro de sesión',
   'cmd.remember': 'Guarda una decisión o convención',
   'cmd.compact': 'Condensa el contexto antiguo',
+  'repl.passthrough-daemon':
+    '`{cmd}` es un daemon de larga duración — ejecútalo en su propia terminal para no congelar el shell.',
   'cmd.auto': 'Activa/desactiva la autonomía total',
   'cmd.model': 'Cambia el modelo',
+  'cmd.work-items': 'Gestiona tareas (lista/añade/mueve/muestra)',
+  'cmd.sprints': 'Gestiona sprints y burndown',
+  'cmd.plans': 'Explora, reanuda o compara planes',
+  'cmd.verify': 'Ejecuta la malla de verificación de una tarea',
+  'cmd.review': 'Revisa el árbol de trabajo o una tarea',
+  'cmd.mission': 'Ejecuta una misión autónoma larga',
+  'cmd.orchestrate': 'Ejecuta una orquestación definida',
+  'cmd.schedule': 'Gestiona trabajos autónomos programados',
+  'cmd.scope': 'Mapea el alcance de una tarea (solo lectura)',
+  'cmd.status': 'Muestra el estado del proyecto y las tareas',
+  'cmd.stats': 'Muestra estadísticas de uso',
+  'cmd.logs': 'Muestra los logs de una tarea',
+  'cmd.insights': 'Muestra perspectivas entre tareas',
+  'cmd.agents': 'Lista o inspecciona agentes personalizados',
+  'cmd.skills': 'Lista las skills disponibles',
+  'cmd.session': 'Exporta, importa o lista sesiones',
   'cmd.clear': 'Limpia la pantalla',
   'cmd.exit': 'Salir de Excalibur',
   'repl.bg-usage':
@@ -1083,6 +1101,8 @@ export const ES: Catalog = {
   'repl.help-remember':
     '  /remember <x>  guarda una decisión/riesgo/convención; las próximas ejecuciones que toquen esas rutas la tienen presente',
   'repl.help-model': '  /model         muestra el proveedor/modelo activo',
+  'repl.help-manage':
+    '  /work-items /sprints /plans /verify /review /mission /orchestrate /schedule /scope /status /stats /logs /insights /agents /skills /session — igual que los comandos `excalibur <comando>`',
   'repl.help-clear': '  /clear         limpia la pantalla (mantiene la sesión)',
   'repl.help-exit': '  /exit, /quit   cierra la sesión y sal',
   'repl.help-freeform-1':

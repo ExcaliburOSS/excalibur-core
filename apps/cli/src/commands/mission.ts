@@ -28,9 +28,18 @@ export function registerMissionCommand(program: Command, deps: CliDeps): void {
     .action(async (goal: string[], options: { budget?: string; pr?: boolean }) => {
       const repoRoot = deps.cwd();
       const { config } = loadConfigContext(repoRoot);
+      // One controller for the whole mission: Ctrl-C (process SIGINT) AND ESC (the
+      // step live-view's onEscape) both abort it, so either gesture cancels the
+      // mission and returns to the prompt — never killing the shell. When invoked
+      // from the m-shell passthrough, deps.signal (the shell's Ctrl-C) also feeds
+      // in so a parent cancel propagates here.
       const ctrl = new AbortController();
       const onSigint = (): void => ctrl.abort();
       process.once('SIGINT', onSigint);
+      if (deps.signal !== undefined) {
+        if (deps.signal.aborted) ctrl.abort();
+        else deps.signal.addEventListener('abort', onSigint, { once: true });
+      }
       const budgetUsd =
         options.budget !== undefined ? Number.parseFloat(options.budget) : undefined;
       try {
@@ -41,6 +50,7 @@ export function registerMissionCommand(program: Command, deps: CliDeps): void {
           autonomyLevel: (config.autonomy?.default ?? 4) as AutonomyLevel,
           approvals: { auto: true }, // a direct command runs unattended (like run --yes)
           signal: ctrl.signal,
+          onEscape: () => ctrl.abort(),
           ...(options.pr === true ? { openPr: true } : {}),
           ...(budgetUsd !== undefined && Number.isFinite(budgetUsd)
             ? { budgetCents: Math.round(budgetUsd * 100) }
@@ -48,6 +58,7 @@ export function registerMissionCommand(program: Command, deps: CliDeps): void {
         });
       } finally {
         process.removeListener('SIGINT', onSigint);
+        deps.signal?.removeEventListener('abort', onSigint);
       }
     });
 }

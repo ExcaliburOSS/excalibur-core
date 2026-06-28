@@ -42,6 +42,15 @@ export function registerOrchestrateCommand(program: Command, deps: CliDeps): voi
         if (!getGitInfo(repoRoot).isRepo) {
           throw new CliUsageError(deps.t('swarm.needsGitRepo'));
         }
+        // Cancellation: one controller drives both swarm paths. ESC in the lanes
+        // panel (onEscape) and the m-shell's Ctrl-C (deps.signal) both abort it, so
+        // either gesture cancels the orchestration and returns to the prompt.
+        const ctrl = new AbortController();
+        if (deps.signal !== undefined) {
+          if (deps.signal.aborted) ctrl.abort();
+          else deps.signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+        }
+        const cancel = { signal: ctrl.signal, onEscape: (): void => ctrl.abort() };
         // AO5-4 — AUTHOR spec path: compile the YAML → SwarmSubtask[] → staged swarm.
         if (options.spec !== undefined) {
           const { task, subtasks, path } = loadAuthoredOrchestration(repoRoot, options.spec);
@@ -89,11 +98,11 @@ export function registerOrchestrateCommand(program: Command, deps: CliDeps): voi
               config: cfg,
               ...(options.workItem !== undefined ? { workItemId: options.workItem } : {}),
             },
-            { subtasks: toRun, ...(options.yes === true ? { yes: true } : {}) },
+            { subtasks: toRun, ...(options.yes === true ? { yes: true } : {}), ...cancel },
           );
           return;
         }
-        await runManifestOrchestration(deps, repoRoot, runIdArg, options);
+        await runManifestOrchestration(deps, repoRoot, runIdArg, options, cancel);
       },
     );
 }
@@ -104,6 +113,7 @@ async function runManifestOrchestration(
   repoRoot: string,
   runIdArg: string | undefined,
   options: { resume?: boolean; yes?: boolean; workItem?: string },
+  cancel: { signal?: AbortSignal; onEscape?: () => void } = {},
 ): Promise<void> {
   const runId = runIdArg ?? latestOrchestrationRunId(repoRoot) ?? undefined;
   if (runId === undefined) {
@@ -150,6 +160,6 @@ async function runManifestOrchestration(
       config,
       ...(options.workItem !== undefined ? { workItemId: options.workItem } : {}),
     },
-    { subtasks, ...(options.yes === true ? { yes: true } : {}) },
+    { subtasks, ...(options.yes === true ? { yes: true } : {}), ...cancel },
   );
 }

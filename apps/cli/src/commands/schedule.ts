@@ -110,32 +110,39 @@ export function registerScheduleCommand(program: Command, deps: CliDeps): void {
       const sleep = (ms: number): Promise<void> =>
         new Promise((resolve) => setTimeout(resolve, ms));
 
-      deps.ui.success(
-        deps.t('schedule.daemon-start', { count: store.list().length, tick: tickMs / 1000 }),
-      );
-      while (!stop) {
-        const now = Date.now();
-        for (const job of dueJobs(store.list(), now)) {
-          deps.ui.info(deps.t('schedule.firing', { task: job.task }));
-          try {
-            const handle = await controller.startRun({
-              repoRoot,
-              task: job.task,
-              gateway: gateway.gateway,
-              config,
-              model: gateway.providerName,
-            });
-            deps.ui.write(deps.t('schedule.fired', { runId: handle.runId }));
-          } catch (error) {
-            deps.ui.error(error instanceof Error ? error.message : String(error));
+      try {
+        deps.ui.success(
+          deps.t('schedule.daemon-start', { count: store.list().length, tick: tickMs / 1000 }),
+        );
+        while (!stop) {
+          const now = Date.now();
+          for (const job of dueJobs(store.list(), now)) {
+            deps.ui.info(deps.t('schedule.firing', { task: job.task }));
+            try {
+              const handle = await controller.startRun({
+                repoRoot,
+                task: job.task,
+                gateway: gateway.gateway,
+                config,
+                model: gateway.providerName,
+              });
+              deps.ui.write(deps.t('schedule.fired', { runId: handle.runId }));
+            } catch (error) {
+              deps.ui.error(error instanceof Error ? error.message : String(error));
+            }
+            store.update(advanceJob(job, now)); // reschedule even on a failed fire
           }
-          store.update(advanceJob(job, now)); // reschedule even on a failed fire
+          // Sleep in short slices so Ctrl-C is responsive.
+          for (let waited = 0; waited < tickMs && !stop; waited += 1000) {
+            await sleep(Math.min(1000, tickMs - waited));
+          }
         }
-        // Sleep in short slices so Ctrl-C is responsive.
-        for (let waited = 0; waited < tickMs && !stop; waited += 1000) {
-          await sleep(Math.min(1000, tickMs - waited));
-        }
+        deps.ui.info(deps.t('schedule.daemon-stop'));
+      } finally {
+        // Never leak the process listeners (they would accumulate if this daemon
+        // is ever driven in-process rather than as a one-shot CLI invocation).
+        process.removeListener('SIGINT', onSignal);
+        process.removeListener('SIGTERM', onSignal);
       }
-      deps.ui.info(deps.t('schedule.daemon-stop'));
     });
 }

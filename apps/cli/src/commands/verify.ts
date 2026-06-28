@@ -73,6 +73,9 @@ export function registerVerifyCommand(program: Command, deps: CliDeps): void {
         lenses: plan.lenses,
         gateway: gateway.gateway,
         provider: gateway.providerName,
+        // Cooperative cancel: the m-shell passthrough sets deps.signal so Ctrl-C
+        // aborts the mesh and returns to the prompt instead of running to the end.
+        ...(deps.signal !== undefined ? { signal: deps.signal } : {}),
       });
 
       deps.ui.write();

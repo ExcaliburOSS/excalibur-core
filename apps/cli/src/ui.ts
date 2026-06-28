@@ -200,6 +200,15 @@ export class Ui {
   private suspendEditor: (() => void) | null = null;
   private resumeEditor: (() => void) | null = null;
   /**
+   * Nesting depth of {@link suspendInput} calls. suspend/resume are
+   * REFERENCE-COUNTED so only the OUTERMOST suspend drops raw mode and only the
+   * matching outermost resume re-arms it: a command run in-process from the shell
+   * (e.g. `/mission`, whose per-step agent turns each suspend→mount Ink→resume)
+   * must NOT let an inner resume re-arm the REPL editor while the outer
+   * passthrough still owns stdin. Reset to 0 whenever a fresh editor registers.
+   */
+  private suspendDepth = 0;
+  /**
    * True while a per-call sub-prompt (`ask`/`confirm`/`select`/`confirmTool`)
    * is reading through the shared raw editor. The rewind (Esc-Esc) and Session
    * Log (↓) gestures belong to the MAIN session line only — they must never
@@ -233,12 +242,21 @@ export class Ui {
    * editor (queue editor / non-TTY). Pair with {@link resumeInput}.
    */
   suspendInput(): void {
-    this.suspendEditor?.();
+    // Only the outermost suspend actually drops raw mode (ref-counted).
+    if (this.suspendDepth === 0) {
+      this.suspendEditor?.();
+    }
+    this.suspendDepth += 1;
   }
 
   /** Re-arms the raw editor's stdin ownership after an Ink turn. */
   resumeInput(): void {
-    this.resumeEditor?.();
+    this.suspendDepth = Math.max(0, this.suspendDepth - 1);
+    // Only re-arm once the LAST matching resume lands (or a stray resume with no
+    // outstanding suspend — re-arm is idempotent under the rawActive guard).
+    if (this.suspendDepth === 0) {
+      this.resumeEditor?.();
+    }
   }
 
   /** Plain line to stdout. */
@@ -1375,6 +1393,7 @@ export class Ui {
     // the keypress listener; resume re-arms it (idempotent, lazy on the next read).
     this.suspendEditor = disableRaw;
     this.resumeEditor = enableRaw;
+    this.suspendDepth = 0; // a fresh editor starts un-suspended (clear any stale count)
 
     return {
       question,

@@ -1,4 +1,4 @@
-import { Box, render, Text } from 'ink';
+import { Box, render, Text, useInput, useStdin } from 'ink';
 import { useSyncExternalStore, type ReactElement } from 'react';
 import type { ColorTier } from '../color.js';
 import {
@@ -115,6 +115,26 @@ function LanesView(props: {
   );
 }
 
+/**
+ * Opt-in ESC/Ctrl-C capture. By default the lanes panel is OUTPUT-ONLY (no
+ * `useInput`, never grabs raw mode); when an `onEscape` is provided the panel
+ * binds input so ESC (or Ctrl-C) cancels the orchestration — used when the lanes
+ * ARE the active view (e.g. `/orchestrate` from the m-shell), so the panel owns
+ * stdin for its lifetime and hands it back on unmount.
+ */
+function LanesKeys({ onEscape }: { onEscape: () => void }): null {
+  const { isRawModeSupported } = useStdin();
+  useInput(
+    (input, key) => {
+      if (key.escape === true || (key.ctrl === true && input.toLowerCase() === 'c')) {
+        onEscape();
+      }
+    },
+    { isActive: isRawModeSupported },
+  );
+  return null;
+}
+
 export interface MountLanesViewOptions {
   palette: Palette;
   tier: ColorTier;
@@ -123,6 +143,8 @@ export interface MountLanesViewOptions {
   labels?: LanesViewLabels;
   stdout?: NodeJS.WriteStream;
   stdin?: NodeJS.ReadStream;
+  /** When set, ESC/Ctrl-C in the panel calls this (cancel the orchestration). */
+  onEscape?: () => void;
 }
 
 export interface LanesViewHandle {
@@ -136,13 +158,16 @@ export interface LanesViewHandle {
 export function mountLanesView(options: MountLanesViewOptions): LanesViewHandle {
   const store = createLanesStore(options.lanes);
   const instance = render(
-    <LanesView
-      store={store}
-      tier={options.tier}
-      palette={options.palette}
-      {...(options.mode !== undefined ? { mode: options.mode } : {})}
-      {...(options.labels !== undefined ? { labels: options.labels } : {})}
-    />,
+    <>
+      <LanesView
+        store={store}
+        tier={options.tier}
+        palette={options.palette}
+        {...(options.mode !== undefined ? { mode: options.mode } : {})}
+        {...(options.labels !== undefined ? { labels: options.labels } : {})}
+      />
+      {options.onEscape !== undefined ? <LanesKeys onEscape={options.onEscape} /> : null}
+    </>,
     {
       stdout: options.stdout ?? process.stdout,
       stdin: options.stdin ?? process.stdin,
