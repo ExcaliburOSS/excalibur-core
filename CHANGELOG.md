@@ -6,6 +6,50 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-06-28
+
+The **proactive primary-surface** release. The m-shell is Excalibur's primary,
+most-advanced surface (we benchmark against the shells, Claude Code and OpenCode);
+the `excalibur <command>` binaries are its scriptable projection, not a separate
+tier. This release closes that gap in both directions: every management command is
+reachable **in** the shell, and — more importantly — the agent now uses Excalibur's
+own capabilities **on its own**, mid-conversation, without you typing a command.
+
+### Added
+
+- **Proactive management tools.** The agent can pull real project state into its
+  reasoning through 11 read-only native tools it calls itself when the situation
+  calls for it — `project_status`, `work_items`, `sprint_status`, `plans`,
+  `insights`, `run_logs`, `list_agents`, `list_skills`, `sessions`, plus `verify`
+  and `review` (which hand back the redacted working-tree diff framed for the agent
+  to self-check in its own budgeted loop). Wired into the conversational turn, the
+  gated build, and headless runs (serve / acp / scheduler). Real-Kimi verified: the
+  model calls `project_status` on its own to answer "where do things stand?".
+- **Management commands first-class in the m-shell.** `/work-items`, `/sprints`,
+  `/plans`, `/verify`, `/review`, `/mission`, `/orchestrate`, `/schedule`, `/scope`,
+  `/status`, `/stats`, `/logs`, `/insights`, `/agents`, `/skills`, `/session` each
+  run the IDENTICAL command `excalibur <name>` runs, in-process — surfaced in the
+  `/` menu and `/help` (en + es).
+- **Framed input box.** The shell prompt is bracketed by accent hairlines with a
+  compact indicator row (`◆ model · autonomy · preset · auto · ? help`).
+
+### Changed
+
+- **Ctrl-C / ESC contract.** Ctrl-C cancels in-flight work and returns to the
+  prompt — it never kills the shell while something is running. ESC cancels the
+  whole mission / orchestration (not just the current step). Exit stays explicit
+  (`/exit`, Ctrl-D, or double-Ctrl-C on an empty prompt).
+- Suspend/resume of the shell editor is now reference-counted, so a nested command
+  (a `/mission`'s per-step Ink views) can't re-arm the editor mid-command.
+
+### Fixed
+
+- A live run no longer renders a successful turn as a red error, never shows
+  `exit 0`, peeks the diff by default, and the in-progress action/phase header
+  shimmers — carried over and polished from the live-rail work.
+- `schedule run` (an unbounded daemon) is kept out of the in-shell passthrough and
+  no longer leaks its signal listeners.
+
 ## [1.7.0] - 2026-06-27
 
 The **shell-parity & live-rail polish** release. The headline: the conversational
