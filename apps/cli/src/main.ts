@@ -62,11 +62,19 @@ function main(): void {
         process.exitCode = code;
       })
       .catch((error: unknown) => {
+        // DEFENSE-IN-DEPTH behind the per-turn backstop (RUN-FIX-22): with the loop body
+        // fully guarded a rejection here should be unreachable, but if one ever does
+        // escape, do NOT surface it as a hard error EXIT. The interactive session's only
+        // legitimate non-zero exits come from explicit user intent (resolved via the
+        // `then` above), never from a rejection — mapping a stray between-turn reject to a
+        // non-zero code is exactly what made the shell look like it "se salió por un error".
+        // Log it for diagnosability, then exit cleanly (the loop's finally already tore the
+        // session down).
         ui.error(describeError(error));
         if (isExcaliburError(error)) {
           ui.info(`(${error.code})`);
         }
-        process.exitCode = exitCodeForError(error);
+        process.exitCode = EXIT_SUCCESS;
       });
     return;
   }

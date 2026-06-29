@@ -1,4 +1,4 @@
-import type { ExcaliburEvent } from '@excalibur/shared';
+import { stripReasoning, type ExcaliburEvent } from '@excalibur/shared';
 import type { ApprovalPrompt } from '../rail-types.js';
 import type { MissionRibbonModel } from '../mission-ribbon.js';
 import type { PlanRibbonModel } from '../plan-ribbon.js';
@@ -236,7 +236,7 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
       set({ frame: snapshot.frame + 1 });
     },
     streamNarration(text) {
-      set({ streamingNarration: text });
+      set({ streamingNarration: stripReasoning(text) });
     },
     setRibbon(model) {
       set({ missionRibbon: model });

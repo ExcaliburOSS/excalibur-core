@@ -16,4 +16,5 @@ export * from './dashboard';
 export * from './ids';
 export * from './i18n';
 export * from './instructions';
+export * from './reasoning';
 export * from './redaction';

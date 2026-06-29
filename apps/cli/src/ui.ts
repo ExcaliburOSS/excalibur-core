@@ -466,7 +466,9 @@ export class Ui {
         try {
           if (key.ctrl === true && key.name === 'c') {
             finish('');
-            process.kill(process.pid, 'SIGINT');
+            // Armored (RUN-FIX-22): cancel the secret prompt (finish above), don't
+            // self-SIGINT the shell → exit 130. Un-armored CLI keeps the kill.
+            if (!this.armored) process.kill(process.pid, 'SIGINT');
             return;
           }
           if (key.name === 'return' || key.name === 'enter') {
@@ -761,7 +763,12 @@ export class Ui {
             case 'sigint':
               out.write('\n');
               finish(safe(defaultIndex));
-              process.kill(process.pid, 'SIGINT');
+              // While the REPL is ARMORED (RUN-FIX-22), a single Ctrl-C in a sub-prompt
+              // (/models, onboarding, plan-shaping) must CANCEL the picker — already done
+              // by finish() above — NOT self-send a SIGINT the armored shell never
+              // registered a handler for, which would exit 130. Un-armored direct-CLI
+              // paths keep the kill so non-interactive Ctrl-C is unchanged.
+              if (!this.armored) process.kill(process.pid, 'SIGINT');
               return;
             case 'none':
               return;
@@ -962,7 +969,9 @@ export class Ui {
             case 'sigint':
               out.write('\n');
               finish(SKIP);
-              process.kill(process.pid, 'SIGINT');
+              // Armored sub-prompt Ctrl-C cancels (finish above), never self-SIGINT → exit
+              // 130 (RUN-FIX-22). Un-armored CLI paths keep the kill.
+              if (!this.armored) process.kill(process.pid, 'SIGINT');
               return;
             case 'none':
               return;

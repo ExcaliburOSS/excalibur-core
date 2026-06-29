@@ -349,7 +349,6 @@ function StreamingNarration({
 function InterruptBox({
   text,
   colors,
-  spinnerFrame,
   width,
   autonomyLabel,
   safety,
@@ -357,7 +356,6 @@ function InterruptBox({
 }: {
   text: string;
   colors: Palette;
-  spinnerFrame: number;
   width: number;
   autonomyLabel: string;
   safety: string;
@@ -365,8 +363,11 @@ function InterruptBox({
 }): ReactElement {
   // The SAME full-width accent rule the idle box uses to bracket the input.
   const rule = glyph.boxH.repeat(Math.max(8, width));
-  // The cursor BREATHES along the accent ramp — an active, live caret, not a static block.
-  const cursor = <Text color={pulseColor(colors, spinnerFrame)}>▌</Text>;
+  // A STATIC accent caret — the SAME steady sword-blue as the idle prompt's native
+  // (OSC-12) cursor, so the framed input reads as one consistent blue. (It used to
+  // breathe along the full accent ramp, which made the caret look a different colour
+  // from the two static accent rules bracketing it — RUN-FIX-22 parity.)
+  const cursor = <Text color={colors.accent}>▌</Text>;
   // The indicator row under the box: ◆ autonomy · permissions (mirrors buildInputFooter).
   const left =
     autonomyLabel.length > 0 && safety.length > 0
@@ -385,10 +386,17 @@ function InterruptBox({
             {cursor}
           </Text>
         ) : (
-          // Idle: a dim invitation so the input is visibly ALWAYS there, never gone.
-          <Text color={colors.muted}>
-            {placeholder !== undefined && placeholder.length > 0 ? `${placeholder} ` : ''}
+          // Idle: the caret sits at the START (right after the ›), ready to type — exactly
+          // like the idle prompt — with a VERY tenue hint after it (colors.rail + dimColor
+          // mirrors the idle prompt's `pc.dim`, so it never looks like already-typed text
+          // the way the old colors.muted — shared with real task rows — did. RUN-FIX-22.
+          <Text>
             {cursor}
+            {placeholder !== undefined && placeholder.length > 0 ? (
+              <Text color={colors.rail} dimColor>{` ${placeholder}`}</Text>
+            ) : (
+              ''
+            )}
           </Text>
         )}
       </Box>
@@ -704,7 +712,6 @@ export function RunView(props: RunViewProps): ReactElement {
         <InterruptBox
           text={interruptDraft}
           colors={colors}
-          spinnerFrame={spinnerFrame}
           width={width}
           autonomyLabel={model.autonomyLabel}
           safety={model.status.safety}

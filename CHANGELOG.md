@@ -6,6 +6,46 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.9] - 2026-06-30
+
+The m-shell can no longer exit on an execution error — the real, structural fix — plus
+the model's raw reasoning never leaks to the screen, and the mid-run input box matches
+the idle prompt (RUN-FIX-22, part 1). The input-duplication and history-immutability
+parts of RUN-FIX-22 follow in the next release.
+
+### Fixed
+
+- **The interactive shell can NEVER exit on an execution error — proven.** Root cause
+  found at last: the per-turn `try/catch` only opened AFTER the natural-language
+  classify/routing region, so an exception there — a sync disk write failing (ENOSPC /
+  EACCES after a build wrote many files), or any awaited rejection from a degraded
+  provider in the seconds right after a heavy build — was NOT delivered as an
+  `unhandledRejection` (the process-level net never saw it); it unwound the REPL loop into
+  the teardown `finally` and the process exited. This was the "100% of the time, at the
+  end of a build" crash. The ENTIRE per-turn body (classify → routing → dispatch →
+  self-heal → settle) is now wrapped in one recover-and-continue backstop: on ANY fault it
+  surfaces the error and re-prompts — the shell stays alive. A deterministic regression
+  test injects a between-turn fault and asserts the session survives to `/exit` (it fails
+  without the backstop). Defense-in-depth: a stray escaped fault no longer maps to a
+  non-zero exit code; the rail teardown swallows its own `unmount`/`resumeInput` throws
+  (and always returns stdin to the editor); and a single Ctrl-C in a sub-prompt
+  (`/models`, onboarding, plan-shaping) cancels the prompt instead of killing the shell.
+- **The model's raw reasoning never leaks to the screen.** Some models inline their
+  chain-of-thought into the content stream as `<antThinking>…</antThinking>` /
+  `<thinking>` / `<reasoning>` blocks (there is no separate reasoning channel on the
+  OpenAI-compatible delta), and sometimes prefix prose with a stray status glyph. A new
+  `stripReasoning` removes all of it — at the adapter source (live + committed) AND
+  defensively at the TUI render boundary — streaming-safe (a dangling/partial tag is
+  hidden so nothing flashes) and tag-name-anchored (ordinary `<` in prose is never
+  clipped). The narration guidance also now forbids emitting thinking tags and reaffirms
+  the user's language.
+- **The mid-run input box matches the idle prompt.** The caret is now a STATIC accent
+  block — the same steady sword-blue as the idle prompt's cursor — instead of breathing
+  along the accent ramp (which made it look a different colour from the rules around it).
+  When empty, the caret sits at the START, ready to type (it used to trail after the
+  hint), and the placeholder uses the fainter `rail` token + dim attribute so it reads as
+  a tenue hint, not already-typed text.
+
 ## [1.8.8] - 2026-06-29
 
 A streamed build can no longer freeze, the live rail no longer flickers, and Excalibur

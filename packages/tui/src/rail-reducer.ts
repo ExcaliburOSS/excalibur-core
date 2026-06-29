@@ -1,4 +1,4 @@
-import type { ExcaliburEvent } from '@excalibur/shared';
+import { stripReasoning, type ExcaliburEvent } from '@excalibur/shared';
 import { formatDiffStat, parseDiffStat } from './diff-stat.js';
 import type {
   ApprovalPrompt,
@@ -283,7 +283,9 @@ export function reduceRail(
         // The model's own prose for this turn — the warm interstitial narration.
         // Surface it as flowing text (a `narration` line) so the user reads what
         // the agent is thinking BETWEEN actions, not just a mechanical tool log.
-        const said = str(p, 'content').trim();
+        // Defense-in-depth (RUN-FIX-22): strip any reasoning that slipped past the adapter
+        // before the narration is folded into a committed rail line.
+        const said = stripReasoning(str(p, 'content')).trim();
         if (said.length > 0) {
           pushEvent(phaseFor(event), { text: said, tone: 'accent', kind: 'narration' });
         }

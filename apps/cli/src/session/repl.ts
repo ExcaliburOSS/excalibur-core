@@ -1030,237 +1030,288 @@ export async function runInteractiveSession(
       // Prior conversation (compacted) for cross-turn memory — captured BEFORE
       // recording this turn's user message, so it is context only, not the
       // current prompt. Empty on the first turn → an independent turn as before.
-      const seed = await sessionSeedSettled(runtime);
-
-      const safeText = redactSecrets(text);
-      store.appendPromptHistory(safeText);
-      store.appendTurn(session.id, { role: 'user', kind: 'message', text: safeText });
-
-      if (input.kind === 'shell') {
-        await runShellPassthrough(deps, runtime, input.command);
-        printStatusLine(deps, runtime);
-        continue;
-      }
-
-      // Natural-language turn → INTENT-ROUTED by the LLM classifier (core,
-      // MULTI-LANGUAGE — never keyword/regex). It detects plan / swarm / bg /
-      // research / goal vs a plain turn, via the FAST model. No fast model,
-      // mock, non-interactive, read-only level, or EXCALIBUR_ROUTER=off →
-      // `chat` (a plain model-first turn). swarm/bg/goal are OFFERED; plan
-      // carries its own gate (skipped under auto = zero-prompts).
-      const decision: TurnDecision =
-        classifyIntent === undefined
-          ? { intent: 'chat', confidence: 'high' }
-          : await withThinking(deps, understandingPhrases(deps.t), () =>
-              classifyTurnDecision(
-                text,
-                {
-                  interactive: deps.ui.isInteractive(),
-                  mock: runtime.model === 'mock',
-                  level: runtime.autonomyLevel,
-                },
-                classifyIntent,
-              ),
-            );
-      const intent = decision.intent;
-
-      // AO3d-2 — PROACTIVE 3-WAY POSTURE: the heavy routes (goal/bg/swarm/research/
-      // plan) are EXECUTION SHAPES Excalibur picks itself, never commands the user
-      // types. `decidePosture` derives act / narrate-and-act / ask from the
-      // classifier's CONFIDENCE + the shape's RISK + the autonomy level — so safe,
-      // confident routes just run, high-impact ones announce-while-running under
-      // full autonomy, and only the unsure or irreversible ones ask. No flag.
-      const posture = (i: TurnIntent): RoutePosture =>
-        decidePosture({
-          risk: riskOfShape(i),
-          confidence: decision.confidence,
-          level: runtime.autonomyLevel,
-          autoApprove: runtime.approvals.auto,
-        });
-      const acceptRoute = async (
-        offerKey: string,
-        autoNoticeKey: string,
-        vars?: Record<string, string | number>,
-      ): Promise<boolean> => {
-        const p = posture(intent);
-        if (p === 'ask') {
-          return deps.ui.confirm(deps.t(offerKey, vars), { defaultYes: true });
-        }
-        deps.ui.info(deps.t(autoNoticeKey, vars));
-        if (p === 'narrate') {
-          deps.ui.info(deps.t('repl.route-narrate-hint'));
-        }
-        return true;
-      };
-
-      let asGoal = false;
-      if (intent === 'goal') {
-        asGoal = await acceptRoute('repl.goal-offer', 'repl.route-goal-auto', {
-          max: goalMaxIterations(runtime.config),
-        });
-      }
-      if (
-        !asGoal &&
-        intent === 'bg' &&
-        (await acceptRoute('repl.route-bg-offer', 'repl.route-bg-auto'))
-      ) {
-        void handleBgCommand(deps, runtime, text, bgControllers);
-        printStatusLine(deps, runtime);
-        continue;
-      }
-      const asSwarm =
-        !asGoal &&
-        intent === 'swarm' &&
-        (await acceptRoute('repl.route-swarm-offer', 'repl.route-swarm-auto'));
-      const asResearch =
-        !asGoal &&
-        !asSwarm &&
-        intent === 'research' &&
-        (await acceptRoute('repl.route-research-offer', 'repl.route-research-auto'));
-      // AO5 — best-of-N reached by NL (no command): "try a few approaches and pick
-      // the best". High-risk (a cost amplifier) so the posture ASKS unless full
-      // autonomy. Only meaningful in a git repo (lanes need worktrees).
-      const asExplore =
-        !asGoal &&
-        !asSwarm &&
-        !asResearch &&
-        intent === 'explore' &&
-        getGitInfo(runtime.repoRoot).isRepo &&
-        (await acceptRoute('repl.route-explore-offer', 'repl.route-explore-auto'));
-      // A plan ACTS (auto-orchestrate) unless the posture says ask → the
-      // deliberate plan → approve → execute gate.
-      const planActs = intent === 'plan' && posture('plan') !== 'ask';
-
-      const ctrl = beginTurn();
-      // One blank line ALWAYS sets the user's request apart from Excalibur's reply,
-      // for EVERY turn shape — conversational, gated build, mission, plan, swarm —
-      // since they mount different presenters (a build/mission goes through the
-      // workflow engine / mission driver, not the conversational rail). The single
-      // dispatch point guarantees the spacing the per-presenter code can't (RUN-FIX-14).
-      deps.ui.write();
+      // PER-TURN BACKSTOP (RUN-FIX-22): everything from here down — the cross-turn seed,
+      // the disk writes, the cheap-model intent classifier (`classifyTurnDecision`), the
+      // route-accept confirms, `getGitInfo`, the dispatch AND the post-turn settle — runs
+      // BETWEEN the prompt read and would otherwise sit OUTSIDE a guard. An AWAITED
+      // rejection here (e.g. the classifier provider degraded in the seconds right after a
+      // heavy failing build) is NOT delivered as an `unhandledRejection`, so the
+      // process-level net never sees it; it would unwind the for(;;) loop into the
+      // disarming `finally` and EXIT the shell — the 100%-at-the-end-of-a-build crash the
+      // user hit every time. Contain the WHOLE turn body: on ANY fault, surface it and
+      // re-prompt. The shell can NEVER exit on an execution error. (try/catch does not trap
+      // `break`/`continue`, so the EOF break, the `/exit` break and every inner `continue`
+      // still work unchanged — only a thrown/rejected fault is diverted to `continue`.)
       try {
-        if (asGoal) {
-          await executeGoalLoop(deps, runtime, text, seed, ctrl.signal);
-        } else if (asResearch) {
-          // F7: the native multi-agent research pipeline (search → fetch →
-          // verify → cited synthesis).
-          await runResearchFlow(deps, text, {});
-        } else if (asExplore) {
-          // AO5 best-of-N via NL: N candidate approaches in parallel → judge → apply winner.
-          const g = loadGatewayContext(runtime.repoRoot);
-          await runExploreFlow(
-            deps,
-            runtime.repoRoot,
-            text,
-            { gateway: g.gateway, providerName: g.providerName, config: runtime.config },
-            { signal: ctrl.signal },
-          );
-        } else if (asSwarm || planActs) {
-          // AO2/AO3d-2 — an ACCEPTED build (swarm-intent accepted, or a plan the
-          // posture runs) is AUTO-ORCHESTRATED: decompose → DERIVE the shape
-          // (≥2 independent workstreams → an auto-sized parallel swarm, else one
-          // focused run). The user already decided at the posture gate — no
-          // further prompts; the planner and parallelizer are fused.
-          await dispatchAutoBuild(deps, runtime, text, ctrl.signal, seed);
-        } else if (intent === 'orchestration') {
-          // AO6 Pillar 5 — NL control of an EXISTING orchestration (any language):
-          // view the chronogram, or pause/resume it. No command needed; the
-          // dashboard buttons + `orchestration` command are escape hatches.
-          const runId = latestOrchestrationRunId(runtime.repoRoot);
-          if (runId === null) {
-            deps.ui.info(deps.t('orchestration.none'));
-          } else {
-            const action =
-              classifyIntent === undefined
-                ? 'show'
-                : await classifyOrchestrationAction(text, classifyIntent, ctrl.signal);
-            if (action === 'show') {
-              renderChronogramView(deps, runtime.repoRoot, runId, false);
-            } else {
-              const paused = action === 'pause';
-              setOrchestrationPaused(runtime.repoRoot, runId, paused, new Date().toISOString());
-              deps.ui.info(
-                deps.t(paused ? 'orchestration.pause-set' : 'orchestration.resume-set', {
-                  id: runId,
-                }),
+        const seed = await sessionSeedSettled(runtime);
+
+        const safeText = redactSecrets(text);
+        store.appendPromptHistory(safeText);
+        store.appendTurn(session.id, { role: 'user', kind: 'message', text: safeText });
+
+        if (input.kind === 'shell') {
+          await runShellPassthrough(deps, runtime, input.command);
+          printStatusLine(deps, runtime);
+          continue;
+        }
+
+        // Natural-language turn → INTENT-ROUTED by the LLM classifier (core,
+        // MULTI-LANGUAGE — never keyword/regex). It detects plan / swarm / bg /
+        // research / goal vs a plain turn, via the FAST model. No fast model,
+        // mock, non-interactive, read-only level, or EXCALIBUR_ROUTER=off →
+        // `chat` (a plain model-first turn). swarm/bg/goal are OFFERED; plan
+        // carries its own gate (skipped under auto = zero-prompts).
+        const decision: TurnDecision =
+          classifyIntent === undefined
+            ? { intent: 'chat', confidence: 'high' }
+            : await withThinking(deps, understandingPhrases(deps.t), () =>
+                classifyTurnDecision(
+                  text,
+                  {
+                    interactive: deps.ui.isInteractive(),
+                    mock: runtime.model === 'mock',
+                    level: runtime.autonomyLevel,
+                  },
+                  classifyIntent,
+                ),
               );
-            }
+        const intent = decision.intent;
+
+        // AO3d-2 — PROACTIVE 3-WAY POSTURE: the heavy routes (goal/bg/swarm/research/
+        // plan) are EXECUTION SHAPES Excalibur picks itself, never commands the user
+        // types. `decidePosture` derives act / narrate-and-act / ask from the
+        // classifier's CONFIDENCE + the shape's RISK + the autonomy level — so safe,
+        // confident routes just run, high-impact ones announce-while-running under
+        // full autonomy, and only the unsure or irreversible ones ask. No flag.
+        const posture = (i: TurnIntent): RoutePosture =>
+          decidePosture({
+            risk: riskOfShape(i),
+            confidence: decision.confidence,
+            level: runtime.autonomyLevel,
+            autoApprove: runtime.approvals.auto,
+          });
+        const acceptRoute = async (
+          offerKey: string,
+          autoNoticeKey: string,
+          vars?: Record<string, string | number>,
+        ): Promise<boolean> => {
+          const p = posture(intent);
+          if (p === 'ask') {
+            return deps.ui.confirm(deps.t(offerKey, vars), { defaultYes: true });
           }
-        } else if (intent === 'scope') {
-          // AO9-3 — NL-routed read-only "Understand-first" scope (any language):
-          // "what's involved in X" / "scope this" / "qué implica" → map the
-          // subsystems, built-vs-missing and risks WITHOUT building. Low-risk
-          // (read-only by construction) so it just runs — no posture gate.
-          await runScopeFlow(deps, text, { signal: ctrl.signal });
-        } else if (intent === 'schedule') {
-          // AO8-4 — NL-routed scheduling (any language): "every morning run the
-          // test sweep" → a persisted ScheduledJob (the OSS analog of cron /
-          // ScheduleWakeup), no `schedule add` command needed. If the cadence
-          // can't be understood, fall through to a normal turn so the model can
-          // still respond / clarify.
-          const handled = await dispatchSchedule(
-            deps,
-            runtime,
-            text,
-            posture('schedule'),
-            ctrl.signal,
-          );
-          if (!handled) {
+          deps.ui.info(deps.t(autoNoticeKey, vars));
+          if (p === 'narrate') {
+            deps.ui.info(deps.t('repl.route-narrate-hint'));
+          }
+          return true;
+        };
+
+        let asGoal = false;
+        if (intent === 'goal') {
+          asGoal = await acceptRoute('repl.goal-offer', 'repl.route-goal-auto', {
+            max: goalMaxIterations(runtime.config),
+          });
+        }
+        if (
+          !asGoal &&
+          intent === 'bg' &&
+          (await acceptRoute('repl.route-bg-offer', 'repl.route-bg-auto'))
+        ) {
+          void handleBgCommand(deps, runtime, text, bgControllers);
+          printStatusLine(deps, runtime);
+          continue;
+        }
+        const asSwarm =
+          !asGoal &&
+          intent === 'swarm' &&
+          (await acceptRoute('repl.route-swarm-offer', 'repl.route-swarm-auto'));
+        const asResearch =
+          !asGoal &&
+          !asSwarm &&
+          intent === 'research' &&
+          (await acceptRoute('repl.route-research-offer', 'repl.route-research-auto'));
+        // AO5 — best-of-N reached by NL (no command): "try a few approaches and pick
+        // the best". High-risk (a cost amplifier) so the posture ASKS unless full
+        // autonomy. Only meaningful in a git repo (lanes need worktrees).
+        const asExplore =
+          !asGoal &&
+          !asSwarm &&
+          !asResearch &&
+          intent === 'explore' &&
+          getGitInfo(runtime.repoRoot).isRepo &&
+          (await acceptRoute('repl.route-explore-offer', 'repl.route-explore-auto'));
+        // A plan ACTS (auto-orchestrate) unless the posture says ask → the
+        // deliberate plan → approve → execute gate.
+        const planActs = intent === 'plan' && posture('plan') !== 'ask';
+
+        const ctrl = beginTurn();
+        // One blank line ALWAYS sets the user's request apart from Excalibur's reply,
+        // for EVERY turn shape — conversational, gated build, mission, plan, swarm —
+        // since they mount different presenters (a build/mission goes through the
+        // workflow engine / mission driver, not the conversational rail). The single
+        // dispatch point guarantees the spacing the per-presenter code can't (RUN-FIX-14).
+        deps.ui.write();
+        try {
+          if (asGoal) {
+            await executeGoalLoop(deps, runtime, text, seed, ctrl.signal);
+          } else if (asResearch) {
+            // F7: the native multi-agent research pipeline (search → fetch →
+            // verify → cited synthesis).
+            await runResearchFlow(deps, text, {});
+          } else if (asExplore) {
+            // AO5 best-of-N via NL: N candidate approaches in parallel → judge → apply winner.
+            const g = loadGatewayContext(runtime.repoRoot);
+            await runExploreFlow(
+              deps,
+              runtime.repoRoot,
+              text,
+              { gateway: g.gateway, providerName: g.providerName, config: runtime.config },
+              { signal: ctrl.signal },
+            );
+          } else if (asSwarm || planActs) {
+            // AO2/AO3d-2 — an ACCEPTED build (swarm-intent accepted, or a plan the
+            // posture runs) is AUTO-ORCHESTRATED: decompose → DERIVE the shape
+            // (≥2 independent workstreams → an auto-sized parallel swarm, else one
+            // focused run). The user already decided at the posture gate — no
+            // further prompts; the planner and parallelizer are fused.
+            await dispatchAutoBuild(deps, runtime, text, ctrl.signal, seed);
+          } else if (intent === 'orchestration') {
+            // AO6 Pillar 5 — NL control of an EXISTING orchestration (any language):
+            // view the chronogram, or pause/resume it. No command needed; the
+            // dashboard buttons + `orchestration` command are escape hatches.
+            const runId = latestOrchestrationRunId(runtime.repoRoot);
+            if (runId === null) {
+              deps.ui.info(deps.t('orchestration.none'));
+            } else {
+              const action =
+                classifyIntent === undefined
+                  ? 'show'
+                  : await classifyOrchestrationAction(text, classifyIntent, ctrl.signal);
+              if (action === 'show') {
+                renderChronogramView(deps, runtime.repoRoot, runId, false);
+              } else {
+                const paused = action === 'pause';
+                setOrchestrationPaused(runtime.repoRoot, runId, paused, new Date().toISOString());
+                deps.ui.info(
+                  deps.t(paused ? 'orchestration.pause-set' : 'orchestration.resume-set', {
+                    id: runId,
+                  }),
+                );
+              }
+            }
+          } else if (intent === 'scope') {
+            // AO9-3 — NL-routed read-only "Understand-first" scope (any language):
+            // "what's involved in X" / "scope this" / "qué implica" → map the
+            // subsystems, built-vs-missing and risks WITHOUT building. Low-risk
+            // (read-only by construction) so it just runs — no posture gate.
+            await runScopeFlow(deps, text, { signal: ctrl.signal });
+          } else if (intent === 'schedule') {
+            // AO8-4 — NL-routed scheduling (any language): "every morning run the
+            // test sweep" → a persisted ScheduledJob (the OSS analog of cron /
+            // ScheduleWakeup), no `schedule add` command needed. If the cadence
+            // can't be understood, fall through to a normal turn so the model can
+            // still respond / clarify.
+            const handled = await dispatchSchedule(
+              deps,
+              runtime,
+              text,
+              posture('schedule'),
+              ctrl.signal,
+            );
+            if (!handled) {
+              await dispatchAgentTurn(deps, runtime, text, ctrl.signal, seed);
+            }
+          } else if (intent === 'mission' && posture('mission') !== 'ask') {
+            // The meta-orchestrator: interpret the goal, auto-author the capability
+            // plan, and drive it autonomously (M8). The proactive route for big work —
+            // only when the posture grants it (full autonomy); otherwise it asks below.
+            await runMissionTurn(text, {
+              deps,
+              repoRoot: runtime.repoRoot,
+              config: runtime.config,
+              autonomyLevel: runtime.autonomyLevel,
+              approvals: runtime.approvals,
+              signal: ctrl.signal,
+              // ESC in any step's live view cancels the whole mission (the editor is
+              // suspended while a step's Ink view owns stdin, so route ESC here).
+              onEscape: () => ctrl.abort(),
+              // Typing-during-execution: type while the mission runs (RUN-FIX-16).
+              ...(runtime.onInterrupt !== undefined ? { onInterrupt: runtime.onInterrupt } : {}),
+            });
+          } else if (intent === 'plan' || intent === 'mission') {
+            // Plan, posture ASK → the deliberate plan → approve → execute gate.
+            await dispatchPlan(deps, runtime, text, ctrl.signal, seed);
+          } else if (intent === 'edit' && decision.confidence !== 'low') {
+            // RUN-FIX-10 — even ONE small direct code change runs the GATED workflow
+            // engine (complexity-sized, typically fast-fix), so an m-shell edit gets
+            // the SAME tests/typecheck/verify quality as `excalibur run`, never a bare
+            // loop. Per-edit approval is handled inline by the rail when not auto. A
+            // LOW-confidence "edit" guess falls through to a normal conversational
+            // turn rather than spinning up a whole workflow on a maybe-question.
+            await runConversationalBuild(deps, runtime, text, ctrl.signal);
+          } else {
+            // chat (pure Q&A) · research-declined → a direct model-first conversational
+            // turn (the model still has web_search/web_fetch/research tools).
             await dispatchAgentTurn(deps, runtime, text, ctrl.signal, seed);
           }
-        } else if (intent === 'mission' && posture('mission') !== 'ask') {
-          // The meta-orchestrator: interpret the goal, auto-author the capability
-          // plan, and drive it autonomously (M8). The proactive route for big work —
-          // only when the posture grants it (full autonomy); otherwise it asks below.
-          await runMissionTurn(text, {
-            deps,
-            repoRoot: runtime.repoRoot,
-            config: runtime.config,
-            autonomyLevel: runtime.autonomyLevel,
-            approvals: runtime.approvals,
-            signal: ctrl.signal,
-            // ESC in any step's live view cancels the whole mission (the editor is
-            // suspended while a step's Ink view owns stdin, so route ESC here).
-            onEscape: () => ctrl.abort(),
-            // Typing-during-execution: type while the mission runs (RUN-FIX-16).
-            ...(runtime.onInterrupt !== undefined ? { onInterrupt: runtime.onInterrupt } : {}),
+        } catch (error) {
+          endTurn();
+          const reason = error instanceof Error ? error.message : String(error);
+          deps.ui.error(reason);
+          store.appendTurn(session.id, {
+            role: 'system',
+            kind: 'status',
+            text: `error: ${reason}`,
           });
-        } else if (intent === 'plan' || intent === 'mission') {
-          // Plan, posture ASK → the deliberate plan → approve → execute gate.
-          await dispatchPlan(deps, runtime, text, ctrl.signal, seed);
-        } else if (intent === 'edit' && decision.confidence !== 'low') {
-          // RUN-FIX-10 — even ONE small direct code change runs the GATED workflow
-          // engine (complexity-sized, typically fast-fix), so an m-shell edit gets
-          // the SAME tests/typecheck/verify quality as `excalibur run`, never a bare
-          // loop. Per-edit approval is handled inline by the rail when not auto. A
-          // LOW-confidence "edit" guess falls through to a normal conversational
-          // turn rather than spinning up a whole workflow on a maybe-question.
-          await runConversationalBuild(deps, runtime, text, ctrl.signal);
-        } else {
-          // chat (pure Q&A) · research-declined → a direct model-first conversational
-          // turn (the model still has web_search/web_fetch/research tools).
-          await dispatchAgentTurn(deps, runtime, text, ctrl.signal, seed);
+          await settleInterruptAftermath(); // a steer/switch queued before the error still runs
+          printStatusLine(deps, runtime);
+          continue;
         }
-      } catch (error) {
-        endTurn();
-        const reason = error instanceof Error ? error.message : String(error);
-        deps.ui.error(reason);
-        store.appendTurn(session.id, { role: 'system', kind: 'status', text: `error: ${reason}` });
-        await settleInterruptAftermath(); // a steer/switch queued before the error still runs
-        printStatusLine(deps, runtime);
+        // The post-turn settle ALSO runs outside the per-turn try/catch above; a throw
+        // here would escape the loop and exit the shell. Contain it — the prompt always
+        // comes back (RUN-FIX-15: nunca es nunca).
+        try {
+          endTurn();
+          // INT-1/INT-5 — run any foreground interrupt (folded steer / pause+switch)
+          // queued while this turn streamed, then offer to resume the paused work.
+          await settleInterruptAftermath();
+          printStatusLine(deps, runtime);
+        } catch (error) {
+          deps.ui.error(error instanceof Error ? error.message : String(error));
+        }
+      } catch (turnError) {
+        // The PER-TURN BACKSTOP catch (RUN-FIX-22): NOTHING in the turn body — classify,
+        // routing, dispatch, self-heal, settle — can terminate the shell. Each recovery
+        // step is independently best-effort so the recovery itself can never throw; then
+        // we re-prompt. "Nunca es nunca." Genuine faults are still LOGGED (forensics +
+        // error line + a system turn in the transcript), never silently swallowed.
+        const reason = turnError instanceof Error ? turnError.message : String(turnError);
+        exitForensicsLog('per-turn backstop caught (shell stays alive): ' + reason);
+        try {
+          endTurn();
+        } catch {
+          /* best-effort */
+        }
+        try {
+          deps.ui.error(reason);
+        } catch {
+          /* best-effort */
+        }
+        try {
+          store.appendTurn(session.id, {
+            role: 'system',
+            kind: 'status',
+            text: `error: ${reason}`,
+          });
+        } catch {
+          /* best-effort */
+        }
+        try {
+          printStatusLine(deps, runtime);
+        } catch {
+          /* best-effort */
+        }
         continue;
-      }
-      // The post-turn settle ALSO runs outside the per-turn try/catch above; a throw
-      // here would escape the loop and exit the shell. Contain it — the prompt always
-      // comes back (RUN-FIX-15: nunca es nunca).
-      try {
-        endTurn();
-        // INT-1/INT-5 — run any foreground interrupt (folded steer / pause+switch)
-        // queued while this turn streamed, then offer to resume the paused work.
-        await settleInterruptAftermath();
-        printStatusLine(deps, runtime);
-      } catch (error) {
-        deps.ui.error(error instanceof Error ? error.message : String(error));
       }
     }
   } finally {

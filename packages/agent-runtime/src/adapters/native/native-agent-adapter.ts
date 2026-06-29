@@ -5,6 +5,7 @@ import {
   createEvent,
   DEFAULT_BLOCKED_PATHS,
   DEFAULT_LSP_CONFIG,
+  stripReasoning,
   type AgentRole,
   type DiagnosticsPayload,
   type ExcaliburConfig,
@@ -420,6 +421,9 @@ function narrationGuidance(_role: AgentRole): string[] {
     'talk about "phases"/"fases" of the work. NEVER expose internal machinery: no "run"',
     'or "ejecución", no run ids/paths, no role/level/autonomy labels.',
     'Write this narration in the SAME language the user used (Spanish → Spanish).',
+    'Output ONLY the user-facing narration prose. NEVER emit <thinking>, <antThinking>, ' +
+      '<reasoning> or <think> tags, raw chain-of-thought, or a leading ✗/✘/× or status emoji — ' +
+      'speak directly to the user in their language.',
   ];
 }
 
@@ -714,7 +718,10 @@ export class NativeAgentAdapter implements AgentAdapter {
             let acc = '';
             output = await gateway.streamChat(chatInput, (delta) => {
               acc += delta;
-              sink({ delta, content: acc });
+              // Strip the model's chain-of-thought (`<antThinking>`…) from the LIVE
+              // narration before it is shown (RUN-FIX-22). Some models inline reasoning
+              // into the content stream; without this it leaks raw to the rail.
+              sink({ delta, content: stripReasoning(acc) });
             });
           } else {
             output = await gateway.chat(chatInput);
@@ -749,14 +756,17 @@ export class NativeAgentAdapter implements AgentAdapter {
           outputTokens: output.usage.outputTokens,
           costCents: output.costCents,
           finishReason: output.finishReason,
-          content: redactSecrets(output.content),
+          // Strip reasoning (RUN-FIX-22) BEFORE redaction so a committed model_call /
+          // assistant_message — which feeds the receipt, the replay and the rail's
+          // folded narration — never carries raw `<antThinking>` chain-of-thought.
+          content: redactSecrets(stripReasoning(output.content)),
         });
 
         const toolCalls = output.toolCalls ?? [];
         if (toolCalls.length === 0) {
           // Final answer — no more tools requested.
           yield emit('assistant_message', {
-            content: redactSecrets(output.content),
+            content: redactSecrets(stripReasoning(output.content)),
             totalInputTokens: totals.inputTokens,
             totalOutputTokens: totals.outputTokens,
             totalCostCents: totals.costCents,

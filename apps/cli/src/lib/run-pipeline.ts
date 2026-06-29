@@ -796,8 +796,21 @@ export async function runTask(
     // caller's raw editor; drop the parent-signal listener so a finished run's
     // controller is not pinned alive.
     if (inkHandle !== null) {
-      inkHandle.unmount();
-      deps.ui.resumeInput();
+      // Swallow each independently (RUN-FIX-22): a throw from unmount() inside this
+      // `finally` would replace the in-flight return and unwind out of runTask into the
+      // self-heal loop's un-guarded region — and if unmount() threw, resumeInput() would
+      // be SKIPPED, leaving stdin seized so the next editor prompt looks dead. Separating
+      // them guarantees the editor always gets stdin back, and neither can escape.
+      try {
+        inkHandle.unmount();
+      } catch {
+        /* a rail teardown fault must never propagate — nunca es nunca */
+      }
+      try {
+        deps.ui.resumeInput();
+      } catch {
+        /* re-arming is best-effort; the next question() re-enables raw lazily */
+      }
     }
     options.signal?.removeEventListener('abort', onParentAbort);
   }
