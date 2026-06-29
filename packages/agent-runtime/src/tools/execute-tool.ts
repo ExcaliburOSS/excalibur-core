@@ -484,6 +484,24 @@ function runProcess(
       settled = true;
       clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
+      // REAP any lingering process tree before settling. Settling fast on 'exit'+grace
+      // means a backgrounded grandchild (`node server.js &`) that inherited the stdio
+      // pipes would otherwise ORPHAN into the session — left running behind the m-shell,
+      // holding a port + the pipes, and able to fire late 'data'/EPIPE on a settled
+      // command. A verification that starts a server must never leave it running
+      // (RUN-FIX-20). killTree is a no-op when the tree already exited (the common case).
+      killTree();
+      // Detach from the child's streams so a late write / EPIPE from the just-reaped
+      // tree can never reach a settled command; swallow any stray stream 'error' raised
+      // as the pipe tears down (it would otherwise surface as an unhandled error).
+      try {
+        child.stdout?.removeListener('data', capture);
+        child.stderr?.removeListener('data', capture);
+        child.stdout?.on('error', () => {});
+        child.stderr?.on('error', () => {});
+      } catch {
+        /* best-effort cleanup — never let teardown throw */
+      }
       if (aborted) {
         output += '\n…(command aborted)';
       }

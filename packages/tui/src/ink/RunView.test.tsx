@@ -78,7 +78,7 @@ describe('<RunView>', () => {
     expect(frame).toContain('no push');
   });
 
-  it('compactStatus slims the footer to time · tokens · cost (drops level/safety/push/model)', () => {
+  it('compactStatus slims the footer to time · tokens (drops cost + level/safety/push/model)', () => {
     const frame = frameOf({
       model: model({
         status: {
@@ -98,11 +98,35 @@ describe('<RunView>', () => {
     // Kept: the metrics worth seeing mid-conversation.
     expect(frame).toContain('↑');
     expect(frame).toContain('↓');
-    // Dropped: the internal jargon.
+    // Dropped: the cost (noise on the local/free paths, ~always $0.00) …
+    expect(frame).not.toContain('$0.12');
+    expect(frame).not.toContain('$');
+    // … and the internal jargon.
     expect(frame).not.toContain('standard-safe');
     expect(frame).not.toContain('no push');
     expect(frame).not.toContain('L3');
     expect(frame).not.toContain('kimi');
+  });
+
+  it('frames the mid-run input box like the idle prompt: accent rules + ◆ indicator + caret (RUN-FIX-19)', () => {
+    const frame = frameOf({
+      model: model(),
+      spinnerFrame: 0,
+      useStatic: false,
+      interruptEnabled: true,
+      width: 60,
+      labels: { interruptHint: 'escribe para guiar' },
+    });
+    // Two full-width accent rules bracket the box — the SAME divider the idle prompt uses.
+    const ruleLines = frame.split('\n').filter((line) => /─{20,}/.test(line));
+    expect(ruleLines.length).toBeGreaterThanOrEqual(2);
+    // The `›` caret + breathing cursor + the dim invitation (input never disappears).
+    expect(frame).toContain('›');
+    expect(frame).toContain('▌');
+    expect(frame).toContain('escribe para guiar');
+    // The ◆ autonomy · permissions indicator row, mirroring the idle box footer.
+    expect(frame).toContain('◆');
+    expect(frame).toContain('L3 · standard-safe');
   });
 
   it('renders an interactive approval (question + options)', () => {
@@ -171,6 +195,37 @@ describe('<RunView>', () => {
     expect(frame).toContain('Tasks');
     expect(frame).toContain('guard release()');
     expect(frame).toContain('add idempotency key');
+  });
+
+  it('WINDOWS a long todo list so the live band never overflows the viewport (RUN-FIX-20)', () => {
+    // A 24-item checklist (the kind that erased scrollback) must NOT render 24 rows.
+    // The band collapses the completed prefix into "⋯ N done", keeps the in-progress
+    // item visible, and caps the rest — so the live region can't scroll over <Static>.
+    const todos = Array.from({ length: 24 }, (_, i) => ({
+      text: `task number ${i}`,
+      status: (i < 18 ? 'completed' : i === 18 ? 'in_progress' : 'pending') as
+        | 'completed'
+        | 'in_progress'
+        | 'pending',
+    }));
+    const frame = frameOf({
+      model: model({ phases: [], todos }),
+      spinnerFrame: 0,
+      useStatic: false,
+      rows: 24,
+      tier: 'truecolor',
+    });
+    // The full count is still shown in the header…
+    expect(frame).toContain('18/24');
+    // …the in-progress item is visible…
+    expect(frame).toContain('task number 18');
+    // …the completed prefix is collapsed (not all 24 rendered)…
+    expect(frame).toContain('done');
+    expect(frame).not.toContain('task number 0');
+    expect(frame).not.toContain('task number 5');
+    // …and the whole rendered band stays within a few rows (header + ≤6 items + 2 marks).
+    const bandRows = frame.split('\n').filter((line) => /task number|done|more|Tasks/.test(line));
+    expect(bandRows.length).toBeLessThanOrEqual(10);
   });
 
   it('marks the IN-PROGRESS todo distinctly (running glyph) from completed/pending (RUN-FIX-17)', () => {

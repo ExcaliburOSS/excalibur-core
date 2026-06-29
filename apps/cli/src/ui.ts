@@ -222,6 +222,19 @@ export class Ui {
   private suspendEditor: (() => void) | null = null;
   private resumeEditor: (() => void) | null = null;
   /**
+   * ARMORED — set by the interactive m-shell (RUN-FIX-20). While armored, the
+   * per-prompt SIGTERM/SIGHUP handlers restore cooked mode but DO NOT exit the
+   * process: the shell must never die on a stray signal mid-session; the REPL's
+   * own armor decides survival, and the only real exits are explicit user intent.
+   * Off by default so one-shot subcommands (`excalibur run`, etc.) still terminate
+   * on a signal as scripts expect.
+   */
+  private armored = false;
+  /** Arm/disarm the never-exit-on-signal posture (the interactive m-shell). */
+  setArmored(value: boolean): void {
+    this.armored = value;
+  }
+  /**
    * Nesting depth of {@link suspendInput} calls. suspend/resume are
    * REFERENCE-COUNTED so only the OUTERMOST suspend drops raw mode and only the
    * matching outermost resume re-arms it: a command run in-process from the shell
@@ -422,7 +435,9 @@ export class Ui {
     };
     const onTermSignal = (): void => {
       restoreCooked();
-      process.exit(143);
+      // While the interactive m-shell is ARMORED, never terminate on a stray signal —
+      // restore the terminal and let the REPL's armor keep the session alive (RUN-FIX-20).
+      if (!this.armored) process.exit(143);
     };
 
     out.write(prompt);
@@ -710,7 +725,9 @@ export class Ui {
     };
     const onTermSignal = (): void => {
       restoreCooked();
-      process.exit(143);
+      // While the interactive m-shell is ARMORED, never terminate on a stray signal —
+      // restore the terminal and let the REPL's armor keep the session alive (RUN-FIX-20).
+      if (!this.armored) process.exit(143);
     };
 
     draw();
@@ -900,7 +917,9 @@ export class Ui {
     };
     const onTermSignal = (): void => {
       restoreCooked();
-      process.exit(143);
+      // While the interactive m-shell is ARMORED, never terminate on a stray signal —
+      // restore the terminal and let the REPL's armor keep the session alive (RUN-FIX-20).
+      if (!this.armored) process.exit(143);
     };
 
     draw();
@@ -1376,7 +1395,9 @@ export class Ui {
     // on enable, removed on disable, so handlers never leak across editors.
     const onTermSignal = (): void => {
       restoreCooked();
-      process.exit(143);
+      // While the interactive m-shell is ARMORED, never terminate on a stray signal —
+      // restore the terminal and let the REPL's armor keep the session alive (RUN-FIX-20).
+      if (!this.armored) process.exit(143);
     };
 
     // Terminal RESIZE: redraw the framed box at the new width so the full-width

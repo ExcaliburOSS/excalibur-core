@@ -231,6 +231,7 @@ type GlyphSet = {
   boxBL: string;
   boxBR: string;
   boxH: string;
+  diamond: string;
   diffExpand: string;
   diffCollapse: string;
 };
@@ -253,6 +254,7 @@ const unicode: GlyphSet = {
   boxBL: '└',
   boxBR: '┘',
   boxH: '─',
+  diamond: '◆',
   diffExpand: '▸',
   diffCollapse: '▾',
 };
@@ -275,6 +277,7 @@ const asciiSet: GlyphSet = {
   boxBL: '+',
   boxBR: '+',
   boxH: '-',
+  diamond: '*',
   diffExpand: '>',
   diffCollapse: 'v',
 };

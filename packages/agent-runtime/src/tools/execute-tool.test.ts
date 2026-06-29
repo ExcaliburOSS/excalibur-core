@@ -638,6 +638,31 @@ describe('executeNativeTool — run_command / run_tests', () => {
     expect(result.result).not.toContain('timed out');
   }, 15000);
 
+  it('REAPS a backgrounded grandchild on settle — no orphaned server left running (RUN-FIX-20)', async () => {
+    // The crash repro: a verification backgrounds a long-lived server (`node server.js &`)
+    // that inherits the stdio pipes. Settling fast on exit+grace must NOT orphan it into
+    // the session — it must be reaped. Background a long-lived node, capture its PID, and
+    // confirm it is dead shortly after the command settles.
+    const result = await executeNativeTool(
+      'run_command',
+      { command: 'node -e "setInterval(()=>{}, 1000)" & echo PID=$!; echo started' },
+      ctx(),
+    );
+    expect(result.result).toContain('started');
+    const match = result.result.match(/PID=(\d+)/);
+    expect(match).not.toBeNull();
+    const pid = Number(match![1]);
+    // Give the reap (process-group SIGKILL) a moment to land.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    let alive = true;
+    try {
+      process.kill(pid, 0); // signal 0 = liveness probe; throws ESRCH if gone
+    } catch {
+      alive = false;
+    }
+    expect(alive).toBe(false); // the orphan was reaped, not left running behind the shell
+  }, 15000);
+
   it('does not start a command when the signal is already aborted', async () => {
     const controller = new AbortController();
     controller.abort();

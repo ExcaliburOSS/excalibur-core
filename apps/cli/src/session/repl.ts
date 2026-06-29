@@ -54,6 +54,7 @@ import { analyzeRepository } from '@excalibur/context-engine';
 import { agentUsesGateway, resolveAgentAdapter } from '@excalibur/agent-runtime';
 import { estimateTokens, redactSecrets, type ChatMessage } from '@excalibur/model-gateway';
 import { execFile } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 import {
   generateId,
@@ -210,6 +211,41 @@ interface SessionRuntime {
   onInterrupt?: AgentTurnDeps['onInterrupt'];
 }
 
+/** EXIT FORENSICS sink — set by {@link installExitForensics}; no-op until enabled. */
+let exitForensicsLog: (reason: string) => void = () => {};
+
+/**
+ * Opt-in exit forensics (EXCALIBUR_DEBUG_EXIT=<file>): record the EXACT reason the
+ * m-shell process ever terminates — the exit code (143 = a SIGTERM/SIGHUP killed it,
+ * 130 = SIGINT, 0 = a clean loop break) and `beforeExit` — each with a stack. Off by
+ * default (zero overhead). The shell must NEVER exit on a fault; when a user still
+ * sees it, enabling this pins the vector in a single line (RUN-FIX-20).
+ */
+function installExitForensics(deps: CliDeps): void {
+  const file = deps.env['EXCALIBUR_DEBUG_EXIT'];
+  if (file === undefined || file.length === 0) {
+    return;
+  }
+  const log = (reason: string): void => {
+    try {
+      let when = '?';
+      try {
+        when = new Date().toISOString();
+      } catch {
+        /* clock unavailable */
+      }
+      appendFileSync(file, `[${when}] ${reason}\n${new Error('exit-forensics').stack ?? ''}\n\n`);
+    } catch {
+      /* forensics are best-effort — never let logging itself throw */
+    }
+  };
+  exitForensicsLog = log;
+  // 'exit' fires for EVERY termination (a process.exit, a signal handler's exit, a
+  // natural return) and cannot be cancelled — so it always records the cause + code.
+  process.on('exit', (code) => log(`process 'exit' code=${code}`));
+  process.on('beforeExit', (code) => log(`process 'beforeExit' code=${code}`));
+}
+
 /**
  * The interactive conversational session (`excalibur` with no args → a
  * readline REPL). The shell is MODEL-FIRST: a natural-language line is handed
@@ -230,6 +266,11 @@ export async function runInteractiveSession(
   deps: CliDeps,
   options: InteractiveSessionOptions = {},
 ): Promise<number> {
+  // EXIT FORENSICS (opt-in): set EXCALIBUR_DEBUG_EXIT=<file> to record EXACTLY why the
+  // m-shell ever terminates — the death signal (SIGHUP/SIGTERM/SIGINT), a clean exit
+  // code, or beforeExit — each with a stack. The shell must never exit on a fault
+  // (RUN-FIX-14/18/20); when a user still sees it, this pins the vector in one line.
+  installExitForensics(deps);
   // Smart project-location resolution (proactive): if you launch `excalibur`
   // somewhere that isn't a project — your home dir, `/`, or an ambiguous folder
   // — and you actually want to START a project, create one (`mkdir`+`git init`+
@@ -497,6 +538,31 @@ export async function runInteractiveSession(
   process.on('uncaughtException', onEscapedFault);
   process.on('unhandledRejection', onEscapedFault);
 
+  // ARMOR (RUN-FIX-20) — "el shell no puede crashear NUNCA bajo ningún concepto".
+  // Beyond async faults, a stray TERMINATION SIGNAL (SIGTERM/SIGHUP/SIGQUIT — a child's
+  // death propagating, a parent nudging, a flaky pty) would otherwise kill the process
+  // mid-session by the OS default action. We register handlers so the shell SURVIVES
+  // them: surface a calm notice and stay alive. The editor's per-prompt signal handlers
+  // are neutered while armored (Ui.setArmored) so they can't exit over this. The only
+  // ways out are explicit user intent (/exit, double-Ctrl-C) or an uncatchable SIGKILL.
+  deps.ui.setArmored(true);
+  const onArmoredSignal = (sig: NodeJS.Signals): void => {
+    exitForensicsLog(`armor: survived signal ${sig} (staying alive)`);
+    try {
+      deps.ui.write();
+      deps.ui.warn(deps.t('repl.recovered-from-signal', { signal: sig }));
+      printStatusLine(deps, runtime);
+    } catch {
+      /* staying alive is the contract — never let the notice throw */
+    }
+  };
+  const armoredSignals: NodeJS.Signals[] = ['SIGTERM', 'SIGHUP', 'SIGQUIT'];
+  const armoredSignalHandlers = armoredSignals.map((sig): [NodeJS.Signals, () => void] => {
+    const handler = (): void => onArmoredSignal(sig);
+    process.on(sig, handler);
+    return [sig, handler];
+  });
+
   // INT-1 — the interrupt channel. A message the user types WHILE a turn streams
   // is triaged (steer/quick/new/stop/answer) and routed WITHOUT losing the work:
   // a steer folds in after, an independent request runs as a parallel `/bg`
@@ -749,6 +815,7 @@ export async function runInteractiveSession(
         continue;
       }
       if (line === null) {
+        exitForensicsLog('repl loop break: editor.question() returned null (EOF / Ctrl-D / close)');
         break; // genuine EOF / Ctrl-D / explicit close
       }
       if (line.trim().length > 0) {
@@ -944,6 +1011,7 @@ export async function runInteractiveSession(
           }
           const result = handleSlashCommand(deps, runtime, input.name);
           if (result === 'exit') {
+            exitForensicsLog(`repl loop break: explicit /${input.name} command`);
             break;
           }
           continue;
@@ -1196,15 +1264,21 @@ export async function runInteractiveSession(
       }
     }
   } finally {
+    exitForensicsLog('repl loop FINALLY reached (teardown) — the for(;;) loop ended');
     // AO8-4 — stop any late background callback (chain / supervisor) from spawning
     // a NEW thread into the closing session, then cancel the in-flight ones.
     runtime.shuttingDown = true;
     offSigint();
     offEscape();
-    // Remove the crash safety net (RUN-FIX-14) — once the session is closing, an
-    // escaped fault should follow normal process semantics, not be swallowed.
+    // Remove the crash safety net (RUN-FIX-14) + the signal armor (RUN-FIX-20) — once
+    // the session is closing (the user chose to leave), an escaped fault or signal
+    // should follow normal process semantics again, not be swallowed.
     process.off('uncaughtException', onEscapedFault);
     process.off('unhandledRejection', onEscapedFault);
+    for (const [sig, handler] of armoredSignalHandlers) {
+      process.off(sig, handler);
+    }
+    deps.ui.setArmored(false);
     editor.close();
     dashboard?.stop();
     // Restore the user's terminal cursor colour (paired with setCursorAccent).

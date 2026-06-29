@@ -342,9 +342,12 @@ function engineeringGuidance(role: AgentRole): string[] {
     'without ELEVATED rights or a machine-level action you cannot take — changing',
     'ownership of files you do not own (needs sudo), installing a system package, or',
     'supplying a secret/credential. Then tell them plainly what is blocked and give',
-    'the EXACT shell command to run (e.g. `sudo chown -R "$USER" .`). That last-resort',
-    'ask is correct; looping forever — OR asking for something you could have solved',
-    'yourself — is not.',
+    'the EXACT command to run, PREFIXED WITH `!` so they can run it right here in the',
+    'm-shell without leaving it (e.g. `!sudo chown -R "$USER" .`) — the `!` makes the',
+    'shell execute it inline and hand control straight back. NEVER tell them to open',
+    'another terminal or restart anything. That last-resort ask (a single `!`-prefixed',
+    'command) is correct; looping forever — OR asking for something you could have',
+    'solved yourself — is not.',
   ];
 }
 

@@ -240,6 +240,23 @@ export interface InterruptPlan {
   ack: string;
 }
 
+/**
+ * Reduce a current-work description to a SHORT, single-line label safe to show in an
+ * ack. The work text may be a long, multi-line INTERNAL prompt (e.g. the self-heal
+ * "Diagnose the ROOT CAUSE… Original task… Failing checks…"): take only the first
+ * non-empty line, collapse whitespace, and clamp to ~64 chars so the ack never leaks
+ * a wall of internal text into the rail (RUN-FIX-20).
+ */
+function summarizeWork(work: string): string {
+  const firstLine =
+    String(work)
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? '';
+  const collapsed = firstLine.replace(/\s+/g, ' ').trim();
+  return collapsed.length > 64 ? `${collapsed.slice(0, 63)}…` : collapsed;
+}
+
 /** The instant acknowledgment — names the interpretation so the user can correct it. */
 export function buildInterruptAck(
   action: InterruptAction,
@@ -247,7 +264,11 @@ export function buildInterruptAck(
   ctx: InterruptContext,
   reaskAfter: boolean,
 ): string {
-  const work = ctx.currentWork;
+  // NEVER interpolate the raw current-work text: during a self-heal it is a long,
+  // multi-line INTERNAL prompt ("Diagnose the ROOT CAUSE… Original task… Failing
+  // checks…") that would leak verbatim into the rail. Clamp to a short single line so
+  // the ack stays a clean one-liner no matter what the caller passed (RUN-FIX-20).
+  const work = summarizeWork(ctx.currentWork);
   const resume = reaskAfter ? ' Then I’ll go back to the question.' : '';
   const base = ((): string => {
     switch (action) {

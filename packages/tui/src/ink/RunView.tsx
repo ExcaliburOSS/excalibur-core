@@ -36,6 +36,35 @@ import { stateGlyph, toneColor } from './phase-style.js';
 
 const NAME_WIDTH = 18;
 
+/** Max todo ITEM rows the live band renders before it windows the rest (RUN-FIX-20). */
+const MAX_TODO_ITEMS = 6;
+
+/** Max wrapped rows the live streaming-narration tail may occupy (RUN-FIX-20). */
+const MAX_NARRATION_ROWS = 4;
+
+/**
+ * Window a todo list so the band never grows past a few rows (else the live region
+ * scrolls over the `<Static>` scrollback and erases history — RUN-FIX-20). Anchors on
+ * the in-progress item so it is always visible, collapses the completed prefix into a
+ * "⋯ N done" line and any pending overflow into a trailing "⋯ N more". Non-TTY logs
+ * keep the FULL list via the string `renderTodos`.
+ */
+function todoWindow(
+  todos: ReadonlyArray<TodoItem>,
+  maxItems: number,
+): { items: ReadonlyArray<TodoItem>; hidden: number; more: number } {
+  if (todos.length <= maxItems) {
+    return { items: todos, hidden: 0, more: 0 };
+  }
+  const ip = todos.findIndex((todo) => todo.status === 'in_progress');
+  const firstActive = todos.findIndex((todo) => todo.status !== 'completed');
+  const anchor = ip >= 0 ? ip : firstActive >= 0 ? firstActive : todos.length - 1;
+  // Keep one item of context before the anchor, then fill forward; clamp to bounds.
+  const start = Math.max(0, Math.min(anchor - 1, todos.length - maxItems));
+  const items = todos.slice(start, start + maxItems);
+  return { items, hidden: start, more: todos.length - (start + items.length) };
+}
+
 export interface RunViewLabels {
   push?: string;
   noPush?: string;
@@ -309,38 +338,68 @@ function StreamingNarration({
 }
 
 /**
- * The interrupt input line (INT-1): a PERSISTENT prompt (`›`) at the foot of the
- * rail while the run streams, so the user's input NEVER disappears mid-run — they
- * can always see they can type to steer or add to the work. When idle it shows a
- * dim hint + cursor; as they type it fills with their draft. ESC still cancels the
- * run, Enter submits the message to the interrupt brain (steer / parallel / answer).
+ * The mid-run input box (INT-1 / RUN-FIX-17 + 19): a PERSISTENT framed prompt at the
+ * foot of the rail while the run streams, drawn to MATCH the idle input box exactly
+ * (RUN-FIX-11) so the user's input never disappears AND looks identical to the normal
+ * prompt: a full-width accent rule ABOVE and BELOW, the `›` prompt with a BREATHING
+ * cursor inside (pulses along the accent ramp), and the `◆ autonomy · permissions`
+ * indicator row beneath. When idle it shows a dim invitation; as the user types it
+ * fills with their draft. Enter submits to the interrupt brain; ESC stops the run.
  */
-function InterruptDraft({
+function InterruptBox({
   text,
   colors,
+  spinnerFrame,
+  width,
+  autonomyLabel,
+  safety,
   placeholder,
 }: {
   text: string;
   colors: Palette;
+  spinnerFrame: number;
+  width: number;
+  autonomyLabel: string;
+  safety: string;
   placeholder?: string;
 }): ReactElement {
+  // The SAME full-width accent rule the idle box uses to bracket the input.
+  const rule = glyph.boxH.repeat(Math.max(8, width));
+  // The cursor BREATHES along the accent ramp — an active, live caret, not a static block.
+  const cursor = <Text color={pulseColor(colors, spinnerFrame)}>▌</Text>;
+  // The indicator row under the box: ◆ autonomy · permissions (mirrors buildInputFooter).
+  const left =
+    autonomyLabel.length > 0 && safety.length > 0
+      ? `${autonomyLabel} · ${safety}`
+      : autonomyLabel || safety;
   return (
-    <Box marginTop={1}>
-      <Box flexShrink={0}>
-        <Text color={colors.accent} bold>{` › `}</Text>
+    <Box flexDirection="column" marginTop={1}>
+      <Text color={colors.accent}>{rule}</Text>
+      <Box>
+        <Box flexShrink={0}>
+          <Text color={colors.accent} bold>{` › `}</Text>
+        </Box>
+        {text.length > 0 ? (
+          <Text color={colors.text} wrap="wrap">
+            {text}
+            {cursor}
+          </Text>
+        ) : (
+          // Idle: a dim invitation so the input is visibly ALWAYS there, never gone.
+          <Text color={colors.muted}>
+            {placeholder !== undefined && placeholder.length > 0 ? `${placeholder} ` : ''}
+            {cursor}
+          </Text>
+        )}
       </Box>
-      {text.length > 0 ? (
-        <Text color={colors.text} wrap="wrap">
-          {text}
-          <Text color={colors.muted}>▌</Text>
-        </Text>
-      ) : (
-        // Idle: a dim invitation so the input is visibly ALWAYS there, never gone.
-        <Text color={colors.muted}>
-          {placeholder !== undefined && placeholder.length > 0 ? `${placeholder} ` : ''}
-          <Text color={colors.accent}>▌</Text>
-        </Text>
-      )}
+      <Text color={colors.accent}>{rule}</Text>
+      {left.length > 0 ? (
+        <Box>
+          <Text>{'  '}</Text>
+          <Text color={colors.accent}>{`${glyph.diamond} `}</Text>
+          <Text color={colors.text}>{left}</Text>
+        </Box>
+      ) : null}
     </Box>
   );
 }
@@ -371,13 +430,20 @@ function TodosBand({
   spinnerFrame,
   colors,
   label,
+  maxItems = MAX_TODO_ITEMS,
 }: {
   todos: ReadonlyArray<TodoItem>;
   spinnerFrame: number;
   colors: Palette;
   label?: string;
+  /** Max ITEM rows to render (excl. header + the collapse line); windows the rest. */
+  maxItems?: number;
 }): ReactElement {
   const done = todos.filter((todo) => todo.status === 'completed').length;
+  // WINDOW the band so it can never grow taller than its budget and scroll the live
+  // region over the <Static> scrollback (RUN-FIX-20). Collapse the COMPLETED prefix
+  // into a "⋯ N done" line and show the active + pending tail (the actionable items).
+  const window = todoWindow(todos, maxItems);
   return (
     <Box flexDirection="column">
       <Box>
@@ -385,7 +451,13 @@ function TodosBand({
         <Text color={colors.text}>{label ?? 'Tasks'}</Text>
         <Text color={colors.muted}>{`  ${done}/${todos.length}`}</Text>
       </Box>
-      {todos.map((todo, index) => {
+      {window.hidden > 0 ? (
+        <Box>
+          <Text color={colors.rail}>{` ${glyph.railV}   `}</Text>
+          <Text color={colors.muted}>{`⋯ ${window.hidden} done`}</Text>
+        </Box>
+      ) : null}
+      {window.items.map((todo, index) => {
         const active = todo.status === 'in_progress';
         const gch =
           todo.status === 'completed' ? glyph.done : active ? glyph.running : glyph.pending;
@@ -418,6 +490,12 @@ function TodosBand({
           </Box>
         );
       })}
+      {window.more > 0 ? (
+        <Box>
+          <Text color={colors.rail}>{` ${glyph.railV}   `}</Text>
+          <Text color={colors.muted}>{`⋯ ${window.more} more`}</Text>
+        </Box>
+      ) : null}
     </Box>
   );
 }
@@ -444,12 +522,12 @@ function StatusLine({
   ) : null;
 
   if (compact === true) {
-    // The metrics worth seeing mid-conversation: elapsed · tokens · cost. The
-    // internal level/safety/push/model jargon stays out of the user's way.
+    // The metrics worth seeing mid-conversation: elapsed · tokens. Cost is dropped —
+    // it is noise on the local/free paths (effectively always $0.00); the level/
+    // safety/push/model jargon also stays out of the user's way.
     const metrics = [
       formatElapsed(s.elapsedMs),
       hasTokens ? `${formatTokens(s.inputTokens)}↑ ${formatTokens(s.outputTokens)}↓` : null,
-      formatCents(s.costCents),
     ]
       .filter((part): part is string => part !== null && part.length > 0)
       .join(' · ');
@@ -520,7 +598,7 @@ export function RunView(props: RunViewProps): ReactElement {
   const width = props.width ?? 80;
   const rows = props.rows ?? 24;
   const approval = props.approval ?? model.approval ?? null;
-  const streamingNarration = props.streamingNarration ?? '';
+  const streamingNarrationFull = props.streamingNarration ?? '';
   const interruptDraft = props.interruptDraft ?? '';
   const interruptEnabled = props.interruptEnabled ?? false;
   const interruptNotice = props.interruptNotice ?? '';
@@ -531,11 +609,15 @@ export function RunView(props: RunViewProps): ReactElement {
   const liveTail = model.phases.filter((phase) => !done(phase));
   const active = activeId(model.phases);
 
-  // Row count the live checklist band claims (header + one per item) — for the diff
-  // budget below. The band itself renders as an Ink component (TodosBand) so the
-  // active item can breathe; `renderTodos` (string) still drives the non-TTY rail.
+  // Row count the live checklist band claims — header + windowed items (+ up to two
+  // "⋯ N done"/"⋯ N more" collapse lines). WINDOWED (RUN-FIX-20) so a long todo list
+  // can never grow the live region past the viewport and erase scrollback; the matching
+  // render is TodosBand/todoWindow. `renderTodos` (string) keeps the FULL list non-TTY.
   const todos = model.todos ?? [];
-  const todoRows = todos.length > 0 ? todos.length + 1 : 0;
+  const todoRows =
+    todos.length > 0
+      ? 1 + Math.min(todos.length, MAX_TODO_ITEMS) + (todos.length > MAX_TODO_ITEMS ? 2 : 0)
+      : 0;
 
   // Budget the most-recent diff to the rows the rest of the live (non-`<Static>`)
   // region does NOT already claim, so Ink's repaint never erases the scrollback
@@ -544,10 +626,29 @@ export function RunView(props: RunViewProps): ReactElement {
   // "earlier" line, the status block, and any approval/interrupt rows — not a
   // constant, plus a small margin for an above-rail ribbon. Below a useful floor
   // the diff drops to its one-line stub rather than overflow.
+  // Streaming narration wraps + floats on a marginTop blank line. Clamp it to a TAIL
+  // of MAX_NARRATION_ROWS so a long streamed paragraph can't grow the live region
+  // unbounded and erase scrollback (RUN-FIX-20); the user always sees the latest prose.
+  const narrationCols = Math.max(20, width - 6);
+  const narrationCap = MAX_NARRATION_ROWS * narrationCols;
+  const streamingNarration =
+    streamingNarrationFull.length > narrationCap
+      ? `…${streamingNarrationFull.slice(-narrationCap)}`
+      : streamingNarrationFull;
   const narrationRows =
     streamingNarration.length > 0
-      ? Math.max(1, Math.ceil(streamingNarration.length / Math.max(20, width - 6)))
+      ? Math.min(
+          MAX_NARRATION_ROWS,
+          1 + Math.max(1, Math.ceil(streamingNarration.length / narrationCols)),
+        )
       : 0;
+  // The persistent mid-run input box (RUN-FIX-19): blank + top rule + prompt + bottom
+  // rule + the ◆ indicator row. The prompt itself WRAPS, so count its wrapped height
+  // (width-aware) instead of a flat 5, or a long typed draft undercounts and overflows.
+  const interruptShown = interruptEnabled || interruptDraft.length > 0;
+  const interruptRows = interruptShown
+    ? 4 + Math.max(1, Math.ceil((interruptDraft.length + 1) / Math.max(8, width - 3)))
+    : 0;
   const liveChrome =
     1 + // the single metrics line (no hairline rule above it anymore)
     todoRows +
@@ -556,7 +657,7 @@ export function RunView(props: RunViewProps): ReactElement {
     (ACTIVE_EVENT_WINDOW + 1) + // up to N event rows + the "⋯ N earlier" line
     (approval !== null ? 2 : 0) +
     (interruptNotice.length > 0 ? 2 : 0) +
-    (interruptEnabled || interruptDraft.length > 0 ? 2 : 0) + // persistent mid-run input prompt
+    interruptRows +
     2; // headroom (above-rail ribbon / safety)
   const diffBudget = Math.max(0, rows - liveChrome);
 
@@ -600,9 +701,13 @@ export function RunView(props: RunViewProps): ReactElement {
       ) : null}
       {approval !== null ? <ApprovalRow approval={approval} colors={colors} /> : null}
       {interruptEnabled || interruptDraft.length > 0 ? (
-        <InterruptDraft
+        <InterruptBox
           text={interruptDraft}
           colors={colors}
+          spinnerFrame={spinnerFrame}
+          width={width}
+          autonomyLabel={model.autonomyLabel}
+          safety={model.status.safety}
           {...(labels?.interruptHint !== undefined ? { placeholder: labels.interruptHint } : {})}
         />
       ) : null}

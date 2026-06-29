@@ -848,6 +848,8 @@ export const EN: Catalog = {
   'repl.cancelled-back-to-prompt': 'Cancelled. Back to the prompt.',
   'repl.recovered-from-fault':
     '⚠ I hit an unexpected problem and contained it — the shell is fine, we can keep going. ({error})',
+  'repl.recovered-from-signal':
+    '⚠ Caught a {signal} and stayed alive — the shell never quits on its own. Type /exit to leave.',
   'repl.self-heal':
     '◆ Some checks came back red — let me fix that myself (attempt {attempt} of {max})…',
   'repl.self-heal-exhausted':

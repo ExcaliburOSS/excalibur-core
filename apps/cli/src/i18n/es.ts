@@ -906,6 +906,8 @@ export const ES: Catalog = {
   'repl.cancelled-back-to-prompt': 'Cancelado. De vuelta al prompt.',
   'repl.recovered-from-fault':
     '⚠ Me encontré con un problema inesperado y lo he contenido — el shell está bien, podemos seguir. ({error})',
+  'repl.recovered-from-signal':
+    '⚠ Recibí una señal {signal} y seguí vivo — el shell nunca se cierra solo. Escribe /exit para salir.',
   'repl.self-heal':
     '◆ Algunas verificaciones salieron en rojo — deja que lo arregle yo (intento {attempt} de {max})…',
   'repl.self-heal-exhausted':

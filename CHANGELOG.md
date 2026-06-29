@@ -6,6 +6,56 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.7] - 2026-06-29
+
+The m-shell is now structurally UNCRASHABLE, the rail stops erasing history, and a few
+graphic/UX glitches are fixed (RUN-FIX-19 + RUN-FIX-20).
+
+### Fixed
+
+- **The interactive shell can no longer terminate on a fault OR a signal — `el shell
+no puede crashear NUNCA`.** Beyond the async-fault net, the m-shell now ARMORS itself
+  against the termination signals that would otherwise kill the process mid-session
+  (SIGTERM / SIGHUP / SIGQUIT) — it catches them, surfaces a calm notice, and stays
+  alive. The editor's per-prompt signal handlers are neutered while armored so they
+  can't exit over it (one-shot subcommands still terminate on a signal, as scripts
+  expect). The only ways out are now explicit user intent (`/exit`, a double Ctrl-C) or
+  an uncatchable `SIGKILL`. Proven deterministically: the shell survives SIGTERM, SIGHUP
+  and SIGQUIT and keeps reading input (`scripts/verify-mshell-armor.mjs`, no model
+  needed). Opt-in exit forensics (`EXCALIBUR_DEBUG_EXIT=<file>`) record the exact cause
+  of any termination, so a stray exit is pinned in one line.
+- **The rail no longer erases the history of what it already did.** The live (non-
+  scrollback) region was only height-capping the diff; the todos band (one row per item,
+  unbounded) and streamed narration could grow taller than the terminal and scroll Ink's
+  dynamic region up over the completed-phase scrollback. The todo band is now WINDOWED
+  (collapses the completed prefix into "⋯ N done", keeps the in-progress item visible,
+  caps the rest), narration is clamped to a tail, and the input box's height is counted
+  width-aware — so the live region can never exceed the viewport. The non-TTY logs keep
+  the full list.
+- **A backgrounded server (`node server.js &`) started by a verification is reaped, not
+  orphaned.** `run_command` now kills the whole process tree on settle, so a check that
+  launches a server never leaves it running behind the shell (which also removes a class
+  of late-pipe faults), and detaches from the child's streams.
+- **The internal self-heal prompt no longer leaks into the rail.** A typed-interrupt ack
+  ("↻ Folding that into the current work …") was interpolating the raw current-work
+  text, which during a self-heal is the long internal "Diagnose the ROOT CAUSE…" prompt.
+  It is now clamped to a short single line.
+
+### Added
+
+- **The mid-run input box matches the idle prompt exactly** — two full-width accent
+  rules, a breathing cursor inside, and the `◆ autonomy · permissions` indicator row.
+- **The active task breathes** (pulsing dot + a left→right light crest on its text).
+- **Cost is dropped from the conversational telemetry** (it was effectively always
+  `$0.00` on the local/free paths — pure noise).
+
+### Changed
+
+- When the agent is genuinely blocked by an ELEVATED/root permission, it now gives the
+  user the exact command **prefixed with `!`** (e.g. `!sudo chown -R "$USER" .`) so they
+  can run it inline in the m-shell without ever leaving it — never "open another
+  terminal", never loop.
+
 ## [1.8.6] - 2026-06-29
 
 The m-shell can NEVER exit on a fault, the input is always visible, and the active
