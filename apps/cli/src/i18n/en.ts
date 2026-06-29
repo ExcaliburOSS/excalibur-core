@@ -1178,6 +1178,7 @@ export const EN: Catalog = {
   'rail.conflict': 'conflict',
   'rail.tasks': 'Tasks',
   'rail.earlier': '⋯ {count} earlier',
+  'rail.interrupt-hint': 'type to steer, add or ask — Enter sends · Esc stops',
 
   // auto-accept (approval UX)
   'agent-turn.auto_enabled':

@@ -619,6 +619,25 @@ describe('executeNativeTool — run_command / run_tests', () => {
     expect(result.result).toContain('aborted');
   }, 20000);
 
+  it('settles PROMPTLY when a backgrounded child keeps stdio open (no 120s hang) — RUN-FIX-18', async () => {
+    // `node server.js &` is the real-world repro: the foreground shell exits fast but
+    // the backgrounded child inherits the stdout/stderr pipes and holds them open, so
+    // Node's 'close' (all-stdio-EOF) never fires → the run used to hang to the 120s
+    // timeout (the "se queda un rato" stall that preceded the crash). Settling on the
+    // DIRECT child's 'exit' (+ a short grace to flush) must return in well under a
+    // second with the foreground output captured. No abort — this is normal completion.
+    const startedAt = Date.now();
+    const result = await executeNativeTool(
+      'run_command',
+      { command: 'sleep 30 & echo foreground-done' },
+      ctx(),
+    );
+    const elapsedMs = Date.now() - startedAt;
+    expect(elapsedMs).toBeLessThan(5000); // NOT the 120s timeout
+    expect(result.result).toContain('foreground-done');
+    expect(result.result).not.toContain('timed out');
+  }, 15000);
+
   it('does not start a command when the signal is already aborted', async () => {
     const controller = new AbortController();
     controller.abort();

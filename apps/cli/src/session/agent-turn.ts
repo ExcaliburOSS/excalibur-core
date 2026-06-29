@@ -373,6 +373,7 @@ async function driveLoop(
         tasks: deps.t('rail.tasks'),
         // No vars → the `{count}` placeholder survives for the renderer to fill.
         earlier: deps.t('rail.earlier'),
+        interruptHint: deps.t('rail.interrupt-hint'),
       },
     });
     view.onEscape(() => {

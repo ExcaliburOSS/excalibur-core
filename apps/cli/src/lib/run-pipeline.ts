@@ -647,6 +647,7 @@ export async function runTask(
     tasks: deps.t('rail.tasks'),
     // The "⋯ N earlier" collapse indicator for the live tail (RUN-FIX-2).
     earlier: deps.t('rail.earlier'),
+    interruptHint: deps.t('rail.interrupt-hint'),
   };
   // An agentic run mutates the real tree — nudge to a clean, revertible start.
   // The conversational shell already lives in the repo; the nudge is one-shot-CLI

@@ -93,7 +93,7 @@ import { repoSelectKeymap, writeProvidersFile } from '../lib/provider-setup';
 import { isContextOverflowError } from '../lib/context-overflow';
 import { listSwitchableProviders, providerHint } from '../lib/model-switch';
 import { resolveSelectKeymap } from '../lib/keymap';
-import { LOG_SENTINEL, REWIND_SENTINEL } from '../ui';
+import { LOG_SENTINEL, RECOVER_SENTINEL, REWIND_SENTINEL } from '../ui';
 import { CLI_VERSION, buildProgram } from '../program';
 import { CommanderError } from 'commander';
 import { renderWelcome, type WelcomeContext } from './welcome';
@@ -715,9 +715,41 @@ export async function runInteractiveSession(
       } catch {
         /* pre-prompt chrome is best-effort — never let it kill the session */
       }
-      const line = await editor.question(accent('› '));
+      // The prompt READ itself (editor.question → paint → footer/placeholder
+      // closures → terminal write) runs OUTSIDE the per-turn try/catch below, so a
+      // throw here — a cosmetic paint fault, an EPIPE on a half-closed terminal, a
+      // closure reading bad runtime state — would escape the loop and EXIT the shell.
+      // That must NEVER happen (RUN-FIX-18: nunca es nunca). Contain it: re-arm the
+      // editor and re-prompt. The process-level net catches async faults; this
+      // catches the synchronous read path the net can't.
+      let line: string | null;
+      try {
+        line = await editor.question(accent('› '));
+      } catch (error) {
+        deps.ui.write();
+        deps.ui.warn(
+          deps.t('repl.recovered-from-fault', {
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+        try {
+          deps.ui.resumeInput();
+        } catch {
+          /* re-arming is best-effort; the next question() re-enables raw lazily */
+        }
+        printStatusLine(deps, runtime);
+        continue;
+      }
+      // The editor RECOVERED from an internal fault (a keypress/paint throw): it
+      // resolved with this sentinel instead of null SPECIFICALLY so a transient
+      // fault is never mistaken for EOF (which would break the loop and exit the
+      // shell). Just re-prompt (RUN-FIX-18).
+      if (line === RECOVER_SENTINEL) {
+        printStatusLine(deps, runtime);
+        continue;
+      }
       if (line === null) {
-        break; // EOF / Ctrl-D
+        break; // genuine EOF / Ctrl-D / explicit close
       }
       if (line.trim().length > 0) {
         interacted = true; // next prompt shows the follow-up placeholder

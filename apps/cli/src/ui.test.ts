@@ -1,7 +1,7 @@
 import { PassThrough, Writable } from 'node:stream';
 import { Readable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
-import { Ui } from './ui';
+import { RECOVER_SENTINEL, Ui } from './ui';
 
 class Sink extends Writable {
   data = '';
@@ -256,6 +256,74 @@ describe('Ui.openLineEditor (M-Shell Slice A)', () => {
 
     stdin.write('\r'); // Enter (raw mode) submits
     await pending;
+    editor.close();
+  });
+});
+
+describe('Ui raw editor never lets a fault exit the m-shell (RUN-FIX-18: nunca es nunca)', () => {
+  const tick = (): Promise<void> => new Promise((res) => setTimeout(res, 5));
+
+  function rawTtyUi(): { ui: Ui; stdin: PassThrough; err: Sink } {
+    const out = new Sink();
+    const err = new Sink();
+    const stdin = new PassThrough();
+    // Look like a real TTY so openLineEditor takes the raw per-keypress path.
+    (stdin as unknown as { isTTY: boolean }).isTTY = true;
+    (stdin as unknown as { setRawMode: (m: boolean) => void }).setRawMode = () => undefined;
+    const ui = new Ui({ stdout: out, stderr: err, stdin, interactive: true });
+    return { ui, stdin, err };
+  }
+
+  it('a header/footer/placeholder closure that THROWS never breaks the read', async () => {
+    // These closures call into live runtime state in production (buildInputFooter,
+    // deps.t placeholder). A throw there used to unwind out of editor.question() in
+    // the REPL prompt read and EXIT the shell. The read must still deliver the line.
+    const { ui, stdin } = rawTtyUi();
+    const editor = ui.openLineEditor({
+      header: () => {
+        throw new Error('header boom');
+      },
+      footer: () => {
+        throw new Error('footer boom');
+      },
+      placeholder: () => {
+        throw new Error('placeholder boom');
+      },
+    });
+    const pending = editor.question('> ');
+    for (const ch of ['h', 'i']) {
+      stdin.write(ch);
+      await tick();
+    }
+    stdin.write('\r');
+    await expect(pending).resolves.toBe('hi');
+    editor.close();
+  });
+
+  it('a throwing keypress handler RECOVERS with the sentinel (not EOF) and stays usable', async () => {
+    // A throw inside a keypress handler must NOT close the editor: closing resolves
+    // the read with null, which the REPL treats as Ctrl-D/EOF → breaks its loop →
+    // exits the shell. Instead it resolves with RECOVER_SENTINEL (re-prompt) and the
+    // editor remains open for the next read.
+    const { ui, stdin, err } = rawTtyUi();
+    const editor = ui.openLineEditor();
+    editor.onSigint(() => {
+      throw new Error('handler boom');
+    });
+    const first = editor.question('> ');
+    stdin.write(String.fromCharCode(3)); // Ctrl-C → sigint handler throws → failSafe recovers
+    // RECOVER_SENTINEL, crucially NOT null (null would look like EOF and exit the shell).
+    await expect(first).resolves.toBe(RECOVER_SENTINEL);
+    // Surfaced calmly (a warning), not a hard error.
+    expect(err.data).toContain('input recovered');
+    // The editor is NOT closed: a fresh read still works.
+    const second = editor.question('> ');
+    for (const ch of ['o', 'k']) {
+      stdin.write(ch);
+      await tick();
+    }
+    stdin.write('\r');
+    await expect(second).resolves.toBe('ok');
     editor.close();
   });
 });

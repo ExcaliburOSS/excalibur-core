@@ -8,7 +8,7 @@ import {
   type ParsedKey,
   type RawInputState,
 } from './raw-input';
-import { REWIND_SENTINEL, Ui } from '../ui';
+import { RECOVER_SENTINEL, REWIND_SENTINEL, Ui } from '../ui';
 
 /**
  * The raw-input reducer is PURE, so it is tested without a TTY by feeding
@@ -347,7 +347,7 @@ describe('raw editor shell (fake TTY)', () => {
     expect(stdin.rawCalls).toContain(false); // cooked restored on close
   });
 
-  it('a throwing handler triggers failSafe: cooked restored + the pending read resolves (no hang)', async () => {
+  it('a throwing handler RECOVERS (sentinel, not EOF) + cooked restored + editor stays usable (RUN-FIX-18)', async () => {
     const stdin = fakeTty();
     const out = memOut();
     const ui = new Ui({
@@ -364,8 +364,18 @@ describe('raw editor shell (fake TTY)', () => {
     });
     stdin.emit('keypress', '', { ctrl: true, name: 'c' }); // sigint → handler throws → failSafe
 
-    await expect(pending).resolves.toBeNull(); // degraded gracefully, not hung
+    // CRUCIAL: resolves with the RECOVER sentinel, NOT null. A null is read by the
+    // REPL as EOF/Ctrl-D → it breaks the loop and EXITS the shell. The sentinel tells
+    // it to simply re-prompt — the m-shell never dies from a transient input fault.
+    await expect(pending).resolves.toBe(RECOVER_SENTINEL);
     expect(stdin.rawCalls).toContain(false); // cooked mode restored
+
+    // The editor is NOT closed: a fresh read still delivers a line.
+    const next = editor.question('› ');
+    stdin.emit('keypress', 'o', { name: 'o', sequence: 'o' });
+    stdin.emit('keypress', 'k', { name: 'k', sequence: 'k' });
+    stdin.emit('keypress', '\r', { name: 'return' });
+    await expect(next).resolves.toBe('ok');
   });
 
   it('shows the slash-command menu, filters as you type, and Tab autocompletes', async () => {

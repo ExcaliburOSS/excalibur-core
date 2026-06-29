@@ -6,6 +6,44 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.6] - 2026-06-29
+
+The m-shell can NEVER exit on a fault, the input is always visible, and the active
+task breathes (RUN-FIX-17 + RUN-FIX-18).
+
+### Fixed
+
+- **The interactive shell can no longer exit on an execution fault — `nunca es nunca`.**
+  Two non-exception exit paths that bypassed the process-level crash net are closed.
+  (1) The prompt read itself (`editor.question` → paint → the framed header/footer and
+  contextual-placeholder closures → the terminal write) ran _outside_ any per-turn
+  try/catch; a throw there — a cosmetic paint fault, an `EPIPE` on a half-closed
+  terminal, a closure reading transient runtime state after a long build — unwound out
+  of the REPL loop and tore the shell down. The read is now wrapped (recover + re-prompt)
+  and every paint closure + terminal write is individually guarded, so a render hiccup
+  can never propagate. (2) A throw inside a keypress handler used to _close_ the editor
+  and resolve the pending read with `null`, which the loop read as Ctrl-D/EOF and exited
+  on. It now resolves with a dedicated recover sentinel (the editor resets and stays
+  open) — a transient input fault is never mistaken for end-of-input.
+- **A backgrounded process (`server &`) no longer hangs a command to the 120s timeout.**
+  `run_command` settled only on full stdio EOF, but a backgrounded grandchild inherits
+  and holds the pipes open, so EOF never came — the run stalled for two minutes (the
+  "se queda un rato" freeze that preceded the crash). It now settles on the direct
+  child's exit (with a short grace to flush the last output) and returns promptly.
+- **An aborted command can never SIGKILL the m-shell itself.** The process-group kill
+  now requires a strictly-positive pid (`-0 === 0` in JS, and `process.kill(0, …)`
+  signals the caller's own group), so a stray `0`/`NaN` pid turns into a no-op instead
+  of suicide.
+
+### Added
+
+- **The input is ALWAYS visible while a build/mission runs.** A persistent prompt sits
+  at the foot of the live rail — when idle it shows a dim hint + cursor, and it fills
+  with your draft as you type — so the user input never visually disappears mid-run.
+- **The active task breathes.** The in-progress checklist item pulses its dot along the
+  accent ramp and sweeps a left→right light crest across its text (matching the active
+  phase header), so there is real movement on what Excalibur is doing right now.
+
 ## [1.8.5] - 2026-06-29
 
 You can type WHILE a build or mission runs (RUN-FIX-16).

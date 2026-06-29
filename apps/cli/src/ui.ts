@@ -42,6 +42,13 @@ export interface UiOptions {
 export const REWIND_SENTINEL = `${String.fromCharCode(0)}__excalibur_rewind__`;
 /** Resolves a pending read when ↓ opens the Session Log (NUL-prefixed → never a real line). */
 export const LOG_SENTINEL = `${String.fromCharCode(0)}__excalibur_log__`;
+/**
+ * Resolves a pending read when the editor RECOVERED from an internal fault (a
+ * keypress/paint throw). NUL-prefixed so it can never be a real typed line. The
+ * REPL treats it as "re-prompt", NOT as EOF (null) — a transient editor fault
+ * must never look like Ctrl-D and exit the m-shell (RUN-FIX-18: nunca es nunca).
+ */
+export const RECOVER_SENTINEL = `${String.fromCharCode(0)}__excalibur_recover__`;
 
 export interface AskOptions {
   /** Skip the prompt and take the default (the `--yes` flag). */
@@ -1134,7 +1141,17 @@ export class Ui {
       const cols = termCols();
       // The framed HEADER (top rule) — drawn ABOVE the prompt as part of the SAME
       // redraw, so the box wraps ONLY the live input (scrollback/history stays above).
-      const headerLines = options.header !== undefined && !this.inSubPrompt ? options.header() : [];
+      // The header/footer closures call into live runtime state (autonomy/permissions/
+      // i18n) — a throw there must NEVER escape paint (it would unwind out of the REPL
+      // prompt read and exit the shell, RUN-FIX-18); degrade to no chrome instead.
+      let headerLines: string[] = [];
+      if (options.header !== undefined && !this.inSubPrompt) {
+        try {
+          headerLines = options.header();
+        } catch {
+          headerLines = [];
+        }
+      }
       const headerStr = headerLines.map((l) => `${l}\n`).join('');
       const headerRows = headerLines.reduce(
         (sum, l) => sum + Math.max(1, Math.ceil(Math.max(1, stripAnsi(l).length) / cols)),
@@ -1157,8 +1174,14 @@ export class Ui {
             ? `${pc.cyan(`▸ /${it.name}`)}  ${pc.dim(it.description)}`
             : `${pc.dim(`  /${it.name}`)}  ${pc.dim(it.description)}`,
         );
+      } else if (options.footer !== undefined && !this.inSubPrompt) {
+        try {
+          footerLines = options.footer();
+        } catch {
+          footerLines = [];
+        }
       } else {
-        footerLines = options.footer !== undefined && !this.inSubPrompt ? options.footer() : [];
+        footerLines = [];
       }
       const footerStr = footerLines.map((l) => `\n${l}`).join('');
       // Count VISUAL rows, not array entries: a footer line wider than the terminal
@@ -1195,7 +1218,13 @@ export class Ui {
       if (cursorCol > 0) {
         seq += `${ESC}[${cursorCol}C`;
       }
-      out.write(seq);
+      try {
+        out.write(seq);
+      } catch {
+        // A write to a half-closed terminal (EPIPE) must not unwind out of the
+        // prompt read and exit the shell (RUN-FIX-18) — drop this frame instead.
+        return;
+      }
       // prevCursorRow is measured from the BOX TOP (header), so the next paint steps
       // up to the header and redraws the WHOLE box.
       prevCursorRow = headerRows + cursorRowInInput;
@@ -1395,16 +1424,34 @@ export class Ui {
       rawActive = false;
     };
 
-    /** Last-resort recovery if the keypress callback throws (see onKeypress). */
+    /**
+     * Recovery if the keypress callback throws (see onKeypress). The m-shell must
+     * NEVER exit on a transient input fault (RUN-FIX-18: nunca es nunca), so this
+     * does NOT close the editor: it disarms raw mode, RESETS the buffer to a clean
+     * state (the throw may have corrupted it), and resolves the in-flight read with
+     * the RECOVER sentinel — NOT null. A null would look like Ctrl-D/EOF to the REPL
+     * and break its loop → teardown → exit; the sentinel tells it to simply re-prompt
+     * (raw mode re-arms lazily on the next read). `closed` stays false.
+     */
     const failSafe = (error: unknown): void => {
-      disableRaw();
-      closed = true;
-      while (waiters.length > 0) {
-        waiters.shift()?.(null);
+      try {
+        disableRaw();
+      } catch {
+        /* never throw while recovering the terminal */
       }
-      this.stderr.write(
-        `${pc.red('✗')} input error: ${error instanceof Error ? error.message : String(error)}\n`,
-      );
+      state = initialRawState(options.history ?? []);
+      currentPrompt = null;
+      prevCursorRow = 0;
+      try {
+        this.stderr.write(
+          `${pc.yellow('⚠')} input recovered: ${error instanceof Error ? error.message : String(error)}\n`,
+        );
+      } catch {
+        /* surfacing is best-effort */
+      }
+      while (waiters.length > 0) {
+        waiters.shift()?.(RECOVER_SENTINEL);
+      }
     };
 
     const question = (prompt: string): Promise<string | null> => {
@@ -1427,12 +1474,18 @@ export class Ui {
         queue: this.inSubPrompt ? state.queue : '',
       };
       // Re-evaluate the contextual placeholder for THIS prompt (a function hint
-      // adapts to what just happened); the menu reflects any queued slash text.
-      currentPlaceholder = this.inSubPrompt
-        ? ''
-        : typeof placeholderOf === 'function'
-          ? placeholderOf()
-          : (placeholderOf ?? '');
+      // adapts to what just happened); the menu reflects any queued slash text. The
+      // function form reads live runtime state — a throw must NEVER escape question()
+      // (it would unwind out of the REPL prompt read and exit the shell, RUN-FIX-18).
+      try {
+        currentPlaceholder = this.inSubPrompt
+          ? ''
+          : typeof placeholderOf === 'function'
+            ? placeholderOf()
+            : (placeholderOf ?? '');
+      } catch {
+        currentPlaceholder = '';
+      }
       recomputeMenu();
       prevCursorRow = 0;
       paint();

@@ -116,6 +116,7 @@ function RunViewApp({
         diffsExpanded={snapshot.diffsExpanded}
         streamingNarration={snapshot.streamingNarration}
         interruptDraft={snapshot.interruptDraft}
+        interruptEnabled={snapshot.interruptEnabled}
         interruptNotice={snapshot.interruptNotice}
         tier={options.tier}
         width={stdout?.columns ?? 80}

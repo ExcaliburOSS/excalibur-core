@@ -183,6 +183,15 @@ const SEARCH_FILE_MAX_BYTES = 1024 * 1024;
 const COMMAND_TIMEOUT_MS = 120_000;
 /** Max bytes captured from a command's combined stdout+stderr. */
 const COMMAND_OUTPUT_MAX = 256 * 1024;
+/**
+ * Grace (ms) after the direct child EXITS to wait for 'close' (final stdio flush)
+ * before settling anyway. A backgrounded grandchild (`server &`) inherits our
+ * stdout/stderr pipes and holds them open, so 'close' may never fire — without
+ * this grace the command would hang to the full 120s timeout (the "se queda un
+ * rato" stall). Long enough to capture the real command's last bytes, short
+ * enough that a `cmd &` returns promptly.
+ */
+const COMMAND_CLOSE_GRACE_MS = 250;
 /** Directories never walked by search_code / list_files. */
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage']);
 /** Max recursion depth for directory walks (anti stack-exhaustion). */
@@ -419,7 +428,11 @@ function runProcess(
         return;
       }
       const pid = child.pid;
-      if (onUnix && pid !== undefined) {
+      // `pid > 0` is REQUIRED, not just `!== undefined`: in JS `-0 === 0`, and
+      // `process.kill(0/-0, 'SIGKILL')` signals the CALLER'S OWN process group —
+      // i.e. it would SIGKILL Excalibur itself. A stray 0/NaN pid must never turn an
+      // abort into suicide of the m-shell (nunca es nunca).
+      if (onUnix && typeof pid === 'number' && pid > 0) {
         try {
           // Negative pid → the whole group (the shell + every child it spawned).
           // Safe only because we spawned `detached` (own group); without that a
@@ -481,7 +494,17 @@ function runProcess(
       output += `\n${error.message}`;
       finish(null);
     });
-    child.on('close', (code) => finish(code));
+    // 'close' (all stdio EOF) is the clean settle — full output captured. But a
+    // backgrounded grandchild (`server &`) inherits the pipes and holds them open,
+    // so 'close' can be delayed indefinitely. On the DIRECT child's 'exit', give
+    // 'close' a short grace to flush the last bytes, then settle with the exit code
+    // regardless — so the command never hangs to the 120s timeout (RUN-FIX-18).
+    let exitCode: number | null = null;
+    child.on('exit', (code) => {
+      exitCode = code;
+      setTimeout(() => finish(exitCode), COMMAND_CLOSE_GRACE_MS).unref?.();
+    });
+    child.on('close', (code) => finish(code ?? exitCode));
 
     if (options.input !== undefined) {
       child.stdin?.write(options.input);

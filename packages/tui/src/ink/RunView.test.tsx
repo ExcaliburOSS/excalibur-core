@@ -171,6 +171,37 @@ describe('<RunView>', () => {
     expect(frame).toContain('add idempotency key');
   });
 
+  it('marks the IN-PROGRESS todo distinctly (running glyph) from completed/pending (RUN-FIX-17)', () => {
+    // The band differentiates state so the active task reads as "happening now":
+    // ◐ for in-progress (the breathing dot — its colour/shimmer move with the
+    // spinner frame, covered by shimmer.test.ts / theme.test.ts), ✓ for done, ○ for
+    // pending. The text is stable across frames (no jitter on what it's doing).
+    const todos = [
+      { text: 'guard release behind a table', status: 'completed' as const },
+      { text: 'wire the idempotency key', status: 'in_progress' as const },
+      { text: 'add a regression test', status: 'pending' as const },
+    ];
+    const frame0 = frameOf({
+      model: model({ phases: [], todos }),
+      spinnerFrame: 0,
+      useStatic: false,
+      tier: 'truecolor',
+    });
+    const frame3 = frameOf({
+      model: model({ phases: [], todos }),
+      spinnerFrame: 3,
+      useStatic: false,
+      tier: 'truecolor',
+    });
+    // 1/3 done in the header, and each state's glyph present.
+    expect(frame0).toContain('1/3');
+    expect(frame0).toContain('◐ wire the idempotency key'); // in-progress → running glyph
+    expect(frame0).toContain('✓ guard release'); // completed → done glyph
+    expect(frame0).toContain('○ add a regression test'); // pending → pending glyph
+    // The rendered TEXT is stable across spinner ticks (only colour breathes).
+    expect(frame3).toBe(frame0);
+  });
+
   it('collapses the active phase to its most-recent tail with a "N earlier" indicator', () => {
     // 9 events on the running phase → only the last 5 show, behind a collapse
     // indicator, so the breathing phase header never scrolls off (RUN-FIX-2).

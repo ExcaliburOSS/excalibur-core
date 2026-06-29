@@ -12,8 +12,7 @@ import {
   type Palette,
   type ThemeMode,
 } from '../theme.js';
-import { renderTodos } from '../rail-todos.js';
-import type { ApprovalPrompt, Phase, PhaseEvent, RailModel } from '../rail-types.js';
+import type { ApprovalPrompt, Phase, PhaseEvent, RailModel, TodoItem } from '../rail-types.js';
 import { windowActiveEvents, formatEarlier, ACTIVE_EVENT_WINDOW } from '../rail-window.js';
 import { shimmerSpans } from '../shimmer.js';
 import { useColors } from './ThemeContext.js';
@@ -43,6 +42,8 @@ export interface RunViewLabels {
   tasks?: string;
   /** Collapse-indicator template for the live tail, with a `{count}` placeholder. */
   earlier?: string;
+  /** Dim hint shown in the persistent mid-run input prompt when it's empty. */
+  interruptHint?: string;
 }
 
 export interface RunViewProps {
@@ -69,6 +70,12 @@ export interface RunViewProps {
   streamingNarration?: string;
   /** The interrupt message the user is composing WHILE the run streams (INT-1), or ''. */
   interruptDraft?: string;
+  /**
+   * Whether the typing channel is ARMED (a handler is wired). When true the rail
+   * shows a PERSISTENT input prompt at its foot so the user's input never visually
+   * disappears mid-run — they can always type to steer/add/ask (RUN-FIX-17).
+   */
+  interruptEnabled?: boolean;
   /** The instant acknowledgment line after an interrupt is routed (INT-1), or ''. */
   interruptNotice?: string;
   /**
@@ -302,21 +309,38 @@ function StreamingNarration({
 }
 
 /**
- * The interrupt composing line (INT-1): what the user is typing WHILE the run
- * streams. A distinct accent prompt (`›`) at the foot of the rail with a soft
- * cursor — so it reads as "you, mid-run" without disturbing the agent's prose
- * above. Rendered only while composing; ESC still cancels the run, Enter sends.
+ * The interrupt input line (INT-1): a PERSISTENT prompt (`›`) at the foot of the
+ * rail while the run streams, so the user's input NEVER disappears mid-run — they
+ * can always see they can type to steer or add to the work. When idle it shows a
+ * dim hint + cursor; as they type it fills with their draft. ESC still cancels the
+ * run, Enter submits the message to the interrupt brain (steer / parallel / answer).
  */
-function InterruptDraft({ text, colors }: { text: string; colors: Palette }): ReactElement {
+function InterruptDraft({
+  text,
+  colors,
+  placeholder,
+}: {
+  text: string;
+  colors: Palette;
+  placeholder?: string;
+}): ReactElement {
   return (
     <Box marginTop={1}>
       <Box flexShrink={0}>
         <Text color={colors.accent} bold>{` › `}</Text>
       </Box>
-      <Text color={colors.text} wrap="wrap">
-        {text}
-        <Text color={colors.muted}>▌</Text>
-      </Text>
+      {text.length > 0 ? (
+        <Text color={colors.text} wrap="wrap">
+          {text}
+          <Text color={colors.muted}>▌</Text>
+        </Text>
+      ) : (
+        // Idle: a dim invitation so the input is visibly ALWAYS there, never gone.
+        <Text color={colors.muted}>
+          {placeholder !== undefined && placeholder.length > 0 ? `${placeholder} ` : ''}
+          <Text color={colors.accent}>▌</Text>
+        </Text>
+      )}
     </Box>
   );
 }
@@ -331,6 +355,69 @@ function InterruptNotice({ text, colors }: { text: string; colors: Palette }): R
       <Text color={colors.accent} wrap="wrap">
         {text}
       </Text>
+    </Box>
+  );
+}
+
+/**
+ * The live checklist band (`task_update`). The IN-PROGRESS item BREATHES — its glyph
+ * pulses along the accent ramp and a light crest sweeps left→right across its text
+ * (shimmer) — so the user feels movement on what's actually happening right now
+ * (RUN-FIX-17), matching the active-phase header. Completed/pending items are static.
+ * The pure-string `renderTodos` still drives the non-TTY rail / logs / replay.
+ */
+function TodosBand({
+  todos,
+  spinnerFrame,
+  colors,
+  label,
+}: {
+  todos: ReadonlyArray<TodoItem>;
+  spinnerFrame: number;
+  colors: Palette;
+  label?: string;
+}): ReactElement {
+  const done = todos.filter((todo) => todo.status === 'completed').length;
+  return (
+    <Box flexDirection="column">
+      <Box>
+        <Text color={colors.accent}>{` ${glyph.logo} `}</Text>
+        <Text color={colors.text}>{label ?? 'Tasks'}</Text>
+        <Text color={colors.muted}>{`  ${done}/${todos.length}`}</Text>
+      </Box>
+      {todos.map((todo, index) => {
+        const active = todo.status === 'in_progress';
+        const gch =
+          todo.status === 'completed' ? glyph.done : active ? glyph.running : glyph.pending;
+        const gColor =
+          todo.status === 'completed'
+            ? colors.success
+            : active
+              ? pulseColor(colors, spinnerFrame) // the breathing dot
+              : colors.muted;
+        return (
+          <Box key={index}>
+            <Box flexShrink={0}>
+              <Text color={colors.rail}>{` ${glyph.railV}   `}</Text>
+              <Text color={gColor}>{`${gch} `}</Text>
+            </Box>
+            {active ? (
+              // Left→right light crest across the active task's text.
+              <Text wrap="truncate-end">
+                {shimmerSpans(todo.text, spinnerFrame, colors, colors.text).map((span, i) => (
+                  <Text key={i} color={span.hex}>
+                    {span.text}
+                  </Text>
+                ))}
+              </Text>
+            ) : (
+              <Text color={colors.muted} wrap="truncate-end">
+                {todo.text}
+              </Text>
+            )}
+          </Box>
+        );
+      })}
     </Box>
   );
 }
@@ -435,6 +522,7 @@ export function RunView(props: RunViewProps): ReactElement {
   const approval = props.approval ?? model.approval ?? null;
   const streamingNarration = props.streamingNarration ?? '';
   const interruptDraft = props.interruptDraft ?? '';
+  const interruptEnabled = props.interruptEnabled ?? false;
   const interruptNotice = props.interruptNotice ?? '';
   const compactStatus = props.compactStatus ?? false;
 
@@ -443,14 +531,11 @@ export function RunView(props: RunViewProps): ReactElement {
   const liveTail = model.phases.filter((phase) => !done(phase));
   const active = activeId(model.phases);
 
-  const todoLines =
-    model.todos !== undefined
-      ? renderTodos(model.todos, {
-          tier: tier ?? 'none',
-          mode: mode ?? 'dark',
-          ...(labels?.tasks !== undefined ? { label: labels.tasks } : {}),
-        })
-      : [];
+  // Row count the live checklist band claims (header + one per item) — for the diff
+  // budget below. The band itself renders as an Ink component (TodosBand) so the
+  // active item can breathe; `renderTodos` (string) still drives the non-TTY rail.
+  const todos = model.todos ?? [];
+  const todoRows = todos.length > 0 ? todos.length + 1 : 0;
 
   // Budget the most-recent diff to the rows the rest of the live (non-`<Static>`)
   // region does NOT already claim, so Ink's repaint never erases the scrollback
@@ -465,13 +550,13 @@ export function RunView(props: RunViewProps): ReactElement {
       : 0;
   const liveChrome =
     1 + // the single metrics line (no hairline rule above it anymore)
-    todoLines.length +
+    todoRows +
     narrationRows +
     liveTail.length + // each live phase node's header line
     (ACTIVE_EVENT_WINDOW + 1) + // up to N event rows + the "⋯ N earlier" line
     (approval !== null ? 2 : 0) +
     (interruptNotice.length > 0 ? 2 : 0) +
-    (interruptDraft.length > 0 ? 2 : 0) +
+    (interruptEnabled || interruptDraft.length > 0 ? 2 : 0) + // persistent mid-run input prompt
     2; // headroom (above-rail ribbon / safety)
   const diffBudget = Math.max(0, rows - liveChrome);
 
@@ -502,18 +587,25 @@ export function RunView(props: RunViewProps): ReactElement {
       {streamingNarration.length > 0 ? (
         <StreamingNarration text={streamingNarration} colors={colors} spinnerFrame={spinnerFrame} />
       ) : null}
-      {todoLines.length > 0 ? (
-        <Box flexDirection="column">
-          {todoLines.map((line, index) => (
-            <Text key={index}>{line}</Text>
-          ))}
-        </Box>
+      {todos.length > 0 ? (
+        <TodosBand
+          todos={todos}
+          spinnerFrame={spinnerFrame}
+          colors={colors}
+          {...(labels?.tasks !== undefined ? { label: labels.tasks } : {})}
+        />
       ) : null}
       {interruptNotice.length > 0 ? (
         <InterruptNotice text={interruptNotice} colors={colors} />
       ) : null}
       {approval !== null ? <ApprovalRow approval={approval} colors={colors} /> : null}
-      {interruptDraft.length > 0 ? <InterruptDraft text={interruptDraft} colors={colors} /> : null}
+      {interruptEnabled || interruptDraft.length > 0 ? (
+        <InterruptDraft
+          text={interruptDraft}
+          colors={colors}
+          {...(labels?.interruptHint !== undefined ? { placeholder: labels.interruptHint } : {})}
+        />
+      ) : null}
       <StatusLine model={model} colors={colors} labels={labels} compact={compactStatus} />
     </Box>
   );
