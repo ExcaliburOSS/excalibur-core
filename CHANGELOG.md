@@ -6,6 +6,34 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.4] - 2026-06-29
+
+The m-shell is now genuinely uncrashable, more autonomous, and the rail is cleaner
+(RUN-FIX-15).
+
+### Fixed
+
+- **The shell can NEVER exit on an error — for real, this time.** 1.8.3's safety net
+  caught escaped async faults, but an error thrown from the _synchronous_ post-turn
+  path (`settleInterruptAftermath`, the pre-prompt banners/rule, the status line) ran
+  OUTSIDE the per-turn try/catch and escaped the loop → teardown → exit. Every
+  out-of-turn region in the REPL loop is now contained: a failure surfaces and the
+  prompt always comes back. The shell only exits on an explicit quit/EOF.
+- **Maximum autonomy, minimal asking.** The agent is now told to solve everything it
+  possibly can itself and ask the user ONLY when something is genuinely impossible
+  alone — and to try real workarounds first (a non-writable cache → a writable temp
+  dir, a dirty install → clean reinstall) before concluding it's blocked. It escalates
+  only for elevated-rights/machine-level actions it cannot take (chown needing sudo,
+  a system package, a missing credential), and then gives the EXACT command to run —
+  instead of looping on the same failing command.
+
+### Changed
+
+- **The rail is cleaner.** Removed the partial-width gray hairline rules above the
+  status footer (rail) and the receipt — on a wide terminal a short `─` cut line read
+  as broken. Dropped the duplicate blank line before a gated build (one blank max,
+  set at the dispatch point).
+
 ## [1.8.3] - 2026-06-28
 
 Robustness + clarity. The m-shell can no longer be killed by an execution error,

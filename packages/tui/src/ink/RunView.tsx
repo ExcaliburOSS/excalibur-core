@@ -367,39 +367,33 @@ function StatusLine({
       .filter((part): part is string => part !== null && part.length > 0)
       .join(' · ');
     return (
-      <Box flexDirection="column">
-        <Text color={colors.rail}>{` ${'─'.repeat(48)}`}</Text>
-        <Box>
-          <Text>{'  '}</Text>
-          <Text color={colors.muted}>{metrics}</Text>
-          {doneMark}
-          {errMark}
-        </Box>
+      <Box>
+        <Text>{'  '}</Text>
+        <Text color={colors.muted}>{metrics}</Text>
+        {doneMark}
+        {errMark}
       </Box>
     );
   }
 
   return (
-    <Box flexDirection="column">
-      <Text color={colors.rail}>{` ${'─'.repeat(48)}`}</Text>
-      <Box>
-        <Text>{'  '}</Text>
-        {model.autonomyLabel.length > 0 ? (
-          <Text color={colors.accent}>{`${model.autonomyLabel} · `}</Text>
-        ) : null}
-        <Text color={colors.muted}>{`${s.safety} · ${formatCents(s.costCents)} · `}</Text>
-        {hasTokens ? (
-          <Text color={colors.muted}>
-            {`${formatTokens(s.inputTokens)}↑ ${formatTokens(s.outputTokens)}↓ · `}
-          </Text>
-        ) : null}
+    <Box>
+      <Text>{'  '}</Text>
+      {model.autonomyLabel.length > 0 ? (
+        <Text color={colors.accent}>{`${model.autonomyLabel} · `}</Text>
+      ) : null}
+      <Text color={colors.muted}>{`${s.safety} · ${formatCents(s.costCents)} · `}</Text>
+      {hasTokens ? (
         <Text color={colors.muted}>
-          {`${formatElapsed(s.elapsedMs)} · ${s.push ? (labels?.push ?? 'push') : (labels?.noPush ?? 'no push')} · `}
+          {`${formatTokens(s.inputTokens)}↑ ${formatTokens(s.outputTokens)}↓ · `}
         </Text>
-        <Text color={colors.accent}>{s.model}</Text>
-        {doneMark}
-        {errMark}
-      </Box>
+      ) : null}
+      <Text color={colors.muted}>
+        {`${formatElapsed(s.elapsedMs)} · ${s.push ? (labels?.push ?? 'push') : (labels?.noPush ?? 'no push')} · `}
+      </Text>
+      <Text color={colors.accent}>{s.model}</Text>
+      {doneMark}
+      {errMark}
     </Box>
   );
 }
@@ -470,7 +464,7 @@ export function RunView(props: RunViewProps): ReactElement {
       ? Math.max(1, Math.ceil(streamingNarration.length / Math.max(20, width - 6)))
       : 0;
   const liveChrome =
-    2 + // status hairline + metrics line
+    1 + // the single metrics line (no hairline rule above it anymore)
     todoLines.length +
     narrationRows +
     liveTail.length + // each live phase node's header line

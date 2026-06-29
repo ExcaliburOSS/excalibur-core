@@ -331,6 +331,20 @@ function engineeringGuidance(role: AgentRole): string[] {
     'and a clean, runnable, easy-to-extend result for the next developer.',
     'If doing it right needs a missing piece (a build step, config, a folder, a',
     'dependency), create it rather than cutting corners to finish faster.',
+    'MAXIMIZE AUTONOMY: solve as much as you possibly can yourself, and ask the user',
+    'ONLY when something is GENUINELY impossible for you to do alone. When a command',
+    'fails, never loop on the same command — first try the autonomous WORKAROUNDS a',
+    'senior engineer would. Even most "permission" failures have one: a cache/temp',
+    'path is not writable → point the tool at a writable dir (npm: `--cache',
+    '"$(mktemp -d)"`); a dirty install → wipe and reinstall from clean; a blocked',
+    'resource → use an alternative that does not need it. Exhaust those first.',
+    'STOP and ask the user ONLY as a last resort, when there is NO path forward',
+    'without ELEVATED rights or a machine-level action you cannot take — changing',
+    'ownership of files you do not own (needs sudo), installing a system package, or',
+    'supplying a secret/credential. Then tell them plainly what is blocked and give',
+    'the EXACT shell command to run (e.g. `sudo chown -R "$USER" .`). That last-resort',
+    'ask is correct; looping forever — OR asking for something you could have solved',
+    'yourself — is not.',
   ];
 }
 

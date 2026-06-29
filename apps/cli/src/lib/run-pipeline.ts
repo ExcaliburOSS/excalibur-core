@@ -671,7 +671,13 @@ export async function runTask(
     inkHandle.onEscape(() => runController.abort());
   }
 
-  deps.ui.write();
+  // A blank line separates the run from what's above it — but ONLY for standalone
+  // `excalibur run`. The m-shell build (conversational) already gets its single
+  // user→reply blank at the REPL dispatch point, so emitting another here would
+  // double it (RUN-FIX-15: one blank max).
+  if (!conversational) {
+    deps.ui.write();
+  }
 
   const confirm = (question: string): Promise<boolean> => {
     if (inkHandle !== null) {

@@ -617,10 +617,18 @@ export async function runInteractiveSession(
    * switches), then offer to resume paused work — and drain anything that resume
    * itself queued. Bounded (one extra drain pass; deeper nesting stays in /threads). */
   const settleInterruptAftermath = async (): Promise<void> => {
-    await drainForegroundInterrupts();
-    await offerResumePaused();
-    if (pendingForeground.length > 0) {
+    // This runs AFTER the turn's try/catch, so a throw here would escape the REPL
+    // loop and EXIT the shell — which must NEVER happen (RUN-FIX-15: nunca es nunca).
+    // It dispatches queued interrupts (which run real turns that can fail), so every
+    // step is contained; a failure surfaces but the loop lives on.
+    try {
       await drainForegroundInterrupts();
+      await offerResumePaused();
+      if (pendingForeground.length > 0) {
+        await drainForegroundInterrupts();
+      }
+    } catch (error) {
+      deps.ui.error(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -678,25 +686,34 @@ export async function runInteractiveSession(
 
   try {
     for (;;) {
-      // Surface any finished background-thread banners above the prompt (one-shot).
-      const drained = drainBanners(runtime.fleet);
-      if (drained.banners.length > 0) {
-        runtime.fleet = drained.state;
-        deps.ui.write();
-        for (const banner of drained.banners) {
-          deps.ui.info(banner);
+      // The pre-prompt chrome runs OUTSIDE the per-turn try/catch below, so a throw
+      // here would escape the loop and EXIT the shell — which must NEVER happen
+      // (RUN-FIX-15: nunca es nunca). Contain it; a bad banner/rule is cosmetic.
+      try {
+        // Surface any finished background-thread banners above the prompt (one-shot).
+        const drained = drainBanners(runtime.fleet);
+        if (drained.banners.length > 0) {
+          runtime.fleet = drained.state;
+          deps.ui.write();
+          for (const banner of drained.banners) {
+            deps.ui.info(banner);
+          }
+          printStatusLine(deps, runtime);
         }
-        printStatusLine(deps, runtime);
-      }
-      // While a background run is live, show an accent rule above the prompt with
-      // its title cutting the line (CC-style "what's running" indicator).
-      const live = runtime.fleet.threads.filter(
-        (thread) => thread.status === 'running' || thread.status === 'blocked',
-      );
-      if (live.length > 0) {
-        const label =
-          live.length === 1 ? (live[0]?.title ?? '') : deps.t('repl.bg-active', { n: live.length });
-        deps.ui.write(renderRunRule(label, process.stdout.columns ?? 80));
+        // While a background run is live, show an accent rule above the prompt with
+        // its title cutting the line (CC-style "what's running" indicator).
+        const live = runtime.fleet.threads.filter(
+          (thread) => thread.status === 'running' || thread.status === 'blocked',
+        );
+        if (live.length > 0) {
+          const label =
+            live.length === 1
+              ? (live[0]?.title ?? '')
+              : deps.t('repl.bg-active', { n: live.length });
+          deps.ui.write(renderRunRule(label, process.stdout.columns ?? 80));
+        }
+      } catch {
+        /* pre-prompt chrome is best-effort — never let it kill the session */
       }
       const line = await editor.question(accent('› '));
       if (line === null) {
@@ -1131,11 +1148,18 @@ export async function runInteractiveSession(
         printStatusLine(deps, runtime);
         continue;
       }
-      endTurn();
-      // INT-1/INT-5 — run any foreground interrupt (folded steer / pause+switch)
-      // queued while this turn streamed, then offer to resume the paused work.
-      await settleInterruptAftermath();
-      printStatusLine(deps, runtime);
+      // The post-turn settle ALSO runs outside the per-turn try/catch above; a throw
+      // here would escape the loop and exit the shell. Contain it — the prompt always
+      // comes back (RUN-FIX-15: nunca es nunca).
+      try {
+        endTurn();
+        // INT-1/INT-5 — run any foreground interrupt (folded steer / pause+switch)
+        // queued while this turn streamed, then offer to resume the paused work.
+        await settleInterruptAftermath();
+        printStatusLine(deps, runtime);
+      } catch (error) {
+        deps.ui.error(error instanceof Error ? error.message : String(error));
+      }
     }
   } finally {
     // AO8-4 — stop any late background callback (chain / supervisor) from spawning

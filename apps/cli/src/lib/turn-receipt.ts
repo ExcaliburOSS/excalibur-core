@@ -225,7 +225,7 @@ export function renderTurnReceipt(
     }
   }
 
-  // Dim footer: relative+absolute time · model. (A subtle rule precedes it.)
-  ui.write(pc.dim(' ' + '─'.repeat(48)));
+  // Dim footer: relative+absolute time · model. No partial-width rule above it —
+  // a short gray cut line on a wide terminal reads as broken (RUN-FIX-15).
   ui.write(pc.dim(` ${formatWhen(deps, options.now, summary.completedAt)} · ${options.model}`));
 }
