@@ -14,6 +14,7 @@ const PINNED_NAMES: NativeToolName[] = [
   'list_files',
   'search_code',
   'run_command',
+  'preview',
   'git_diff',
   'apply_patch',
   'create_branch',

@@ -6,6 +6,38 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.8] - 2026-06-29
+
+A streamed build can no longer freeze, the live rail no longer flickers, and Excalibur
+now serves the web app it just built on a local URL (RUN-FIX-21).
+
+### Fixed
+
+- **A streamed model call can never freeze a build again.** Until now the per-request
+  timeout only guarded the initial connect — once tokens started flowing (or the model
+  "thought" forever before the first token) there was no timeout, so a stalled stream
+  hung `for await` indefinitely and the build sat there with no output, no spinner, no
+  explanation. Streaming now races every pulled chunk against an idle timer: if no delta
+  arrives within the idle window the connection is aborted instead of hanging forever.
+- **Transparent retry of a pre-first-token stall.** When the stream stalls _before_ the
+  model emits anything (the dominant freeze), the whole call is restarted automatically
+  (up to the provider's retry budget) — nothing has reached you yet, so it is safe to
+  replay. Once a delta has been shown, a later stall surfaces as a clean timeout and the
+  build self-heals/errors rather than freezing. Caller cancellation is never retried.
+- **The live rail no longer flickers.** The run view was re-folded from scratch on every
+  120 ms animation tick (a fresh model object each frame forced a full repaint). The fold
+  is now memoized on the event revision, with only a cheap elapsed-time overlay updating
+  per frame — the rail animates smoothly instead of strobing.
+
+### Added
+
+- **`preview` — Excalibur serves the web it builds.** After building or fixing a web app
+  the agent starts a local dev/preview server and hands you the URL to open. It runs the
+  project's own `dev`/`start`/`serve`/`preview` script when there is one, or a built-in
+  zero-dependency static server for a bare `index.html`. The server stays up for the
+  session (it is not reaped like a one-shot command) and is cleanly stopped on exit, so
+  nothing is left running behind the shell.
+
 ## [1.8.7] - 2026-06-29
 
 The m-shell is now structurally UNCRASHABLE, the rail stops erasing history, and a few

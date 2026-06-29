@@ -15,6 +15,7 @@ export const NATIVE_TOOL_NAMES = [
   'list_files',
   'search_code',
   'run_command',
+  'preview',
   'git_diff',
   'apply_patch',
   'create_branch',
@@ -148,6 +149,12 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
           .describe('Repository-relative working directory (defaults to the repo root)'),
       })
       .strict(),
+  },
+  {
+    name: 'preview',
+    description:
+      'Start a LOCAL dev/preview server for the project and return its URL so the user can open the web app in a browser. Detects a package.json dev/start/serve/preview script (or serves a bare index.html). The server stays up for the session. Call this after building or fixing a web app instead of telling the user to start a server themselves.',
+    parameters: z.object({}).strict(),
   },
   {
     name: 'git_diff',

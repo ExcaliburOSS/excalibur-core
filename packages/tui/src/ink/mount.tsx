@@ -94,13 +94,29 @@ function RunViewApp({
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const { stdout } = useStdout();
   const now = options.now ?? Date.now;
-  const model = useMemo(
+  // Fold the event log ONLY when it actually changes (eventsRev) — NOT every 120ms
+  // frame. Re-folding the whole log on each tick produced a brand-new model object and
+  // a full-subtree repaint 8×/second: the residual flicker (RUN-FIX-21). Keyed on
+  // eventsRev, not the events array identity (it's mutated in place).
+  const baseModel = useMemo(
     () => reduceRail(snapshot.events, { ...(options.reduce ?? {}), nowMs: now() }),
-    // Re-fold when the event log grows (eventsRev) or the clock ticks (frame —
-    // for live elapsed). NOT keyed on the events array identity (it's mutated in
-    // place); an approval/diff toggle re-renders without re-folding.
-    [snapshot.eventsRev, snapshot.frame],
+    [snapshot.eventsRev],
   );
+  // Overlay the LIVE elapsed clock each frame WITHOUT re-folding: a cheap status spread
+  // from the run's start anchor, so the clock still breathes between events (it would
+  // otherwise freeze — the "58s congelado" the user saw). A finished run keeps its
+  // frozen elapsed (no anchor update needed).
+  const model = useMemo(() => {
+    const startedAtMs = baseModel.status.startedAtMs;
+    if (baseModel.done || startedAtMs === undefined) {
+      return baseModel;
+    }
+    const elapsedMs = Math.max(0, now() - startedAtMs);
+    if (elapsedMs === baseModel.status.elapsedMs) {
+      return baseModel;
+    }
+    return { ...baseModel, status: { ...baseModel.status, elapsedMs } };
+  }, [baseModel, snapshot.frame]);
   return (
     <ThemeProvider colors={options.palette}>
       {snapshot.missionRibbon !== null ? (

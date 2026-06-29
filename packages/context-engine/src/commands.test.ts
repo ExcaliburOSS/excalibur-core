@@ -61,9 +61,16 @@ describe('detectCommands', () => {
 
   it('omits undetectable commands instead of inventing them', async () => {
     const dir = await fixture({
-      'package.json': JSON.stringify({ scripts: { start: 'node index.js' } }),
+      'package.json': JSON.stringify({ scripts: { clean: 'rimraf dist' } }),
     });
     expect(await detectCommands(dir)).toEqual({});
+  });
+
+  it('detects a dev/preview server script as the dev command (RUN-FIX-21)', async () => {
+    const dir = await fixture({
+      'package.json': JSON.stringify({ scripts: { start: 'node index.js' } }),
+    });
+    expect(await detectCommands(dir)).toEqual({ dev: 'npm run start' });
   });
 
   it('returns no commands without a package.json', async () => {

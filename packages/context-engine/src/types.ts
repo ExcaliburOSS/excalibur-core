@@ -9,6 +9,8 @@ export interface DetectedCommands {
   lint?: string;
   typecheck?: string;
   build?: string;
+  /** The command that starts a local dev/preview server (RUN-FIX-21 `preview` tool). */
+  dev?: string;
 }
 
 /** Classification of well-known instruction files for `RepoAnalysis`. */

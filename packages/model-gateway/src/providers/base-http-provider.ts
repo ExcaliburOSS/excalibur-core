@@ -15,6 +15,7 @@
 import { ConfigValidationError, ProviderError } from '@excalibur/shared';
 import {
   isRetryableProviderError,
+  isTimeoutError,
   mapHttpError,
   networkError,
   timeoutError,
@@ -39,6 +40,16 @@ import { resolveApiKey } from './providers-file';
 /** Default timeout and retry budget when the provider config omits them. */
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_RETRIES = 2;
+/**
+ * Stream IDLE timeout floor (RUN-FIX-21). The per-request timeout only covers the
+ * CONNECT of a streaming call; once bytes flow it is released, so a model that STALLS
+ * mid-response (or "thinks" forever before the first token) would otherwise hang the
+ * stream — and a streamed build call FOREVER. We abort the stream when NO delta has
+ * arrived for this long. Generous enough for a slow reasoning model's first token,
+ * tight enough that a true stall never freezes the shell. A provider's configured
+ * `timeoutMs`, if larger, wins.
+ */
+const STREAM_IDLE_FLOOR_MS = 180_000;
 
 /** Parsed result of a non-streaming chat response. */
 export interface ParsedChatResponse {
@@ -141,6 +152,19 @@ export abstract class BaseHttpProvider implements ModelProviderAdapter {
     return input.timeoutMs !== undefined && input.timeoutMs > 0 ? input.timeoutMs : this.timeoutMs;
   }
 
+  /**
+   * Idle window for a streaming response (RUN-FIX-21): how long with NO delta before
+   * the stream is treated as stalled and aborted. An explicit per-request `timeoutMs`
+   * is honoured as-is (so callers/tests can tighten it); otherwise we floor the
+   * provider's configured timeout to {@link STREAM_IDLE_FLOOR_MS} so a slow reasoning
+   * model's first-token latency never trips it.
+   */
+  private effectiveStreamIdleMs(input: ChatInput): number {
+    return input.timeoutMs !== undefined && input.timeoutMs > 0
+      ? input.timeoutMs
+      : Math.max(this.timeoutMs, STREAM_IDLE_FLOOR_MS);
+  }
+
   /** Resolves the model name to send (explicit input → config default). */
   protected resolveModel(input: ChatInput): string {
     const model = input.model ?? this.cfg.model;
@@ -194,39 +218,116 @@ export abstract class BaseHttpProvider implements ModelProviderAdapter {
 
   async *stream(input: ChatInput): AsyncIterable<ChatDelta> {
     const model = this.resolveModel(input);
-    // Retry covers only the initial connect; never mid-stream.
-    const response = await withRetry(
-      () => this.connectStream(this.buildStreamRequest(input, model), input),
-      {
-        maxRetries: this.maxRetries,
-        isRetryable: isRetryableProviderError,
-        retryAfterMs: (error) => retryAfterMsOf(error),
-        ...(this.hooks.sleep !== undefined ? { sleep: this.hooks.sleep } : {}),
-        ...(this.hooks.random !== undefined ? { random: this.hooks.random } : {}),
-      },
-    );
+    // IDLE TIMEOUT (RUN-FIX-21): the per-request timeout only guards the CONNECT, so a
+    // model that stalls mid-stream — or "thinks" forever before the first token — would
+    // hang `for await` indefinitely and FREEZE a streamed build. Race each pulled event
+    // against an idle timer: if no delta arrives in `idleMs`, abort the connection.
+    const idleMs = this.effectiveStreamIdleMs(input);
+    // RETRY (RUN-FIX-21): if the stream stalls BEFORE the first token (the model never
+    // starts — the dominant freeze the user hit), restart the whole call transparently.
+    // This is the only stall we can safely retry: nothing has reached the consumer yet,
+    // so there is no partial output to replay. Once a delta has been yielded a mid-stream
+    // stall is terminal and surfaces as a timeout (the build then self-heals/errors,
+    // never freezes). Caller cancellation is never retried.
+    const maxRestarts = this.maxRetries;
+    for (let attempt = 0; ; attempt++) {
+      // A stream-level abort so an idle stall (or a restart) can cancel the underlying
+      // connection; composed with the caller's signal so cancellation still works.
+      const streamAbort = new AbortController();
+      const composedSignal =
+        input.signal !== undefined
+          ? AbortSignal.any([input.signal, streamAbort.signal])
+          : streamAbort.signal;
+      const streamInput: ChatInput = { ...input, signal: composedSignal };
+      // Retry covers only the initial connect; the pre-first-token restart below covers
+      // a connect that succeeds but then produces no tokens.
+      const response = await withRetry(
+        () => this.connectStream(this.buildStreamRequest(streamInput, model), streamInput),
+        {
+          maxRetries: this.maxRetries,
+          isRetryable: isRetryableProviderError,
+          retryAfterMs: (error) => retryAfterMsOf(error),
+          ...(this.hooks.sleep !== undefined ? { sleep: this.hooks.sleep } : {}),
+          ...(this.hooks.random !== undefined ? { random: this.hooks.random } : {}),
+        },
+      );
 
-    for await (const event of this.decodeStream(response, input, model)) {
-      // Forward content chunks AND provider-reported usage (which previously was
-      // dropped here, forcing the gateway to estimate), plus any tool-call
-      // fragments / finish reason so a streamed turn can drive the tool loop. A
-      // usage- or tool-only event still surfaces (empty content).
-      if (
-        event.content.length > 0 ||
-        event.usage !== undefined ||
-        event.toolCallDeltas !== undefined ||
-        event.finishReason !== undefined
-      ) {
-        yield {
-          content: event.content,
-          done: false,
-          ...(event.usage !== undefined ? { usage: event.usage } : {}),
-          ...(event.toolCallDeltas !== undefined ? { toolCallDeltas: event.toolCallDeltas } : {}),
-          ...(event.finishReason !== undefined ? { finishReason: event.finishReason } : {}),
-        };
+      const iterator = this.decodeStream(response, streamInput, model)[Symbol.asyncIterator]();
+      let yieldedAny = false;
+      let restart = false;
+      try {
+        for (;;) {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const idle = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+              streamAbort.abort();
+              reject(timeoutError(idleMs));
+            }, idleMs);
+            timer.unref?.();
+          });
+          let result: IteratorResult<StreamEvent>;
+          try {
+            result = await Promise.race([iterator.next(), idle]);
+          } catch (error) {
+            // A pre-first-token idle stall, with restarts left and no caller cancel:
+            // tear down this attempt and start the model call over.
+            if (
+              !yieldedAny &&
+              attempt < maxRestarts &&
+              input.signal?.aborted !== true &&
+              isTimeoutError(error)
+            ) {
+              restart = true;
+              break;
+            }
+            throw error;
+          } finally {
+            if (timer !== undefined) clearTimeout(timer);
+          }
+          if (result.done) {
+            break;
+          }
+          const event = result.value;
+          // Forward content chunks AND provider-reported usage (which previously was
+          // dropped here, forcing the gateway to estimate), plus any tool-call fragments
+          // / finish reason so a streamed turn can drive the tool loop. A usage- or
+          // tool-only event still surfaces (empty content).
+          if (
+            event.content.length > 0 ||
+            event.usage !== undefined ||
+            event.toolCallDeltas !== undefined ||
+            event.finishReason !== undefined
+          ) {
+            // Mark BEFORE yielding: once the consumer has seen a delta, a later stall is
+            // terminal (we cannot replay it), so it must never trigger a restart.
+            yieldedAny = true;
+            yield {
+              content: event.content,
+              done: false,
+              ...(event.usage !== undefined ? { usage: event.usage } : {}),
+              ...(event.toolCallDeltas !== undefined
+                ? { toolCallDeltas: event.toolCallDeltas }
+                : {}),
+              ...(event.finishReason !== undefined ? { finishReason: event.finishReason } : {}),
+            };
+          }
+        }
+      } finally {
+        // Release the underlying reader on every exit path (idle abort, restart, caller
+        // cancel, a downstream throw). FIRE-AND-FORGET: streamAbort.abort() already
+        // cancels the connection, and awaiting return() here would DEADLOCK on a
+        // generator still suspended at a read the abort is tearing down.
+        streamAbort.abort();
+        void Promise.resolve(iterator.return?.()).catch(() => {});
       }
+      if (restart) {
+        // Small backoff between restarts (reuses the injected sleep seam when present).
+        if (this.hooks.sleep !== undefined) await this.hooks.sleep(0);
+        continue;
+      }
+      yield { content: '', done: true };
+      return;
     }
-    yield { content: '', done: true };
   }
 
   // --- Internals ------------------------------------------------------------

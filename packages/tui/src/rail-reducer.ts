@@ -321,6 +321,7 @@ export function reduceRail(
     model: options.model ?? 'mock',
     inputTokens,
     outputTokens,
+    ...(firstTs !== undefined ? { startedAtMs: firstTs } : {}),
   };
   return {
     runId,

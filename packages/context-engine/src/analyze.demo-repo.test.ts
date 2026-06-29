@@ -27,6 +27,7 @@ describe('analyzeRepository(examples/demo-repo)', () => {
       lint: 'pnpm run lint',
       typecheck: 'pnpm run typecheck',
       build: 'pnpm run build',
+      dev: 'pnpm run start',
     });
   });
 

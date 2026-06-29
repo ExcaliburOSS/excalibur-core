@@ -8,6 +8,8 @@ const SCRIPT_ALIASES: ReadonlyArray<readonly [keyof DetectedCommands, string[]]>
   ['lint', ['lint']],
   ['typecheck', ['typecheck', 'type-check', 'check-types']],
   ['build', ['build']],
+  // The local dev/preview server a developer runs to view the app (RUN-FIX-21).
+  ['dev', ['dev', 'start', 'serve', 'preview']],
 ];
 
 /**

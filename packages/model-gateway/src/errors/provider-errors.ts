@@ -132,6 +132,11 @@ export function isRetryableProviderError(error: unknown): boolean {
   return error instanceof ProviderError && RETRYABLE_CODES.has(error.code);
 }
 
+/** True for a timeout `ProviderError` specifically (used to retry a pre-first-token stall). */
+export function isTimeoutError(error: unknown): boolean {
+  return error instanceof ProviderError && error.code === PROVIDER_ERROR_CODES.timeout;
+}
+
 /**
  * A non-retryable `ProviderError` for a tool call whose arguments could not be
  * parsed into a JSON object. Surfaced (rather than crashing) so the agent loop

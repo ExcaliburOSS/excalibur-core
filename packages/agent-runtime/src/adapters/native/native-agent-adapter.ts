@@ -191,6 +191,7 @@ function eventTypeForTool(name: NativeToolName): ExcaliburEventType {
       return 'tool_call';
     case 'run_command':
     case 'run_tests':
+    case 'preview':
       return 'command_completed';
     case 'update_tasks':
       return 'task_update';
@@ -322,6 +323,10 @@ function engineeringGuidance(role: AgentRole): string[] {
     'linters/formatters, and for anything runnable actually run it and confirm it',
     'behaves (for a service, start it, check it responds, then stop it). Do not just',
     'write files and walk away.',
+    'If you built or fixed a WEB app (an index.html or a package.json dev/start/serve',
+    'script), call the `preview` tool to start it on localhost and give the user the',
+    'URL to open — never tell them to start a server themselves. `preview` keeps the',
+    'server running for the session.',
     'Structure the work the way a senior engineer would: a sensible project and file',
     'layout with concerns separated into their own modules and files (not one',
     'monolithic file), idiomatic to the language and framework, and — in an existing',
@@ -1360,6 +1365,11 @@ export class NativeAgentAdapter implements AgentAdapter {
     if (name === 'run_command') {
       return pass(permissions.checkCommand(String(args['command'] ?? '')));
     }
+    if (name === 'preview') {
+      // Starting a LOCAL dev/preview server on localhost is what the user asked for
+      // ("show me the web") — allow it without a prompt (RUN-FIX-21).
+      return { allowed: true, requiresConfirmation: false, reason: 'start a local preview server' };
+    }
     if (name === 'web_fetch') {
       // SSRF + network policy: a private/metadata target is a HARD deny here.
       return pass(permissions.checkUrl(String(args['url'] ?? '')));
@@ -1637,6 +1647,9 @@ function describeCall(name: NativeToolName, args: Record<string, unknown>): stri
     return typeof args['command'] === 'string'
       ? `command: ${args['command']}`
       : 'detected test command';
+  }
+  if (name === 'preview') {
+    return 'starting the local preview server';
   }
   if (name === 'create_branch') {
     return typeof args['name'] === 'string' ? `branch: ${args['name']}` : undefined;

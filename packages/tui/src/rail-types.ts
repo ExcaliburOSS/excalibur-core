@@ -87,6 +87,13 @@ export interface RunStatus {
   inputTokens: number;
   /** Total output tokens across the run's model calls. */
   outputTokens: number;
+  /**
+   * Wall-clock of the run's first event (RUN-FIX-21). Lets the live view keep the
+   * elapsed clock ticking every frame WITHOUT re-folding the whole event log on each
+   * tick — the mount overlays `now() - startedAtMs` onto a model folded only when
+   * events change (kills the per-tick re-fold flicker). Undefined before any event.
+   */
+  startedAtMs?: number;
 }
 
 /** The reduced state of a run — everything the rail needs to render. */

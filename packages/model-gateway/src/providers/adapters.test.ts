@@ -166,6 +166,66 @@ describe('OpenAICompatibleAdapter', () => {
     expect(output.finishReason).toBe('stop');
   });
 
+  it('stream() ABORTS a stalled stream via the idle timeout — never freezes (RUN-FIX-21)', async () => {
+    // A response that yields one delta then NEVER yields again — a model that hangs
+    // mid-stream. Without the idle timeout, `for await` would wait forever and freeze
+    // a streamed build. A tight per-request timeout doubles as the idle window here.
+    const stalling = fakeResponse({ body: '' });
+    stalling.lines = (): AsyncIterable<string> =>
+      (async function* (): AsyncIterable<string> {
+        yield 'data: {"choices":[{"index":0,"delta":{"content":"hi"}}]}';
+        await new Promise<void>(() => {}); // stall forever
+      })();
+    const transport = new QueueTransport([stalling]);
+    const adapter = new OpenAICompatibleAdapter({
+      name: 'qwen',
+      cfg: openaiCfg(),
+      transport,
+      hooks,
+    });
+    const started = Date.now();
+    await expect(collectStream(adapter.stream({ ...input, timeoutMs: 120 }))).rejects.toThrow(
+      /tim(e|ed) out|timeout/i,
+    );
+    // It bailed at the idle window, not after some unbounded wait.
+    expect(Date.now() - started).toBeLessThan(3000);
+  }, 8000);
+
+  it('RESTARTS a stream that stalls BEFORE the first token, then succeeds (RUN-FIX-21)', async () => {
+    // First connection produces no token at all (the model "thinks forever" and never
+    // starts) → the idle timeout fires with nothing yielded → the call is restarted
+    // transparently. The second connection streams normally. The consumer sees a clean,
+    // complete stream and never an error — the dominant freeze, recovered automatically.
+    const stalledBeforeToken = fakeResponse({ body: '' });
+    stalledBeforeToken.lines = (): AsyncIterable<string> =>
+      (async function* (): AsyncIterable<string> {
+        await new Promise<void>(() => {}); // stalls forever — the yield below is unreachable
+        yield '';
+      })();
+    const succeeds = fakeResponse({ body: '' });
+    succeeds.lines = (): AsyncIterable<string> =>
+      (async function* (): AsyncIterable<string> {
+        // Blank lines terminate each SSE event so parseSSE flushes them.
+        yield 'data: {"choices":[{"index":0,"delta":{"content":"recovered"}}]}';
+        yield '';
+        yield 'data: [DONE]';
+        yield '';
+      })();
+    const transport = new QueueTransport([stalledBeforeToken, succeeds]);
+    const adapter = new OpenAICompatibleAdapter({
+      name: 'qwen',
+      cfg: openaiCfg(),
+      transport,
+      hooks,
+    });
+    const deltas = await collectStream(adapter.stream({ ...input, timeoutMs: 120 }));
+    const text = deltas.map((d) => d.content).join('');
+    expect(text).toBe('recovered'); // recovered on the second attempt
+    expect(deltas.at(-1)?.done).toBe(true);
+    // It consumed the first (stalled) connection AND the second (good) one.
+    expect(transport.requests.length).toBe(2);
+  }, 8000);
+
   it('does not double-append /v1 when baseUrl already ends in it', async () => {
     const transport = new QueueTransport([fakeResponse({ body: fixture('openai.chat.json') })]);
     const adapter = new OpenAICompatibleAdapter({

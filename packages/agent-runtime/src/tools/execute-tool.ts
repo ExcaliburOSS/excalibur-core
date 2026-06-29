@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import {
   closeSync,
   constants as fsConstants,
@@ -1628,6 +1628,154 @@ async function execManagement(
   return ok(text.trim().length > 0 ? text : `${label}: (nothing to report)`);
 }
 
+// --- preview (RUN-FIX-21): serve the user's project on localhost --------------
+
+/**
+ * Live preview servers the agent started for the user's project. Tracked here — NOT
+ * routed through run_command (which reaps its tree on settle) — so the dev server keeps
+ * running for the whole session while the user views the app. Reaped on process exit so
+ * nothing is orphaned after the m-shell closes.
+ */
+const previewServers = new Set<ChildProcess>();
+let previewCleanupInstalled = false;
+function trackPreview(child: ChildProcess): void {
+  previewServers.add(child);
+  child.once('exit', () => previewServers.delete(child));
+  if (!previewCleanupInstalled) {
+    previewCleanupInstalled = true;
+    process.once('exit', () => {
+      for (const c of previewServers) {
+        try {
+          if (typeof c.pid === 'number' && c.pid > 0) process.kill(-c.pid, 'SIGKILL');
+        } catch {
+          /* best-effort */
+        }
+      }
+    });
+  }
+}
+
+/**
+ * Stop every live preview server. Called on a clean session teardown (and by tests) so
+ * a detached dev server is not left running. The `process.once('exit')` hook in
+ * `trackPreview` is the last-resort net; this is the graceful path.
+ */
+export function stopAllPreviews(): void {
+  for (const c of previewServers) {
+    try {
+      if (typeof c.pid === 'number' && c.pid > 0) {
+        // Detached on POSIX → kill the whole group; fall back to the bare pid on Windows.
+        if (process.platform !== 'win32') process.kill(-c.pid, 'SIGKILL');
+        else c.kill('SIGKILL');
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+  previewServers.clear();
+}
+
+/** A tiny zero-dependency static file server (for a no-build site: an index.html). */
+const STATIC_SERVER_SRC =
+  "const http=require('http'),fs=require('fs'),p=require('path');const root=process.cwd();" +
+  'const port=Number(process.env.PORT)||0;' +
+  "const s=http.createServer((q,r)=>{let f=p.join(root,decodeURIComponent((q.url||'/').split('?')[0]));" +
+  "try{if(fs.statSync(f).isDirectory())f=p.join(f,'index.html')}catch{}" +
+  "fs.readFile(f,(e,d)=>{if(e){r.statusCode=404;r.end('Not found')}else{" +
+  "const t={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml'}[p.extname(f)];" +
+  "if(t)r.setHeader('content-type',t);r.end(d)}})});" +
+  "s.listen(port,()=>console.log('Local:   http://localhost:'+s.address().port+'/'));";
+
+/**
+ * `preview` — start a LOCAL dev/preview server for the project and return its URL so
+ * the user can open the web in a browser (RUN-FIX-21). Detects a package.json
+ * dev/start/serve/preview script; falls back to a built-in static server for a bare
+ * `index.html`. The server is detached and KEPT RUNNING for the session (not reaped
+ * like a run_command), and its URL is parsed from the server's own output.
+ */
+async function execPreview(
+  _args: Record<string, unknown>,
+  ctx: ToolExecutionContext,
+): Promise<ToolResult> {
+  const dir = ctx.workdir;
+  let label: string;
+  let cmd: string;
+  let cmdArgs: string[];
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  type Pkg = { scripts?: Record<string, string> };
+  let pkg: Pkg | null = null;
+  try {
+    if (existsSync(path.join(dir, 'package.json'))) {
+      pkg = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')) as Pkg;
+    }
+  } catch {
+    pkg = null;
+  }
+  const script = pkg?.scripts
+    ? (['dev', 'start', 'serve', 'preview'] as const).find((s) => pkg?.scripts?.[s] !== undefined)
+    : undefined;
+  if (script !== undefined) {
+    label = `npm run ${script}`;
+    cmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    cmdArgs = ['run', script];
+  } else if (existsSync(path.join(dir, 'index.html'))) {
+    label = 'static server';
+    cmd = process.execPath;
+    cmdArgs = ['-e', STATIC_SERVER_SRC];
+    env.PORT = process.env.PORT ?? '0';
+  } else {
+    return fail(
+      'no web app to preview — no package.json dev/start/serve/preview script and no index.html. Build the web first, then call preview.',
+    );
+  }
+
+  let child: ChildProcess;
+  try {
+    child = spawn(cmd, cmdArgs, {
+      cwd: dir,
+      env,
+      detached: process.platform !== 'win32',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    return fail(`could not start the preview (${label}): ${(error as Error).message}`);
+  }
+  trackPreview(child);
+
+  // Parse the URL the server prints (Vite "Local:", Next "started server on", a bare
+  // "http://localhost:PORT", etc.). Give it up to 25s — a first `dev` run can compile.
+  let out = '';
+  const url = await new Promise<string | null>((resolve) => {
+    const onData = (chunk: Buffer): void => {
+      out += chunk.toString('utf8');
+      const match = out.match(/https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?[^\s'"]*/i);
+      if (match) {
+        finish(match[0].replace('0.0.0.0', 'localhost'));
+      }
+    };
+    const timer = setTimeout(() => finish(null), 25_000);
+    const finish = (value: string | null): void => {
+      clearTimeout(timer);
+      child.stdout?.off('data', onData);
+      child.stderr?.off('data', onData);
+      resolve(value);
+    };
+    child.stdout?.on('data', onData);
+    child.stderr?.on('data', onData);
+    child.once('error', () => finish(null));
+    child.once('exit', () => finish(null));
+  });
+
+  if (url === null) {
+    return ok(
+      `Started the preview (${label}) but could not detect its URL within 25s. It may still be compiling. Recent output:\n${redactSecrets(out.slice(-800))}`,
+    );
+  }
+  return ok(
+    `The web app is live at ${url} (via ${label}) and stays up for this session. Tell the user to open ${url} in their browser.`,
+  );
+}
+
 export async function executeNativeTool(
   name: NativeToolName,
   rawArgs: unknown,
@@ -1653,6 +1801,8 @@ export async function executeNativeTool(
         return execSearchCode(args, ctx);
       case 'run_command':
         return await execRunCommand(args, ctx);
+      case 'preview':
+        return await execPreview(args, ctx);
       case 'run_tests':
         return await execRunTests(args, ctx);
       case 'git_diff':

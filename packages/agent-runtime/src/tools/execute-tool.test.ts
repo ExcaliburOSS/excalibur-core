@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_BROWSER_CONFIG, DEFAULT_CONFIG, type ExcaliburConfig } from '@excalibur/shared';
 import { PermissionEngine } from '../permissions/permission-engine';
-import { executeNativeTool, type ToolExecutionContext } from './execute-tool';
+import { executeNativeTool, stopAllPreviews, type ToolExecutionContext } from './execute-tool';
 import type { FetchImpl, TierReader, WebFetchResult } from './web/fetch';
 import type { GatewayChat } from './web/extract';
 
@@ -676,6 +676,48 @@ describe('executeNativeTool — run_command / run_tests', () => {
     // proving the process was never launched (echo never produced its output).
     expect(result.result).toContain('command aborted before start');
   });
+});
+
+describe('executeNativeTool — preview (RUN-FIX-21: serve the web on localhost)', () => {
+  afterEach(() => {
+    stopAllPreviews();
+  });
+
+  it('serves a bare index.html on a real localhost URL', async () => {
+    writeFileSync(join(dir, 'index.html'), '<!doctype html><title>hi</title><h1>Live</h1>');
+    const result = await executeNativeTool('preview', {}, ctx());
+    // The built-in static server must come up and report a localhost URL we can hand the user.
+    const match = result.result.match(/http:\/\/localhost:(\d+)\//);
+    expect(match, `expected a localhost URL, got: ${result.result}`).not.toBeNull();
+    const port = Number(match![1]);
+    expect(port).toBeGreaterThan(0);
+
+    // Prove it actually serves the file (the URL is real, not just printed).
+    const res = await fetch(`http://localhost:${port}/`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('Live');
+  }, 30000);
+
+  it('refuses when there is no web app to preview', async () => {
+    const result = await executeNativeTool('preview', {}, ctx());
+    expect(result.result.toLowerCase()).toContain('no web app to preview');
+  });
+
+  it('prefers a package.json dev/start script over the static fallback', async () => {
+    // A start script that prints its own localhost URL and stays up (simulates a dev server).
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({
+        scripts: {
+          start:
+            'node -e "console.log(\'Local: http://localhost:7531/\');setInterval(()=>{},1000)"',
+        },
+      }),
+    );
+    const result = await executeNativeTool('preview', {}, ctx());
+    expect(result.result).toContain('http://localhost:7531/');
+    expect(result.result).toContain('npm run start');
+  }, 30000);
 });
 
 describe('executeNativeTool — git tools', () => {
