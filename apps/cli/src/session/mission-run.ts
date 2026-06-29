@@ -169,6 +169,12 @@ export interface MissionRunOptions {
    * the mission controller's `.abort()` so ESC and Ctrl-C cancel identically.
    */
   onEscape?: () => void;
+  /**
+   * Typing-during-execution (RUN-FIX-16): forwarded to each capability step's turn
+   * so the user can TYPE while a mission runs — the message is triaged (steer/quick/
+   * independent/stop) by the shell's INT-1 brain without losing the work.
+   */
+  onInterrupt?: AgentTurnDeps['onInterrupt'];
   /** Hard budget ceiling in cents — the mission PAUSES when reached (resumable). */
   budgetCents?: number;
   /**
@@ -233,6 +239,8 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
     signal,
     // ESC in any step's live view cancels the WHOLE mission, not just that step.
     ...(opts.onEscape !== undefined ? { onEscape: opts.onEscape } : {}),
+    // Typing-during-execution: each step's rail arms the interrupt channel (RUN-FIX-16).
+    ...(opts.onInterrupt !== undefined ? { onInterrupt: opts.onInterrupt } : {}),
     adapter,
     ribbon: ribbonModel,
   });

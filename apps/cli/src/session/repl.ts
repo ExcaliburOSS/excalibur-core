@@ -1122,6 +1122,8 @@ export async function runInteractiveSession(
             // ESC in any step's live view cancels the whole mission (the editor is
             // suspended while a step's Ink view owns stdin, so route ESC here).
             onEscape: () => ctrl.abort(),
+            // Typing-during-execution: type while the mission runs (RUN-FIX-16).
+            ...(runtime.onInterrupt !== undefined ? { onInterrupt: runtime.onInterrupt } : {}),
           });
         } else if (intent === 'plan' || intent === 'mission') {
           // Plan, posture ASK → the deliberate plan → approve → execute gate.
@@ -1806,6 +1808,9 @@ async function runConversationalBuild(
     level: runtime.autonomyLevel,
     yes: runtime.approvals.auto,
     signal,
+    // Typing-during-execution (RUN-FIX-16): let the user type WHILE the build runs;
+    // each message is triaged by the same INT-1 brain the conversational turn uses.
+    ...(runtime.onInterrupt !== undefined ? { onInterrupt: runtime.onInterrupt } : {}),
   });
   if (record === null) {
     return; // cancelled before any work (already surfaced by runTask)
@@ -1841,6 +1846,7 @@ async function runConversationalBuild(
       level: runtime.autonomyLevel,
       yes: runtime.approvals.auto,
       signal,
+      ...(runtime.onInterrupt !== undefined ? { onInterrupt: runtime.onInterrupt } : {}),
     });
     if (fixRecord === null) {
       break; // cancelled mid-heal

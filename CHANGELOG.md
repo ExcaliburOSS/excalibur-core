@@ -6,6 +6,22 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.5] - 2026-06-29
+
+You can type WHILE a build or mission runs (RUN-FIX-16).
+
+### Added
+
+- **Typing during execution.** While a gated build or a mission is running, the input
+  stays live at the foot of the rail — type and your message is composed as a draft,
+  then triaged the moment you press Enter by the same interrupt brain the chat turns
+  use: **stop** aborts the run; an **independent** request spins off as a parallel
+  `/bg` thread right away; a **quick question** is answered inline without pausing the
+  run; and a **refinement** of the current work is queued (FIFO) and runs the instant
+  the current run finishes, with its result as context. Previously the keys were inert
+  while a run held the rail — the input appeared to vanish. Wired into both the build
+  engine (`run-pipeline`) and every mission step.
+
 ## [1.8.4] - 2026-06-29
 
 The m-shell is now genuinely uncrashable, more autonomous, and the rail is cleaner

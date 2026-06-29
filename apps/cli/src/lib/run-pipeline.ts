@@ -100,6 +100,26 @@ export interface RunTaskOptions {
    * in-flight tool; also aborted by the rail's own ESC.
    */
   signal?: AbortSignal;
+  /**
+   * Typing-during-execution (INT-1, RUN-FIX-16): the live rail's interrupt channel.
+   * A message the user types WHILE the build streams is handed here with a control
+   * over the run (abort + acknowledge), so the shell's interrupt brain can triage it
+   * — steer → queue for right after the run, independent → parallel `/bg`, quick → an
+   * inline answer, stop → abort — WITHOUT losing the running work. Wired only on the
+   * Ink (TTY) path. Same shape as the conversational turn's `onInterrupt`, so the
+   * shell hands its ONE handler to both surfaces.
+   */
+  onInterrupt?: (
+    text: string,
+    control: {
+      currentWork: string;
+      awaitingAnswer: boolean;
+      pendingQuestion?: string;
+      touchedPaths: string[];
+      abort(): void;
+      say(text: string): void;
+    },
+  ) => void | Promise<void>;
 }
 
 /** Maps a resolved custom agent onto the engine's agent-override shape. */
@@ -669,6 +689,32 @@ export async function runTask(
       ...(conversational ? { compactStatus: true } : {}),
     });
     inkHandle.onEscape(() => runController.abort());
+    // Typing-during-execution (RUN-FIX-16): arm the rail's interrupt channel so the
+    // user can TYPE while the build runs (the input stays live as a draft at the foot
+    // of the rail). Each submitted message is handed to the shell's INT-1 brain with a
+    // control over THIS run — it triages: a refinement is queued for right after the
+    // run, an independent request spins off as a parallel `/bg`, a quick question is
+    // answered inline, and "stop" aborts. Without this, keys are inert while a build
+    // runs (the channel disarms when no handler is wired) — the bug being fixed.
+    if (options.onInterrupt !== undefined) {
+      const handler = options.onInterrupt;
+      const view = inkHandle;
+      view.onInterrupt((text) => {
+        void Promise.resolve(
+          handler(text, {
+            currentWork: task,
+            // A gated build captures its OWN approval keystrokes (y/n) while a gate is
+            // open, so a typed draft is never an answer to a pending question here.
+            awaitingAnswer: false,
+            touchedPaths: [],
+            abort: () => runController.abort(),
+            say: (s) => view.noticeInterrupt(s),
+          }),
+        ).catch(() => {
+          /* triage is best-effort — a handler error never breaks the run */
+        });
+      });
+    }
   }
 
   // A blank line separates the run from what's above it — but ONLY for standalone
