@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { render } from 'ink-testing-library';
+import { Text, useInput, useStdin } from 'ink';
+import type { ReactElement } from 'react';
 import { createEvent } from '@excalibur/shared';
 import { stripAnsi } from '../color.js';
 import { darkColors } from '../theme.js';
@@ -10,7 +12,7 @@ import { RunView } from './RunView.js';
 import { DiffView } from './DiffView.js';
 import { mountRunView } from './mount.js';
 import { createLanesStore, mountLanesView } from './Lanes.js';
-import { applyRunViewKey, createRunViewStore } from './store.js';
+import { applyRunViewKey, createRunViewStore, type RunViewStore } from './store.js';
 
 const SAMPLE_DIFF =
   'diff --git a/src/calc.ts b/src/calc.ts\n' +
@@ -614,6 +616,18 @@ function fakeStdin(): NodeJS.ReadStream {
 }
 
 /**
+ * A minimal harness hosting the SAME one-line `useInput`→`applyRunViewKey` forward
+ * that mount.tsx's `<Keys>` uses, so ink-testing-library's `stdin.write()` drives the
+ * REAL live capture path (Ink stdin parse → applyRunViewKey → interrupt draft →
+ * submit → onInterrupt) deterministically, without the flaky pty.
+ */
+function KeysHarness({ store }: { store: RunViewStore }): ReactElement {
+  const { isRawModeSupported } = useStdin();
+  useInput((input, key) => applyRunViewKey(store, input, key), { isActive: isRawModeSupported });
+  return <Text>run</Text>;
+}
+
+/**
  * Settles a mounted Ink view and returns the rendered text written to `stdout`.
  *
  * Ink renders differently under a CI environment (`is-in-ci`, captured at import
@@ -696,5 +710,31 @@ describe('mountRunView', () => {
     const out = await settleAndRead(handle, stdout);
     expect(out).toContain('kimi');
     expect(out).toContain('standard-safe');
+  });
+
+  it('captures RAW keystrokes typed DURING a run and submits the line to onInterrupt (live path, no pty)', async () => {
+    // The end-to-end live path the user cares about: while a run holds the rail, the
+    // user types and their message is captured + delivered to the interrupt brain.
+    // Drives Ink's REAL useInput via ink-testing-library's stdin → the SAME
+    // applyRunViewKey forward mount.tsx uses → the store → onInterrupt. Closes the
+    // gap that only the flaky pty covered before (RUN-FIX-16/17).
+    const store = createRunViewStore();
+    const delivered: string[] = [];
+    store.onInterrupt((text) => delivered.push(text)); // arms capture (interruptEnabled)
+    const { stdin, unmount } = render(<KeysHarness store={store} />);
+    const settle = async (): Promise<void> => {
+      for (let i = 0; i < 6; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+    await settle(); // let Ink mount + attach its input handler
+    // Type a mid-run message char by char, then Enter — exactly what a keyboard sends.
+    for (const ch of 'hola') stdin.write(ch);
+    await settle();
+    expect(store.getSnapshot().interruptDraft).toBe('hola'); // captured into the live draft
+    stdin.write('\r');
+    await settle();
+    unmount();
+    // The raw keystrokes flowed all the way to the interrupt handler with the line.
+    expect(delivered).toEqual(['hola']);
+    expect(store.getSnapshot().interruptDraft).toBe(''); // cleared after submit
   });
 });
