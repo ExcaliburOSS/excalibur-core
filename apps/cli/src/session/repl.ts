@@ -53,7 +53,7 @@ import {
 import { analyzeRepository } from '@excalibur/context-engine';
 import { agentUsesGateway, resolveAgentAdapter } from '@excalibur/agent-runtime';
 import { estimateTokens, redactSecrets, type ChatMessage } from '@excalibur/model-gateway';
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 import {
@@ -74,7 +74,7 @@ import {
   safetyLine,
 } from '../lib/context';
 import { runDiscoveryFlow } from '../commands/discovery';
-import { runTask } from '../lib/run-pipeline';
+import { runTask, mountConversationalRail } from '../lib/run-pipeline';
 import { renderTurnReceipt } from '../lib/turn-receipt';
 import { chooseBuildShape, decomposeTask, runSwarmFlow } from '../lib/swarm';
 import { renderChronogramView } from '../commands/orchestration';
@@ -244,6 +244,38 @@ function installExitForensics(deps: CliDeps): void {
   // natural return) and cannot be cancelled — so it always records the cause + code.
   process.on('exit', (code) => log(`process 'exit' code=${code}`));
   process.on('beforeExit', (code) => log(`process 'beforeExit' code=${code}`));
+  // Instrument process.kill: a NO 'exit' line means an UNCATCHABLE SIGKILL killed us —
+  // almost always a process-GROUP kill (`kill(-pgid)`) that swept in the m-shell's OWN
+  // group. Log every kill (target + stack), and LOUDLY flag any call whose target maps to
+  // our own pid / process group (suicide). Forensics-only (zero prod overhead).
+  try {
+    let myPgid = -1;
+    try {
+      myPgid = Number(
+        execFileSync('ps', ['-o', 'pgid=', '-p', String(process.pid)])
+          .toString()
+          .trim(),
+      );
+    } catch {
+      /* pgid unavailable */
+    }
+    log(`forensics: self pid=${process.pid} pgid=${myPgid}`);
+    const realKill = process.kill.bind(process);
+    process.kill = ((pid: number, sig?: string | number): true => {
+      const suicide =
+        pid === process.pid ||
+        pid === -process.pid ||
+        (myPgid > 0 && (pid === myPgid || pid === -myPgid)) ||
+        pid === 0 ||
+        Object.is(pid, -0);
+      log(
+        `process.kill(${String(pid)}, ${String(sig)})${suicide ? ' ⚠⚠⚠ TARGETS OWN PROCESS/GROUP — THIS IS THE SUICIDE' : ''}`,
+      );
+      return realKill(pid, sig as NodeJS.Signals) as true;
+    }) as typeof process.kill;
+  } catch {
+    /* instrumentation is best-effort */
+  }
 }
 
 /**
@@ -271,6 +303,20 @@ export async function runInteractiveSession(
   // code, or beforeExit — each with a stack. The shell must never exit on a fault
   // (RUN-FIX-14/18/20); when a user still sees it, this pins the vector in one line.
   installExitForensics(deps);
+  // CHAOS HOOK (test-only, never set in production): EXCALIBUR_TEST_CRASH_MS makes the shell
+  // self-SIGKILL after N ms to prove the RUN-FIX-24 supervisor respawns it. Fires ONLY on the
+  // first child — a respawn (EXCALIBUR_RECOVERED=1) skips it, so recovery is verifiable
+  // without an infinite crash loop.
+  const crashMs = Number(deps.env['EXCALIBUR_TEST_CRASH_MS'] ?? '');
+  if (Number.isFinite(crashMs) && crashMs > 0 && deps.env['EXCALIBUR_RECOVERED'] !== '1') {
+    setTimeout(() => {
+      try {
+        process.kill(process.pid, 'SIGKILL');
+      } catch {
+        /* best-effort chaos */
+      }
+    }, crashMs).unref?.();
+  }
   // Smart project-location resolution (proactive): if you launch `excalibur`
   // somewhere that isn't a project — your home dir, `/`, or an ambiguous folder
   // — and you actually want to START a project, create one (`mkdir`+`git init`+
@@ -1174,7 +1220,7 @@ export async function runInteractiveSession(
             // (≥2 independent workstreams → an auto-sized parallel swarm, else one
             // focused run). The user already decided at the posture gate — no
             // further prompts; the planner and parallelizer are fused.
-            await dispatchAutoBuild(deps, runtime, text, ctrl.signal, seed);
+            await dispatchAutoBuild(deps, runtime, text, ctrl.signal, seed, () => ctrl.abort());
           } else if (intent === 'orchestration') {
             // AO6 Pillar 5 — NL control of an EXISTING orchestration (any language):
             // view the chronogram, or pause/resume it. No command needed; the
@@ -1262,9 +1308,9 @@ export async function runInteractiveSession(
             // lower autonomy (or a single-workstream task) it stays the sequential gated build,
             // with no new prompts.
             if (posture('swarm') !== 'ask') {
-              await dispatchAutoBuild(deps, runtime, text, ctrl.signal, seed);
+              await dispatchAutoBuild(deps, runtime, text, ctrl.signal, seed, () => ctrl.abort());
             } else {
-              await runConversationalBuild(deps, runtime, text, ctrl.signal);
+              await runConversationalBuild(deps, runtime, text, ctrl.signal, () => ctrl.abort());
             }
           } else {
             // chat (pure Q&A) · research-declined → a direct model-first conversational
@@ -1976,82 +2022,121 @@ async function runConversationalBuild(
   runtime: SessionRuntime,
   text: string,
   signal: AbortSignal,
+  onAbort: () => void,
 ): Promise<void> {
-  let record = await runTask(deps, text, {
-    conversational: true,
-    level: runtime.autonomyLevel,
-    yes: runtime.approvals.auto,
-    signal,
-    // Typing-during-execution (RUN-FIX-16): let the user type WHILE the build runs;
-    // each message is triaged by the same INT-1 brain the conversational turn uses.
+  // ONE persistent rail for the WHOLE turn (RUN-FIX-23): the input box (InterruptBox) is
+  // mounted HERE and stays put across the build AND every self-heal pass, instead of each
+  // runTask mounting/unmounting its own rail — which flickered the input box away at the
+  // start of execution and again between the build and the self-heal ("el input desaparece
+  // durante la ejecución / durante la evaluación"). `null` off a TTY: there is no live rail
+  // and no input box to keep, so each runTask just streams plain lines as before.
+  const rail = await mountConversationalRail(deps, {
+    currentWork: text,
+    autonomyLevel: runtime.autonomyLevel,
+    onAbort,
+    // Typing-during-execution (RUN-FIX-16): arming onInterrupt also turns the box ON and
+    // keeps it on for the whole turn. Triaged by the same INT-1 brain a chat turn uses.
     ...(runtime.onInterrupt !== undefined ? { onInterrupt: runtime.onInterrupt } : {}),
   });
-  if (record === null) {
-    return; // cancelled before any work (already surfaced by runTask)
-  }
-  let summary: TurnSummary;
   try {
-    summary = buildTurnSummary(loadReplay(runtime.repoRoot, record.id));
-  } catch {
-    return; // a sparse/partial log — nothing to receipt
-  }
-
-  // PROACTIVE SELF-HEAL (RUN-FIX-14): Excalibur NEVER stops a build to tell the user
-  // to fix a failing check — it fixes them ITSELF. While a verification/test check is
-  // red (and we weren't cancelled), drive a focused, BOUNDED repair run that diagnoses
-  // and fixes the root cause, then re-verifies. Capped so a genuinely-unfixable failure
-  // can never loop forever — after the cap it surfaces the honest state, never "you fix it".
-  const MAX_HEAL_ATTEMPTS = 2;
-  for (
-    let attempt = 1;
-    attempt <= MAX_HEAL_ATTEMPTS && !signal.aborted && summary.checks.some((c) => !c.ok);
-    attempt += 1
-  ) {
-    const failing = summary.checks
-      .filter((c) => !c.ok)
-      .map((c) => `- ${c.label}${c.detail ? ` (${c.detail})` : ''}`)
-      .join('\n');
-    deps.ui.write();
-    deps.ui.info(
-      deps.t('repl.self-heal', { attempt: String(attempt), max: String(MAX_HEAL_ATTEMPTS) }),
-    );
-    const fixRecord = await runTask(deps, buildHealPrompt(text, failing), {
+    let record = await runTask(deps, text, {
       conversational: true,
       level: runtime.autonomyLevel,
       yes: runtime.approvals.auto,
       signal,
-      ...(runtime.onInterrupt !== undefined ? { onInterrupt: runtime.onInterrupt } : {}),
+      // Render into the shared rail (no per-run mount/teardown → the input box never
+      // flickers). ESC + onInterrupt are wired ONCE on the shared rail above.
+      ...(rail !== null ? { view: rail.view } : {}),
     });
-    if (fixRecord === null) {
-      break; // cancelled mid-heal
+    if (record === null) {
+      return; // cancelled before any work (already surfaced by runTask)
     }
-    record = fixRecord;
+    let summary: TurnSummary;
     try {
       summary = buildTurnSummary(loadReplay(runtime.repoRoot, record.id));
     } catch {
-      break;
+      return; // a sparse/partial log — nothing to receipt
+    }
+
+    // PROACTIVE SELF-HEAL (RUN-FIX-14): Excalibur NEVER stops a build to tell the user
+    // to fix a failing check — it fixes them ITSELF. While a verification/test check is
+    // red (and we weren't cancelled), drive a focused, BOUNDED repair run that diagnoses
+    // and fixes the root cause, then re-verifies. Capped so a genuinely-unfixable failure
+    // can never loop forever — after the cap it surfaces the honest state, never "you fix it".
+    const MAX_HEAL_ATTEMPTS = 2;
+    for (
+      let attempt = 1;
+      attempt <= MAX_HEAL_ATTEMPTS && !signal.aborted && summary.checks.some((c) => !c.ok);
+      attempt += 1
+    ) {
+      const failing = summary.checks
+        .filter((c) => !c.ok)
+        .map((c) => `- ${c.label}${c.detail ? ` (${c.detail})` : ''}`)
+        .join('\n');
+      const healBanner = deps.t('repl.self-heal', {
+        attempt: String(attempt),
+        max: String(MAX_HEAL_ATTEMPTS),
+      });
+      // Route the banner THROUGH the rail — a direct stdout write while Ink owns the screen
+      // corrupts the live frame (the old input/footer-duplication class of bug). Off a TTY
+      // there is no rail, so a plain line is safe.
+      if (rail !== null) {
+        rail.notice(healBanner);
+      } else {
+        deps.ui.write();
+        deps.ui.info(healBanner);
+      }
+      const fixRecord = await runTask(deps, buildHealPrompt(text, failing), {
+        conversational: true,
+        level: runtime.autonomyLevel,
+        yes: runtime.approvals.auto,
+        signal,
+        ...(rail !== null ? { view: rail.view } : {}),
+      });
+      if (fixRecord === null) {
+        break; // cancelled mid-heal
+      }
+      record = fixRecord;
+      try {
+        summary = buildTurnSummary(loadReplay(runtime.repoRoot, record.id));
+      } catch {
+        break;
+      }
+    }
+
+    // Close the rail (input box) BEFORE the warm receipt so the receipt + the next idle
+    // prompt render on a clean screen — from here on the idle editor IS the input.
+    if (rail !== null) {
+      await rail.close();
+    }
+
+    // The warm conversational receipt (the m-shell never speaks the CLI run footer),
+    // reflecting the FINAL (post-heal) state.
+    renderTurnReceipt(deps, summary, { now: new Date(), model: runtime.model });
+    // If checks are STILL red after the cap, say so honestly — Excalibur tried; it
+    // never silently dumps the problem back on the user with a "you fix it".
+    if (!signal.aborted && summary.checks.some((c) => !c.ok)) {
+      deps.ui.info(deps.t('repl.self-heal-exhausted', { max: String(MAX_HEAL_ATTEMPTS) }));
+    }
+    // Record the build as an assistant turn so session history/memory continue.
+    // NOTE: no `inputTokens` — those are this RUN's own ephemeral context, unrelated
+    // to the session conversation size the ctx% gauge tracks, so we must not feed
+    // them into the session-level compaction gate.
+    await recordAssistantTurn(deps, runtime, {
+      text: summary.narrative,
+      model: runtime.model,
+      costCents: summary.metrics.costCents,
+      runId: record.id,
+      mutated: summary.changedFiles.length > 0,
+    });
+  } finally {
+    // Idempotent: hand the rail (input box) + stdin back on ANY exit path — early return
+    // (cancel / sparse log) or a throw. The per-turn backstop also catches, but the rail
+    // must never leak past the turn.
+    if (rail !== null) {
+      await rail.close();
     }
   }
-
-  // The warm conversational receipt (the m-shell never speaks the CLI run footer),
-  // reflecting the FINAL (post-heal) state.
-  renderTurnReceipt(deps, summary, { now: new Date(), model: runtime.model });
-  // If checks are STILL red after the cap, say so honestly — Excalibur tried; it
-  // never silently dumps the problem back on the user with a "you fix it".
-  if (!signal.aborted && summary.checks.some((c) => !c.ok)) {
-    deps.ui.info(deps.t('repl.self-heal-exhausted', { max: String(MAX_HEAL_ATTEMPTS) }));
-  }
-  // Record the build as an assistant turn so session history/memory continue.
-  // NOTE: no `inputTokens` — those are this RUN's own ephemeral context, unrelated
-  // to the session conversation size the ctx% gauge tracks, so we must not feed
-  // them into the session-level compaction gate.
-  await recordAssistantTurn(deps, runtime, {
-    text: summary.narrative,
-    model: runtime.model,
-    costCents: summary.metrics.costCents,
-    runId: record.id,
-    mutated: summary.changedFiles.length > 0,
-  });
 }
 
 /**
@@ -2114,6 +2199,8 @@ async function dispatchAutoBuild(
   // The conversation seed is no longer threaded into the build: a gated workflow
   // run (RUN-FIX-10) builds its own context, so the bare-loop seed is unused.
   _seed: ChatMessage[],
+  // ESC / the rail's abort routes here to cancel the WHOLE turn (RUN-FIX-23).
+  onAbort: () => void,
 ): Promise<void> {
   // Plan-shaping: co-create the scope (clarifying Qs + multi-select recommendations)
   // before decomposing/building; the choices refine the task that gets decomposed.
@@ -2155,7 +2242,7 @@ async function dispatchAutoBuild(
   // RUN-FIX-10 — a single-workstream build runs the GATED workflow engine (the
   // same one `excalibur run` uses), not a bare agent loop: complexity-sized
   // phases + Verify/Review + verification mesh + claim ledger, under the warm rail.
-  await runConversationalBuild(deps, runtime, text, signal);
+  await runConversationalBuild(deps, runtime, text, signal, onAbort);
 
   // AO4f-2 — give the SEQUENTIAL auto-build the same adversarial review the swarm
   // path gets (AO4f-1). The turn already applied as it went (no merge gate to

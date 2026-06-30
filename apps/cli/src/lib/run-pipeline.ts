@@ -120,6 +120,17 @@ export interface RunTaskOptions {
       say(text: string): void;
     },
   ) => void | Promise<void>;
+  /**
+   * A CALLER-OWNED rail to render into (RUN-FIX-23). When set, runTask renders into THIS
+   * view instead of mounting its own — it clears the prior run's events (`resetEvents`) at
+   * the start but does NOT suspend stdin, mount, wire ESC/interrupt, finish or unmount; the
+   * caller owns that lifecycle. This is how a conversational build keeps ONE persistent
+   * input box (InterruptBox) across the decompose + build + every self-heal run, instead of
+   * mounting/unmounting per run (which made the input box flicker away between runs — the
+   * "el input desaparece durante la ejecución" bug). resetEvents PRESERVES interruptEnabled
+   * + the draft, so the input the user is typing survives the reset.
+   */
+  view?: RunViewHandle;
 }
 
 /** Maps a resolved custom agent onto the engine's agent-override shape. */
@@ -307,6 +318,148 @@ export function describeEvent(t: Translator, event: ExcaliburEvent): string | nu
     default:
       return pc.dim(t('event.unknown', { type: event.type }));
   }
+}
+
+/** A caller-owned conversational rail kept up across a whole multi-run turn (RUN-FIX-23). */
+export interface ConversationalRail {
+  /** The live rail to inject into every {@link runTask} of the turn (via `options.view`). */
+  view: RunViewHandle;
+  /**
+   * Surface a one-line banner (e.g. a self-heal notice) INSIDE the rail. The caller MUST
+   * route every between-run message through this — a direct `deps.ui.*` write to stdout
+   * while the Ink rail owns the screen corrupts the live frame (the old "se duplica el
+   * input/footer" class of bug).
+   */
+  notice(text: string): void;
+  /** Finish + unmount the rail and hand stdin back to the editor. Idempotent. */
+  close(): Promise<void>;
+}
+
+/**
+ * Mount ONE persistent conversational rail (RUN-FIX-23) that a whole multi-run turn — the
+ * build PLUS every self-heal pass — renders into, so the input box (InterruptBox) stays put
+ * the entire time instead of flickering away each time a sub-run mounts/unmounts its own
+ * rail ("el input desaparece durante la ejecución / durante la evaluación"). The caller
+ * passes the returned `view` to every {@link runTask} via `options.view`; each run clears
+ * the prior run's events (`resetEvents`, which PRESERVES `interruptEnabled` + the typed
+ * draft so the input survives), draws fresh, but the rail — and the input box armed here —
+ * lives across all of them. The caller closes it ONCE, before printing the warm receipt.
+ *
+ * Returns `null` off a TTY (no live rail; the runs stream plain lines and there is no input
+ * box to keep) — the caller then just runs each task normally.
+ */
+export async function mountConversationalRail(
+  deps: CliDeps,
+  opts: {
+    currentWork: string;
+    autonomyLevel: AutonomyLevel;
+    onAbort: () => void;
+    onInterrupt?: RunTaskOptions['onInterrupt'];
+  },
+): Promise<ConversationalRail | null> {
+  if (!deps.ui.isOutputTty()) {
+    return null;
+  }
+  const repoRoot = deps.cwd();
+  const { config } = loadConfigContext(repoRoot);
+  const gatewayContext = loadGatewayContext(repoRoot);
+  const tier = detectColorTier();
+  const mode = detectThemeSync() ?? 'dark';
+  const palette = applyCustomColors(
+    paletteFor(config.ui?.theme ?? 'auto', mode),
+    config.ui?.customTheme,
+  );
+  const reduceOpts = {
+    autonomyLabel: AUTONOMY_LEVEL_LABELS[opts.autonomyLevel],
+    safety: config.safety?.preset ?? 'standard-safe',
+    model: gatewayContext.providerName,
+    push: false,
+  };
+  const railLabels = {
+    push: deps.t('rail.push'),
+    noPush: deps.t('rail.noPush'),
+    tasks: deps.t('rail.tasks'),
+    earlier: deps.t('rail.earlier'),
+    interruptHint: deps.t('rail.interrupt-hint'),
+  };
+  // The rail OWNS stdin for the whole turn: suspend the caller's raw editor ONCE (paired
+  // with resumeInput() in close()). Without this the REPL editor and Ink's useInput both
+  // read the same keystrokes. Mounting is the only risky step — if it ever throws, RESUME
+  // stdin and degrade to null (plain-line runs) rather than crash or leave stdin dead.
+  deps.ui.suspendInput();
+  let view: RunViewHandle;
+  try {
+    const ink = await loadInkUi();
+    view = ink.mountRunView({
+      palette,
+      tier,
+      mode,
+      reduce: reduceOpts,
+      labels: railLabels,
+      compactStatus: true,
+    });
+  } catch {
+    try {
+      deps.ui.resumeInput();
+    } catch {
+      /* best-effort */
+    }
+    return null;
+  }
+  // ESC anywhere in the turn aborts the whole turn (the editor is suspended, so route it
+  // here). Each runTask also gets the turn's signal, so its in-flight run aborts too.
+  view.onEscape(() => opts.onAbort());
+  // Typing-during-execution (RUN-FIX-16): arming onInterrupt also turns the input box ON
+  // (interruptEnabled), which is the whole point — the box is now PERMANENT across the turn.
+  if (opts.onInterrupt !== undefined) {
+    const handler = opts.onInterrupt;
+    view.onInterrupt((text) => {
+      void Promise.resolve(
+        handler(text, {
+          currentWork: opts.currentWork,
+          awaitingAnswer: false,
+          touchedPaths: [],
+          abort: () => opts.onAbort(),
+          say: (s) => view.noticeInterrupt(s),
+        }),
+      ).catch(() => {
+        /* triage is best-effort — a handler error never breaks the turn */
+      });
+    });
+  }
+  let closed = false;
+  return {
+    view,
+    notice: (text: string): void => {
+      try {
+        view.noticeInterrupt(text);
+      } catch {
+        /* a rail notice is best-effort — never break the turn */
+      }
+    },
+    close: async (): Promise<void> => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      try {
+        view.finish();
+      } catch {
+        /* best-effort */
+      }
+      await new Promise((resolve) => setTimeout(resolve, RAIL_FINALIZE_MS));
+      try {
+        view.unmount();
+      } catch {
+        /* a rail teardown fault must never propagate — nunca es nunca */
+      }
+      try {
+        deps.ui.resumeInput();
+      } catch {
+        /* re-arming is best-effort; the next question() re-enables raw lazily */
+      }
+    },
+  };
 }
 
 /**
@@ -630,10 +783,15 @@ export async function runTask(
     executionStyle: choice.executionStyle,
     ...(workItemId !== undefined ? { workItemId } : {}),
   });
-  deps.ui.write();
-  if (!conversational) {
-    // Run-tracker line ("Task run_X → <dir>") — CLI chrome the m-shell never speaks.
-    deps.ui.info(deps.t('run-pipeline.runDir', { id: run.id, dir: run.dir }));
+  // Only write to stdout when we are NOT rendering into a caller-owned rail. With an
+  // injected `view` the Ink rail is already mounted and owns the screen — a stray blank
+  // line here would corrupt the live frame (the input/footer-corruption class of bug).
+  if (options.view === undefined) {
+    deps.ui.write();
+    if (!conversational) {
+      // Run-tracker line ("Task run_X → <dir>") — CLI chrome the m-shell never speaks.
+      deps.ui.info(deps.t('run-pipeline.runDir', { id: run.id, dir: run.dir }));
+    }
   }
 
   const interactive = deps.ui.isInteractive() && !yes;
@@ -681,7 +839,19 @@ export async function runTask(
   // SAME reduceRail, so live = scrub = replay. The conversational shell slims the
   // footer to time · tokens · cost (drops the level/safety/push/model jargon).
   let inkHandle: RunViewHandle | null = null;
-  if (deps.ui.isOutputTty()) {
+  // Whether THIS runTask owns the rail lifecycle (mount + teardown). FALSE when the caller
+  // injected a `view` — then the caller (a conversational build keeping ONE persistent
+  // input box across the build + every self-heal run) owns mount/stdin/handlers/teardown,
+  // and we only render into it (RUN-FIX-23).
+  const ownsView = options.view === undefined;
+  if (options.view !== undefined) {
+    // Reuse the caller-owned rail: clear the PRIOR run's events so this run draws a fresh
+    // section, but KEEP the input box (resetEvents preserves interruptEnabled + the draft).
+    // No suspendInput/mount and no ESC/interrupt wiring — the caller did that ONCE so the
+    // input box never flickers away between runs.
+    inkHandle = options.view;
+    inkHandle.resetEvents();
+  } else if (deps.ui.isOutputTty()) {
     // The Ink rail OWNS stdin for the run: suspend the caller's raw editor first so
     // the REPL editor and Ink's useInput don't both consume the same keystrokes
     // (a no-op for standalone `excalibur run`, which has no raw editor). Paired with
@@ -802,7 +972,12 @@ export async function runTask(
     // rail (leaves the final frame in scrollback via <Static>) and resume the
     // caller's raw editor; drop the parent-signal listener so a finished run's
     // controller is not pinned alive.
-    if (inkHandle !== null) {
+    // ONLY tear down a rail we OWN. When the caller injected `view` (a conversational build
+    // keeping ONE persistent input box across the build + every self-heal run), the caller
+    // owns finish/unmount/resumeInput — tearing it down here would drop the input box
+    // between runs (the "el input desaparece durante la ejecución" bug). We leave the rail
+    // intact and visible for the next run / the caller's final close.
+    if (inkHandle !== null && ownsView) {
       // FINISH then unmount (RUN-FIX-22 part 2): drop ALL live chrome (the InterruptBox +
       // StatusLine footer) and yield a couple of frames so React+Ink REPAINT the clean
       // frame BEFORE we unmount. Ink's unmount does a final re-render of the current tree;

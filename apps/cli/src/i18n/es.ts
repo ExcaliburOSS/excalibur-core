@@ -908,6 +908,8 @@ export const ES: Catalog = {
     '⚠ Me encontré con un problema inesperado y lo he contenido — el shell está bien, podemos seguir. ({error})',
   'repl.recovered-from-signal':
     '⚠ Recibí una señal {signal} y seguí vivo — el shell nunca se cierra solo. Escribe /exit para salir.',
+  'repl.supervisor-recovered':
+    '⟳ El shell se cayó de forma inesperada ({detail}) y lo he recuperado al instante, con tu sesión intacta. Sigamos.',
   'repl.self-heal':
     '◆ Algunas verificaciones salieron en rojo — deja que lo arregle yo (intento {attempt} de {max})…',
   'repl.self-heal-exhausted':

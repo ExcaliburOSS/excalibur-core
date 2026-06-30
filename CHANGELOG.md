@@ -6,6 +6,35 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.13] - 2026-06-30
+
+The m-shell is now **structurally uncrashable**, and the input box stays put for the whole
+turn. Fixes the long-standing "se cierra al arrancar el servidor web" crash and the input
+that disappeared during a build.
+
+### Fixed
+
+- **RUN-FIX-24 — the uncrashable supervisor.** The interactive shell kept dying (~intermittently)
+  during a build that starts a web server (`node server.js &`) — an **uncatchable** death
+  (a `SIGKILL`/native crash for which `process.on('exit')` never fires) that no in-process
+  guard can survive. The real session now runs in a CHILD process supervised by a thin
+  parent that **respawns it (resuming the session) on any abnormal death** — signal, native
+  crash, or OOM — so from the user's seat the shell never disappears: it blinks and comes
+  back with the conversation intact («⟳ el shell se cayó y lo he recuperado»). The supervisor
+  shares the terminal + process group (so Ctrl-C still reaches the foreground child) and
+  ignores stray signals itself; a clean `/exit`/EOF/double-Ctrl-C exits without respawning.
+  Opt out with `EXCALIBUR_NO_SUPERVISOR=1`. Proven by a deterministic self-`SIGKILL` →
+  recovery test (`scripts/verify-supervisor.mjs`).
+- **RUN-FIX-23 — the input box is permanent across the whole turn.** The mid-run input box
+  (InterruptBox) flickered away at the start of execution and again between the build and
+  the self-heal pass, because each sub-run mounted/unmounted its own rail. The conversational
+  build now mounts ONE rail for the whole turn and renders every run (build + every self-heal)
+  into it, so the input box stays present the entire time — verified present DURING a real
+  build (`scripts/verify-mshell-real-landing.mjs` now asserts it).
+- Opt-in exit forensics (`EXCALIBUR_DEBUG_EXIT`) now also instruments `process.kill` and flags
+  any call that targets the shell's own process/group — the diagnostic that pinned the crash
+  as an uncatchable, external death.
+
 ## [1.8.12] - 2026-06-30
 
 The agent can now fan out read-only explorer sub-agents on demand — the high-frequency,

@@ -6,6 +6,7 @@ import { createUi } from './ui';
 import { defaultDeps } from './deps';
 import { buildProgram } from './program';
 import { parseInteractiveArgs, runInteractiveSession } from './session/repl';
+import { supervisorEnabled, runSupervisor } from './session/supervisor';
 import { EXIT_SUCCESS, describeError, exitCodeForError } from './errors';
 import { loadSecretsIntoEnv } from './lib/secrets-store';
 import { installNetworkProxy } from './lib/network-proxy';
@@ -57,25 +58,40 @@ function main(): void {
   const interactiveOptions = parseInteractiveArgs(process.argv);
   if (interactiveOptions !== null && stdinIsTty()) {
     const deps = defaultDeps({ ui });
-    runInteractiveSession(deps, interactiveOptions)
-      .then((code) => {
-        process.exitCode = code;
-      })
-      .catch((error: unknown) => {
-        // DEFENSE-IN-DEPTH behind the per-turn backstop (RUN-FIX-22): with the loop body
-        // fully guarded a rejection here should be unreachable, but if one ever does
-        // escape, do NOT surface it as a hard error EXIT. The interactive session's only
-        // legitimate non-zero exits come from explicit user intent (resolved via the
-        // `then` above), never from a rejection — mapping a stray between-turn reject to a
-        // non-zero code is exactly what made the shell look like it "se salió por un error".
-        // Log it for diagnosability, then exit cleanly (the loop's finally already tore the
-        // session down).
-        ui.error(describeError(error));
-        if (isExcaliburError(error)) {
-          ui.info(`(${error.code})`);
-        }
-        process.exitCode = EXIT_SUCCESS;
-      });
+    const runSession = (): void => {
+      runInteractiveSession(deps, interactiveOptions)
+        .then((code) => {
+          process.exitCode = code;
+        })
+        .catch((error: unknown) => {
+          // DEFENSE-IN-DEPTH behind the per-turn backstop (RUN-FIX-22): with the loop body
+          // fully guarded a rejection here should be unreachable, but if one ever does
+          // escape, do NOT surface it as a hard error EXIT. The interactive session's only
+          // legitimate non-zero exits come from explicit user intent (resolved via the
+          // `then` above), never from a rejection — mapping a stray between-turn reject to a
+          // non-zero code is exactly what made the shell look like it "se salió por un error".
+          // Log it for diagnosability, then exit cleanly (the loop's finally already tore the
+          // session down).
+          ui.error(describeError(error));
+          if (isExcaliburError(error)) {
+            ui.info(`(${error.code})`);
+          }
+          process.exitCode = EXIT_SUCCESS;
+        });
+    };
+    // RUN-FIX-24 — the UNCRASHABLE supervisor. In-process armor (RUN-FIX-14/18/20) survives
+    // every CATCHABLE fault, but NOT an uncatchable SIGKILL (e.g. a stray process-group kill
+    // while a build starts a server) or a native crash. So run the real session in a CHILD
+    // and RESPAWN it (resuming the session) on any abnormal death — from the user's seat the
+    // shell never disappears. The child itself takes this same branch but, being the
+    // supervised child, runs the session in-process (supervisorEnabled() is false for it).
+    if (supervisorEnabled()) {
+      runSupervisor(interactiveOptions, runSession, (detail) =>
+        deps.t('repl.supervisor-recovered', { detail }),
+      );
+      return;
+    }
+    runSession();
     return;
   }
 

@@ -850,6 +850,8 @@ export const EN: Catalog = {
     '⚠ I hit an unexpected problem and contained it — the shell is fine, we can keep going. ({error})',
   'repl.recovered-from-signal':
     '⚠ Caught a {signal} and stayed alive — the shell never quits on its own. Type /exit to leave.',
+  'repl.supervisor-recovered':
+    '⟳ The shell crashed unexpectedly ({detail}) — I brought it right back, your session intact. Let’s keep going.',
   'repl.self-heal':
     '◆ Some checks came back red — let me fix that myself (attempt {attempt} of {max})…',
   'repl.self-heal-exhausted':

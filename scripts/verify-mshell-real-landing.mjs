@@ -11,6 +11,7 @@
  * without `expect`. Slow (a real build is minutes) — run it on demand, not in CI.
  */
 import { execFileSync } from 'node:child_process';
+import { createServer } from 'node:http';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -72,6 +73,20 @@ const env = {
   EXCALIBUR_DEBUG_EXIT: EXIT_LOG,
 };
 
+// Optionally (EXCALIBUR_LANDING_BLOCK_PORT=1) exercise the "puerto ocupado → arrancar el
+// servidor" path the user crashed on, by occupying port 3000 BEFORE the build so the model
+// hits EADDRINUSE and goes through the full retry + self-heal flow. OFF by default: it makes
+// the build pathologically slow (the model can never bind 3000), so the default run is a
+// clean, fast pass/fail gate. Released on harness exit.
+let portBlocker = null;
+if (process.env.EXCALIBUR_LANDING_BLOCK_PORT === '1') {
+  portBlocker = createServer(() => {});
+  await new Promise((resolve) => {
+    portBlocker.listen(3000, '127.0.0.1', resolve);
+    portBlocker.on('error', resolve); // already occupied → fine, still busy
+  });
+}
+
 const BUILD =
   'crea una landing page sencilla: public/index.html con un titulo y un parrafo, ' +
   'public/styles.css con estilos basicos, y un server.js minimal en node que sirva public/ ' +
@@ -87,6 +102,17 @@ writeFileSync(
     `expect -re "(construir o arreglar|What|Describe|›)"`,
     `sleep 1`,
     `send -- "${BUILD}\\r"`,
+    // RUN-FIX-23: the input box (InterruptBox) MUST be present DURING execution — the rail
+    // is mounted ONCE up front and keeps the box up the whole turn (it no longer flickers
+    // away between the build and the self-heal). Its placeholder hint renders within a few
+    // seconds of the build starting; match either language. A shorter local timeout so a
+    // genuine regression fails fast instead of burning the whole 900s budget.
+    `set timeout 240`,
+    `expect {`,
+    `  -re "(escribe para guiar|type to steer)" { puts "INPUTBOX_OK: input box present during execution" }`,
+    `  timeout { puts "INPUTBOX_FAIL: input box NOT seen during execution" }`,
+    `}`,
+    `set timeout 900`,
     // Wait (up to the 900s timeout) for the turn to SETTLE — match a post-build signal:
     // the warm receipt / self-heal / the autonomy footer / the orchestration hint. Any of
     // them means we're past the build and back near the prompt.
@@ -97,12 +123,12 @@ writeFileSync(
     // Give the post-turn settle + any second self-heal pass time to fully land.
     `sleep 20`,
     // THE CRUX: is the shell STILL ALIVE after the whole build settled?
-    `if {[catch {exec kill -0 $pid}]} { puts "LANDING_FAIL: shell DIED at end of build"; exit 7 }`,
+    `if {[catch {exec kill -0 $pid}]} { catch {wait} ws; puts "LANDING_FAIL: shell DIED at end of build"; puts "WAITSTATUS: $ws"; exit 7 }`,
     `puts "LANDING_OK: alive after the build settled"`,
     // …and STILL READING input (the prompt came back, not a zombie)?
     `send -- "hola, sigues ahi?\\r"`,
     `sleep 8`,
-    `if {[catch {exec kill -0 $pid}]} { puts "LANDING_FAIL: died on post-build input"; exit 7 }`,
+    `if {[catch {exec kill -0 $pid}]} { catch {wait} ws; puts "LANDING_FAIL: died on post-build input"; puts "WAITSTATUS: $ws"; exit 7 }`,
     `puts "LANDING_OK: alive + reading after the build"`,
     `send -- "/exit\\r"`,
     `sleep 3`,
@@ -117,10 +143,15 @@ try {
 } catch (e) {
   out = `${e.stdout ?? ''}${e.stderr ?? ''}`;
 }
+try {
+  portBlocker.close();
+} catch {
+  /* best-effort */
+}
 const forensics = existsSync(EXIT_LOG) ? readFileSync(EXIT_LOG, 'utf8') : '';
 
 for (const line of out.split('\n')) {
-  if (/LANDING_(OK|FAIL|NOTE)/.test(line)) console.log(`  ${line.trim()}`);
+  if (/LANDING_(OK|FAIL|NOTE)|INPUTBOX_(OK|FAIL)/.test(line)) console.log(`  ${line.trim()}`);
 }
 if (forensics.length > 0) {
   console.log('\n  ⚑ EXIT FORENSICS:\n');
@@ -135,10 +166,21 @@ if (forensics.length > 0) {
 // Keep the temp dir around on FAILURE for inspection; clean on success.
 const alive =
   /alive after the build settled/.test(out) && /alive \+ reading after the build/.test(out);
+// RUN-FIX-23: the input box must be present DURING execution, not only at the end.
+const inputBoxPresent = /INPUTBOX_OK/.test(out) && !/INPUTBOX_FAIL/.test(out);
 if (!alive || /LANDING_FAIL/.test(out)) {
   console.error(`\n  ✗ FAIL — the m-shell did NOT survive the landing build. Repo: ${dir}\n`);
   console.error(out.slice(-2500));
   process.exit(1);
 }
+if (!inputBoxPresent) {
+  console.error(
+    `\n  ✗ FAIL — the input box was NOT present during execution (RUN-FIX-23). Repo: ${dir}\n`,
+  );
+  console.error(out.slice(-2500));
+  process.exit(1);
+}
 rmSync(dir, { recursive: true, force: true });
-console.log('\n  ✓ PASS — built a real landing and the m-shell stayed alive + reading.\n');
+console.log(
+  '\n  ✓ PASS — built a real landing; the input box stayed present during execution and the m-shell stayed alive + reading.\n',
+);
