@@ -1248,7 +1248,24 @@ export async function runInteractiveSession(
             // loop. Per-edit approval is handled inline by the rail when not auto. A
             // LOW-confidence "edit" guess falls through to a normal conversational
             // turn rather than spinning up a whole workflow on a maybe-question.
-            await runConversationalBuild(deps, runtime, text, ctrl.signal);
+            //
+            // PROACTIVE MULTI-AGENT (#252): the `edit`/build intent used to go STRAIGHT to
+            // a single-agent build, bypassing the auto-orchestrator — which is why a normal
+            // conversational build NEVER fanned out. When the autonomy posture would already
+            // auto-run a parallel swarm, route the build through the SAME `dispatchAutoBuild`
+            // the swarm/plan intents use: it decomposes the task and DERIVES the shape — ≥2
+            // independent workstreams fan out into a VISIBLE parallel swarm (each agent in its
+            // own worktree, verified + merged), else one focused sequential run. This lives in
+            // the intent+complexity layer, NOT a mid-turn tool, so the swarm runs at the turn's
+            // TOP LEVEL (its own rail) — never nested in an agent loop (no re-entrancy) — and
+            // the choice is DETERMINISTIC (complexity gate), not the model's whim. At standard/
+            // lower autonomy (or a single-workstream task) it stays the sequential gated build,
+            // with no new prompts.
+            if (posture('swarm') !== 'ask') {
+              await dispatchAutoBuild(deps, runtime, text, ctrl.signal, seed);
+            } else {
+              await runConversationalBuild(deps, runtime, text, ctrl.signal);
+            }
           } else {
             // chat (pure Q&A) · research-declined → a direct model-first conversational
             // turn (the model still has web_search/web_fetch/research tools).

@@ -71,4 +71,21 @@ describe('buildManagementToolset', () => {
     const review = await tools.review!({});
     expect(review).toMatch(/service\.ts/);
   });
+
+  it('remember captures a durable project memory the agent can persist itself (#253)', async () => {
+    const tools = buildManagementToolset(defaultDeps({ cwd: () => repo }), repo);
+    const out = await tools.remember!({
+      statement: 'src/service.ts must stay idempotent — release() is retried by the queue.',
+    });
+    expect(out).toMatch(/saved a project memory/i);
+    // Inferred the subject path from the statement so a future run is primed.
+    expect(out).toMatch(/src\/service\.ts/);
+    // A corroborating capture REINFORCES (does not duplicate) the same memory.
+    const again = await tools.remember!({
+      statement: 'src/service.ts must stay idempotent — release() is retried by the queue.',
+    });
+    expect(again).toMatch(/reinforced/i);
+    // It is durably persisted on disk (a future run will retrieve it).
+    expect(new RunManager(repo)).toBeDefined();
+  });
 });

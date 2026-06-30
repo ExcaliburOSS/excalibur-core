@@ -2,6 +2,7 @@ import {
   DiscoveryManager,
   InteractionStore,
   PatchStore,
+  MemoryStore,
   RunManager,
   SessionStore,
   SprintStore,
@@ -315,6 +316,32 @@ export function buildManagementToolset(
           'looks good, say so briefly.\n\n' +
           `Working-tree diff:\n${redactSecrets(diff).slice(0, DIFF_BUDGET)}`,
       );
+    },
+
+    async remember({ statement, subjectPaths }): Promise<string> {
+      const text = (statement ?? '').trim();
+      if (text.length === 0) {
+        return 'Nothing to remember — provide a statement.';
+      }
+      // Infer subject paths from path-like mentions when the caller omits them, so a
+      // future run touching those files is primed with this memory (mirrors /remember).
+      const paths =
+        subjectPaths !== undefined && subjectPaths.length > 0
+          ? subjectPaths
+          : [...new Set(text.match(/[\w.-]+(?:\/[\w.-]+)+/g) ?? [])];
+      try {
+        const node = new MemoryStore(repoRoot).capture({
+          type: 'decision',
+          statement: redactSecrets(text),
+          subjectPaths: paths,
+        });
+        const where = paths.length > 0 ? ` (paths: ${paths.join(', ')})` : '';
+        return node.evidenceCount > 1
+          ? `Reinforced an existing project memory (now ${node.evidenceCount} corroborations)${where}.`
+          : `Saved a project memory${where}. Future runs touching it will be primed with this.`;
+      } catch (error) {
+        return `Could not save the memory: ${error instanceof Error ? error.message : String(error)}`;
+      }
     },
   };
 }

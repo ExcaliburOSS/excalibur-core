@@ -6,6 +6,34 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.11] - 2026-06-30
+
+The conversational build now fans out into a visible parallel multi-agent swarm when the
+work is decomposable and autonomy allows (#252), and the agent can persist project memory
+itself (#253).
+
+### Added
+
+- **Proactive multi-agent in the conversational build.** A normal build/edit used to run
+  as a single agent because the `edit` intent went straight to the sequential builder,
+  bypassing the auto-orchestrator. It now routes through the SAME `dispatchAutoBuild` the
+  swarm/plan intents use — when the autonomy posture would auto-run a swarm, it decomposes
+  the task and, for ≥2 independent workstreams, fans out into a VISIBLE parallel swarm
+  (each agent in its own worktree, verified + merged). At standard/lower autonomy, or a
+  single-workstream task, it stays the sequential gated build with no new prompts. This
+  lives in the routing layer (intent + complexity), NOT a mid-turn tool, so the swarm runs
+  at the turn's top level — never nested in an agent loop — and the decision is
+  deterministic (a complexity gate), not the model's whim.
+- **`remember` — the agent persists project memory itself.** A new agent-callable tool
+  lets the model capture a durable project memory (a decision, convention or gotcha) so
+  future runs are primed with it (Knowledge Compounding), inferring subject paths from the
+  statement. A corroborating capture reinforces rather than duplicates. It is the read/
+  light-write management-tool pattern, gated as a benign knowledge write (no code change).
+  This closes the highest-value gap from the proactive-reachability audit; the remaining
+  slash commands (`rewind`/`replay` interactive scrubbers, `fork`/`undo` destructive run
+  surgery, `loop` user mode, `stats` redundant with the agent-callable `insights`) are
+  intentionally user-only.
+
 ## [1.8.10] - 2026-06-30
 
 The mid-run input box is no longer duplicated on every task, and run history is now

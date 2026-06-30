@@ -132,9 +132,14 @@ const READ_ONLY_TOOLS: ReadonlyArray<NativeToolName> = [
   'sessions',
   'verify',
   'review',
+  'remember',
 ];
 
-/** The host-backed MANAGEMENT tools (read-only awareness + judge-only verify/review). */
+/**
+ * The host-backed MANAGEMENT tools (read-only awareness + judge-only verify/review +
+ * the benign memory-capture `remember`). Advertised ONLY when the host wires a
+ * `ManagementToolset` (else filtered, so the model never sees a dead "unavailable" tool).
+ */
 const MANAGEMENT_TOOLS: ReadonlySet<NativeToolName> = new Set<NativeToolName>([
   'project_status',
   'work_items',
@@ -147,6 +152,7 @@ const MANAGEMENT_TOOLS: ReadonlySet<NativeToolName> = new Set<NativeToolName>([
   'sessions',
   'verify',
   'review',
+  'remember',
 ]);
 
 /** Roles that get the read-only tool subset (they observe, they do not change the tree). */
@@ -215,6 +221,7 @@ function eventTypeForTool(name: NativeToolName): ExcaliburEventType {
     case 'sessions':
     case 'verify':
     case 'review':
+    case 'remember':
       return 'tool_call';
   }
 }
@@ -1325,6 +1332,16 @@ export class NativeAgentAdapter implements AgentAdapter {
         reason: 'checklist update (no side effect)',
       };
     }
+    if (name === 'remember') {
+      // Capturing a project memory is a BENIGN knowledge write (a node in the memory
+      // store, never the code/files-of-record) — like update_tasks, the agent persisting
+      // what it learned should never be gated behind a confirm.
+      return {
+        allowed: true,
+        requiresConfirmation: false,
+        reason: 'project-memory capture (no code change)',
+      };
+    }
     if (MANAGEMENT_TOOLS.has(name)) {
       // Management/awareness reads + verify/review (judge-only) are read-only —
       // never gated.
@@ -1675,6 +1692,11 @@ function describeCall(name: NativeToolName, args: Record<string, unknown>): stri
   }
   if (name === 'research') {
     return typeof args['question'] === 'string' ? `question: ${args['question']}` : undefined;
+  }
+  if (name === 'remember') {
+    return typeof args['statement'] === 'string'
+      ? `remembering: ${String(args['statement']).slice(0, 80)}`
+      : undefined;
   }
   return undefined;
 }

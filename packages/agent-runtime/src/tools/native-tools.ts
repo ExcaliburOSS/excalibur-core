@@ -43,6 +43,7 @@ export const NATIVE_TOOL_NAMES = [
   'sessions',
   'verify',
   'review',
+  'remember',
 ] as const;
 export type NativeToolName = (typeof NATIVE_TOOL_NAMES)[number];
 
@@ -499,6 +500,23 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
     description:
       'Get your current working-tree changes framed for a focused SELF-REVIEW (bugs, security, edge cases, missing tests, style). Returns the redacted diff + reviewer guidance; YOU then critique it in this turn. Read-only (no file changes). Use it proactively before finishing, or when the user asks to review the pending changes.',
     parameters: z.object({}).strict(),
+  },
+  {
+    name: 'remember',
+    description:
+      'Persist a durable PROJECT MEMORY (a decision, convention, gotcha or fact worth keeping) so future runs are primed with it (Knowledge Compounding). Call it PROACTIVELY when you learn or decide something non-obvious that should outlive this turn — an architectural choice, a non-obvious constraint, why an approach was rejected. Mention file paths in the statement so a future run touching them surfaces it. A corroborating capture reinforces (not duplicates) an existing memory.',
+    parameters: z
+      .object({
+        statement: z
+          .string()
+          .min(1)
+          .describe('The fact/decision to remember, in one or two clear sentences.'),
+        subjectPaths: z
+          .array(z.string())
+          .optional()
+          .describe('Repo-relative paths this memory is about (else inferred from the statement).'),
+      })
+      .strict(),
   },
 ];
 

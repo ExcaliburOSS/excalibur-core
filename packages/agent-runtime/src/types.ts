@@ -174,6 +174,8 @@ export interface ManagementToolset {
   verify?(args: Record<string, never>): Promise<string>;
   /** Produce a focused review of the current working-tree diff. */
   review?(args: Record<string, never>): Promise<string>;
+  /** Persist a durable project-memory node (decision/convention/gotcha) for future runs. */
+  remember?(args: { statement: string; subjectPaths?: string[] }): Promise<string>;
 }
 
 /** A request to a human/approver to confirm a mutating tool invocation. */
