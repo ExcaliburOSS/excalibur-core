@@ -6,6 +6,29 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.10] - 2026-06-30
+
+The mid-run input box is no longer duplicated on every task, and run history is now
+immutable and scrollable (RUN-FIX-22 part 2 — completing the m-shell build cluster).
+
+### Fixed
+
+- **The user input box is no longer left behind (duplicated) after every task.** The rail
+  is rendered with Ink, which on `unmount()` re-renders the current tree and leaves that
+  final frame in scrollback. That final frame held the live InterruptBox + status footer,
+  so each finished task (and each self-heal repair run) ghosted an input box + footer
+  above the next prompt. The rail now `finish()`es before unmount — RunView drops ALL live
+  chrome (input box, status line, live tail) and Ink repaints a clean frame — so
+  scrollback keeps only the immutable transcript, never a stray input box.
+- **Run history is immutable and scrollable — nothing is erased.** A completed phase used
+  to keep only its header in scrollback; its narration, actions and diff were dropped (the
+  "se borra el histórico" report). A finished phase now commits its FULL tail — every
+  narration line, action and the finalized diff peek — into Ink's `<Static>` scrollback,
+  so you can scroll up and see exactly what happened. Because this lives in scrollback and
+  not the height-capped live region, it cannot trigger the live-region scrollback-erase,
+  and an event is rendered in either the committed transcript or the live tail, never both
+  (no double-render, no flicker).
+
 ## [1.8.9] - 2026-06-30
 
 The m-shell can no longer exit on an execution error — the real, structural fix — plus

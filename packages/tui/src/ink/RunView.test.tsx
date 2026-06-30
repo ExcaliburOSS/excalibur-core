@@ -140,7 +140,7 @@ describe('<RunView>', () => {
     expect(frame).toContain('[y/N/always]');
   });
 
-  it('persists a resolved approval line under a COMPLETED phase, but drops the action tail (RUN-FIX-13)', () => {
+  it('persists a completed phase FULL tail — actions AND the approval — in scrollback (RUN-FIX-22 pt2)', () => {
     const frame = frameOf({
       model: model({
         phases: [
@@ -159,10 +159,36 @@ describe('<RunView>', () => {
       spinnerFrame: 0,
       useStatic: false,
     });
-    // The transient action tail is dropped once the phase completes…
-    expect(frame).not.toContain('read util.js');
-    // …but the approval question + decision PERSISTS in scrollback.
+    // The WHOLE tail now stays in immutable scrollback (was dropped pre-RUN-FIX-22):
+    // the action history AND the approval question + decision both persist.
+    expect(frame).toContain('read util.js');
     expect(frame).toContain('edit util.js? → aprobado');
+  });
+
+  it('FINISHED drops all live chrome, leaving only the committed transcript (RUN-FIX-22 pt2)', () => {
+    const frame = frameOf({
+      model: model({
+        phases: [
+          {
+            id: 'turn',
+            name: 'Building',
+            state: 'completed',
+            events: [{ text: 'wrote index.html', tone: 'success', kind: 'write' }],
+          },
+        ],
+        done: true,
+      }),
+      spinnerFrame: 0,
+      useStatic: false,
+      interruptEnabled: true,
+      interruptNotice: '',
+      finished: true,
+    });
+    // The committed transcript stays…
+    expect(frame).toContain('wrote index.html');
+    // …but NO live input box (its placeholder/hint) and NO status footer remain, so the
+    // final frame in scrollback is clean — no ghost input duplicated on the next prompt.
+    expect(frame).not.toContain('›');
   });
 
   it('shows a done marker when the run completed', () => {

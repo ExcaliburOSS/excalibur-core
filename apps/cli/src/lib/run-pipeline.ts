@@ -153,6 +153,13 @@ function formatEstimate(deps: CliDeps, est: RunEstimate): string {
 
 /** Distinct path-like mentions in a task — a rough pre-plan "affected modules" proxy. */
 const TASK_PATH_PATTERN = /[\w.-]+(?:\/[\w.-]+)+/g;
+
+/**
+ * Frames to wait between `view.finish()` and `unmount()` (RUN-FIX-22 part 2) so React +
+ * Ink flush the no-live-chrome frame before the rail tears down. ~2 frames is plenty and
+ * imperceptible; it only runs once per run at teardown.
+ */
+const RAIL_FINALIZE_MS = 64;
 function estimateAffectedUnits(task: string): number {
   const mentions = new Set(task.match(TASK_PATH_PATTERN) ?? []);
   return Math.max(1, mentions.size);
@@ -796,11 +803,20 @@ export async function runTask(
     // caller's raw editor; drop the parent-signal listener so a finished run's
     // controller is not pinned alive.
     if (inkHandle !== null) {
-      // Swallow each independently (RUN-FIX-22): a throw from unmount() inside this
-      // `finally` would replace the in-flight return and unwind out of runTask into the
-      // self-heal loop's un-guarded region — and if unmount() threw, resumeInput() would
-      // be SKIPPED, leaving stdin seized so the next editor prompt looks dead. Separating
-      // them guarantees the editor always gets stdin back, and neither can escape.
+      // FINISH then unmount (RUN-FIX-22 part 2): drop ALL live chrome (the InterruptBox +
+      // StatusLine footer) and yield a couple of frames so React+Ink REPAINT the clean
+      // frame BEFORE we unmount. Ink's unmount does a final re-render of the current tree;
+      // with `finished` already flushed, that frame is just the <Static> transcript — so
+      // scrollback no longer keeps a ghost input box / footer above the next idle prompt
+      // (the "se duplica el input en cada tarea" bug). Each step is independently
+      // swallowed: a teardown fault must never propagate (it would unwind into the
+      // self-heal loop) and resumeInput() must ALWAYS run so stdin returns to the editor.
+      try {
+        inkHandle.finish();
+      } catch {
+        /* best-effort */
+      }
+      await new Promise((resolve) => setTimeout(resolve, RAIL_FINALIZE_MS));
       try {
         inkHandle.unmount();
       } catch {

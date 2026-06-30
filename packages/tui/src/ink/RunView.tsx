@@ -43,6 +43,14 @@ const MAX_TODO_ITEMS = 6;
 const MAX_NARRATION_ROWS = 4;
 
 /**
+ * Cap on a finalized diff committed to `<Static>` scrollback (RUN-FIX-22 part 2). Static
+ * is NOT the height-capped live region, so this is generous — it only stops a pathological
+ * multi-thousand-line diff from flooding the terminal; the user can `/changes` for the full
+ * patch. A peek is applied on top unless diffs are expanded.
+ */
+const STATIC_DIFF_MAX_LINES = 200;
+
+/**
  * Window a todo list so the band never grows past a few rows (else the live region
  * scrolls over the `<Static>` scrollback and erases history — RUN-FIX-20). Anchors on
  * the in-progress item so it is always visible, collapses the completed prefix into a
@@ -113,6 +121,13 @@ export interface RunViewProps {
    * `excalibur run`/`patch` leave it off to keep the full status footer.
    */
   compactStatus?: boolean;
+  /**
+   * The run has finished and the rail is about to unmount (RUN-FIX-22 part 2): render ONLY
+   * the immutable `<Static>` transcript — no live tail, narration, todos, approval,
+   * InterruptBox or StatusLine — so the final committed frame in scrollback is clean (no
+   * ghost input box / footer above the next idle prompt).
+   */
+  finished?: boolean;
 }
 
 /** The trailing annotation: detail · duration · cost (cost only when ≥ 0.5¢). */
@@ -294,15 +309,35 @@ function PhaseNode({
               </Box>
             );
           })
-        : // A COMPLETED phase keeps only its header in <Static> scrollback — the
-          // transient action tail (reads/writes/narration) is intentionally dropped.
-          // EXCEPT resolved approvals: the question + the user's decision PERSIST, so
-          // the conversation keeps a permanent "you were asked X, you answered Y" record.
-          (phase.events ?? [])
-            .filter((event) => event.kind === 'approval')
-            .map((event, index) => (
-              <EventRow key={`approval-${index}`} event={event} colors={colors} />
-            ))}
+        : // A COMPLETED phase commits its FULL tail to <Static> scrollback (RUN-FIX-22
+          // part 2): every narration line, action and the finalized diff peek — so the
+          // user can scroll up and see exactly what happened, immutable. (It used to keep
+          // only the header + resolved approvals, dropping the action tail — the
+          // "se borra el histórico" bug.) No diffBudget clamp and no shimmer here: this is
+          // scrollback, not the height-capped LIVE region, so it can never trigger the
+          // RUN-FIX-7/20 scrollback-erase (the live region only ever shrinks). An event is
+          // rendered here OR in the active branch above, never both (done vs not-done are
+          // mutually exclusive), so there is no double-render.
+          evs.map((event, index) => {
+            const isLatestDiff = (event.diff ?? '').length > 0 && index === lastDiffIdx;
+            return (
+              <Box key={index} flexDirection="column">
+                <EventRow event={event} colors={colors} />
+                {isLatestDiff ? (
+                  <DiffView
+                    diff={event.diff ?? ''}
+                    expanded={diffsExpanded}
+                    colors={colors}
+                    width={width}
+                    maxLines={STATIC_DIFF_MAX_LINES}
+                    peek={diffsExpanded ? undefined : DEFAULT_PEEK_LINES}
+                    {...(tier !== undefined ? { tier } : {})}
+                    {...(mode !== undefined ? { mode } : {})}
+                  />
+                ) : null}
+              </Box>
+            );
+          })}
     </Box>
   );
 }
@@ -611,6 +646,7 @@ export function RunView(props: RunViewProps): ReactElement {
   const interruptEnabled = props.interruptEnabled ?? false;
   const interruptNotice = props.interruptNotice ?? '';
   const compactStatus = props.compactStatus ?? false;
+  const finished = props.finished ?? false;
 
   const done = (phase: Phase): boolean => phase.state === 'completed' || phase.state === 'failed';
   const completed = model.phases.filter(done);
@@ -692,33 +728,47 @@ export function RunView(props: RunViewProps): ReactElement {
       ) : (
         completed.map(renderPhase)
       )}
-      {liveTail.map(renderPhase)}
-      {streamingNarration.length > 0 ? (
-        <StreamingNarration text={streamingNarration} colors={colors} spinnerFrame={spinnerFrame} />
-      ) : null}
-      {todos.length > 0 ? (
-        <TodosBand
-          todos={todos}
-          spinnerFrame={spinnerFrame}
-          colors={colors}
-          {...(labels?.tasks !== undefined ? { label: labels.tasks } : {})}
-        />
-      ) : null}
-      {interruptNotice.length > 0 ? (
-        <InterruptNotice text={interruptNotice} colors={colors} />
-      ) : null}
-      {approval !== null ? <ApprovalRow approval={approval} colors={colors} /> : null}
-      {interruptEnabled || interruptDraft.length > 0 ? (
-        <InterruptBox
-          text={interruptDraft}
-          colors={colors}
-          width={width}
-          autonomyLabel={model.autonomyLabel}
-          safety={model.status.safety}
-          {...(labels?.interruptHint !== undefined ? { placeholder: labels.interruptHint } : {})}
-        />
-      ) : null}
-      <StatusLine model={model} colors={colors} labels={labels} compact={compactStatus} />
+      {/* FINISHED (RUN-FIX-22 part 2): the run is done and the rail is about to unmount —
+          render NONE of the live chrome (live tail, narration, todos, notice, approval,
+          InterruptBox, StatusLine), so Ink's final unmount re-render commits ONLY the
+          <Static> transcript above. No ghost input box / footer above the next prompt. */}
+      {finished ? null : (
+        <>
+          {liveTail.map(renderPhase)}
+          {streamingNarration.length > 0 ? (
+            <StreamingNarration
+              text={streamingNarration}
+              colors={colors}
+              spinnerFrame={spinnerFrame}
+            />
+          ) : null}
+          {todos.length > 0 ? (
+            <TodosBand
+              todos={todos}
+              spinnerFrame={spinnerFrame}
+              colors={colors}
+              {...(labels?.tasks !== undefined ? { label: labels.tasks } : {})}
+            />
+          ) : null}
+          {interruptNotice.length > 0 ? (
+            <InterruptNotice text={interruptNotice} colors={colors} />
+          ) : null}
+          {approval !== null ? <ApprovalRow approval={approval} colors={colors} /> : null}
+          {interruptEnabled || interruptDraft.length > 0 ? (
+            <InterruptBox
+              text={interruptDraft}
+              colors={colors}
+              width={width}
+              autonomyLabel={model.autonomyLabel}
+              safety={model.status.safety}
+              {...(labels?.interruptHint !== undefined
+                ? { placeholder: labels.interruptHint }
+                : {})}
+            />
+          ) : null}
+          <StatusLine model={model} colors={colors} labels={labels} compact={compactStatus} />
+        </>
+      )}
     </Box>
   );
 }

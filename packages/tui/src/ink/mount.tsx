@@ -54,6 +54,13 @@ export interface RunViewHandle {
   setPlanRibbon(model: PlanRibbonModel): void;
   /** Clear the rail for a new capability (the ribbon stays). */
   resetEvents(): void;
+  /**
+   * Mark the run finished: RunView drops ALL live chrome (input box, status footer, live
+   * tail) so a subsequent `unmount()` leaves only the immutable `<Static>` transcript in
+   * scrollback — no ghost input box duplicated on every task (RUN-FIX-22 part 2). Call it,
+   * yield one frame, then `unmount()`.
+   */
+  finish(): void;
   /** Show an approval; resolves once the user answers. */
   requestApproval(approval: ApprovalPrompt): Promise<ApprovalAnswer>;
   /** Register an ESC handler (the turn's abort); returns an unsubscribe. */
@@ -134,6 +141,7 @@ function RunViewApp({
         interruptDraft={snapshot.interruptDraft}
         interruptEnabled={snapshot.interruptEnabled}
         interruptNotice={snapshot.interruptNotice}
+        finished={snapshot.finished}
         tier={options.tier}
         width={stdout?.columns ?? 80}
         rows={stdout?.rows ?? 24}
@@ -168,6 +176,7 @@ export function mountRunView(options: MountRunViewOptions): RunViewHandle {
     setRibbon: (model) => store.setRibbon(model),
     setPlanRibbon: (model) => store.setPlanRibbon(model),
     resetEvents: () => store.resetEvents(),
+    finish: () => store.finish(),
     requestApproval: (approval) => store.requestApproval(approval),
     onEscape: (listener) => store.onEscape(listener),
     onInterrupt: (listener) => store.onInterrupt(listener),

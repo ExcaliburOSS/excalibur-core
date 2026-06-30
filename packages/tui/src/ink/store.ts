@@ -66,6 +66,14 @@ export interface RunViewSnapshot {
    * when the rail resets or the channel disarms. Empty when there is none.
    */
   interruptNotice: string;
+  /**
+   * The run has FINISHED and the rail is about to unmount (RUN-FIX-22 part 2). When set,
+   * RunView renders ONLY the immutable `<Static>` transcript — no InterruptBox, no
+   * StatusLine, no live tail — so Ink's unmount re-render leaves a CLEAN final frame in
+   * scrollback (just the transcript), with no ghost input box / footer duplicated above
+   * the next idle prompt. Set by `finish()` right before `unmount()`.
+   */
+  finished: boolean;
 }
 
 export interface RunViewStore {
@@ -81,6 +89,8 @@ export interface RunViewStore {
   setPlanRibbon(model: PlanRibbonModel): void;
   /** Clear the rail event log (a new capability starts its own rail below the ribbon). */
   resetEvents(): void;
+  /** Mark the run finished so RunView drops all live chrome before unmount (RUN-FIX-22). */
+  finish(): void;
   toggleDiffs(): void;
   /** Show an approval and resolve once the user answers (y/n/a). */
   requestApproval(approval: ApprovalPrompt): Promise<ApprovalAnswer>;
@@ -198,6 +208,7 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
     interruptDraft: '',
     interruptEnabled: false,
     interruptNotice: '',
+    finished: false,
   };
   const listeners = new Set<() => void>();
   const escapeListeners = new Set<() => void>();
@@ -246,7 +257,24 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
     },
     resetEvents() {
       events.length = 0; // a new capability starts its rail fresh below the ribbon
-      set({ eventsRev: snapshot.eventsRev + 1, streamingNarration: '', interruptNotice: '' });
+      // A new run section starts live again, so clear the finished flag too.
+      set({
+        eventsRev: snapshot.eventsRev + 1,
+        streamingNarration: '',
+        interruptNotice: '',
+        finished: false,
+      });
+    },
+    finish() {
+      // Drop all live chrome before unmount so Ink's final re-render leaves only the
+      // <Static> transcript in scrollback — no ghost input box / footer (RUN-FIX-22).
+      set({
+        finished: true,
+        streamingNarration: '',
+        interruptNotice: '',
+        interruptDraft: '',
+        approval: null,
+      });
     },
     toggleDiffs() {
       set({ diffsExpanded: !snapshot.diffsExpanded });
