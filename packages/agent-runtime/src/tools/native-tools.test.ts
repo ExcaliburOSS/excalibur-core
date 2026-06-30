@@ -40,6 +40,7 @@ const PINNED_NAMES: NativeToolName[] = [
   'verify',
   'review',
   'remember',
+  'investigate',
 ];
 
 describe('NATIVE_TOOLS', () => {

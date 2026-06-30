@@ -44,6 +44,7 @@ export const NATIVE_TOOL_NAMES = [
   'verify',
   'review',
   'remember',
+  'investigate',
 ] as const;
 export type NativeToolName = (typeof NATIVE_TOOL_NAMES)[number];
 
@@ -515,6 +516,19 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
           .array(z.string())
           .optional()
           .describe('Repo-relative paths this memory is about (else inferred from the statement).'),
+      })
+      .strict(),
+  },
+  {
+    name: 'investigate',
+    description:
+      'Fan out READ-ONLY explorer sub-agents to investigate the codebase/task in PARALLEL, and get back a synthesized map: the subsystems involved, what already EXISTS vs is MISSING, the relevant files, risks and open questions. Use it PROACTIVELY to build context FAST before non-trivial work — it reads many areas at once so your own context stays focused — or whenever the user asks how something works across the repo. READ-ONLY: it never writes, patches, or runs anything; it is safe to call any time. Prefer it over many sequential read_file/search_code calls when you need to understand several areas at once.',
+    parameters: z
+      .object({
+        task: z
+          .string()
+          .min(1)
+          .describe('What to investigate — the task, question, or area(s) to explore in parallel.'),
       })
       .strict(),
   },

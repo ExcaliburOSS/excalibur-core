@@ -133,6 +133,7 @@ const READ_ONLY_TOOLS: ReadonlyArray<NativeToolName> = [
   'verify',
   'review',
   'remember',
+  'investigate',
 ];
 
 /**
@@ -153,6 +154,7 @@ const MANAGEMENT_TOOLS: ReadonlySet<NativeToolName> = new Set<NativeToolName>([
   'verify',
   'review',
   'remember',
+  'investigate',
 ]);
 
 /** Roles that get the read-only tool subset (they observe, they do not change the tree). */
@@ -222,6 +224,7 @@ function eventTypeForTool(name: NativeToolName): ExcaliburEventType {
     case 'verify':
     case 'review':
     case 'remember':
+    case 'investigate':
       return 'tool_call';
   }
 }
@@ -1696,6 +1699,11 @@ function describeCall(name: NativeToolName, args: Record<string, unknown>): stri
   if (name === 'remember') {
     return typeof args['statement'] === 'string'
       ? `remembering: ${String(args['statement']).slice(0, 80)}`
+      : undefined;
+  }
+  if (name === 'investigate') {
+    return typeof args['task'] === 'string'
+      ? `investigating: ${String(args['task']).slice(0, 80)}`
       : undefined;
   }
   return undefined;

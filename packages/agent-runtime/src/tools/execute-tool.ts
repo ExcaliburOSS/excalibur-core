@@ -1853,6 +1853,8 @@ export async function executeNativeTool(
         return await execManagement(ctx, 'review', 'review', args);
       case 'remember':
         return await execManagement(ctx, 'remember', 'remember', args);
+      case 'investigate':
+        return await execManagement(ctx, 'investigate', 'investigate', args);
       default: {
         // Exhaustiveness guard: every NativeToolName is handled above.
         const exhaustive: never = name;

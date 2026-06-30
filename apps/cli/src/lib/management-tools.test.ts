@@ -88,4 +88,16 @@ describe('buildManagementToolset', () => {
     // It is durably persisted on disk (a future run will retrieve it).
     expect(new RunManager(repo)).toBeDefined();
   });
+
+  it('investigate is a READ-ONLY parallel exploration tool that needs a real model', async () => {
+    const tools = buildManagementToolset(defaultDeps({ cwd: () => repo }), repo);
+    // The test repo runs the mock provider — parallel exploration needs a REAL model, so
+    // it refuses gracefully (never throws into the agent loop) rather than fan out mock
+    // explorers returning templated junk. (The real fan-out path = computeScope, covered
+    // by the scope-engine tests.)
+    const out = await tools.investigate!({ task: 'how does the run pipeline pick a workflow?' });
+    expect(out).toMatch(/cannot investigate|no real model/i);
+    // An empty task is handled, never throws.
+    await expect(tools.investigate!({ task: '   ' })).resolves.toMatch(/nothing to investigate/i);
+  });
 });

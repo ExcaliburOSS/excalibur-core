@@ -13,10 +13,13 @@ import {
   loadCustomAgents,
   planProgress,
   readPlan,
+  scopeMapToMarkdown,
   type BurndownItem,
 } from '@excalibur/core';
 import { redactSecrets } from '@excalibur/model-gateway';
 import type { ExcaliburEvent } from '@excalibur/shared';
+import { computeScope } from './scope';
+import { loadGatewayContext } from './context';
 import {
   LocalWorkItemProvider,
   WORK_ITEM_LANE_LABELS,
@@ -29,6 +32,14 @@ import { scanSkills } from './isd';
 
 /** A bounded, redacted slice of the working-tree diff for the self-check tools. */
 const DIFF_BUDGET = 24_000;
+
+/**
+ * Max parallel read-only explorer angles the agent-callable `investigate` tool fans out
+ * (RUN-FIX-22 follow-up). Bounded TIGHTER than the explicit `/scope` command: the explorer
+ * model-calls are nested and don't count against the run's hard budget cap, so keep the
+ * proactive mid-turn investigation cheap (the engine clamps to its own hard cap regardless).
+ */
+const INVESTIGATE_MAX_ANGLES = 4;
 
 /**
  * The host implementation of the agent-callable MANAGEMENT tools (the proactive
@@ -341,6 +352,31 @@ export function buildManagementToolset(
           : `Saved a project memory${where}. Future runs touching it will be primed with this.`;
       } catch (error) {
         return `Could not save the memory: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    },
+
+    async investigate({ task }): Promise<string> {
+      const focus = (task ?? '').trim();
+      if (focus.length === 0) {
+        return 'Nothing to investigate — provide a task or question.';
+      }
+      const gw = loadGatewayContext(repoRoot);
+      // Parallel exploration needs a REAL model — the mock returns templated text.
+      if (!gw.configured || gw.providerName === 'mock') {
+        return 'Cannot investigate — no real model is configured for parallel exploration.';
+      }
+      try {
+        // Fan out READ-ONLY explorers (each only RETRIEVES files + reasons — the safety
+        // floor is structural: no write/patch/run). Bound the fan-out TIGHTER than the
+        // explicit `/scope` command: these explorer model-calls are nested and so do not
+        // count against the run's hard budget cap (like verify/review), so keep it cheap.
+        const map = await computeScope(repoRoot, focus, gw, { angles: INVESTIGATE_MAX_ANGLES });
+        if (map === null) {
+          return 'Nothing concrete to report — the task could not be decomposed into areas to explore (it may be too small or outside this repo).';
+        }
+        return scopeMapToMarkdown(map);
+      } catch (error) {
+        return `Investigation failed: ${error instanceof Error ? error.message : String(error)}`;
       }
     },
   };

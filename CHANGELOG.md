@@ -6,6 +6,25 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.12] - 2026-06-30
+
+The agent can now fan out read-only explorer sub-agents on demand — the high-frequency,
+low-risk multi-agent pattern that speeds up almost any task.
+
+### Added
+
+- **`investigate` — agent-callable parallel read-only exploration.** A new tool lets the
+  model fan out READ-ONLY explorer sub-agents in parallel (reusing the scope engine:
+  decompose → explore each angle → synthesize) and get back a map of the subsystems
+  involved, what already exists vs is missing, the relevant files, risks and open
+  questions — without writing, patching or running anything. This is the
+  read-only-exploration multi-agent pattern (distinct from the mutating build swarm in
+  1.8.11): it's safe to call any time, for a task of ANY size, and keeps the main agent's
+  context focused by reading many areas at once instead of a long sequence of single
+  reads. The fan-out is bounded tighter than the explicit `/scope` command (its nested
+  explorer calls don't count against the run's hard budget cap, like `verify`/`review`),
+  and it refuses gracefully when no real model is configured.
+
 ## [1.8.11] - 2026-06-30
 
 The conversational build now fans out into a visible parallel multi-agent swarm when the

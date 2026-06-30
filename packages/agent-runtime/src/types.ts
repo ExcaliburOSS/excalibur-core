@@ -176,6 +176,8 @@ export interface ManagementToolset {
   review?(args: Record<string, never>): Promise<string>;
   /** Persist a durable project-memory node (decision/convention/gotcha) for future runs. */
   remember?(args: { statement: string; subjectPaths?: string[] }): Promise<string>;
+  /** Fan out read-only explorer sub-agents in parallel → a synthesized scope/understanding. */
+  investigate?(args: { task: string }): Promise<string>;
 }
 
 /** A request to a human/approver to confirm a mutating tool invocation. */
