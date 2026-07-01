@@ -102,3 +102,44 @@ describe('RUN-FIX-25 — raw editor close vs spurious/EOF null', () => {
     expect(editor.wasClosedByUser()).toBe(true);
   });
 });
+
+describe('UX2-C — submit tears down the WHOLE framed box (no orphaned top hairline)', () => {
+  it('steps up to the box top, erases to end of screen, and re-commits only the clean line', async () => {
+    const input = fakeTtyInput();
+    const output = fakeTtyOutput();
+    const writes: string[] = [];
+    output.write = (s: string) => {
+      writes.push(s);
+      return true;
+    };
+    const ui = new Ui({
+      stdin: input as unknown as NodeJS.ReadStream,
+      stdout: output as unknown as NodeJS.WriteStream,
+      stderr: output as unknown as NodeJS.WriteStream,
+      interactive: true,
+    });
+    // A FRAMED editor: a top accent hairline (header) + a footer — the idle box shape.
+    const editor = ui.openLineEditor({
+      header: () => ['────────────────'],
+      footer: () => ['────────────────'],
+    });
+    const p = editor.question('› ');
+    for (const ch of 'hola') {
+      input.emit('keypress', ch, { name: ch, sequence: ch });
+    }
+    // Discard the incremental paints — we assert only the SUBMIT teardown.
+    writes.length = 0;
+    input.emit('keypress', '\r', { name: 'return', sequence: '\r' });
+    await expect(p).resolves.toBe('hola');
+
+    const out = writes.join('');
+    const ESC = String.fromCharCode(27);
+    // Whole-box teardown: a cursor-UP to the box top (ESC[1A) + erase-to-end-of-screen
+    // (ESC[0J) — NOT the old footer-only cursor-DOWN, which orphaned the top hairline.
+    expect(out).toContain(`${ESC}[1A`);
+    expect(out).toContain(`${ESC}[0J`);
+    // Re-commits ONLY the clean message (prompt + text), so the conversation still reads.
+    expect(out).toContain('hola');
+    editor.close();
+  });
+});

@@ -143,8 +143,8 @@ function RunViewApp({
         interruptNotice={snapshot.interruptNotice}
         finished={snapshot.finished}
         tier={options.tier}
-        width={stdout?.columns ?? 80}
-        rows={stdout?.rows ?? 24}
+        width={stdout?.columns ?? process.stdout.columns ?? 80}
+        rows={stdout?.rows ?? process.stdout.rows ?? 24}
         {...(options.mode !== undefined ? { mode: options.mode } : {})}
         {...(options.labels !== undefined ? { labels: options.labels } : {})}
         {...(options.compactStatus !== undefined ? { compactStatus: options.compactStatus } : {})}

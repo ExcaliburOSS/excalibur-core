@@ -388,6 +388,7 @@ function InterruptBox({
   autonomyLabel,
   safety,
   placeholder,
+  spinnerFrame,
 }: {
   text: string;
   colors: Palette;
@@ -395,14 +396,17 @@ function InterruptBox({
   autonomyLabel: string;
   safety: string;
   placeholder?: string;
+  spinnerFrame?: number;
 }): ReactElement {
   // The SAME full-width accent rule the idle box uses to bracket the input.
   const rule = glyph.boxH.repeat(Math.max(8, width));
-  // A STATIC accent caret — the SAME steady sword-blue as the idle prompt's native
-  // (OSC-12) cursor, so the framed input reads as one consistent blue. (It used to
-  // breathe along the full accent ramp, which made the caret look a different colour
-  // from the two static accent rules bracketing it — RUN-FIX-22 parity.)
-  const cursor = <Text color={colors.accent}>▌</Text>;
+  // A BLINKING accent caret — parity with the idle prompt's native (OSC-12) cursor, which
+  // the terminal blinks in hardware (the user's "no parpadea" complaint). It toggles on/off
+  // on a calm ~½s cadence (4 frames × ~120ms) and keeps the SAME steady accent colour when
+  // shown, so it never looks a different blue from the two rules bracketing it — an on/off
+  // blink is a different thing from the old colour-PULSE that RUN-FIX-22 removed.
+  const caretOn = spinnerFrame === undefined || Math.floor(spinnerFrame / 4) % 2 === 0;
+  const cursor = <Text color={colors.accent}>{caretOn ? '▌' : ' '}</Text>;
   // The indicator row under the box: ◆ autonomy · permissions (mirrors buildInputFooter).
   const left =
     autonomyLabel.length > 0 && safety.length > 0
@@ -759,6 +763,7 @@ export function RunView(props: RunViewProps): ReactElement {
               text={interruptDraft}
               colors={colors}
               width={width}
+              spinnerFrame={spinnerFrame}
               autonomyLabel={model.autonomyLabel}
               safety={model.status.safety}
               {...(labels?.interruptHint !== undefined

@@ -926,6 +926,13 @@ export const EN: Catalog = {
   'repl.auto-build-parallel':
     'Auto-orchestrating: {count} independent workstreams → a parallel swarm.',
   'repl.auto-build-sequential': 'Auto-orchestrating: a single workstream → one focused task.',
+  'plan-card.title': 'Plan',
+  'plan-card.shape-swarm': 'swarm · {count} parallel workstreams',
+  'plan-card.shape-single': 'a single focused workstream',
+  'plan-card.parallel': 'in parallel',
+  'plan-card.step': 'step',
+  'plan-card.after': 'after {on}',
+  'plan-card.gate': 'Starting… · Esc to adjust or cancel · type to steer me',
   'repl.orchestration-hint':
     'Tip: ask me to "show the orchestration" or "pause it" anytime — or open its live chronogram in the dashboard.',
   'repl.plan-shape-intro':

@@ -1297,6 +1297,30 @@ export class Ui {
       lastHeaderRows = 0;
     };
 
+    // Ends a read on SUBMIT of the FRAMED main box: unlike closeFrame (which erases only
+    // the footer BELOW the input and leaves the top accent hairline orphaned in scrollback
+    // — UX2-C), this steps UP to the box top, wipes the ENTIRE box (top hairline + input +
+    // footer), then re-commits ONLY the clean message line (prompt + text, no frame) so the
+    // conversation still reads but not a single accent frame-line is left behind. Sub-prompts
+    // and unframed reads (no header) fall back to the plain footer-erase; an empty submit
+    // leaves nothing at all.
+    const closeFrameCommit = (line: string): void => {
+      if (this.inSubPrompt || lastHeaderRows === 0) {
+        closeFrame();
+        return;
+      }
+      if (prevCursorRow > 0) {
+        out.write(`${ESC}[${prevCursorRow}A`);
+      }
+      out.write(`${CR}${ESC}[0J`);
+      if (line.length > 0) {
+        out.write(`${currentPrompt ?? ''}${line}\n`);
+      }
+      prevCursorRow = 0;
+      lastInputRows = 1;
+      lastHeaderRows = 0;
+    };
+
     const onKeypress = (_str: string | undefined, key: ParsedKey | undefined): void => {
       if (key === undefined) {
         return;
@@ -1339,7 +1363,9 @@ export class Ui {
         state = result.state;
         switch (result.action.type) {
           case 'submit': {
-            closeFrame(); // erase the framed footer; the typed line stays committed
+            // Strip the WHOLE framed box and re-commit only the clean message line, so no
+            // orphaned top accent hairline is left in scrollback (UX2-C).
+            closeFrameCommit(result.action.line);
             currentPrompt = null;
             const waiter = waiters.shift();
             // A submit only occurs while a line is being read (awaiting ⇒ a waiter

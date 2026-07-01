@@ -47,6 +47,7 @@ import {
   type InterruptModel,
   type LocalSession,
   type RoutePosture,
+  type Subtask,
   type TurnDecision,
   type TurnIntent,
 } from '@excalibur/core';
@@ -59,10 +60,18 @@ import { promisify } from 'node:util';
 import {
   generateId,
   isExcaliburError,
+  AUTONOMY_LEVEL_LABELS,
   type AutonomyLevel,
   type ExcaliburConfig,
 } from '@excalibur/shared';
-import { gaugeCells, paint } from '@excalibur/tui';
+import {
+  gaugeCells,
+  paint,
+  renderPlanCard,
+  detectThemeSync,
+  type ThemeMode,
+  type PlanCardModel,
+} from '@excalibur/tui';
 import pc from 'picocolors';
 import { accent, resetCursorColor, setCursorAccent, shellPalette, shellTier } from '../lib/accent';
 import type { CliDeps } from '../deps';
@@ -2219,6 +2228,66 @@ async function dispatchPlan(
   }
 }
 
+// ORCH1 — the pre-scope fan-out is a best-effort speed-up; if it doesn't resolve within
+// this window the build proceeds ungrounded. Overridable via EXCALIBUR_PRE_SCOPE_TIMEOUT_MS.
+const PRE_SCOPE_TIMEOUT_MS = 45_000;
+
+/** Collapse whitespace + trim a subtask title to one readable line for the plan card. */
+function planLineTitle(title: string): string {
+  const flat = title.replace(/\s+/g, ' ').trim();
+  return flat.length > 68 ? `${flat.slice(0, 67)}…` : flat;
+}
+
+/**
+ * UX2-A — SHOW the plan before a build runs. The decomposition used to be consumed
+ * SILENTLY to size the swarm; the user asked to actually SEE the plan ("todavía no la
+ * he visto"). Render it as the SAME bordered Cobalt plan card the gated `run` flow uses:
+ * each workstream a pending node (with its dependency/parallel marker), the chosen shape,
+ * sensitive areas. Deliberately NON-blocking — "menos fricción posible" — it proceeds
+ * automatically and stays interruptible (Esc / type to steer), so planning is VISIBLE
+ * without bolting an approval gate onto every build. No-op off a TTY / with no subtasks.
+ */
+function presentAutoBuildPlan(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  subtasks: readonly Subtask[],
+  shape: 'swarm' | 'single',
+): void {
+  if (subtasks.length === 0 || !deps.ui.isOutputTty()) {
+    return;
+  }
+  const mode: ThemeMode = detectThemeSync() ?? 'dark';
+  const byId = new Map(subtasks.map((s) => [s.id, s.title]));
+  const phases = subtasks.map((s) => {
+    const on = (s.dependsOn ?? []).map((id) => planLineTitle(byId.get(id) ?? id));
+    const type =
+      on.length > 0
+        ? deps.t('plan-card.after', { on: on.join(', ') })
+        : shape === 'swarm'
+          ? deps.t('plan-card.parallel')
+          : deps.t('plan-card.step');
+    return { name: planLineTitle(s.title), type, optional: false };
+  });
+  const sensitive = subtasks.filter((s) => s.sensitive === true).map((s) => planLineTitle(s.title));
+  const model: PlanCardModel = {
+    workflowName: deps.t('plan-card.title'),
+    workflowId:
+      shape === 'swarm'
+        ? deps.t('plan-card.shape-swarm', { count: subtasks.length })
+        : deps.t('plan-card.shape-single'),
+    autonomyLabel: AUTONOMY_LEVEL_LABELS[runtime.autonomyLevel],
+    phases,
+    ...(sensitive.length > 0 ? { sensitiveAreas: sensitive } : {}),
+    gate: deps.t('plan-card.gate'),
+  };
+  const inner = Math.max(40, Math.min((process.stdout.columns ?? 80) - 6, 72));
+  deps.ui.write();
+  for (const line of renderPlanCard(model, { tier: shellTier, mode, width: inner })) {
+    deps.ui.write(line);
+  }
+  deps.ui.write();
+}
+
 /**
  * AO2 — the auto-orchestrator. Under autonomy a build is executed WITHOUT the
  * user choosing or sizing the shape: Excalibur decomposes the task and DERIVES
@@ -2254,9 +2323,30 @@ async function dispatchAutoBuild(
       // ungrounded — autoScopeForPlanning never throws); honours EXCALIBUR_AUTO_SCOPE=off.
       let grounding: string | undefined;
       if (deps.env['EXCALIBUR_AUTO_SCOPE'] !== 'off') {
-        const scoped = await withThinking(deps, understandingPhrases(deps.t), () =>
-          autoScopeForPlanning(runtime.repoRoot, gateway, text, { signal }),
-        );
+        // HARD timeout: the pre-scope is a best-effort speed-up, NEVER a gate. If the
+        // read-only fan-out is slow (a sluggish model, a big repo), bail to ungrounded so
+        // the build starts anyway — a build must never appear "stuck" on understanding.
+        const budgetMs = Number(deps.env['EXCALIBUR_PRE_SCOPE_TIMEOUT_MS'] ?? PRE_SCOPE_TIMEOUT_MS);
+        const scoped = await withThinking(deps, understandingPhrases(deps.t), async () => {
+          const scopeCtrl = new AbortController();
+          const relay = () => scopeCtrl.abort();
+          signal.addEventListener('abort', relay, { once: true });
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            return await Promise.race([
+              autoScopeForPlanning(runtime.repoRoot, gateway, text, { signal: scopeCtrl.signal }),
+              new Promise<null>((resolve) => {
+                timer = setTimeout(() => {
+                  scopeCtrl.abort(); // terminate the in-flight model calls (no leak)
+                  resolve(null); // ...and proceed ungrounded no matter what
+                }, budgetMs);
+              }),
+            ]);
+          } finally {
+            if (timer) clearTimeout(timer);
+            signal.removeEventListener('abort', relay);
+          }
+        });
         if (scoped !== null) {
           grounding = scoped.markdown;
         }
@@ -2268,7 +2358,11 @@ async function dispatchAutoBuild(
           ...(grounding !== undefined ? { grounding } : {}),
         }),
       );
-      if (chooseBuildShape({ isRepo, subtaskCount: subtasks.length }) === 'swarm') {
+      const shape = chooseBuildShape({ isRepo, subtaskCount: subtasks.length });
+      // UX2-A — SHOW the plan before executing (it used to be sized silently). Non-blocking:
+      // the user sees the workstreams, then the build proceeds (interruptible via Esc/typing).
+      presentAutoBuildPlan(deps, runtime, subtasks, shape === 'swarm' ? 'swarm' : 'single');
+      if (shape === 'swarm') {
         deps.ui.info(deps.t('repl.auto-build-parallel', { count: subtasks.length }));
         await runSwarmFlow(
           deps,

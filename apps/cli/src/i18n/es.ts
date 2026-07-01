@@ -986,6 +986,13 @@ export const ES: Catalog = {
     'Auto-orquestando: {count} flujos de trabajo independientes → un swarm en paralelo.',
   'repl.auto-build-sequential':
     'Auto-orquestando: un solo flujo de trabajo → una ejecución enfocada.',
+  'plan-card.title': 'Plan',
+  'plan-card.shape-swarm': 'swarm · {count} flujos en paralelo',
+  'plan-card.shape-single': 'un solo flujo enfocado',
+  'plan-card.parallel': 'en paralelo',
+  'plan-card.step': 'paso',
+  'plan-card.after': 'tras {on}',
+  'plan-card.gate': 'Empezando… · Esc para ajustar o cancelar · escribe para orientarme',
   'repl.orchestration-hint':
     'Sugerencia: pídeme «muéstrame la orquestación» o «pausala» cuando quieras — o abre su cronograma en vivo en el dashboard.',
   'repl.plan-shape-intro':

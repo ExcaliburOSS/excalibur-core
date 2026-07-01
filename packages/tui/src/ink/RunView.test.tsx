@@ -129,6 +129,30 @@ describe('<RunView>', () => {
     expect(frame).toContain('L3 · standard-safe');
   });
 
+  it('BLINKS the mid-run caret on/off to match the idle native cursor (UX2-B parity)', () => {
+    const box = (frame: number): string =>
+      frameOf({
+        model: model(),
+        spinnerFrame: frame,
+        useStatic: false,
+        interruptEnabled: true,
+        width: 60,
+      });
+    // Calm ~½s cadence: 4 frames ON, 4 OFF. Frame 0 shows the caret; frame 4 hides it
+    // (a real terminal cursor blink), while both keep the two accent rules identical.
+    expect(box(0)).toContain('▌');
+    expect(box(4)).not.toContain('▌');
+    expect(
+      box(0)
+        .split('\n')
+        .filter((l) => /─{20,}/.test(l)).length,
+    ).toBe(
+      box(4)
+        .split('\n')
+        .filter((l) => /─{20,}/.test(l)).length,
+    );
+  });
+
   it('renders an interactive approval (question + options)', () => {
     const frame = frameOf({
       model: model(),
