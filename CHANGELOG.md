@@ -6,6 +6,33 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.8.14] - 2026-07-01
+
+The m-shell never exits on its own after a build, applies changes in-shell (no external
+`excalibur apply`), and reliably serves the web locally. Public Beta.
+
+### Fixed
+
+- **RUN-FIX-25 — the m-shell never exits after a gated build.** On a GATED conversational
+  build (approvals not auto), the Ink approval rail owns stdin; on teardown the handoff back
+  to the raw line editor produced a spurious `null` read, which the REPL treated as a genuine
+  Ctrl-D → it broke the loop → `return 0` → the RUN-FIX-24 supervisor (clean-exit branch) also
+  exited → the shell silently dropped back to the OS prompt (100% of the time, with no error).
+  The raw editor now distinguishes a DELIBERATE close (double-Ctrl-C / teardown) from a bare
+  Ctrl-D / spurious EOF: the REPL breaks its loop on a null read ONLY when the user
+  deliberately closed it — otherwise it re-arms and re-prompts. The shell now exits ONLY on an
+  explicit `/exit` or a deliberate double-Ctrl-C. Proven by a deterministic raw-editor test.
+- **The m-shell applies changes in-shell — no external `excalibur apply`.** A conversational
+  build writes files DIRECTLY to your working tree, but the receipt still told you to run
+  `excalibur apply run_<id>` (an external CLI command) because the next-step hint only counted
+  an explicit patch-apply event, not the direct writes. It now recognizes direct writes as
+  already-in-the-tree and shows an in-shell next step (“already applied — review with
+  `/changes`”), never a CLI apply command.
+- **“Show me the web” reliably serves it locally.** Strengthened the `preview` tool so it is
+  used whenever you build/fix a web app AND whenever you simply ask to see/run/serve it, and
+  made explicit that a server must NEVER be started with `run_command` (`node server.js &`) —
+  those get reaped when the command settles; `preview` keeps it up for the session.
+
 ## [1.8.13] - 2026-06-30
 
 The m-shell is now **structurally uncrashable**, and the input box stays put for the whole
