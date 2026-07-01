@@ -154,15 +154,22 @@ describe('autoScopeForPlanning (AO9-3 proactive pre-plan gate)', () => {
     expect(result!.markdown).toContain('# Scope — add MFA');
   });
 
-  it('probes complexity when not supplied and stays silent for a non-large verdict', async () => {
+  it('probes complexity when not supplied and NOW fans out for a MEDIUM verdict (ORCH1)', async () => {
     const gw = gwContext(); // the fake probe answers "medium"
     const spy = vi.spyOn(gw.gateway as unknown as { chat: () => unknown }, 'chat');
-    const result = await autoScopeForPlanning(NO_REPO, gw, 'add a small thing');
-    expect(result).toBeNull();
-    // Exactly the probe ran — no decompose/explore/synthesize fan-out.
+    const result = await autoScopeForPlanning(NO_REPO, gw, 'add a medium feature');
+    // ORCH1: medium (not only large) now earns a read-only explorer fan-out — the user wants
+    // exploration on most non-trivial turns, so only trivially-`small` tasks stay silent.
+    expect(result).not.toBeNull();
     const probed = spy.mock.calls.some((c) => JSON.stringify(c).includes('Rate how broad'));
     const decomposed = spy.mock.calls.some((c) => JSON.stringify(c).includes('exploration angles'));
     expect(probed).toBe(true);
-    expect(decomposed).toBe(false);
+    expect(decomposed).toBe(true);
+  });
+
+  it('stays silent (no fan-out) only for a trivially-small task', async () => {
+    const gw = gwContext();
+    const result = await autoScopeForPlanning(NO_REPO, gw, 'rename a var', { complexity: 'small' });
+    expect(result).toBeNull();
   });
 });

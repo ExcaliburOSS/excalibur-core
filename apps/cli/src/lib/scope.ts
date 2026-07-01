@@ -242,13 +242,14 @@ export interface AutoScopeOptions {
 }
 
 /**
- * AO9-3 — the PROACTIVE pre-plan gate. Determines the task's complexity (reusing a
- * caller-supplied one, else a cheap one-word probe) and, ONLY for a `large` task,
- * runs a bounded read-only scope so the result can ground plan-shaping. Returns
- * null (silent, no fan-out) for small/medium tasks — the asymmetric "don't
- * interrupt the easy ones" rule, mirroring plan-shaping's own surface gate.
- * Read-only by construction (it reuses {@link computeScope}); never throws — a
- * fault yields null so planning proceeds ungrounded.
+ * AO9-3 / ORCH1 — the PROACTIVE pre-plan gate. Determines the task's complexity
+ * (reusing a caller-supplied one, else a cheap one-word probe) and, for any task that
+ * is NOT trivially `small`, runs a bounded read-only scope so the result can ground
+ * planning/implementation. Returns null (silent, no fan-out) only for `small`/trivial
+ * tasks — the asymmetric "don't add latency to the easy ones" rule. (Before ORCH1 this
+ * fired only for `large`; the user wants exploration on most non-trivial turns, so
+ * `medium` now fans out too.) Read-only by construction (it reuses {@link computeScope});
+ * never throws — a fault yields null so the turn proceeds ungrounded.
  */
 export async function autoScopeForPlanning(
   repoRoot: string,
@@ -257,12 +258,13 @@ export async function autoScopeForPlanning(
   options: AutoScopeOptions = {},
 ): Promise<{ markdown: string; map: ScopeMap } | null> {
   try {
-    // Only the big tasks earn a fan-out. Reuse the caller's complexity when given
-    // (plan-shaping already graded it) so we don't pay for a second probe.
+    // Reuse the caller's complexity when given (plan-shaping already graded it) so we
+    // don't pay for a second probe.
     const complexity =
       options.complexity ??
       (await estimateComplexity(buildScopeClassifier(gw), task, options.signal));
-    if (complexity !== 'large') return null;
+    // ORCH1: medium + large fan out; only small/trivial skip (keeps easy turns fast).
+    if (complexity === 'small') return null;
     const map = await computeScope(repoRoot, task, gw, {
       complexity, // skip the probe inside computeScope (we already have it)
       angles: options.maxAngles ?? PRE_PLAN_SCOPE_ANGLES,

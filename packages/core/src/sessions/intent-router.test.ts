@@ -190,12 +190,22 @@ describe('decidePosture (AO3d-2, proactive 3-way, pure)', () => {
       decidePosture({ risk: 'medium', confidence: 'high', level: 2, autoApprove: false }),
     ).toBe('ask');
   });
-  it('high-risk asks unless full autonomy is granted, then narrates while acting', () => {
+  it('high-risk narrates-while-acting at FULL autonomy (L4) or with auto-approve; asks below L4 (ORCH1)', () => {
+    // ORCH1: at L4 the expensive multi-agent routes (explore/mission/goal) act-with-narration
+    // even without an explicit auto-approve — the safety floors still bind.
     expect(decidePosture({ risk: 'high', confidence: 'high', level: 4, autoApprove: false })).toBe(
-      'ask',
+      'narrate',
     );
     expect(decidePosture({ risk: 'high', confidence: 'high', level: 4, autoApprove: true })).toBe(
       'narrate',
+    );
+    // Below L4 without auto-approve, a high-risk route still asks.
+    expect(decidePosture({ risk: 'high', confidence: 'high', level: 3, autoApprove: false })).toBe(
+      'ask',
+    );
+    // A low-confidence classification NEVER silently runs a heavy route, even at L4.
+    expect(decidePosture({ risk: 'high', confidence: 'low', level: 4, autoApprove: true })).toBe(
+      'ask',
     );
   });
 });

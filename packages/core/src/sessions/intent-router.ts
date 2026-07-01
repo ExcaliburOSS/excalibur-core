@@ -301,7 +301,12 @@ export function decidePosture(input: {
   autoApprove: boolean;
 }): RoutePosture {
   if (input.confidence === 'low') return 'ask';
-  if (input.risk === 'high') return input.autoApprove ? 'narrate' : 'ask';
+  // HIGH-risk (explore best-of-N / mission / goal): at FULL autonomy (L4) act-with-narration
+  // even without an explicit auto-approve — the same gated pipeline still binds every safety
+  // floor (per-edit approval, budget cap, worktree isolation, verify gates). This is what lets
+  // Excalibur reach for these expensive multi-agent routes proactively at max autonomy
+  // (ORCH1); below L4 it still asks unless auto-approve is on.
+  if (input.risk === 'high') return input.autoApprove || input.level >= 4 ? 'narrate' : 'ask';
   if (input.risk === 'medium') return input.autoApprove || input.level >= 3 ? 'act' : 'ask';
   return input.autoApprove || input.level >= 2 ? 'act' : 'ask';
 }

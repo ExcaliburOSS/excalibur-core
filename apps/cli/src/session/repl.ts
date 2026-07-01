@@ -2247,10 +2247,25 @@ async function dispatchAutoBuild(
     try {
       const gateway = loadGatewayContext(runtime.repoRoot);
       requireConfiguredModel(gateway, deps.t); // a swarm of mock agents is pointless
+      // ORCH1 — proactively fan out READ-ONLY explorers BEFORE splitting the work, so the
+      // decomposition is grounded in the REAL files/subsystems involved → more, better-
+      // isolated parallel lanes (and the exploration itself is the multi-agent speed-up the
+      // user asked for). Bounded + medium/large only + best-effort (a fault leaves it
+      // ungrounded — autoScopeForPlanning never throws); honours EXCALIBUR_AUTO_SCOPE=off.
+      let grounding: string | undefined;
+      if (deps.env['EXCALIBUR_AUTO_SCOPE'] !== 'off') {
+        const scoped = await withThinking(deps, understandingPhrases(deps.t), () =>
+          autoScopeForPlanning(runtime.repoRoot, gateway, text, { signal }),
+        );
+        if (scoped !== null) {
+          grounding = scoped.markdown;
+        }
+      }
       const subtasks = await withThinking(deps, decomposePhrases(deps.t), () =>
         decomposeTask(gateway.gateway, text, {
           provider: gateway.providerName,
           signal,
+          ...(grounding !== undefined ? { grounding } : {}),
         }),
       );
       if (chooseBuildShape({ isRepo, subtaskCount: subtasks.length }) === 'swarm') {

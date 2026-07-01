@@ -138,18 +138,34 @@ export function parseFirstJsonObject(content: string): Record<string, unknown> |
 export async function decomposeTask(
   chat: { chat(input: GatewayChatInput): Promise<{ content: string }> },
   task: string,
-  options: { provider?: string; maxSubtasks?: number; signal?: AbortSignal } = {},
+  options: {
+    provider?: string;
+    maxSubtasks?: number;
+    signal?: AbortSignal;
+    /** ORCH1: a read-only scope map (files/subsystems involved) so the split is grounded in
+     * REAL structure — more, better-isolated parallel lanes. Injected into the system prompt. */
+    grounding?: string;
+  } = {},
 ): Promise<SwarmSubtask[]> {
-  const max = options.maxSubtasks ?? 4;
+  const max = options.maxSubtasks ?? 6;
+  const groundingBlock =
+    options.grounding !== undefined && options.grounding.trim().length > 0
+      ? `\n\nThe repo's relevant files and subsystems for this task (use them to split into ` +
+        `independent, file/module-disjoint lanes):\n${options.grounding.trim()}`
+      : '';
   const system =
     'You split a coding task into subtasks for parallel agents, each in an isolated git worktree. ' +
-    'PREFER independent subtasks (touching different files) so they run in parallel. When a subtask ' +
+    'SPLIT the task into 2 or more INDEPENDENT subtasks whenever it touches ≥2 distinct files, ' +
+    'modules or layers (e.g. UI vs API vs data, or several separate files/features) — independent ' +
+    'subtasks run in PARALLEL and finish the whole job faster, so prefer splitting. When a subtask ' +
     'genuinely needs another done FIRST, list its prerequisites in "dependsOn" as the 1-based indices ' +
     'of the earlier subtasks it depends on (a dependent subtask runs in a LATER wave, on top of its ' +
     "predecessors' merged result). Return ONLY a JSON object: " +
     `{"subtasks":[{"title": string, "instruction": string, "dependsOn"?: number[]}]}, at most ${max} ` +
-    'entries. Each "instruction" is a complete, self-contained implementer prompt. If the task is ' +
-    'small or not safely decomposable, return a SINGLE subtask (the whole task). No prose, no code fences.';
+    'entries. Each "instruction" is a complete, self-contained implementer prompt. ONLY if the task is ' +
+    'genuinely small or cannot be split safely (e.g. one focused change to a single file), return a ' +
+    'SINGLE subtask (the whole task). No prose, no code fences.' +
+    groundingBlock;
   let parsed: Record<string, unknown> | null = null;
   try {
     const out = await chat.chat({
@@ -313,6 +329,26 @@ function lanePrompt(instruction: string, feedback: string | undefined): string {
   );
 }
 
+/** True when the repo has a configured test command to verify against. */
+function hasTestCommand(config: ExcaliburConfig): boolean {
+  const t = config.commands?.test;
+  return typeof t === 'string' && t.trim().length > 0;
+}
+
+/**
+ * ORCH1 — a swarm's merged-tree / per-wave verification now defaults ON when the repo has a
+ * configured test command, so aggressive auto-fan-out + auto-merge can never land a broken
+ * COMBINED result silently (two individually-green lanes can still conflict). An explicit
+ * `orchestration.verifyMerge`/`verifyWaves` in config still wins; with no test command it
+ * stays off (nothing to run). A red verdict reverts the merge/wave as before.
+ */
+function verifyMergeEnabled(config: ExcaliburConfig): boolean {
+  return config.orchestration?.verifyMerge ?? hasTestCommand(config);
+}
+function verifyWavesEnabled(config: ExcaliburConfig): boolean {
+  return config.orchestration?.verifyWaves ?? hasTestCommand(config);
+}
+
 /**
  * Runs the decomposed subtasks as a real swarm: each lane drives the real
  * {@link NativeAgentAdapter} in its isolated worktree against the gateway.
@@ -357,38 +393,37 @@ export async function executeSwarm(
     providerName: context.providerName ?? '',
     config: context.config,
   };
-  const verifyWave =
-    context.config.orchestration?.verifyWaves === true
-      ? async (args: {
-          waveIndex: number;
-          waveDiff: string;
-          mergePath: string;
-        }): Promise<{ passed: boolean; revert?: boolean; detail?: string }> => {
-          deps.ui.info(deps.t('swarm.verify-wave', { wave: args.waveIndex + 1 }));
-          const checks = await runMergedTreeChecks(
-            deps,
-            meshCtx,
-            args.mergePath,
-            args.waveDiff,
-            options.signal,
+  const verifyWave = verifyWavesEnabled(context.config)
+    ? async (args: {
+        waveIndex: number;
+        waveDiff: string;
+        mergePath: string;
+      }): Promise<{ passed: boolean; revert?: boolean; detail?: string }> => {
+        deps.ui.info(deps.t('swarm.verify-wave', { wave: args.waveIndex + 1 }));
+        const checks = await runMergedTreeChecks(
+          deps,
+          meshCtx,
+          args.mergePath,
+          args.waveDiff,
+          options.signal,
+        );
+        if (!checks.passed) {
+          deps.ui.warn(
+            deps.t('swarm.wave-reverted', {
+              wave: args.waveIndex + 1,
+              detail: checks.detail ?? '',
+            }),
           );
-          if (!checks.passed) {
-            deps.ui.warn(
-              deps.t('swarm.wave-reverted', {
-                wave: args.waveIndex + 1,
-                detail: checks.detail ?? '',
-              }),
-            );
-            return {
-              passed: false,
-              revert: true,
-              ...(checks.detail ? { detail: checks.detail } : {}),
-            };
-          }
-          deps.ui.success(deps.t('swarm.wave-verified', { wave: args.waveIndex + 1 }));
-          return { passed: true };
+          return {
+            passed: false,
+            revert: true,
+            ...(checks.detail ? { detail: checks.detail } : {}),
+          };
         }
-      : undefined;
+        deps.ui.success(deps.t('swarm.wave-verified', { wave: args.waveIndex + 1 }));
+        return { passed: true };
+      }
+    : undefined;
   const swarmOptions = {
     ...(options.maxConcurrency !== undefined ? { maxConcurrency: options.maxConcurrency } : {}),
     ...(options.maxAttempts !== undefined ? { maxAttempts: options.maxAttempts } : {}),
@@ -1172,7 +1207,7 @@ export async function runSwarmFlow(
   // can break IN COMBINATION; a red run REVERTS the merge instead of shipping a
   // broken integration. The deterministic worktree merge + ground-truth gate is
   // the differentiator CC/OpenCode structurally lack.
-  if (ctx.config.orchestration?.verifyMerge === true) {
+  if (verifyMergeEnabled(ctx.config)) {
     const revertMerge = (): void => {
       try {
         applyPatch(repoRoot, result.mergedDiff, { reverse: true });
