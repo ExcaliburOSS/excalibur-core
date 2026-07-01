@@ -6,6 +6,43 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-01
+
+Excalibur reaches for the multi-agent swarm much more often, and the m-shell now shows you
+the plan before it builds. Public Beta.
+
+### Added
+
+- **The plan is now VISIBLE before a build.** When Excalibur auto-orchestrates a build it
+  decomposes the work into independent workstreams; until now that decomposition was used
+  silently to size the swarm and you never saw it. The conversational shell now renders a
+  bordered plan card — each workstream as a pending node with its parallel/dependency marker,
+  the chosen shape (swarm vs single), and any sensitive areas — right before it starts. It is
+  **non-blocking by design** (minimum friction): it shows the plan, then proceeds, and you can
+  steer or cancel at any time with `Esc` or by typing.
+- **Aggressive proactive orchestration (ORCH1).** Excalibur now fans work out to read-only
+  explorers and parallel implementation lanes far more readily: exploration runs on the
+  standard build/edit paths (medium and large tasks, not just large), the decomposition splits
+  into ≥2 independent lanes whenever the work touches multiple files/modules, and per-wave
+  verification defaults on when the project has a test command. All existing safety rails are
+  kept (8-agent cap, one-core headroom, depth ≤ 1, isolated worktrees, the approvals/read-only
+  floors). Verified end-to-end: a three-file task fans out into a real three-lane parallel
+  swarm.
+
+### Fixed
+
+- **The mid-run input box now matches the idle prompt.** While a build runs, the input box
+  caret now BLINKS on/off to mirror the terminal's native cursor, and the box spans the full
+  terminal width (it could previously collapse to 80 columns). The accent colour already
+  matched on the default theme.
+- **No input frame is left behind in scrollback.** Submitting a message now tears down the
+  entire framed input box — including the top accent hairline — and re-commits only your clean
+  message line, so the conversation reads naturally with no orphaned coloured line.
+- **A build can never appear stuck on "understanding".** The read-only pre-scan that grounds
+  the decomposition is now bounded by a hard timeout (45s, overridable via
+  `EXCALIBUR_PRE_SCOPE_TIMEOUT_MS`): if it runs long it is aborted and the build proceeds
+  anyway, so a slow scan never blocks the build.
+
 ## [1.8.14] - 2026-07-01
 
 The m-shell never exits on its own after a build, applies changes in-shell (no external
