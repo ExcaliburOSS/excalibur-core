@@ -285,10 +285,26 @@ export class CustomCommandAdapter implements AgentAdapter {
           resolve({ kind: 'exit', exitCode: code ?? 0, stdout, stderr });
         }
       });
-      if (stdin !== undefined) {
-        child.stdin?.write(stdin);
+      // Feeding stdin must tolerate a child that has already exited or been killed (e.g. an
+      // already-aborted signal SIGTERMs it above): a write to a closed pipe surfaces
+      // ASYNCHRONOUSLY as an EPIPE 'error' on the stream — not a throw — which, with no
+      // listener, becomes an unhandled error that crashes the process (a CI-flaky EPIPE).
+      // Swallow it; the 'close'/'error' handlers own the real result.
+      child.stdin?.on('error', () => {
+        /* broken pipe on a spawned/killed child — the result comes from close/error */
+      });
+      if (stdin !== undefined && signal?.aborted !== true) {
+        try {
+          child.stdin?.write(stdin);
+        } catch {
+          /* pipe already gone */
+        }
       }
-      child.stdin?.end();
+      try {
+        child.stdin?.end();
+      } catch {
+        /* already closed */
+      }
     });
   }
 }
