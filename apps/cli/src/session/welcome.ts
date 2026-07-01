@@ -53,6 +53,7 @@ const GUARD = '#5a6678'; // cool neutral crossguard
 const ACCENT = PALETTE.accent; // border + title + tips
 const DIMHEX = PALETTE.muted;
 const WHITEHEX = PALETTE.text;
+const WARNHEX = PALETTE.warn; // amber/coral — the "beta" maturity chip
 
 /** RGB channel (0=r,1=g,2=b) of a `#rrggbb` hex. */
 const chan = (hex: string, i: number): number => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
@@ -217,14 +218,19 @@ export function renderWelcome(ctx: WelcomeContext): string {
   const W = Math.max(48, Math.min(ctx.width > 0 ? ctx.width : 80, 100));
   const inner = W - 2;
 
-  // Top border with the title (mixed-case, gradient) + dim version cutting it.
-  const leadPlain = `${B.tl}${B.h} Excalibur v${version} `;
+  // Top border with the title (mixed-case, gradient) + dim version + a small amber
+  // `beta` maturity chip cutting the border (Excalibur is in public beta — honest in
+  // the product itself, matching the web + READMEs).
+  const leadPlain = `${B.tl}${B.h} Excalibur v${version} · beta `;
   const dashes = Math.max(0, inner - leadPlain.length + 1);
   const top =
     paint(`${B.tl}${B.h} `, ACCENT, tier) +
     gradient('Excalibur', tier) +
     ' ' +
     dim(`v${version}`, tier) +
+    ' ' +
+    dim('· ', tier) +
+    paint('beta', WARNHEX, tier) +
     ' ' +
     paint(`${B.h.repeat(dashes)}${B.tr}`, ACCENT, tier);
 

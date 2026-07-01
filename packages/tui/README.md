@@ -1,5 +1,7 @@
 # @excalibur/tui
 
+[![Status: Public Beta](https://img.shields.io/badge/status-public%20beta-F59E0B)](https://github.com/ExcaliburOSS/excalibur-core/issues)
+
 Terminal UI for Excalibur — Ink components and the design system that power the
 conversational shell (the **M-Shell** milestone). One event model
 (`ExcaliburEvent`) renders into a beautiful TUI and, later, the web Workbench.

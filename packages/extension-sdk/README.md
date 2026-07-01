@@ -1,5 +1,9 @@
 # @excalibur-oss/extension-sdk
 
+[![Status: Public Beta](https://img.shields.io/badge/status-public%20beta-F59E0B)](https://github.com/ExcaliburOSS/excalibur-core/issues)
+
+> **🟡 Public Beta** — the SDK works and is in active use, but its surface may still change before 1.0-GA. [Feedback welcome](https://github.com/ExcaliburOSS/excalibur-core/issues).
+
 TypeScript SDK for building **Excalibur** extensions — add workflows,
 methodologies, work-item providers, model adapters, agent adapters, tools,
 context sources, policies, reports and exporters to the

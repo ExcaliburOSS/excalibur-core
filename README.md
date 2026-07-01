@@ -11,7 +11,8 @@
 
 On any model, in any terminal. Local-first, safe by default, no account.
 
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-2368D0.svg)](LICENSE)
+[![Status: Public Beta](https://img.shields.io/badge/status-public%20beta-F59E0B)](https://github.com/ExcaliburOSS/excalibur-core/issues)
+&nbsp;[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-2368D0.svg)](LICENSE)
 &nbsp;[![npm](https://img.shields.io/npm/v/@excalibur-oss/excalibur?color=2368D0&label=npm)](https://www.npmjs.com/package/@excalibur-oss/excalibur)
 &nbsp;![Local-first · no account](https://img.shields.io/badge/local--first-no%20account-2368D0)
 
@@ -23,6 +24,8 @@ cd your-repo && excalibur                  # detects your stack, connects a mode
 ```
 
 > Two commands, about five minutes. Bring your own model key — nothing leaves your machine unless you say so.
+
+> **🟡 Status — Public Beta.** Excalibur is in active daily use and stable enough to build real projects with, but we're still hardening edges and some APIs/config may change before 1.0-GA. Bug reports and feedback are gold — [open an issue](https://github.com/ExcaliburOSS/excalibur-core/issues).
 
 ---
 

@@ -1,5 +1,9 @@
 # Excalibur for VS Code (and Cursor / Windsurf)
 
+[![Status: Public Beta](https://img.shields.io/badge/status-public%20beta-F59E0B)](https://github.com/ExcaliburOSS/excalibur-core/issues)
+
+> **🟡 Public Beta** — in active daily use and stable enough to build with; some APIs/config may still change before 1.0-GA. [Feedback welcome](https://github.com/ExcaliburOSS/excalibur-core/issues).
+
 Run the [Excalibur](https://github.com/ExcaliburOSS/excalibur-core) local-first AI
 coding agent inside your editor. The extension spawns the Excalibur CLI in
 **ACP** mode (`excalibur acp`) and bridges it over the

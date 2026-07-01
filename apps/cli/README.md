@@ -1,6 +1,10 @@
 # Excalibur CLI
 
+[![Status: Public Beta](https://img.shields.io/badge/status-public%20beta-F59E0B)](https://github.com/ExcaliburOSS/excalibur-core/issues)
+
 **Local-first, AI-assisted and agentic software development from your terminal.**
+
+> **🟡 Public Beta** — in active daily use and stable enough to build with; some APIs/config may still change before 1.0-GA. [Feedback welcome](https://github.com/ExcaliburOSS/excalibur-core/issues).
 
 Excalibur Core is an open-source developer toolkit for AI-assisted and agentic
 coding. It runs entirely on your machine, keeps every artifact in a portable
