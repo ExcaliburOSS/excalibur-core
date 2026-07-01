@@ -58,6 +58,11 @@ export interface TurnMetrics {
  */
 export type NextHint =
   | { kind: 'apply'; runId: string }
+  // Changes are ALREADY in the working tree (the write/edit tools wrote them directly) —
+  // there is nothing to `excalibur apply`; the user just reviews them. This is what a
+  // conversational m-shell build produces, so it must NEVER be told to run an external
+  // apply command (RUN-FIX-25).
+  | { kind: 'review_changes' }
   | { kind: 'fix_failures' }
   | { kind: 'branch'; branch: string }
   | { kind: 'resolve_block' };
@@ -310,9 +315,15 @@ function nextHintOf(
   if (changedFiles.length === 0) {
     return null;
   }
-  // Already applied to the tree → nothing to apply.
-  const applied = events.some((e) => e.type === 'patch_applied');
-  if (!applied) {
+  // The changes reach the working tree either via an explicit patch application
+  // (`patch_applied`) OR because the write/edit tools wrote them DIRECTLY to disk — every
+  // such write emits a `file_write` event. The conversational m-shell build does the latter,
+  // so its files ALREADY exist in the tree; there is nothing to `excalibur apply` and it must
+  // never be told to run that external command (RUN-FIX-25). Only a genuinely STAGED patch
+  // (a diff produced without touching the tree — no patch_applied, no file_write) still needs
+  // an explicit apply.
+  const reachedTree = events.some((e) => e.type === 'patch_applied' || e.type === 'file_write');
+  if (!reachedTree) {
     return { kind: 'apply', runId };
   }
   const branch = events.find((e) => e.type === 'branch_created');
@@ -322,7 +333,8 @@ function nextHintOf(
       return { kind: 'branch', branch: name };
     }
   }
-  return null;
+  // On disk already — the next step is to REVIEW in-shell (/changes), never a CLI apply.
+  return { kind: 'review_changes' };
 }
 
 // --- public builder ----------------------------------------------------------

@@ -191,6 +191,20 @@ export interface LineEditor {
   onEscape(handler: () => void): () => void;
   /** Closes the underlying interface. */
   close(): void;
+  /**
+   * Re-arms the editor after a NON-user null read (a bare Ctrl-D or a spurious EOF
+   * delivered during the Ink→raw-editor stdin handoff after a gated build): clears the
+   * `closed` state (unless the user intentionally closed) and re-enables raw input so the
+   * next {@link question} reads a fresh line. The m-shell must never exit on such a null
+   * (RUN-FIX-25) — only an explicit `/exit` or a deliberate double-Ctrl-C ends it.
+   */
+  reopen(): void;
+  /**
+   * True only when the editor was closed by DELIBERATE user intent ({@link close}, from a
+   * double-Ctrl-C or teardown) — NOT when a bare Ctrl-D / spurious EOF keypress set `closed`.
+   * The REPL breaks its loop on a null read ONLY when this is true; otherwise it re-prompts.
+   */
+  wasClosedByUser(): boolean;
 }
 
 function hasTty(stream: NodeJS.ReadableStream): boolean {
@@ -1094,6 +1108,10 @@ export class Ui {
         }
         rl.close();
       },
+      // Non-TTY / piped input: a null read IS a genuine end-of-stream (the pipe closed), so
+      // the REPL SHOULD end. There is no raw stdin to re-arm, so reopen is a no-op.
+      reopen: (): void => {},
+      wasClosedByUser: (): boolean => true,
     };
   }
 
@@ -1116,6 +1134,10 @@ export class Ui {
     let currentPrompt: string | null = null;
     const waiters: Array<(line: string | null) => void> = [];
     let closed = false;
+    // DELIBERATE close (double-Ctrl-C via close(), or teardown) vs. a `closed` set by a bare
+    // Ctrl-D / spurious EOF keypress. The REPL only EXITS on a null read when this is true;
+    // a non-user null re-arms + re-prompts (RUN-FIX-25 — the shell never exits on its own).
+    let intentionallyClosed = false;
     const sigintHandlers = new Set<() => void>();
     const escapeHandlers = new Set<() => void>();
     let rawActive = false;
@@ -1559,12 +1581,25 @@ export class Ui {
           this.suspendEditor = null;
           this.resumeEditor = null;
         }
+        intentionallyClosed = true; // a DELIBERATE close (double-Ctrl-C / teardown) — the REPL may exit
         closed = true; // set first (mirrors the eof path) so no re-entrant read races
         disableRaw();
         while (waiters.length > 0) {
           waiters.shift()?.(null);
         }
       },
+      // Re-arm after a NON-user null (a bare Ctrl-D or a spurious EOF from the Ink→raw stdin
+      // handoff after a gated build). Clears `closed` and re-enables raw input so the next
+      // question() reads a fresh line. Refuses if the user deliberately closed the shell.
+      reopen: (): void => {
+        if (intentionallyClosed) {
+          return;
+        }
+        closed = false;
+        state = { ...state, awaiting: false };
+        enableRaw();
+      },
+      wasClosedByUser: (): boolean => intentionallyClosed,
     };
   }
 

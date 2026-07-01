@@ -785,6 +785,7 @@ export const ES: Catalog = {
   'turn-receipt.minutes-ago': 'hace {minutes}m',
   'turn-receipt.hours-ago': 'hace {hours}h',
   'turn-receipt.hint-apply': 'revisa y luego  excalibur apply {runId}',
+  'turn-receipt.hint-review': 'ya están aplicados en tu proyecto — revísalos con  /changes',
   'turn-receipt.hint-fix-failures': 'las verificaciones de arriba siguen en rojo',
   'turn-receipt.hint-branch': 'los cambios están en la rama {branch}',
   'turn-receipt.hint-resolve-block': 'resuelve el bloqueo para continuar',

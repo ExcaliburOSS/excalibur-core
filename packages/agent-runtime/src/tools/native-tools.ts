@@ -155,7 +155,7 @@ export const NATIVE_TOOLS: ReadonlyArray<NativeToolDefinition> = [
   {
     name: 'preview',
     description:
-      'Start a LOCAL dev/preview server for the project and return its URL so the user can open the web app in a browser. Detects a package.json dev/start/serve/preview script (or serves a bare index.html). The server stays up for the session. Call this after building or fixing a web app instead of telling the user to start a server themselves.',
+      'THE tool to show/open/run/serve/preview a web app locally — use it whenever you build or fix a web app AND whenever the user simply asks to see or run the site ("show me the web", "enséñame la web", "open it"). Starts a LOCAL server (detects a package.json dev/start/serve/preview script, or serves a bare index.html) and returns its localhost URL; give that URL to the user. The server stays up for the whole session. NEVER start a server with run_command (e.g. `node server.js &`, `npm start`) — those get reaped when the command settles and never stay up; always use preview.',
     parameters: z.object({}).strict(),
   },
   {

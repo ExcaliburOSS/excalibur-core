@@ -509,6 +509,11 @@ export async function runInteractiveSession(
   // editor can route ESC / queue typed input.
   let inFlight: AbortController | null = null;
   let sawSigintAtPrompt = false;
+  // RUN-FIX-25: consecutive NON-user null reads (a spurious EOF / dead terminal). The shell
+  // re-arms and re-prompts on each, but a genuinely-closed pty returns null forever, so we
+  // stop after a small burst instead of spinning. Reset on any real read.
+  let spuriousNulls = 0;
+  const MAX_SPURIOUS_NULLS = 8;
   // Background `/bg` threads: id → its AbortController (cancelled on session exit).
   const bgControllers = new Map<string, AbortController>();
 
@@ -861,9 +866,41 @@ export async function runInteractiveSession(
         continue;
       }
       if (line === null) {
-        exitForensicsLog('repl loop break: editor.question() returned null (EOF / Ctrl-D / close)');
-        break; // genuine EOF / Ctrl-D / explicit close
+        // The shell EXITS on a null read ONLY when the user deliberately closed it (a
+        // double-Ctrl-C via editor.close(), or teardown). A null from ANY other source — a
+        // bare Ctrl-D, or a SPURIOUS EOF delivered during the Ink→raw-editor stdin handoff
+        // after a gated build (RUN-FIX-25: the gated approval rail owns stdin, and its
+        // teardown could hand a stray EOT to the re-armed editor → `closed` → null → the old
+        // code broke the loop → return 0 → the supervisor also exited → back to zsh with NO
+        // error) — must NOT end the shell. Excalibur never exits on its own; only an explicit
+        // `/exit` or a deliberate double-Ctrl-C does. Re-arm the editor and re-prompt.
+        if (editor.wasClosedByUser()) {
+          exitForensicsLog('repl loop break: user closed the shell (double Ctrl-C / teardown)');
+          break;
+        }
+        spuriousNulls += 1;
+        if (spuriousNulls > MAX_SPURIOUS_NULLS) {
+          // A genuinely dead terminal (e.g. the pty/pipe closed) returns null every read;
+          // don't spin forever — end after a small burst.
+          exitForensicsLog(
+            `repl loop break: ${spuriousNulls} consecutive null reads (terminal gone)`,
+          );
+          break;
+        }
+        exitForensicsLog('repl: spurious/EOF null read — re-arming the editor, NOT exiting');
+        try {
+          editor.reopen();
+        } catch {
+          /* re-arming is best-effort; the next question() re-enables raw lazily */
+        }
+        try {
+          deps.ui.resumeInput();
+        } catch {
+          /* best-effort */
+        }
+        continue;
       }
+      spuriousNulls = 0; // a real read arrived — reset the dead-terminal guard
       if (line.trim().length > 0) {
         interacted = true; // next prompt shows the follow-up placeholder
       }

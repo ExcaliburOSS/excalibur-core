@@ -180,6 +180,10 @@ function renderNextHint(deps: CliDeps, hint: NextHint): string {
   switch (hint.kind) {
     case 'apply':
       return deps.t('turn-receipt.hint-apply', { runId: hint.runId });
+    case 'review_changes':
+      // Changes are ALREADY in the working tree (the m-shell applies as it builds) — the
+      // next step is an in-shell review, never an external `excalibur apply` (RUN-FIX-25).
+      return deps.t('turn-receipt.hint-review');
     case 'fix_failures':
       return deps.t('turn-receipt.hint-fix-failures');
     case 'branch':
