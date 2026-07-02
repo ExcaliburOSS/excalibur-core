@@ -60,6 +60,45 @@
     const max = maxY(days);
     return days.map((d, i) => `${xAt(i, days.length)},${yAt(pick(d), max)}`).join(' ');
   }
+
+  // F2-4 — the VELOCITY FORECAST. The actual line is clipped at TODAY (a flat
+  // tail through future days read as "no progress planned"), and a dashed
+  // projection extends it: remaining minus the real burn-rate so far per day,
+  // floored at zero. No burn yet → a flat dashed line (an honest forecast too).
+  const todayYmd = ((): string => {
+    const d = new Date();
+    const p2 = (n: number): string => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  })();
+  function todayIndex(days: BurndownPointDto[]): number {
+    let idx = -1;
+    for (let i = 0; i < days.length; i++) {
+      if (days[i]!.date <= todayYmd) idx = i;
+    }
+    return idx;
+  }
+  function actualLine(days: BurndownPointDto[]): string {
+    const idx = todayIndex(days);
+    const max = maxY(days);
+    return days
+      .slice(0, idx + 1)
+      .map((d, i) => `${xAt(i, days.length)},${yAt(d.remaining, max)}`)
+      .join(' ');
+  }
+  function forecastLine(days: BurndownPointDto[]): string {
+    const idx = todayIndex(days);
+    if (idx < 0 || idx >= days.length - 1) return '';
+    const max = maxY(days);
+    const total = days[0]!.remaining;
+    const current = days[idx]!.remaining;
+    const velocity = idx > 0 ? (total - current) / idx : 0;
+    const pts: string[] = [];
+    for (let i = idx; i < days.length; i++) {
+      const projected = Math.max(0, current - velocity * (i - idx));
+      pts.push(`${xAt(i, days.length)},${yAt(projected, max)}`);
+    }
+    return pts.join(' ');
+  }
 </script>
 
 {#if id.length > 0}
@@ -86,6 +125,7 @@
           {t('sprint.burndown')}
           <span class="legend"><span class="dot ideal"></span>{t('sprint.ideal')}</span>
           <span class="legend"><span class="dot actual"></span>{t('sprint.actual')}</span>
+          <span class="legend"><span class="dot forecast"></span>{t('sprint.forecast')}</span>
         </div>
         <svg viewBox={`0 0 ${CHART.w} ${CHART.h}`} class="svg" role="img" aria-label={t('sprint.burndown')}>
           <!-- baseline -->
@@ -97,7 +137,10 @@
             class="axis"
           />
           <polyline points={line(detail.burndown, (d) => d.ideal)} class="ideal" />
-          <polyline points={line(detail.burndown, (d) => d.remaining)} class="actual" />
+          <polyline points={actualLine(detail.burndown)} class="actual" />
+          {#if forecastLine(detail.burndown).length > 0}
+            <polyline points={forecastLine(detail.burndown)} class="forecast" />
+          {/if}
         </svg>
       </section>
     {/if}
@@ -338,6 +381,16 @@
     fill: none;
     stroke: var(--accent);
     stroke-width: 2;
+  }
+  .forecast {
+    fill: none;
+    stroke: var(--accent-2);
+    stroke-width: 2;
+    stroke-dasharray: 5 5;
+    opacity: 0.8;
+  }
+  .dot.forecast {
+    background: var(--accent-2);
   }
   .lane {
     font-size: 10px;

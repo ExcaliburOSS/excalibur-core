@@ -152,6 +152,7 @@ type RouteResult =
   | Html
   | 'sse'
   | 'sse-board'
+  | 'sse-notify'
   | 'sse-orchestration'
   | 'sse-orchestrations'
   | null;
@@ -206,6 +207,9 @@ function route(repoRoot: string, url: URL, writable: boolean): RouteResult {
   }
   if (path === '/api/board/stream') {
     return 'sse-board'; // D5: push board snapshots on change (drops the client poll)
+  }
+  if (path === '/api/notify/stream') {
+    return 'sse-notify'; // F2-2: run status transitions → browser notifications
   }
   if (path === '/api/plans') {
     return { status: 200, body: { plans: buildPlans(repoRoot) } }; // D3
@@ -455,6 +459,64 @@ function streamBoard(repoRoot: string, res: ServerResponse, pollMs: number): voi
   };
   tick();
   const timer = setInterval(tick, Math.max(250, pollMs));
+  timer.unref?.();
+  res.on('close', () => clearInterval(timer));
+}
+
+/**
+ * F2-2 — streams RUN STATUS TRANSITIONS as SSE notification events (a gate now
+ * waiting for the human / a watched run completing or failing), so the dashboard
+ * can raise browser notifications without a poll. The first tick only SEEDS the
+ * baseline — pre-existing states never notify. Anti-spam by design: `completed`
+ * and `failed` fire only for runs previously SEEN in flight (an ordinary chat
+ * turn that is born and finishes between ticks stays silent); `waiting_approval`
+ * always fires — a gate is precisely the thing to interrupt a human for.
+ */
+function streamNotifications(repoRoot: string, res: ServerResponse, pollMs: number): void {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  const seen = new Map<string, string>();
+  let seeded = false;
+  let beats = 0;
+  const tick = (): void => {
+    let runs: ReturnType<RunManager['listRuns']>;
+    try {
+      runs = new RunManager(repoRoot).listRuns();
+    } catch {
+      return; // transient read fault — try again next tick
+    }
+    for (const run of runs) {
+      const id = run.record.id;
+      const status = run.record.status;
+      const prev = seen.get(id);
+      seen.set(id, status);
+      if (!seeded || status === prev) {
+        continue;
+      }
+      const inFlightBefore = prev === 'running' || prev === 'waiting_approval';
+      const notify =
+        status === 'waiting_approval' ||
+        ((status === 'completed' || status === 'failed') && inFlightBefore);
+      if (notify) {
+        res.write(
+          `event: notify\ndata: ${JSON.stringify({
+            kind: status,
+            runId: id,
+            title: run.record.title ?? id,
+          })}\n\n`,
+        );
+      }
+    }
+    seeded = true;
+    if ((beats += 1) % 15 === 0) {
+      res.write(': keep-alive\n\n');
+    }
+  };
+  tick();
+  const timer = setInterval(tick, Math.max(1000, pollMs));
   timer.unref?.();
   res.on('close', () => clearInterval(timer));
 }
@@ -934,6 +996,10 @@ export function createExcaliburServer(options: ServeOptions): Server {
     }
     if (result === 'sse-board') {
       withStreamCap(res, () => streamBoard(options.repoRoot, res, pollMs));
+      return;
+    }
+    if (result === 'sse-notify') {
+      withStreamCap(res, () => streamNotifications(options.repoRoot, res, pollMs));
       return;
     }
     if (result === 'sse-orchestrations') {

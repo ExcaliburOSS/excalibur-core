@@ -269,8 +269,51 @@
     }
   }
 
+  // F2-3 — client-side FILTERS (text / label / priority / assignee): a large
+  // board drowned every lane at once (audit gap #13). Pure view-state over the
+  // live snapshot — SSE pushes and optimistic moves stay untouched; the lane
+  // counters follow the filtered view.
+  let filterText = $state('');
+  let filterLabel = $state('');
+  let filterPriority = $state('');
+  let filterAssignee = $state('');
+  const filtersOn = $derived(
+    filterText.trim().length > 0 ||
+      filterLabel !== '' ||
+      filterPriority !== '' ||
+      filterAssignee !== '',
+  );
+  const allItems = $derived(board?.lanes.flatMap((l) => l.items) ?? []);
+  const labelOptions = $derived([...new Set(allItems.flatMap((i) => i.labels))].sort());
+  const priorityOptions = $derived(
+    [...new Set(allItems.map((i) => i.priority).filter((x): x is string => x !== null))].sort(),
+  );
+  const assigneeOptions = $derived(
+    [...new Set(allItems.map((i) => i.assignee).filter((x): x is string => x !== null))].sort(),
+  );
+  const matches = (item: WorkItemSummary): boolean => {
+    const q = filterText.trim().toLowerCase();
+    if (
+      q.length > 0 &&
+      !item.title.toLowerCase().includes(q) &&
+      !item.key.toLowerCase().includes(q)
+    ) {
+      return false;
+    }
+    if (filterLabel !== '' && !item.labels.includes(filterLabel)) return false;
+    if (filterPriority !== '' && item.priority !== filterPriority) return false;
+    if (filterAssignee !== '' && item.assignee !== filterAssignee) return false;
+    return true;
+  };
+  function clearFilters(): void {
+    filterText = '';
+    filterLabel = '';
+    filterPriority = '';
+    filterAssignee = '';
+  }
+
   const laneItems = (lane: string): WorkItemSummary[] =>
-    board?.lanes.find((l) => l.lane === lane)?.items ?? [];
+    (board?.lanes.find((l) => l.lane === lane)?.items ?? []).filter(matches);
 
   const total = $derived(board?.lanes.reduce((n, l) => n + l.items.length, 0) ?? 0);
   const activeCount = $derived(
@@ -300,6 +343,38 @@
     </div>
   {/if}
 </header>
+
+{#if board !== null && total > 0}
+  <div class="filters">
+    <input
+      class="input finput"
+      type="search"
+      placeholder={t('board.filterPlaceholder')}
+      bind:value={filterText}
+    />
+    {#if labelOptions.length > 0}
+      <select class="input fsel" bind:value={filterLabel}>
+        <option value="">{t('board.filterLabel')}</option>
+        {#each labelOptions as opt (opt)}<option value={opt}>{opt}</option>{/each}
+      </select>
+    {/if}
+    {#if priorityOptions.length > 0}
+      <select class="input fsel" bind:value={filterPriority}>
+        <option value="">{t('board.filterPriority')}</option>
+        {#each priorityOptions as opt (opt)}<option value={opt}>{opt}</option>{/each}
+      </select>
+    {/if}
+    {#if assigneeOptions.length > 0}
+      <select class="input fsel" bind:value={filterAssignee}>
+        <option value="">{t('board.filterAssignee')}</option>
+        {#each assigneeOptions as opt (opt)}<option value={opt}>{opt}</option>{/each}
+      </select>
+    {/if}
+    {#if filtersOn}
+      <button class="btn btn--ghost btn--sm" onclick={clearFilters}>{t('board.filterClear')}</button>
+    {/if}
+  </div>
+{/if}
 
 {#if staleError !== null}
   <div class="stale" role="status">{t('common.error')}: {staleError}</div>
@@ -677,6 +752,20 @@
   .state {
     padding: 64px 0;
     text-align: center;
+  }
+  .filters {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 14px;
+    flex-wrap: wrap;
+  }
+  .finput {
+    max-width: 260px;
+  }
+  .fsel {
+    width: auto;
+    min-width: 130px;
   }
   .board {
     display: grid;

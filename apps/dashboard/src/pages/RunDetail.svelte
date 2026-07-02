@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fetchRunDetail, fetchRunEvents, ApiError } from '../lib/api';
+  import { approveRun, fetchHealth, fetchRunDetail, fetchRunEvents, ApiError } from '../lib/api';
   import type { RunRecord, ExcaliburEvent } from '../lib/contracts';
   import { t } from '../lib/i18n';
 
@@ -13,9 +13,18 @@
   let events = $state<ExcaliburEvent[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
+  // F2-1 — the approval gate reviewed IN CONTEXT: writable flag + a reload tick
+  // (bumped after a decision and by the light poll while the run is active).
+  let writable = $state(false);
+  let acting = $state(false);
+  let reloadTick = $state(0);
+  fetchHealth()
+    .then((h) => (writable = h.write))
+    .catch(() => {});
 
   $effect(() => {
     const runId = id;
+    void reloadTick;
     let cancelled = false; // a fast id-change must not let a stale response clobber state
     loading = true;
     error = null;
@@ -37,6 +46,48 @@
     return () => {
       cancelled = true;
     };
+  });
+
+  // F2-1 — the pending gate question, derived from the event log the page
+  // already fetched: the LAST approval_requested not yet answered/closed.
+  const pendingQuestion = $derived.by(() => {
+    let q: string | null = null;
+    for (const e of events) {
+      if (e.type === 'approval_requested') {
+        const p = e.payload as { message?: unknown; question?: unknown };
+        q =
+          (typeof p.message === 'string' && p.message.length > 0 ? p.message : null) ??
+          (typeof p.question === 'string' && p.question.length > 0 ? p.question : null) ??
+          'Approve?';
+      } else if (
+        e.type === 'approval_approved' ||
+        e.type === 'approval_rejected' ||
+        e.type === 'run_completed'
+      ) {
+        q = null;
+      }
+    }
+    return q;
+  });
+  const gateOpen = $derived(record?.status === 'waiting_approval');
+
+  async function decide(decision: boolean): Promise<void> {
+    acting = true;
+    try {
+      await approveRun(id, decision);
+    } catch {
+      /* the reload below shows the truth either way */
+    }
+    acting = false;
+    reloadTick += 1;
+  }
+
+  // While the run is in flight, keep the page fresh (5s — same cadence as Runs).
+  $effect(() => {
+    const active = record?.status === 'running' || record?.status === 'waiting_approval';
+    if (!active) return undefined;
+    const timer = setInterval(() => (reloadTick += 1), 5000);
+    return () => clearInterval(timer);
   });
 
   interface FileChange {
@@ -97,6 +148,25 @@
     <span>{when(record.startedAt)}</span>
   </div>
 
+  {#if gateOpen}
+    <div class="gate">
+      <div class="gq">⚑ {pendingQuestion ?? t('runDetail.gateTitle')}</div>
+      <div class="muted small">{t('runDetail.gateHint')}</div>
+      {#if writable}
+        <div class="gactions">
+          <button class="btn btn--primary" disabled={acting} onclick={() => decide(true)}>
+            {t('workItem.approve')}
+          </button>
+          <button class="btn btn--danger" disabled={acting} onclick={() => decide(false)}>
+            {t('workItem.reject')}
+          </button>
+        </div>
+      {:else}
+        <div class="muted small">{t('runDetail.gateReadOnly')}</div>
+      {/if}
+    </div>
+  {/if}
+
   <h2>{t('runDetail.changes')}</h2>
   {#if changes.length === 0}
     <div class="muted small">{t('runDetail.noChanges')}</div>
@@ -129,6 +199,25 @@
     margin: 22px 0 10px;
     padding-bottom: 6px;
     border-bottom: 1px solid var(--line);
+  }
+  .gate {
+    border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--line));
+    background: color-mix(in srgb, var(--warn) 8%, transparent);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin: 14px 0 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .gq {
+    font-weight: 600;
+    color: var(--text);
+  }
+  .gactions {
+    display: flex;
+    gap: 10px;
+    margin-top: 2px;
   }
   .back {
     display: inline-block;
