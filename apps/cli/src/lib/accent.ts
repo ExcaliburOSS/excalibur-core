@@ -25,7 +25,26 @@ import {
  * the shell accent matches the canonical Cobalt palette the rail renders with.
  */
 const tier: ColorTier = detectColorTier();
-const palette: Palette = getColors(detectThemeSync() ?? 'dark');
+
+/**
+ * The LIVE shell palette. Seeded synchronously (EXCALIBUR_THEME / COLORFGBG →
+ * dark fallback) so early chrome still paints; {@link initShellTheme} re-resolves
+ * it once real detection lands (config `ui.theme` / the OSC-11 terminal query) —
+ * D11: light-background terminals used to keep the DARK palette forever because
+ * the async query existed but nothing outside the demo ever called it. Mutated
+ * IN PLACE so every module that imported the reference stays current.
+ */
+export const shellPalette: Palette = { ...getColors(detectThemeSync() ?? 'dark') };
+export const shellTier: ColorTier = tier;
+
+/**
+ * D11 — swap the live palette (same object, new values). Call ONCE at session
+ * start with the properly-resolved palette (`paletteFor(config.ui?.theme ??
+ * 'auto', await resolveThemeMode())` + custom colours). Idempotent.
+ */
+export function initShellTheme(next: Palette): void {
+  Object.assign(shellPalette, next);
+}
 
 function brand(text: string, hex: string, ansi16: (s: string) => string): string {
   if (tier === 'none') return text;
@@ -34,16 +53,23 @@ function brand(text: string, hex: string, ansi16: (s: string) => string): string
 }
 
 /** Primary sword-blue accent — the prompt arrow, spinner, live marks. */
-export const accent = (text: string): string => brand(text, palette.accent, pc.blueBright);
+export const accent = (text: string): string => brand(text, shellPalette.accent, pc.blueBright);
 /** Glow accent — emphasis / the pulse crest. */
 export const accentBright = (text: string): string =>
-  brand(text, palette.accentBright, pc.cyanBright);
+  brand(text, shellPalette.accentBright, pc.cyanBright);
 /** Subdued accent — secondary chrome, hints, connectors. */
-export const accentDim = (text: string): string => brand(text, palette.accentDim, pc.blue);
+export const accentDim = (text: string): string => brand(text, shellPalette.accentDim, pc.blue);
 
-/** The resolved palette + colour tier, for callers that paint directly. */
-export const shellPalette: Palette = palette;
-export const shellTier: ColorTier = tier;
+/**
+ * D10 — the SEMANTIC tones (teal ok / coral bad / amber warn) with clean 16-colour
+ * fallbacks, so plain-string chrome (the receipt, selects) paints through the SAME
+ * palette the rail uses instead of raw ANSI green/red/yellow that never matched.
+ */
+export const tone = {
+  ok: (text: string): string => brand(text, shellPalette.success, pc.green),
+  bad: (text: string): string => brand(text, shellPalette.danger, pc.red),
+  warn: (text: string): string => brand(text, shellPalette.warn, pc.yellow),
+};
 
 /**
  * Paint the terminal's native block cursor in the sword-blue accent via OSC 12,
@@ -53,7 +79,7 @@ export const shellTier: ColorTier = tier;
  */
 export function setCursorAccent(stream: NodeJS.WritableStream): void {
   if (tier === 'none') return;
-  stream.write(`\x1b]12;${palette.accent}\x07`);
+  stream.write(`\x1b]12;${shellPalette.accent}\x07`);
 }
 
 /** Restore the terminal's cursor colour to its default (OSC 112). */

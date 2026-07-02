@@ -21,6 +21,7 @@
  */
 
 import pc from 'picocolors';
+import { accent } from './accent';
 import type { ParsedKey } from './raw-input';
 import type { SelectChoice } from '../ui';
 import { DEFAULT_SELECT_KEYMAP, selectActionFor, type SelectKeymap } from './keymap';
@@ -136,7 +137,7 @@ export function renderMultiChoiceLine(
   isSelected: boolean,
   ascii = false,
 ): string {
-  const marker = isActive ? pc.cyan('❯') : ' ';
+  const marker = isActive ? accent('❯') : ' ';
   const box = isSelected ? pc.green(ascii ? '[x]' : '◉') : pc.dim(ascii ? '[ ]' : '◻');
   const label = isActive ? pc.bold(choice.label) : choice.label;
   const hint = choice.hint !== undefined && choice.hint.length > 0 ? ` ${pc.dim(choice.hint)}` : '';

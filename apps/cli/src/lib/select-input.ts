@@ -26,6 +26,7 @@
  */
 
 import pc from 'picocolors';
+import { accent } from './accent';
 import type { ParsedKey } from './raw-input';
 import type { SelectChoice } from '../ui';
 import { DEFAULT_SELECT_KEYMAP, selectActionFor, type SelectKeymap } from './keymap';
@@ -156,9 +157,9 @@ export function reduceSelectKey(
  * label. `number` is the row's 1-based position (dim) for the digit shortcut.
  */
 export function renderChoiceLine(choice: SelectChoice, isActive: boolean, number: number): string {
-  const marker = isActive ? pc.cyan('❯') : ' ';
+  const marker = isActive ? accent('❯') : ' ';
   const num = pc.dim(`${number}.`);
-  const label = isActive ? pc.bold(pc.cyan(choice.label)) : choice.label;
+  const label = isActive ? pc.bold(accent(choice.label)) : choice.label;
   const hint = choice.hint !== undefined && choice.hint.length > 0 ? ` ${pc.dim(choice.hint)}` : '';
   return `${marker} ${num} ${label}${hint}`;
 }

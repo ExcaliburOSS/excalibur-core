@@ -73,6 +73,7 @@ export {
   pulseColor,
   pulseGlyph,
   gaugeCells,
+  resolveThemeMode,
   THEME_NAMES,
   type ThemeMode,
   type ThemeName,

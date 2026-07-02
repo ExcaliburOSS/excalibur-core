@@ -65,9 +65,12 @@ import {
   type ExcaliburConfig,
 } from '@excalibur/shared';
 import {
+  applyCustomColors,
   gaugeCells,
   paint,
+  paletteFor,
   renderPlanCard,
+  resolveThemeMode,
   detectThemeSync,
   type ThemeMode,
   type PlanCardModel,
@@ -76,6 +79,7 @@ import pc from 'picocolors';
 import {
   accent,
   accentDim,
+  initShellTheme,
   resetCursorColor,
   setCursorAccent,
   shellPalette,
@@ -443,6 +447,23 @@ export async function runInteractiveSession(
   };
 
   // Welcome banner (two-column frame + cyberpunk sword) + status line.
+  // D11 (F1.5) — resolve the REAL theme once (config ui.theme wins; else the
+  // OSC-11 background query with the env fallback) and swap the LIVE shell
+  // palette, so light-background terminals stop receiving the dark accent ramp
+  // (the query existed but only the demo ever called it). Best-effort: on any
+  // fault the sync-seeded palette stands. Any stray query-response bytes on
+  // stdin are drained by the D6 flush below, before the first confirm.
+  try {
+    const configured = config.ui?.theme;
+    const mode =
+      configured === 'light' || configured === 'dark' ? configured : await resolveThemeMode();
+    initShellTheme(
+      applyCustomColors(paletteFor(configured ?? 'auto', mode), config.ui?.customTheme),
+    );
+  } catch {
+    /* the sync-seeded palette stands */
+  }
+
   deps.ui.write(renderWelcome(buildWelcomeContext(deps, repoRoot, runtime.model)));
   deps.ui.write();
 

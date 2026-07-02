@@ -1,5 +1,6 @@
 import type { ChangedFile, NextHint, TurnCheck, TurnSummary } from '@excalibur/core';
 import pc from 'picocolors';
+import { accent, tone } from './accent';
 import type { CliDeps } from '../deps';
 
 /**
@@ -93,11 +94,11 @@ function headline(deps: CliDeps, summary: TurnSummary): string {
   );
   switch (summary.tier) {
     case 'action':
-      return `${pc.green('✓')} ${text}`;
+      return `${tone.ok('✓')} ${text}`;
     case 'failed':
-      return `${pc.red('✗')} ${pc.red(text)}`;
+      return `${tone.bad('✗')} ${tone.bad(text)}`;
     case 'partial':
-      return `${pc.yellow('◑')} ${text}`;
+      return `${tone.warn('◑')} ${text}`;
     case 'answer':
       return text;
   }
@@ -128,10 +129,10 @@ function primaryCheck(checks: TurnCheck[]): TurnCheck | null {
 
 /** `✓ tests 142 passed` / `✗ npm build exit 1`. */
 function renderCheck(check: TurnCheck): string {
-  const glyph = check.ok ? pc.green('✓') : pc.red('✗');
+  const glyph = check.ok ? tone.ok('✓') : tone.bad('✗');
   const detail = check.detail !== null ? ` ${check.detail}` : '';
   const body = `${check.label}${detail}`;
-  return `${glyph} ${check.ok ? body : pc.red(body)}`;
+  return `${glyph} ${check.ok ? body : tone.bad(body)}`;
 }
 
 /** The compact one-line metrics summary (files · diffstat · check · cost). */
@@ -150,7 +151,7 @@ function metricsLine(deps: CliDeps, summary: TurnSummary): string {
     parts.push(renderCheck(check));
   }
   if (summary.declined > 0) {
-    parts.push(pc.yellow(deps.t('turn-receipt.declined', { count: summary.declined })));
+    parts.push(tone.warn(deps.t('turn-receipt.declined', { count: summary.declined })));
   }
   const tokens = metrics.inputTokens + metrics.outputTokens;
   const cost = `${compactTokens(tokens)} tok · ${formatCost(metrics.costCents)}`;
@@ -163,10 +164,10 @@ function metricsLine(deps: CliDeps, summary: TurnSummary): string {
 function fileRow(file: ChangedFile): string {
   const glyph =
     file.status === 'added'
-      ? pc.green('A')
+      ? tone.ok('A')
       : file.status === 'deleted'
-        ? pc.red('D')
-        : pc.yellow('M');
+        ? tone.bad('D')
+        : tone.warn('M');
   const path =
     file.path.length > PATH_COLUMN
       ? `…${file.path.slice(-(PATH_COLUMN - 1))}`
@@ -182,10 +183,10 @@ function formatPairStat(insertions: number, deletions: number): string {
   }
   const parts: string[] = [];
   if (insertions > 0) {
-    parts.push(pc.green(`+${insertions}`));
+    parts.push(tone.ok(`+${insertions}`));
   }
   if (deletions > 0) {
-    parts.push(pc.red(`−${deletions}`));
+    parts.push(tone.bad(`−${deletions}`));
   }
   return parts.join(' ');
 }
@@ -251,7 +252,7 @@ export function renderTurnReceipt(
     if (summary.nextHint !== null) {
       ui.write();
       ui.write(
-        `   ${pc.cyan('→')} ${renderNextHint(deps, summary.nextHint)}${pc.dim('     /changes · /rewind')}`,
+        `   ${accent('→')} ${renderNextHint(deps, summary.nextHint)}${pc.dim('     /changes · /rewind')}`,
       );
     }
   }

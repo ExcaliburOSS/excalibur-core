@@ -38,6 +38,7 @@ import {
 import { loadInkUi } from '../ink/load';
 import type { RunViewHandle } from '@excalibur/tui/ink';
 import pc from 'picocolors';
+import { accent } from './accent';
 import { CliUsageError } from '../errors';
 import type { CliDeps } from '../deps';
 import {
@@ -247,7 +248,8 @@ export function describeEvent(t: Translator, event: ExcaliburEvent): string | nu
         t('event.methodology', { methodology: str('methodology') || str('methodologyId') }),
       );
     case 'phase_started':
-      return pc.cyan(
+      // D10 — the ONE sword-blue, never cyan (the accent module's whole reason).
+      return accent(
         t('event.phase-started', {
           name: str('name') || str('phaseId') || event.phaseId || 'phase',
         }),
