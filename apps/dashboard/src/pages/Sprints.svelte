@@ -195,7 +195,7 @@
     align-items: center;
     gap: 12px;
     width: 100%;
-    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    background: var(--panel);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: 13px 16px;
@@ -208,7 +208,7 @@
   .srow:hover,
   .row:hover {
     border-color: var(--accent-dim);
-    transform: translateY(-2px);
+    box-shadow: 0 0 14px -6px rgba(77, 163, 255, 0.45);
     text-decoration: none;
   }
   .sname,

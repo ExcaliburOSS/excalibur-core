@@ -22,12 +22,19 @@ import type { CliDeps } from '../deps';
 const FILE_LIST_CAP = 8;
 /** Pad file paths to this column so the diffstat aligns. */
 const PATH_COLUMN = 32;
+/** Headline cap — the receipt is a recap, never a second transcript (D1). */
+const HEADLINE_MAX = 120;
 
 export interface ReceiptOptions {
   /** Current time, for the relative "Xs ago" footer (injected for testability). */
   now: Date;
   /** Model/provider name shown in the footer. */
   model: string;
+  /** D1 (F1.5) — the live rail already streamed + committed the answer prose, so
+   * an `answer` receipt is only the quiet footer. When the prose was NOT shown
+   * (no TTY rail — scripted/piped runs), the receipt still prints it: it is the
+   * only place the answer would appear. */
+  proseShown?: boolean;
 }
 
 /** Compact token count (`12.4k`, `340`). */
@@ -73,9 +80,17 @@ function formatWhen(deps: CliDeps, now: Date, completedAt: string | null): strin
   return `${rel} · ${clock}`;
 }
 
+/** First non-empty line of the narrative, capped — a recap line, not prose (D1). */
+function oneLine(text: string): string {
+  const first = (text.split('\n').find((l) => l.trim().length > 0) ?? '').trim();
+  return first.length > HEADLINE_MAX ? `${first.slice(0, HEADLINE_MAX - 1)}…` : first;
+}
+
 /** The leading glyph + color for the headline, by tier. */
 function headline(deps: CliDeps, summary: TurnSummary): string {
-  const text = summary.narrative.length > 0 ? summary.narrative : defaultNarrative(deps, summary);
+  const text = oneLine(
+    summary.narrative.length > 0 ? summary.narrative : defaultNarrative(deps, summary),
+  );
   switch (summary.tier) {
     case 'action':
       return `${pc.green('✓')} ${text}`;
@@ -208,10 +223,18 @@ export function renderTurnReceipt(
 ): void {
   const { ui } = deps;
   ui.write();
-  ui.write(` ${headline(deps, summary)}`);
-
-  // Answer turns stop at the headline + footer (anti-cargante).
+  // D1 (F1.5) — an `answer` turn's prose was already streamed live AND committed
+  // to the rail transcript: re-printing `summary.narrative` here duplicated every
+  // chat answer in a second typography (the TUI audit's loudest defect). The
+  // answer receipt is ONLY the quiet footer — EXCEPT when no rail showed the
+  // prose (scripted/piped stdin), where the receipt remains the answer's home.
+  if (summary.tier === 'answer' && options.proseShown !== true) {
+    ui.write(
+      ` ${summary.narrative.length > 0 ? summary.narrative : defaultNarrative(deps, summary)}`,
+    );
+  }
   if (summary.tier !== 'answer') {
+    ui.write(` ${headline(deps, summary)}`);
     ui.write(`   ${metricsLine(deps, summary)}`);
 
     if (summary.changedFiles.length > 0) {

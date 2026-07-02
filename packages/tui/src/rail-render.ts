@@ -16,6 +16,7 @@ import {
 } from './theme.js';
 import type { Phase, PhaseEvent, RailModel } from './rail-types.js';
 import { windowActiveEvents, formatEarlier } from './rail-window.js';
+import { parseMarkdown, type MdLine } from './markdown.js';
 
 /**
  * Pure text rendering of the LIVING RAIL — the NO_COLOR / CI / non-TTY fallback
@@ -119,6 +120,54 @@ export interface RenderRailOptions {
   labels?: { push?: string; noPush?: string; tasks?: string; earlier?: string };
 }
 
+/** SGR wrappers for the string presenter (tier-gated like `c`). */
+const sgr = (text: string, on: string, off: string, tier: ColorTier): string =>
+  tier === 'none' ? text : `[${on}m${text}[${off}m`;
+
+/**
+ * One parsed markdown line → its colored string form (D2) — the string-presenter
+ * twin of the Ink `<MarkdownLine>`, so TTY and non-TTY transcripts stay parity.
+ */
+function mdLineText(
+  line: MdLine,
+  palette: Palette,
+  c: (text: string, hex: string) => string,
+  tier: ColorTier,
+): string {
+  const spans = (base: string): string =>
+    line.spans
+      .map((s) =>
+        s.style === 'code'
+          ? c(s.text, palette.accentBright)
+          : s.style === 'bold'
+            ? sgr(c(s.text, base), '1', '22', tier)
+            : s.style === 'italic'
+              ? sgr(c(s.text, base), '3', '23', tier)
+              : c(s.text, base),
+      )
+      .join('');
+  switch (line.kind) {
+    case 'blank':
+      return '';
+    case 'heading':
+      return sgr(spans(palette.text), '1', '22', tier);
+    case 'quote':
+      return `${c('│', palette.rail)} ${sgr(spans(palette.muted), '3', '23', tier)}`;
+    case 'bullet':
+      return `${c(line.marker ?? '•', palette.accentDim)} ${spans(palette.text)}`;
+    case 'code':
+      return `${c('│', palette.rail)} ${c(line.spans[0]?.text ?? '', palette.muted)}`;
+    case 'code-add':
+      return `${c('│', palette.rail)} ${c(line.spans[0]?.text ?? '', palette.diffAddFg)}`;
+    case 'code-del':
+      return `${c('│', palette.rail)} ${c(line.spans[0]?.text ?? '', palette.diffDelFg)}`;
+    case 'code-meta':
+      return `${c('│', palette.rail)} ${c(line.spans[0]?.text ?? '', palette.accentDim)}`;
+    default:
+      return spans(palette.text);
+  }
+}
+
 /** Renders the rail model to an array of text lines. */
 export function renderRail(model: RailModel, options: RenderRailOptions = {}): string[] {
   const frame = options.spinnerFrame ?? 0;
@@ -180,8 +229,13 @@ export function renderRail(model: RailModel, options: RenderRailOptions = {}): s
           : palette.rail;
         // Narration is the agent's own prose — glyph-less, in the foreground
         // colour, so it reads as a sentence in the conversation (not an action).
+        // D2 (F1.5): rendered as MARKDOWN (same parse as the Ink presenter) so the
+        // non-TTY transcript keeps parity — headings bold, quotes barred, bullets
+        // normalized, fences as bordered code, diff fences tinted add/del.
         if (event.kind === 'narration') {
-          lines.push(` ${c(RAIL, railHex)}   ${c(event.text, palette.text)}`.trimEnd());
+          for (const md of parseMarkdown(event.text)) {
+            lines.push(` ${c(RAIL, railHex)}   ${mdLineText(md, palette, c, tier)}`.trimEnd());
+          }
           return;
         }
         const note = event.note !== undefined && event.note.length > 0 ? `  ${event.note}` : '';

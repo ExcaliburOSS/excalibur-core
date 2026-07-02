@@ -13,6 +13,7 @@ import {
   type ThemeMode,
 } from '../theme.js';
 import type { ApprovalPrompt, Phase, PhaseEvent, RailModel, TodoItem } from '../rail-types.js';
+import { parseMarkdown, type MdLine, type MdSpan } from '../markdown.js';
 import { windowActiveEvents, formatEarlier, ACTIVE_EVENT_WINDOW } from '../rail-window.js';
 import { shimmerSpans } from '../shimmer.js';
 import { useColors } from './ThemeContext.js';
@@ -140,6 +141,96 @@ function annotationFor(phase: Phase): string {
   return parts.length > 0 ? `  ${parts.join(' · ')}` : '';
 }
 
+/** One inline span → an Ink <Text> segment (code lifts to the accent crest). */
+function SpanText({ span, colors, base }: { span: MdSpan; colors: Palette; base: string }) {
+  if (span.style === 'code') {
+    return <Text color={colors.accentBright}>{span.text}</Text>;
+  }
+  return (
+    <Text color={base} bold={span.style === 'bold'} italic={span.style === 'italic'}>
+      {span.text}
+    </Text>
+  );
+}
+
+/** One parsed markdown line → its styled Ink row (D2). */
+function MarkdownLine({ line, colors }: { line: MdLine; colors: Palette }): ReactElement {
+  switch (line.kind) {
+    case 'blank':
+      return <Text> </Text>;
+    case 'heading':
+      return (
+        <Text bold color={colors.text} wrap="wrap">
+          {line.spans.map((s, i) => (
+            <SpanText
+              key={i}
+              span={{ ...s, style: s.style === 'plain' ? 'bold' : s.style }}
+              colors={colors}
+              base={colors.text}
+            />
+          ))}
+        </Text>
+      );
+    case 'quote':
+      return (
+        <Box>
+          <Box flexShrink={0}>
+            <Text color={colors.rail}>{`${glyph.railV} `}</Text>
+          </Box>
+          <Text color={colors.muted} italic wrap="wrap">
+            {line.spans.map((s, i) => (
+              <SpanText key={i} span={s} colors={colors} base={colors.muted} />
+            ))}
+          </Text>
+        </Box>
+      );
+    case 'bullet':
+      return (
+        <Box>
+          <Box flexShrink={0}>
+            <Text color={colors.accentDim}>{`${line.marker ?? '•'} `}</Text>
+          </Box>
+          <Text color={colors.text} wrap="wrap">
+            {line.spans.map((s, i) => (
+              <SpanText key={i} span={s} colors={colors} base={colors.text} />
+            ))}
+          </Text>
+        </Box>
+      );
+    case 'code':
+    case 'code-add':
+    case 'code-del':
+    case 'code-meta': {
+      const fg =
+        line.kind === 'code-add'
+          ? colors.diffAddFg
+          : line.kind === 'code-del'
+            ? colors.diffDelFg
+            : line.kind === 'code-meta'
+              ? colors.accentDim
+              : colors.muted;
+      return (
+        <Box>
+          <Box flexShrink={0}>
+            <Text color={colors.rail}>{`${glyph.railV} `}</Text>
+          </Box>
+          <Text color={fg} wrap="truncate-end">
+            {line.spans[0]?.text ?? ''}
+          </Text>
+        </Box>
+      );
+    }
+    default:
+      return (
+        <Text color={colors.text} italic wrap="wrap">
+          {line.spans.map((s, i) => (
+            <SpanText key={i} span={s} colors={colors} base={colors.text} />
+          ))}
+        </Text>
+      );
+  }
+}
+
 function EventRow({
   event,
   colors,
@@ -158,6 +249,12 @@ function EventRow({
   // glyph+verb action lines. A blank line above gives every utterance air, so a
   // turn breathes (space + rhythm) instead of stacking line-on-line.
   if (event.kind === 'narration') {
+    // D2 (F1.5) — narration renders as MARKDOWN, not raw glyphs: the agent's
+    // prose is the product's primary output. Line-based + streaming-safe (an
+    // unclosed fence renders as code; unbalanced inline markers stay literal).
+    // Plain prose keeps the italic speaking voice; structure (headings, quotes,
+    // bullets, code) renders upright so artifacts read as artifacts.
+    const mdLines = parseMarkdown(event.text);
     return (
       <Box marginTop={1}>
         {/* flexShrink=0 so the marker keeps its full width when the prose wraps
@@ -165,9 +262,11 @@ function EventRow({
         <Box flexShrink={0}>
           <Text color={colors.accent} bold>{` ${pulseGlyph}   `}</Text>
         </Box>
-        <Text color={colors.text} italic wrap="wrap">
-          {event.text}
-        </Text>
+        <Box flexDirection="column" flexGrow={1}>
+          {mdLines.map((line, index) => (
+            <MarkdownLine key={index} line={line} colors={colors} />
+          ))}
+        </Box>
       </Box>
     );
   }

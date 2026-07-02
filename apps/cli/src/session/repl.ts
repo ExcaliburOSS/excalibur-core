@@ -61,7 +61,6 @@ import { promisify } from 'node:util';
 import {
   generateId,
   isExcaliburError,
-  AUTONOMY_LEVEL_LABELS,
   type AutonomyLevel,
   type ExcaliburConfig,
 } from '@excalibur/shared';
@@ -456,6 +455,10 @@ export async function runInteractiveSession(
   if (startup.lines.length > 0) {
     deps.ui.write();
   }
+  // D6 (F1.5) — discard anything typed while the welcome painted: those bytes
+  // used to answer the resume/auto-setup confirms the user had not even SEEN
+  // yet (captured: an immediate `/exit` was eaten as the resume answer).
+  await flushPendingStdin();
   if (
     options.resume === undefined &&
     options.continue !== true &&
@@ -467,9 +470,10 @@ export async function runInteractiveSession(
     const turns = store
       .readTranscript(startup.latest.id)
       .filter((turn) => turn.kind === 'message').length;
-    const resume = await deps.ui.confirm(deps.t('repl.resume-offer', { turns }), {
-      defaultYes: true,
-    });
+    const resume = await deps.ui.confirm(
+      turns === 1 ? deps.t('repl.resume-offer-one') : deps.t('repl.resume-offer', { turns }),
+      { defaultYes: true },
+    );
     if (resume) {
       runtime.session =
         startup.latest.metadata.status === 'closed'
@@ -2223,7 +2227,11 @@ async function runConversationalBuild(
 
     // The warm conversational receipt (the m-shell never speaks the CLI run footer),
     // reflecting the FINAL (post-heal) state.
-    renderTurnReceipt(deps, summary, { now: new Date(), model: runtime.model });
+    renderTurnReceipt(deps, summary, {
+      now: new Date(),
+      model: runtime.model,
+      proseShown: rail !== null,
+    });
     // If checks are STILL red after the cap, say so honestly — Excalibur tried; it
     // never silently dumps the problem back on the user with a "you fix it".
     if (!signal.aborted && summary.checks.some((c) => !c.ok)) {
@@ -2340,7 +2348,7 @@ function presentAutoBuildPlan(
       shape === 'swarm'
         ? deps.t('plan-card.shape-swarm', { count: subtasks.length })
         : deps.t('plan-card.shape-single'),
-    autonomyLabel: AUTONOMY_LEVEL_LABELS[runtime.autonomyLevel],
+    autonomyLabel: deps.t(`autonomy.level-${runtime.autonomyLevel}`),
     phases,
     ...(sensitive.length > 0 ? { sensitiveAreas: sensitive } : {}),
     gate: deps.t('plan-card.gate'),
@@ -3804,6 +3812,35 @@ async function handleForkCommand(
  * pre-flight-checked). Mirrors `excalibur undo` (full revert; use the scrubber's
  * `u` to undo to a specific step).
  */
+/**
+ * D6 (F1.5) — drains bytes already buffered on stdin so a confirm shown AFTER the
+ * welcome can never be answered by keystrokes typed BEFORE it was visible. One
+ * short paused-mode read window; a no-op off a TTY and best-effort by contract.
+ */
+async function flushPendingStdin(): Promise<void> {
+  const stdin = process.stdin;
+  if (stdin.isTTY !== true) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    const onReadable = (): void => {
+      while (stdin.read() !== null) {
+        /* discard pre-prompt bytes */
+      }
+    };
+    stdin.on('readable', onReadable);
+    setTimeout(() => {
+      try {
+        stdin.removeListener('readable', onReadable);
+        stdin.pause();
+      } catch {
+        /* best-effort */
+      }
+      resolve();
+    }, 30);
+  });
+}
+
 async function handleUndoCommand(deps: CliDeps): Promise<void> {
   let runId: string;
   try {
@@ -3985,11 +4022,12 @@ function replayTranscript(deps: CliDeps, store: SessionStore, session: LocalSess
   deps.ui.write();
 }
 
-/** Closes the session: status → closed, farewell with a timestamp. */
+/** Closes the session: status → closed, a warm farewell (no ids, no timestamps). */
 function closeSession(deps: CliDeps, runtime: SessionRuntime): void {
   runtime.store.updateMetadata(runtime.session.id, { status: 'closed' });
-  const now = new Date();
   deps.ui.write();
-  deps.ui.info(deps.t('repl.closed', { id: runtime.session.id, timestamp: now.toISOString() }));
+  // D4 (F1.5) — the farewell speaks the conversational voice: no sess_ id, no ISO
+  // timestamp (both leaked jargon). The id lives in the session store for /log.
+  deps.ui.info(deps.t('repl.closed'));
   deps.ui.write(deps.t('repl.goodbye'));
 }

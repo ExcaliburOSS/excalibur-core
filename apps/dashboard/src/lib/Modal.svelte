@@ -113,10 +113,10 @@
     max-height: 80vh;
     display: flex;
     flex-direction: column;
-    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    background: var(--panel);
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-3), var(--inset-top), 0 0 0 1px rgba(77, 163, 255, 0.08);
+    box-shadow: var(--shadow-3), 0 0 0 1px rgba(77, 163, 255, 0.08);
     overflow: hidden;
   }
   .panel.wide {

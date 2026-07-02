@@ -700,12 +700,12 @@
     }
   }
   .lane {
-    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    background: var(--panel);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     min-height: 120px;
     overflow: hidden;
-    box-shadow: var(--shadow-1), var(--inset-top);
+    box-shadow: none;
   }
   .lane > header {
     position: relative;
@@ -745,21 +745,18 @@
   }
   .card {
     display: block;
-    background: linear-gradient(180deg, var(--panel-3), var(--panel-2));
+    background: var(--panel-2);
     border: 1px solid var(--line);
     border-radius: var(--radius-sm);
     padding: 11px 12px;
     color: var(--text);
-    box-shadow: var(--shadow-1);
     transition:
       border-color var(--transition),
-      box-shadow var(--transition),
-      transform var(--transition);
+      box-shadow var(--transition);
   }
   .card:hover {
     border-color: var(--accent-dim);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-2);
+    box-shadow: 0 0 14px -6px rgba(77, 163, 255, 0.45);
     text-decoration: none;
   }
   .card.active {

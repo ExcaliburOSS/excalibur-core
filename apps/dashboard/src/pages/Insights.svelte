@@ -274,11 +274,10 @@
     margin-bottom: 26px;
   }
   .kpi {
-    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    background: var(--panel);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: 16px 18px;
-    box-shadow: var(--shadow-1), var(--inset-top);
   }
   .kpi .v {
     font-size: 28px;
@@ -301,11 +300,10 @@
     margin-top: 2px;
   }
   .card {
-    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    background: var(--panel);
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: 16px 18px;
-    box-shadow: var(--shadow-1), var(--inset-top);
     margin-bottom: 18px;
   }
   h2 {

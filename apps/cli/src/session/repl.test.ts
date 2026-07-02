@@ -109,7 +109,7 @@ describe('interactive session (M-Shell, model-first)', () => {
     expect(stdout).toContain('$0.00');
     expect(stdout).toContain('standard-safe');
     // Graceful close farewell.
-    expect(stdout).toContain('closed');
+    expect(stdout).toContain('session saved');
     expect(stdout).toContain('Goodbye.');
 
     const dirs = sessionDirs();

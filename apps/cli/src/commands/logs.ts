@@ -1,5 +1,5 @@
 import { RunManager } from '@excalibur/core';
-import { AUTONOMY_LEVEL_LABELS, type AutonomyLevel } from '@excalibur/shared';
+import { type AutonomyLevel } from '@excalibur/shared';
 import { detectColorTier, detectThemeSync, reduceRail, renderRail } from '@excalibur/tui';
 import type { Command } from 'commander';
 import pc from 'picocolors';
@@ -69,7 +69,7 @@ export function registerLogsCommand(program: Command, deps: CliDeps): void {
       // The rail replay: reduce the stored stream and render it fully expanded.
       const level = run.record.autonomyLevel as AutonomyLevel;
       const rail = reduceRail(events, {
-        autonomyLabel: AUTONOMY_LEVEL_LABELS[level] ?? '',
+        autonomyLabel: deps.t(`autonomy.level-${level}`),
         model: run.record.model ?? 'mock',
       });
       for (const line of renderRail(rail, {

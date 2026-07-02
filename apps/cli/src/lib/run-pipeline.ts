@@ -19,7 +19,6 @@ import {
 } from '@excalibur/core';
 import { analyzeRepository } from '@excalibur/context-engine';
 import {
-  AUTONOMY_LEVEL_LABELS,
   type AutonomyLevel,
   type ExcaliburEvent,
   type ExecutionStyle,
@@ -410,7 +409,7 @@ export async function mountConversationalRail(
     config.ui?.customTheme,
   );
   const reduceOpts = {
-    autonomyLabel: AUTONOMY_LEVEL_LABELS[opts.autonomyLevel],
+    autonomyLabel: deps.t(`autonomy.level-${opts.autonomyLevel}`),
     safety: config.safety?.preset ?? 'standard-safe',
     model: gatewayContext.providerName,
     push: false,
@@ -688,10 +687,12 @@ export async function runTask(
       {
         workflowName: choice.definition.name,
         workflowId: choice.workflowId,
-        autonomyLabel: AUTONOMY_LEVEL_LABELS[choice.autonomyLevel],
+        autonomyLabel: deps.t(`autonomy.level-${choice.autonomyLevel}`),
         phases: choice.definition.phases.map((phase) => ({
           name: phase.name,
-          type: phase.type,
+          // D4 (F1.5) — a human verb in the user's language, never the raw enum
+          // (`agent_output`) the card used to print.
+          type: deps.t(`phase-type.${phase.type}`),
           optional: phase.required === false,
         })),
         ...(allocation.agentCount > 1
@@ -699,7 +700,8 @@ export async function runTask(
           : {}),
         estimate: formatEstimate(deps, estimate),
         ...(intent.sensitive ? { sensitiveAreas: intent.sensitiveAreas } : {}),
-        gate: deps.t('run-pipeline.gate'),
+        // D7 (F1.5) — no in-card gate line here: the interactive prompt right
+        // below is the ONE keys legend (they printed twice, worded differently).
       },
       { tier, mode },
     );
@@ -845,7 +847,7 @@ export async function runTask(
   // we stream plain per-event lines and print a static rail recap afterwards.
   // Both fold the SAME `reduceRail`, so live = scrub = replay.
   const reduceOpts = {
-    autonomyLabel: AUTONOMY_LEVEL_LABELS[choice.autonomyLevel],
+    autonomyLabel: deps.t(`autonomy.level-${choice.autonomyLevel}`),
     safety: config.safety?.preset ?? 'standard-safe',
     model: gatewayContext.providerName,
     push: options.sync === true,

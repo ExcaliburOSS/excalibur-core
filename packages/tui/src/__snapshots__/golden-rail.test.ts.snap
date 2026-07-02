@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`golden: renderPlanCard > truecolor dark 1`] = `
-" ESC[38;2;52;65;90m┌─ ESC[0mESC[38;2;230;237;243mFast Fix ESC[0mESC[38;2;52;65;90m──────────────────────────────────────────ESC[0m
+" ESC[38;2;52;65;90m┌─ ESC[0mESC[38;2;230;237;243mFast Fix ESC[0mESC[38;2;52;65;90m─────────────────────────────────────────ESC[0m
  ESC[38;2;52;65;90m│ESC[0m ESC[38;2;139;152;171mL3 — Implement in Branch · fast-fixESC[0m
  ESC[38;2;52;65;90m│ESC[0m ESC[38;2;139;152;171m○ESC[0m ESC[38;2;230;237;243mAnalyze         ESC[0mESC[38;2;139;152;171massistant_interactionESC[0m
  ESC[38;2;52;65;90m│ESC[0m ESC[38;2;139;152;171m○ESC[0m ESC[38;2;230;237;243mPatch           ESC[0mESC[38;2;139;152;171mpatch_generationESC[0m

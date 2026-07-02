@@ -1157,6 +1157,8 @@ export class Ui {
     // Slash-command menu: active when the buffer is a single `/token` on the MAIN
     // line. `menuItems` are the commands whose name starts with the typed token.
     const SLASH_RE = /^\/[^\s]*$/;
+    /** D3 — max menu ITEM rows painted at once (+ up to two `⋯ N` markers). */
+    const MENU_MAX_ROWS = 6;
     let menuItems: { name: string; description: string }[] = [];
     let menuIndex = 0;
     const recomputeMenu = (): void => {
@@ -1219,11 +1221,30 @@ export class Ui {
       // sub-prompt. One visual row per entry.
       let footerLines: string[];
       if (menuItems.length > 0) {
-        footerLines = menuItems.map((it, i) =>
-          i === menuIndex
-            ? `${pc.cyan(`▸ /${it.name}`)}  ${pc.dim(it.description)}`
+        // D3 (F1.5) — WINDOW the menu: every matching command used to render at
+        // once (39 rows on a bare `/`), flooding short terminals and — worse —
+        // forcing terminal scroll that broke the cursor-up repaint math
+        // (scrollback corruption). Cap at MENU_MAX_ROWS anchored on the
+        // highlighted item; overflow collapses into dim `⋯ N` marker rows.
+        // Active marker uses the shell's question accent, never cyan (D10).
+        const start = Math.min(
+          Math.max(0, menuIndex - Math.floor(MENU_MAX_ROWS / 2)),
+          Math.max(0, menuItems.length - MENU_MAX_ROWS),
+        );
+        const visible = menuItems.slice(start, start + MENU_MAX_ROWS);
+        footerLines = visible.map((it, i) =>
+          start + i === menuIndex
+            ? `${pc.bold(pc.blueBright(`▸ /${it.name}`))}  ${pc.dim(it.description)}`
             : `${pc.dim(`  /${it.name}`)}  ${pc.dim(it.description)}`,
         );
+        const above = start;
+        const below = menuItems.length - start - visible.length;
+        if (above > 0) {
+          footerLines.unshift(pc.dim(`  ⋯ ${above}`));
+        }
+        if (below > 0) {
+          footerLines.push(pc.dim(`  ⋯ ${below}`));
+        }
       } else if (options.footer !== undefined && !this.inSubPrompt) {
         try {
           footerLines = options.footer();

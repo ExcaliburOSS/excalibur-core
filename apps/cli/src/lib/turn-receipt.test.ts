@@ -11,9 +11,9 @@ import { createInteractiveCli } from '../test-utils';
 
 const now = new Date('2026-06-15T14:32:08.000Z');
 
-function render(summary: TurnSummary): string {
+function render(summary: TurnSummary, options: { proseShown?: boolean } = {}): string {
   const cli = createInteractiveCli({ cwd: '/tmp' });
-  renderTurnReceipt(cli.deps, summary, { now, model: 'opus-4.8' });
+  renderTurnReceipt(cli.deps, summary, { now, model: 'opus-4.8', ...options });
   return cli.stdout();
 }
 
@@ -78,25 +78,30 @@ describe('renderTurnReceipt (light)', () => {
     expect(out).not.toContain('−0');
   });
 
-  it('an answer receipt is just the narrative + a footer (no metrics block)', () => {
-    const out = render({
-      ...base,
-      runId: 'run_x',
-      tier: 'answer',
-      narrative: 'It uses selectWorkflow to score intent.',
-      changedFiles: [],
-      checks: [],
-      metrics: {
-        files: 0,
-        insertions: 0,
-        deletions: 0,
-        inputTokens: 1200,
-        outputTokens: 320,
-        costCents: 0,
-      },
-      nextHint: null,
-    } as TurnSummary);
-    expect(out).toContain('It uses selectWorkflow to score intent.');
+  it('an answer receipt is ONLY the quiet footer when the rail showed the prose (D1)', () => {
+    const out = render(
+      {
+        ...base,
+        runId: 'run_x',
+        tier: 'answer',
+        narrative: 'It uses selectWorkflow to score intent.',
+        changedFiles: [],
+        checks: [],
+        metrics: {
+          files: 0,
+          insertions: 0,
+          deletions: 0,
+          inputTokens: 1200,
+          outputTokens: 320,
+          costCents: 0,
+        },
+        nextHint: null,
+      } as TurnSummary,
+      { proseShown: true },
+    );
+    // The answer was streamed + committed by the rail — repeating it here was the
+    // "every chat answer prints twice" defect. Footer only.
+    expect(out).not.toContain('It uses selectWorkflow to score intent.');
     expect(out).not.toContain('files');
     expect(out).not.toContain('/changes · /rewind');
     expect(out).toContain('opus-4.8');

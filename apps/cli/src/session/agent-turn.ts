@@ -38,7 +38,6 @@ import {
 } from '@excalibur/core';
 import { basename } from 'node:path';
 import {
-  AUTONOMY_LEVEL_LABELS,
   createEvent,
   generateId,
   type AgentRole,
@@ -266,7 +265,12 @@ function emitReceipt(
   } catch {
     // Persisting the summary artifact is non-fatal.
   }
-  renderTurnReceipt(turn.deps, summary, { now: new Date(), model });
+  renderTurnReceipt(turn.deps, summary, {
+    now: new Date(),
+    model,
+    // The Ink rail streams narration only on a TTY; off it, the receipt speaks.
+    proseShown: turn.deps.ui.isOutputTty(),
+  });
 }
 
 interface DriveOptions {
@@ -362,7 +366,7 @@ async function driveLoop(
       // `patch` keep the full footer (they mount their own view).
       compactStatus: true,
       reduce: {
-        autonomyLabel: AUTONOMY_LEVEL_LABELS[turn.autonomyLevel],
+        autonomyLabel: turn.deps.t(`autonomy.level-${turn.autonomyLevel}`),
         safety: turn.config.safety?.preset ?? 'standard-safe',
         model: turn.providerName,
         push: false,

@@ -83,7 +83,9 @@ export function buildStartupContext(
       const entries = buildSessionLog(repoRoot, latestTranscript);
       const last = entries[entries.length - 1];
       if (last !== undefined) {
-        lastActivity = `${last.title.length > 0 ? last.title : t('session-log.untitled')} (${last.status})`;
+        // D4 (F1.5) — the status token speaks the user's language (it printed the raw
+        // English enum inside an otherwise-Spanish line).
+        lastActivity = `${last.title.length > 0 ? last.title : t('session-log.untitled')} (${t(`run-status.${last.status}`)})`;
       }
     } catch {
       /* best-effort */

@@ -29,8 +29,10 @@ export interface PlanCardModel {
   estimate?: string;
   /** Sensitive areas the run touches (rendered as a warn line). */
   sensitiveAreas?: string[];
-  /** The gate hint, e.g. "[Enter] run · [m] mode · [c] cancel". */
-  gate: string;
+  /** The gate hint, e.g. "[Enter] run · [m] mode · [c] cancel". D7: OPTIONAL —
+   * a caller that reads its own interactive prompt below the card omits this,
+   * so the same keys are never printed twice with different wording. */
+  gate?: string;
 }
 
 export interface RenderPlanCardOptions {
@@ -60,8 +62,10 @@ export function renderPlanCard(
   const lines: string[] = [];
 
   // Header: ┌─ <workflow> ───── (workflow name in normal text, rule dim).
+  // D7 (F1.5) — the fill is sized so the header row's visible width equals the
+  // bottom border's (` └` + width dashes): it used to render one column wider.
   const headerLabel = `${model.workflowName} `;
-  const fill = glyph.boxH.repeat(Math.max(1, width - headerLabel.length - 1));
+  const fill = glyph.boxH.repeat(Math.max(1, width - headerLabel.length - 2));
   lines.push(
     ` ${c(`${glyph.boxTL}${glyph.boxH} `, palette.rail)}${c(headerLabel, palette.text)}${c(
       fill,
@@ -88,8 +92,10 @@ export function renderPlanCard(
     lines.push(row(c(`sensitive · ${model.sensitiveAreas.join(', ')}`, palette.warn)));
   }
 
-  // Gate line + bottom border.
-  lines.push(row(`${c(glyph.waiting, palette.warn)} ${c(model.gate, palette.text)}`));
+  // Gate line (when this card IS the gate) + bottom border.
+  if (model.gate !== undefined && model.gate.length > 0) {
+    lines.push(row(`${c(glyph.waiting, palette.warn)} ${c(model.gate, palette.text)}`));
+  }
   lines.push(` ${c(`${glyph.boxBL}${glyph.boxH.repeat(width)}`, palette.rail)}`);
   return lines;
 }
