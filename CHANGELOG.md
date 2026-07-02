@@ -6,6 +6,31 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-07-02
+
+Excalibur acts instead of asking. A new proactivity-above-all directive and a deterministic
+"show me the site" route mean a request to review-and-serve the web reads the code itself and
+serves it, instead of dumping a read-only analysis. Public Beta.
+
+### Added
+
+- **Proactivity above all.** A new top-level directive in every agent role's system prompt: the
+  agent resolves questions and sub-goals ITSELF with its tools (reads the file, runs the
+  command, investigates) and never asks you for anything it could obtain itself; it never ends
+  with "open questions" it could have answered by reading or running something; any analysis is
+  an internal means, not the deliverable — it does not hand you a report when you asked it to DO
+  something; and when you ask it to show/serve/run something, it actually does it and gives you
+  the URL. Previously this guidance was skipped entirely for read-only roles, so a "review the
+  web" turn behaved passively.
+- **"Show me the site" now serves it (deterministic `preview` route).** A new `preview` intent
+  recognizes "show me the web", "enséñame la web", "run it", "revisa la web y enséñamela" and
+  routes to the agent loop — which reads your code itself, reviews it if asked, and serves it on
+  localhost with the `preview` tool — instead of the read-only analysis path that could not
+  serve. It runs with the full living rail (pulsing active steps, shimmer, nesting, a persistent
+  input box). Verified end-to-end: a review-and-show request reads the project files itself and
+  serves the site; when the port was busy it fixed the server to a dynamic port on its own
+  rather than asking.
+
 ## [1.9.0] - 2026-07-01
 
 Excalibur reaches for the multi-agent swarm much more often, and the m-shell now shows you
