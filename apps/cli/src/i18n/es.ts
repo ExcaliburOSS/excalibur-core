@@ -8,6 +8,8 @@ export const ES: Catalog = {
   'welcome.greeting': 'Hola de nuevo, {name}',
   'welcome.greeting-anonymous': 'Hola',
   'welcome.epigraph': 'La espada está desenvainada. ¿Qué construimos?',
+  'repl.welcome-whats-new':
+    'Bucle de agente con el modelo primero en la shell, aprobaciones en línea, modo plan.',
 
   // Chrome interactivo compartido.
   'common.select_hint': '↑/↓ para mover · Enter para elegir · Esc para cancelar',

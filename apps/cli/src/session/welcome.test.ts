@@ -3,11 +3,12 @@ import { renderWelcome, type WelcomeContext } from './welcome';
 
 const base: WelcomeContext = {
   version: '0.1.0',
-  greeting: 'Welcome back, Rafael',
+  name: 'Rafael',
   model: 'mock',
   org: 'ExcaliburOSS',
   user: 'rafael@calliope.so',
   tip: 'Describe what you want in plain words — Excalibur routes it to ask, run, patch or discovery.',
+  whatsNew: 'Real model gateway, repo-aware context, and live streaming.',
   epigraph: 'The sword is drawn. What shall we build?',
   width: 80,
   unicode: true,
@@ -38,7 +39,7 @@ describe('renderWelcome', () => {
     }
   });
 
-  it('includes the title, greeting, identity, epigraph and the single tip (D8 hero)', () => {
+  it('includes the title, greeting, identity, epigraph and the two right-column sections', () => {
     const out = strip(renderWelcome(base));
     expect(out).toContain('Excalibur');
     expect(out).toContain('v0.1.0');
@@ -47,17 +48,17 @@ describe('renderWelcome', () => {
     expect(out).toContain('ExcaliburOSS');
     expect(out).toContain('rafael@calliope.so');
     expect(out).toContain('The sword is drawn');
-    // The hero is COMPACT: top border + 5 body rows + bottom border.
-    expect(out.split('\n')).toHaveLength(7);
+    expect(out).toContain('Tip');
+    expect(out).toContain('new');
   });
 
-  it('handles an empty greeting and a garbage width without crashing', () => {
-    const out = renderWelcome({ ...base, greeting: 'Welcome', width: 0 });
-    expect(strip(out)).toContain('Welcome');
+  it('handles an empty name and a garbage width without crashing', () => {
+    const out = renderWelcome({ ...base, name: '', width: 0 });
+    expect(strip(out)).toContain('Welcome back, there');
     expect(new Set(out.split('\n').map((line) => vlen(line))).size).toBe(1);
   });
 
-  it('hides org/user when empty', () => {
+  it('hides org/user rows when empty', () => {
     const out = strip(renderWelcome({ ...base, org: '', user: '' }));
     expect(out).not.toContain('ExcaliburOSS');
     expect(out).not.toContain('rafael@calliope.so');

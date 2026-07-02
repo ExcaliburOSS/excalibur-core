@@ -3874,18 +3874,17 @@ function repoOwnerFromRemote(remoteUrl: string | null): string {
 function buildWelcomeContext(deps: CliDeps, repoRoot: string, model: string): WelcomeContext {
   const identity = getGitIdentity(repoRoot);
   const gitInfo = getGitInfo(repoRoot);
-  const name = (identity.name ?? '').split(/\s+/)[0] || '';
+  const name = (identity.name ?? '').split(/\s+/)[0] || 'there';
   const hasDiff = getLocalDiff(repoRoot).trim().length > 0;
   const tip = hasDiff ? deps.t('repl.welcome-tip-diff') : deps.t('repl.welcome-tip-default');
   return {
     version: CLI_VERSION,
-    // D8 — the greeting arrives localized + formatted (the hero renders it as-is).
-    greeting:
-      name.length > 0 ? deps.t('welcome.greeting', { name }) : deps.t('welcome.greeting-anonymous'),
+    name,
     model,
     org: repoOwnerFromRemote(gitInfo.remoteUrl),
     user: identity.email ?? '',
     tip,
+    whatsNew: deps.t('repl.welcome-whats-new'),
     epigraph: deps.t('welcome.epigraph'),
     width: process.stdout.columns || 80,
     unicode: deps.env['EXCALIBUR_ASCII'] === undefined,
