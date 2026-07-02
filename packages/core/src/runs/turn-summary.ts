@@ -175,6 +175,45 @@ function isBackgroundCommand(command: string): boolean {
  */
 const TERMINATION_EXITS = new Set([130, 143]);
 
+/**
+ * Only a genuine VERIFICATION command (tests, lint, typecheck, build) is a pass/fail VERDICT
+ * for the turn. A command the agent runs to EXPLORE — `ls`, `cat`, `grep`, `find`, `test -f`,
+ * `which`, `head`, `stat` — legitimately returns non-zero (a missing dir, an empty grep) and
+ * must NEVER flip a SUCCESSFUL turn to a red "failed": the agent probes, recovers, and finishes.
+ * (The `ls -la src/public/css/ → exit 1` that painted a completed landing page red.) So a
+ * non-verification command is not a check; it still shows as a step, it just never fails the turn.
+ */
+function isVerificationCommand(command: string): boolean {
+  const head = (command.replace(/\s+#.*$/, '').split(/&&|\|\||;|\|/)[0] ?? '')
+    .trim()
+    .replace(/^(?:sudo\s+|[A-Za-z_][A-Za-z0-9_]*=\S+\s+)+/, '')
+    .trim()
+    .toLowerCase();
+  // package-manager scripts: (npm|pnpm|yarn|bun|npx) [run] test|lint|typecheck|build|check|…
+  if (
+    /^(?:npm|pnpm|yarn|bun|npx)\s+(?:run\s+)?(?:test|tests|lint|typecheck|type-check|tsc|build|check|ci|e2e|coverage|verify)\b/.test(
+      head,
+    )
+  ) {
+    return true;
+  }
+  // direct verifier binaries
+  if (
+    /^(?:tsc|vitest|jest|mocha|ava|cypress|playwright|eslint|biome|stylelint|prettier|pytest|mypy|ruff|flake8|pylint|black|rubocop|rspec|phpunit|golangci-lint)\b/.test(
+      head,
+    )
+  ) {
+    return true;
+  }
+  // go/cargo/dotnet/maven/gradle/make/bazel verification subcommands
+  if (
+    /^(?:go|cargo|dotnet|mvn|gradle|make|bazel)\s+(?:test|build|check|vet|clippy|fmt)\b/.test(head)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function checksFrom(events: ExcaliburEvent[]): TurnCheck[] {
   const checks: TurnCheck[] = [];
   for (const event of events) {
@@ -197,12 +236,19 @@ function checksFrom(events: ExcaliburEvent[]): TurnCheck[] {
       if (exit === null || exit < 0 || TERMINATION_EXITS.has(exit)) {
         continue;
       }
+      // Only a genuine verification command is a turn VERDICT. An exploratory probe
+      // (ls/cat/grep/find/…) returning non-zero is not a failure — skip it entirely so
+      // it can never red-flag a successful turn, and so the receipt's primary check is a
+      // real one (tests/lint), never a stray `ls`.
+      if (!isVerificationCommand(label)) {
+        continue;
+      }
       checks.push({
+        // NEVER surface a raw exit code to the user (RUN-FIX-27): the ✓/✗ glyph already
+        // says pass/fail; a bare "exit 1" is scary technical noise.
         label,
         ok: exit === 0,
-        // A green ✓ already says the command passed — a bare "exit 0" is just
-        // noise, so only a non-zero exit carries a detail worth showing.
-        detail: exit === 0 ? null : `exit ${exit}`,
+        detail: null,
       });
     } else if (event.type === 'test_result') {
       const status = str(event, 'status') ?? 'unknown';

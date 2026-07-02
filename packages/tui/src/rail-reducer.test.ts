@@ -278,9 +278,10 @@ describe('reduceRail', () => {
     const events = [
       ev('run_started', { title: 'Fix the limiter' }),
       ev('phase_started', { name: 'Working' }, 'turn'),
-      // The model narrates BEFORE its tool call, then acts.
+      // The model narrates BEFORE its tool call, then acts. The read shows via the
+      // `tool_call` announce (RUN-FIX-27: one informative line per call, verb + argument).
       ev('model_call', { model: 'kimi', content: 'Let me see how the limiter is wired.' }, 'turn'),
-      ev('file_read', { path: 'src/api/limiter.ts' }, 'turn'),
+      ev('tool_call', { tool: 'read_file', arguments: { path: 'src/api/limiter.ts' } }, 'turn'),
       ev('model_call', { model: 'kimi', content: 'Found it — the timeout defaults to 0.' }, 'turn'),
       ev('file_write', { path: 'src/api/limiter.ts' }, 'turn'),
     ];
@@ -300,7 +301,7 @@ describe('reduceRail', () => {
       ev('run_started', { title: 't' }),
       ev('phase_started', { name: 'Working' }, 'turn'),
       ev('model_call', { model: 'kimi', content: 'Reading the file.' }, 'turn'),
-      ev('file_read', { path: 'a.ts' }, 'turn'),
+      ev('tool_call', { tool: 'read_file', arguments: { path: 'a.ts' } }, 'turn'),
       // Final turn: model_call + assistant_message carry the SAME closing prose.
       ev('model_call', { model: 'kimi', content: 'Done — fixed the off-by-one.' }, 'turn'),
       ev('assistant_message', { content: 'Done — fixed the off-by-one.' }, 'turn'),
@@ -310,5 +311,24 @@ describe('reduceRail', () => {
     const texts = (rail.phases[0]?.events ?? []).map((e) => `${e.kind}:${e.text}`);
     // The interstitial narration stays; the final answer is NOT duplicated here.
     expect(texts).toEqual(['narration:Reading the file.', 'read:read a.ts']);
+  });
+
+  it('renders ONE informative line per tool call and NEVER an exit code (RUN-FIX-27)', () => {
+    const rail = reduceRail(
+      [
+        ev('run_started', { title: 't' }),
+        ev('phase_started', { name: 'Working' }, 'turn'),
+        // A command SHOWS what it runs (was a bare "tool run_command")…
+        ev('tool_call', { tool: 'run_command', arguments: { command: 'npm test' } }, 'turn'),
+        // …and its non-zero completion produces NO "exit 1" line (scary jargon / often a probe).
+        ev('command_completed', { command: 'npm test', exitCode: 1 }, 'turn'),
+        // Reads and searches carry their real argument, on ONE line (no "◈ tool read_file" dup).
+        ev('tool_call', { tool: 'read_file', arguments: { path: 'package.json' } }, 'turn'),
+        ev('tool_call', { tool: 'search_code', arguments: { query: 'escrow' } }, 'turn'),
+      ],
+      { model: 'kimi' },
+    );
+    const evs = (rail.phases[0]?.events ?? []).map((e) => `${e.kind}:${e.text}`);
+    expect(evs).toEqual(['command:run npm test', 'read:read package.json', 'read:search «escrow»']);
   });
 });

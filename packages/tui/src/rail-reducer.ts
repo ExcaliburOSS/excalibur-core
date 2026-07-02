@@ -31,18 +31,67 @@ function str(payload: Record<string, unknown>, key: string): string {
   return typeof value === 'string' ? value : '';
 }
 
+/** Trim a long argument (a command / query) so a tool line never wraps into noise. */
+function clip(text: string, max = 72): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+/**
+ * RUN-FIX-27 — ONE informative line per tool call: a verb + the REAL argument (the command for
+ * run_command, the file for reads/writes, the query for a search) — "run npm test", "read
+ * package.json", "search «escrow»" — instead of a bare, uninformative "tool run_command".
+ * The `tool_call` announce already carries `arguments`, so this line stands alone and the
+ * redundant typed follow-ups (file_read / command_started / command_completed) are suppressed,
+ * killing the old two-line "◈ tool read_file" + "▭ read package.json" duplication. Write/edit
+ * return null here so the richer `file_write` line (with its diffstat) is the one that shows.
+ */
+function describeToolCall(tool: string, rawArgs: unknown): PhaseEvent | null {
+  const a = (rawArgs ?? {}) as Record<string, unknown>;
+  const s = (k: string): string => (typeof a[k] === 'string' ? (a[k] as string) : '');
+  switch (tool) {
+    case 'read_file':
+      return { text: `read ${s('path')}`.trim(), tone: 'muted', kind: 'read' };
+    case 'list_files':
+      return { text: `list ${s('path') || '.'}`.trim(), tone: 'muted', kind: 'read' };
+    case 'search_code':
+    case 'search': {
+      const q = s('query') || s('pattern');
+      return { text: q.length > 0 ? `search «${clip(q)}»` : 'search', tone: 'muted', kind: 'read' };
+    }
+    case 'write_file':
+    case 'edit':
+      return null; // the `file_write` line renders this with its diffstat
+    case 'run_command':
+    case 'run_tests': {
+      const cmd = s('command');
+      return {
+        text: cmd.length > 0 ? `run ${clip(cmd)}` : `run ${tool}`,
+        tone: 'accent',
+        kind: 'command',
+      };
+    }
+    case 'preview':
+      return { text: 'preview the app', tone: 'accent', kind: 'command' };
+    default: {
+      const name = tool.replace(/_/g, ' ').trim();
+      return { text: name.length > 0 ? name : 'tool', tone: 'accent', kind: 'tool' };
+    }
+  }
+}
+
 /** Maps a within-phase event to a rail PhaseEvent line, or null to ignore it. */
 function railEventFor(event: ExcaliburEvent): PhaseEvent | null {
   const p = event.payload;
   switch (event.type) {
     case 'tool_call':
-      return {
-        text: `tool ${str(p, 'tool') || str(p, 'name')}`.trim(),
-        tone: 'accent',
-        kind: 'tool',
-      };
+      return describeToolCall(str(p, 'tool') || str(p, 'name'), p['arguments']);
+    // Suppressed: the tool_call announce (above) already describes the read with its path, so
+    // rendering file_read again produced the old redundant second line (RUN-FIX-27). NOTE we
+    // keep `command_started` below ($ command) — the gated workflow engine surfaces commands
+    // through it, NOT through a tool_call announce, so it is a flow's ONLY command line.
     case 'file_read':
-      return { text: `read ${str(p, 'path')}`, tone: 'muted', kind: 'read' };
+      return null;
     case 'file_write': {
       // AO6 Pillar 1: the adapter carries a per-edit unified diff so the live
       // rail streams the highlighted change inline (collapsible) right after the
@@ -59,14 +108,12 @@ function railEventFor(event: ExcaliburEvent): PhaseEvent | null {
     }
     case 'command_started':
       return { text: `$ ${str(p, 'command')}`, tone: 'muted', kind: 'command' };
-    case 'command_completed': {
-      const exit = typeof p['exitCode'] === 'number' ? (p['exitCode'] as number) : null;
-      // A clean exit needs no line: the `$ command` above already stands and a
-      // bare "exit 0" reads like noise. Only a non-zero exit is worth surfacing.
-      return exit === null || exit === 0
-        ? null
-        : { text: `exit ${exit}`, tone: 'warn', kind: 'exit' };
-    }
+    case 'command_completed':
+      // NEVER surface a raw exit code to the user (RUN-FIX-27): "exit 0" is noise and
+      // "exit 1" is scary technical jargon (and often just an exploratory probe — a
+      // missing dir, an empty grep). The `$ command` line already stands; a genuine
+      // failure surfaces through the agent's own narration + recovery, not a bare code.
+      return null;
     case 'test_result':
       return { text: `tests ${str(p, 'status') || 'passed'}`, tone: 'success', kind: 'test' };
     case 'patch_generated': {

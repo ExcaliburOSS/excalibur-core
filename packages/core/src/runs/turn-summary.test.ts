@@ -245,6 +245,41 @@ describe('buildTurnSummary', () => {
     expect(summary.checks).toHaveLength(0);
   });
 
+  it('does NOT fail over an EXPLORATORY probe command returning non-zero (RUN-FIX-27)', () => {
+    // The bug: `ls -la src/public/css/ → exit 1` (a probe of a dir that did not exist) flipped a
+    // COMPLETED landing page to a scary red "failed" turn. A non-verification command is not a
+    // verdict — the agent probes, recovers, and finishes.
+    const summary = run((runId) => [
+      createEvent({
+        runId,
+        type: 'patch_generated',
+        payload: { diff: ADD_DIFF, filesAffected: ['public/styles.css'] },
+      }),
+      createEvent({
+        runId,
+        type: 'command_completed',
+        payload: { command: 'ls -la src/public/css/', exitCode: 1 },
+      }),
+      // A real verification the turn DID run — it passed.
+      createEvent({
+        runId,
+        type: 'command_completed',
+        payload: { command: 'npm test', exitCode: 0 },
+      }),
+      createEvent({
+        runId,
+        type: 'assistant_message',
+        payload: { content: 'done, softened the CRT' },
+      }),
+    ]);
+    expect(summary.tier).toBe('action'); // NOT failed — the ls probe is not a verdict
+    // The receipt's checks are the real verification (npm test), never the stray `ls`, and carry
+    // NO raw exit code.
+    expect(summary.checks.some((c) => c.label === 'npm test' && c.ok)).toBe(true);
+    expect(summary.checks.some((c) => c.label.startsWith('ls'))).toBe(false);
+    expect(summary.checks.every((c) => c.detail === null || !/exit \d/.test(c.detail))).toBe(true);
+  });
+
   it('KEEPS a genuine crash (SIGSEGV 139) as a failing verdict — honesty-first', () => {
     // 134–139 are real crashes (not harness teardown), so they must still fail.
     const summary = run((runId) => [
