@@ -94,6 +94,7 @@ export type TurnIntent =
   | 'goal'
   | 'explore'
   | 'scope'
+  | 'preview'
   | 'orchestration'
   | 'schedule'
   | 'mission';
@@ -108,6 +109,7 @@ const TURN_INTENTS: readonly TurnIntent[] = [
   'goal',
   'explore',
   'scope',
+  'preview',
   'orchestration',
   'schedule',
   'mission',
@@ -142,11 +144,12 @@ export function buildIntentPrompt(text: string): string {
     '- research: needs external/current information from the web, or deep investigation.',
     '- goal: an explicit "keep iterating until it works/passes/done" objective.',
     '- explore: explicitly wants SEVERAL alternative approaches compared, best-of-N, "try a few ways and pick the best".',
-    '- scope: wants to UNDERSTAND or EVALUATE a task read-only BEFORE building — "what is involved in X", "what would it take to", "scope/assess this", "which files/parts does X touch", "what exists vs what is missing for X", "analiza qué haría falta para", "qué implica". NO code is written.',
+    '- scope: wants to UNDERSTAND or EVALUATE a task read-only BEFORE building — "what is involved in X", "what would it take to", "scope/assess this", "which files/parts does X touch", "what exists vs what is missing for X", "analiza qué haría falta para", "qué implica". NO code is written, and the user does NOT want to SEE the running result. (If they want to SEE/RUN/open the running site or app, choose preview, not scope.)',
+    '- preview: wants to SEE, SHOW, RUN, OPEN, SERVE or PREVIEW the web app / site / page RUNNING locally — "enséñame la web", "muéstrame el sitio", "show me the site", "run it", "open it", "let me see it live", "revisa la web y enséñamela" (review the site AND show it). Excalibur reads the code itself, may review it for gaps, and serves it on localhost. Choose this over scope/chat/edit whenever the user wants to SEE the running result, even if they ALSO say "review/check/revisa".',
     '- orchestration: VIEW, PAUSE or RESUME an EXISTING parallel run — its swarm/orchestration/chronogram/timeline (not new work).',
     '- schedule: run a task on a RECURRING cadence ("every morning", "cada 2 horas", "nightly", "daily at 9", "each hour run X").',
     '- mission: a BIG, multi-faceted goal needing SEVERAL kinds of work composed and driven to completion autonomously — e.g. "build feature X end to end (design, implement across modules, test, verify, open a PR)", a large migration, "ship the whole thing". Choose this over plan/swarm/goal when the work needs MULTIPLE different phases, not just one.',
-    'Answer with ONLY the category word (chat, edit, plan, swarm, bg, research, goal, explore, scope, orchestration, schedule, or mission).',
+    'Answer with ONLY the category word (chat, edit, plan, swarm, bg, research, goal, explore, scope, preview, orchestration, schedule, or mission).',
     '',
     `Request: ${text}`,
   ].join('\n');
@@ -197,7 +200,8 @@ export function buildDecisionPrompt(text: string): string {
     '- research: needs external/current information from the web, or deep investigation.',
     '- goal: an explicit "keep iterating until it works/passes/done" objective.',
     '- explore: explicitly wants SEVERAL alternative approaches compared, best-of-N, "try a few ways and pick the best".',
-    '- scope: wants to UNDERSTAND or EVALUATE a task read-only BEFORE building — "what is involved in X", "what would it take to", "scope/assess this", "which files/parts does X touch", "qué implica", "analiza qué haría falta para". NO code is written.',
+    '- scope: wants to UNDERSTAND or EVALUATE a task read-only BEFORE building — "what is involved in X", "what would it take to", "scope/assess this", "which files/parts does X touch", "qué implica", "analiza qué haría falta para". NO code is written, and the user does NOT want to SEE the running result. (If they want to SEE/RUN/open the running site or app, choose preview, not scope.)',
+    '- preview: wants to SEE, SHOW, RUN, OPEN, SERVE or PREVIEW the web app / site / page RUNNING locally — "enséñame la web", "muéstrame el sitio", "show me the site", "run it", "open it", "let me see it live", "revisa la web y enséñamela" (review the site AND show it). Excalibur reads the code itself, may review it for gaps, and serves it on localhost. Choose this over scope/chat/edit whenever the user wants to SEE the running result, even if they ALSO say "review/check/revisa".',
     '- orchestration: VIEW, PAUSE or RESUME an EXISTING parallel run — its swarm/orchestration/chronogram/timeline (not new work).',
     '- schedule: run a task on a RECURRING cadence ("every morning", "cada 2 horas", "nightly", "daily at 9", "each hour run X").',
     '- mission: a BIG, multi-faceted goal needing SEVERAL kinds of work composed and driven to completion autonomously (design + implement across modules + test + verify + ship, a large migration). Choose over plan/swarm/goal when the work needs MULTIPLE different phases.',
@@ -249,10 +253,13 @@ export type ShapeRisk = 'low' | 'medium' | 'high';
 export function riskOfShape(intent: TurnIntent): ShapeRisk {
   switch (intent) {
     // low: read-ish + reversible — chat/research, the read-only `scope` understand
-    // pass (no writes), and `orchestration` (view/pause/resume an existing run).
+    // pass (no writes), `orchestration` (view/pause/resume an existing run), and
+    // `preview` (read the code + serve it on localhost — reversible, session-lived,
+    // and the friction of asking to SEE your own site would be absurd).
     case 'chat':
     case 'research':
     case 'scope':
+    case 'preview':
     case 'orchestration':
       return 'low';
     case 'edit':

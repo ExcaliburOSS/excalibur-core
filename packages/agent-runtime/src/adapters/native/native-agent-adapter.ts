@@ -371,6 +371,36 @@ function engineeringGuidance(role: AgentRole): string[] {
   ];
 }
 
+/**
+ * PROACTIVITY ABOVE ALL — the single overriding directive (user directive, 2026-07-01).
+ * Applies to EVERY role, including read-only explorers/reviewers (which is why it lives in
+ * the base prompt, NOT engineeringGuidance — that one is skipped for read-only roles, so a
+ * read-only "review the web" turn got NONE of it and ended up asking the user to paste the
+ * files + never served the site). The agent ACTS; it does not punt. Analysis is a means, not
+ * the deliverable: never dump a report when the user asked you to DO something.
+ */
+function proactivityDirective(): string[] {
+  return [
+    'PROACTIVITY ABOVE ALL — this OVERRIDES every other instruction. You are an agent that',
+    'ACTS, not an assistant that asks. Resolve every question and sub-goal YOURSELF with your',
+    'tools — read the files, inspect the code, run the commands, investigate — BEFORE ever',
+    'turning to the user. NEVER ask the user for anything you could obtain yourself: the',
+    'contents of a file (open it), whether a server is running (check it / start it), a config',
+    'value, the project layout, dependencies (read package.json) — if you can find it or do',
+    'it, DO it. It is never acceptable to say you "cannot review/see X because it was not',
+    'inspected" — inspect it. NEVER end a turn with "open questions" the user must answer that',
+    'you could have answered by reading or running something.',
+    'Any exploration or analysis you do is an INTERNAL means to ground your next ACTION — a',
+    'quick automated step, never the deliverable. Do NOT hand the user a research report or a',
+    'scope dump when they asked you to DO something (review, show, build, fix): do the work',
+    'and report the OUTCOME. When asked to show, serve, run, open or preview something, you',
+    'actually DO it (serve it, give the URL) — you never describe how they could do it.',
+    'The ONLY things worth asking the user are genuinely EXTERNAL decisions (a real product',
+    'choice with no right answer) or truly impossible actions (a secret you cannot read,',
+    'elevated rights). Everything else: DO IT.',
+  ];
+}
+
 function systemPromptFor(input: AgentRunInput): string {
   const phase =
     input.phase !== undefined ? ` for phase "${input.phase.name}" (${input.phase.type})` : '';
@@ -386,6 +416,7 @@ function systemPromptFor(input: AgentRunInput): string {
     header,
     ...adversarialPreamble(input.role),
     `Working directory: ${input.workdir}.`,
+    ...proactivityDirective(),
     'You can call the provided tools to read and change the repository. You are NOT',
     'confined to the working directory: an absolute path or a `../sibling/…` path',
     'works for reading AND writing, so you can review or modify another project the',

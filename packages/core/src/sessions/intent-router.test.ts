@@ -110,6 +110,7 @@ describe('riskOfShape (AO3d-2, pure)', () => {
     expect(riskOfShape('schedule')).toBe('medium'); // AO8-4 — reversible but commits future runs
     expect(riskOfShape('mission')).toBe('high'); // M6 — autonomous multi-capability run
     expect(riskOfShape('scope')).toBe('low'); // AO9-3 — read-only understand-first
+    expect(riskOfShape('preview')).toBe('low'); // RUN-FIX-26 — read + serve locally, reversible
   });
 });
 

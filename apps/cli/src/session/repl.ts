@@ -1291,6 +1291,14 @@ export async function runInteractiveSession(
                 );
               }
             }
+          } else if (intent === 'preview' && decision.confidence !== 'low') {
+            // RUN-FIX-26 — the user wants to SEE the running site ("enséñame la web",
+            // "revisa la web y enséñamela"). Route to the AGENT LOOP (which advertises the
+            // `preview` tool AND renders the living rail), NOT the read-only scope path that
+            // cannot serve and only dumps a map. Low-risk (read + serve locally) so it just
+            // runs. The proactivity directive + this seed make the agent read the code ITSELF
+            // and actually serve it — no user-directed questions, no analysis dump.
+            await dispatchPreviewTurn(deps, runtime, text, ctrl.signal, seed);
           } else if (intent === 'scope') {
             // AO9-3 — NL-routed read-only "Understand-first" scope (any language):
             // "what's involved in X" / "scope this" / "qué implica" → map the
@@ -2024,6 +2032,30 @@ async function sessionSeedSettled(runtime: SessionRuntime): Promise<ChatMessage[
 }
 
 /** Dispatches a direct model-driven turn (the default NL path). */
+/**
+ * RUN-FIX-26 — the `preview` intent: the user wants to SEE the running site/app, often after
+ * a quick review ("enséñame la web", "revisa la web y enséñamela"). Routes to the AGENT LOOP
+ * (which advertises the `preview` tool + renders the living rail) instead of the read-only
+ * scope path that cannot serve. The objective is made unambiguous so the agent READS the code
+ * itself (never asks the user to paste files) and ALWAYS serves it locally. The user's turn is
+ * already recorded upstream with the ORIGINAL text; this only augments what the model sees.
+ */
+async function dispatchPreviewTurn(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  text: string,
+  signal: AbortSignal,
+  seed: ChatMessage[],
+): Promise<void> {
+  const objective =
+    `${text}\n\n[Preview objective — do this end-to-end YOURSELF, asking me nothing: READ the ` +
+    `project's web files yourself (index.html, package.json and its scripts, the CSS/JS, the ` +
+    `server) with your tools — NEVER ask me to paste or share them. If I asked you to review ` +
+    `it, give a SHORT review of the gaps or improvements you'd make. Then ALWAYS serve it ` +
+    'locally with the `preview` tool and give me the URL.]';
+  await dispatchAgentTurn(deps, runtime, objective, signal, seed);
+}
+
 async function dispatchAgentTurn(
   deps: CliDeps,
   runtime: SessionRuntime,
