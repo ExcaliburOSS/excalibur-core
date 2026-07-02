@@ -92,7 +92,7 @@ import { runExploreFlow } from '../lib/explore';
 import { runConfiguredCommandCheck } from '../lib/verify-command';
 import { runProportionalMesh } from '../lib/verify-mesh';
 import { runResearchFlow } from '../lib/research';
-import { autoScopeForPlanning, runScopeFlow } from '../lib/scope';
+import { autoScopeForPlanning } from '../lib/scope';
 import { withThinking, understandingPhrases, planningPhrases, decomposePhrases } from './thinking';
 import { slashCommands } from './commands';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
@@ -1299,12 +1299,6 @@ export async function runInteractiveSession(
             // runs. The proactivity directive + this seed make the agent read the code ITSELF
             // and actually serve it — no user-directed questions, no analysis dump.
             await dispatchPreviewTurn(deps, runtime, text, ctrl.signal, seed);
-          } else if (intent === 'scope') {
-            // AO9-3 — NL-routed read-only "Understand-first" scope (any language):
-            // "what's involved in X" / "scope this" / "qué implica" → map the
-            // subsystems, built-vs-missing and risks WITHOUT building. Low-risk
-            // (read-only by construction) so it just runs — no posture gate.
-            await runScopeFlow(deps, text, { signal: ctrl.signal });
           } else if (intent === 'schedule') {
             // AO8-4 — NL-routed scheduling (any language): "every morning run the
             // test sweep" → a persisted ScheduledJob (the OSS analog of cron /

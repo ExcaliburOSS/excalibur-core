@@ -93,7 +93,6 @@ export type TurnIntent =
   | 'research'
   | 'goal'
   | 'explore'
-  | 'scope'
   | 'preview'
   | 'orchestration'
   | 'schedule'
@@ -108,7 +107,6 @@ const TURN_INTENTS: readonly TurnIntent[] = [
   'research',
   'goal',
   'explore',
-  'scope',
   'preview',
   'orchestration',
   'schedule',
@@ -135,21 +133,21 @@ export type IntentModel = (prompt: string, signal?: AbortSignal) => Promise<stri
 export function buildIntentPrompt(text: string): string {
   return [
     'You are an intent classifier for a coding-agent CLI. Read the user request in ANY language',
-    'and choose the SINGLE best category:',
-    '- chat: a question or explanation — answering it does NOT create or change any file.',
+    'and choose the SINGLE best category. DEFAULT TO ACTION: every request is an action to carry',
+    'out UNLESS the answer must be purely informative (a question the user wants answered).',
+    '- chat: a purely INFORMATIVE request — a question or an explanation, INCLUDING "analyze / understand / review / what is involved in / qué implica / what would it take to X" — where the answer IS information and NO file is created or changed. You still investigate the code YOURSELF to answer concisely; you never hand back a big read-only analysis report as the deliverable.',
     '- edit: ONE small, direct code/file change (create or modify a file, fix a bug, add a function) — no planning needed, but real code is written.',
     '- plan: a multi-step build/change worth planning first.',
     '- swarm: many independent, parallelizable subtasks.',
     '- bg: a long-running task to run in the background.',
-    '- research: needs external/current information from the web, or deep investigation.',
+    '- research: the user EXPLICITLY wants information from EXTERNAL / CURRENT web sources as the ANSWER (a researched/cited report) — "compara online las opciones de X", "what is the latest on Y", "investiga X en la web". If the web info is only a STEP toward building or changing something, choose the ACTION intent instead — you research internally as a means, never as the deliverable.',
     '- goal: an explicit "keep iterating until it works/passes/done" objective.',
     '- explore: explicitly wants SEVERAL alternative approaches compared, best-of-N, "try a few ways and pick the best".',
-    '- scope: wants to UNDERSTAND or EVALUATE a task read-only BEFORE building — "what is involved in X", "what would it take to", "scope/assess this", "which files/parts does X touch", "what exists vs what is missing for X", "analiza qué haría falta para", "qué implica". NO code is written, and the user does NOT want to SEE the running result. (If they want to SEE/RUN/open the running site or app, choose preview, not scope.)',
-    '- preview: wants to SEE, SHOW, RUN, OPEN, SERVE or PREVIEW the web app / site / page RUNNING locally — "enséñame la web", "muéstrame el sitio", "show me the site", "run it", "open it", "let me see it live", "revisa la web y enséñamela" (review the site AND show it). Excalibur reads the code itself, may review it for gaps, and serves it on localhost. Choose this over scope/chat/edit whenever the user wants to SEE the running result, even if they ALSO say "review/check/revisa".',
+    '- preview: wants to SEE, SHOW, RUN, OPEN, SERVE or PREVIEW the web app / site / page RUNNING locally — "enséñame la web", "muéstrame el sitio", "show me the site", "run it", "open it", "let me see it live", "revisa la web y enséñamela" (review the site AND show it). Excalibur reads the code itself, may review it for gaps, and serves it on localhost. Choose this over chat/edit whenever the user wants to SEE the running result, even if they ALSO say "review/check/revisa".',
     '- orchestration: VIEW, PAUSE or RESUME an EXISTING parallel run — its swarm/orchestration/chronogram/timeline (not new work).',
     '- schedule: run a task on a RECURRING cadence ("every morning", "cada 2 horas", "nightly", "daily at 9", "each hour run X").',
     '- mission: a BIG, multi-faceted goal needing SEVERAL kinds of work composed and driven to completion autonomously — e.g. "build feature X end to end (design, implement across modules, test, verify, open a PR)", a large migration, "ship the whole thing". Choose this over plan/swarm/goal when the work needs MULTIPLE different phases, not just one.',
-    'Answer with ONLY the category word (chat, edit, plan, swarm, bg, research, goal, explore, scope, preview, orchestration, schedule, or mission).',
+    'Answer with ONLY the category word (chat, edit, plan, swarm, bg, research, goal, explore, preview, orchestration, schedule, or mission).',
     '',
     `Request: ${text}`,
   ].join('\n');
@@ -191,17 +189,17 @@ export interface TurnDecision {
 export function buildDecisionPrompt(text: string): string {
   return [
     'You are an intent classifier for a coding-agent CLI. Read the user request in ANY language',
-    'and choose the SINGLE best category AND your confidence in that choice:',
-    '- chat: a question or explanation — answering it does NOT create or change any file.',
+    'and choose the SINGLE best category AND your confidence in that choice. DEFAULT TO ACTION:',
+    'every request is an action to carry out UNLESS the answer must be purely informative.',
+    '- chat: a purely INFORMATIVE request — a question or an explanation, INCLUDING "analyze / understand / review / what is involved in / qué implica / what would it take to X" — where the answer IS information and NO file is created or changed. You still investigate the code YOURSELF to answer concisely; you never hand back a big read-only analysis report as the deliverable.',
     '- edit: ONE small, direct code/file change (create or modify a file, fix a bug, add a function) — no planning needed, but real code is written.',
     '- plan: a multi-step build/change worth planning first.',
     '- swarm: many independent, parallelizable subtasks.',
     '- bg: a long-running task to run in the background.',
-    '- research: needs external/current information from the web, or deep investigation.',
+    '- research: the user EXPLICITLY wants information from EXTERNAL / CURRENT web sources as the ANSWER (a researched/cited report) — "compara online las opciones de X", "what is the latest on Y". If the web info is only a STEP toward building or changing something, choose the ACTION intent instead — you research internally as a means, never as the deliverable.',
     '- goal: an explicit "keep iterating until it works/passes/done" objective.',
     '- explore: explicitly wants SEVERAL alternative approaches compared, best-of-N, "try a few ways and pick the best".',
-    '- scope: wants to UNDERSTAND or EVALUATE a task read-only BEFORE building — "what is involved in X", "what would it take to", "scope/assess this", "which files/parts does X touch", "qué implica", "analiza qué haría falta para". NO code is written, and the user does NOT want to SEE the running result. (If they want to SEE/RUN/open the running site or app, choose preview, not scope.)',
-    '- preview: wants to SEE, SHOW, RUN, OPEN, SERVE or PREVIEW the web app / site / page RUNNING locally — "enséñame la web", "muéstrame el sitio", "show me the site", "run it", "open it", "let me see it live", "revisa la web y enséñamela" (review the site AND show it). Excalibur reads the code itself, may review it for gaps, and serves it on localhost. Choose this over scope/chat/edit whenever the user wants to SEE the running result, even if they ALSO say "review/check/revisa".',
+    '- preview: wants to SEE, SHOW, RUN, OPEN, SERVE or PREVIEW the web app / site / page RUNNING locally — "enséñame la web", "muéstrame el sitio", "show me the site", "run it", "open it", "let me see it live", "revisa la web y enséñamela" (review the site AND show it). Excalibur reads the code itself, may review it for gaps, and serves it on localhost. Choose this over chat/edit whenever the user wants to SEE the running result, even if they ALSO say "review/check/revisa".',
     '- orchestration: VIEW, PAUSE or RESUME an EXISTING parallel run — its swarm/orchestration/chronogram/timeline (not new work).',
     '- schedule: run a task on a RECURRING cadence ("every morning", "cada 2 horas", "nightly", "daily at 9", "each hour run X").',
     '- mission: a BIG, multi-faceted goal needing SEVERAL kinds of work composed and driven to completion autonomously (design + implement across modules + test + verify + ship, a large migration). Choose over plan/swarm/goal when the work needs MULTIPLE different phases.',
@@ -252,13 +250,12 @@ export async function classifyTurnDecision(
 export type ShapeRisk = 'low' | 'medium' | 'high';
 export function riskOfShape(intent: TurnIntent): ShapeRisk {
   switch (intent) {
-    // low: read-ish + reversible — chat/research, the read-only `scope` understand
-    // pass (no writes), `orchestration` (view/pause/resume an existing run), and
-    // `preview` (read the code + serve it on localhost — reversible, session-lived,
-    // and the friction of asking to SEE your own site would be absurd).
+    // low: read-ish + reversible — chat (informative Q&A, incl. "analyze/understand X"),
+    // research (an explicitly-requested external/web report), `orchestration` (view/pause/
+    // resume an existing run), and `preview` (read the code + serve it on localhost —
+    // reversible, session-lived, and the friction of asking to SEE your own site is absurd).
     case 'chat':
     case 'research':
-    case 'scope':
     case 'preview':
     case 'orchestration':
       return 'low';
