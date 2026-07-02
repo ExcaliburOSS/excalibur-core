@@ -23,6 +23,27 @@ export interface ReduceRailOptions {
   push?: boolean;
   /** Wall-clock now (ms) for elapsed when the run has not completed. */
   nowMs?: number;
+  /**
+   * Optional translator (RUN-FIX-27): when the live m-shell passes `deps.t`, the tool-action
+   * verbs (read / run / search / write) render in the USER'S language. The reducer stays usable
+   * with NO translator — the golden tests, the dashboard and any headless caller fall back to
+   * the English literal — so it remains pure + snapshot-testable.
+   */
+  t?: (key: string, vars?: Record<string, string | number>) => string;
+}
+
+type RailT = NonNullable<ReduceRailOptions['t']>;
+
+/** Localize a rail line via the injected translator, or fall back to the English literal
+ * (interpolating `{arg}`) when none is provided. */
+function label(
+  t: RailT | undefined,
+  key: string,
+  fallback: string,
+  vars: Record<string, string | number> = {},
+): string {
+  if (t !== undefined) return t(key, vars);
+  return fallback.replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k] ?? ''));
 }
 
 /** Reads a string payload field, or ''. */
@@ -46,18 +67,30 @@ function clip(text: string, max = 72): string {
  * killing the old two-line "◈ tool read_file" + "▭ read package.json" duplication. Write/edit
  * return null here so the richer `file_write` line (with its diffstat) is the one that shows.
  */
-function describeToolCall(tool: string, rawArgs: unknown): PhaseEvent | null {
+function describeToolCall(tool: string, rawArgs: unknown, t?: RailT): PhaseEvent | null {
   const a = (rawArgs ?? {}) as Record<string, unknown>;
   const s = (k: string): string => (typeof a[k] === 'string' ? (a[k] as string) : '');
   switch (tool) {
     case 'read_file':
-      return { text: `read ${s('path')}`.trim(), tone: 'muted', kind: 'read' };
+      return {
+        text: label(t, 'tool.read', 'read {arg}', { arg: s('path') }),
+        tone: 'muted',
+        kind: 'read',
+      };
     case 'list_files':
-      return { text: `list ${s('path') || '.'}`.trim(), tone: 'muted', kind: 'read' };
+      return {
+        text: label(t, 'tool.list', 'list {arg}', { arg: s('path') || '.' }),
+        tone: 'muted',
+        kind: 'read',
+      };
     case 'search_code':
     case 'search': {
       const q = s('query') || s('pattern');
-      return { text: q.length > 0 ? `search «${clip(q)}»` : 'search', tone: 'muted', kind: 'read' };
+      return {
+        text: label(t, 'tool.search', 'search «{arg}»', { arg: clip(q) }),
+        tone: 'muted',
+        kind: 'read',
+      };
     }
     case 'write_file':
     case 'edit':
@@ -66,26 +99,30 @@ function describeToolCall(tool: string, rawArgs: unknown): PhaseEvent | null {
     case 'run_tests': {
       const cmd = s('command');
       return {
-        text: cmd.length > 0 ? `run ${clip(cmd)}` : `run ${tool}`,
+        text: label(t, 'tool.run', 'run {arg}', { arg: cmd.length > 0 ? clip(cmd) : tool }),
         tone: 'accent',
         kind: 'command',
       };
     }
     case 'preview':
-      return { text: 'preview the app', tone: 'accent', kind: 'command' };
+      return { text: label(t, 'tool.preview', 'preview the app'), tone: 'accent', kind: 'command' };
     default: {
       const name = tool.replace(/_/g, ' ').trim();
-      return { text: name.length > 0 ? name : 'tool', tone: 'accent', kind: 'tool' };
+      return {
+        text: label(t, 'tool.name', '{arg}', { arg: name.length > 0 ? name : 'tool' }),
+        tone: 'accent',
+        kind: 'tool',
+      };
     }
   }
 }
 
 /** Maps a within-phase event to a rail PhaseEvent line, or null to ignore it. */
-function railEventFor(event: ExcaliburEvent): PhaseEvent | null {
+function railEventFor(event: ExcaliburEvent, t?: RailT): PhaseEvent | null {
   const p = event.payload;
   switch (event.type) {
     case 'tool_call':
-      return describeToolCall(str(p, 'tool') || str(p, 'name'), p['arguments']);
+      return describeToolCall(str(p, 'tool') || str(p, 'name'), p['arguments'], t);
     // Suppressed: the tool_call announce (above) already describes the read with its path, so
     // rendering file_read again produced the old redundant second line (RUN-FIX-27). NOTE we
     // keep `command_started` below ($ command) — the gated workflow engine surfaces commands
@@ -99,7 +136,7 @@ function railEventFor(event: ExcaliburEvent): PhaseEvent | null {
       const diff = str(p, 'diff');
       const note = diff.length > 0 ? formatDiffStat(parseDiffStat(diff)) : '';
       return {
-        text: `write ${str(p, 'path')}`,
+        text: label(t, 'tool.write', 'write {arg}', { arg: str(p, 'path') }),
         tone: 'accent',
         kind: 'write',
         ...(note.length > 0 ? { note } : {}),
@@ -350,7 +387,7 @@ export function reduceRail(
         break;
       }
       default: {
-        const ev = railEventFor(event);
+        const ev = railEventFor(event, options.t);
         if (ev !== null) pushEvent(phaseFor(event), ev);
       }
     }

@@ -1155,6 +1155,15 @@ export const EN: Catalog = {
   'event.assistant-message': '  assistant message',
   'event.model-call': '  model call ({model})',
   'event.tool-call': '  tool: {tool}',
+  // RUN-FIX-27 — one warm, LOCALIZED line per tool call (verb + real argument), shared by the
+  // live rail and the non-TTY event log.
+  'tool.read': 'read {arg}',
+  'tool.list': 'list {arg}',
+  'tool.search': 'search «{arg}»',
+  'tool.run': 'run {arg}',
+  'tool.preview': 'preview the app',
+  'tool.write': 'write {arg}',
+  'tool.name': '{arg}',
   'event.file-read': '  read {path}',
   'event.file-write': '  write {path}{sim}',
   'event.command-started': '  $ {command}{sim}',

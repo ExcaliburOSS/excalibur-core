@@ -6,6 +6,25 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.10.3] - 2026-07-02
+
+The 1.10.2 rail fixes now reach the non-TTY path, and every rail verb speaks the user's language.
+Public Beta.
+
+### Fixed
+
+- **The piped / CI transcript matches the interactive rail.** The non-TTY streaming path (used
+  when output is piped or captured, e.g. `excalibur run` in a script) still showed a bare
+  `tool run_command`, a duplicated read line, and a raw `exit 1` in red. It now renders exactly
+  like the live rail: one informative line per tool call (`run npm test`, `read package.json`,
+  `search «query»`), the redundant `file_read` line suppressed, and never an exit code.
+
+### Changed
+
+- **The rail verbs are localized.** The tool-action verbs — read / run / search / list / write —
+  now render in the user's language on both the live rail and the piped transcript (Spanish:
+  `leo` / `ejecuto` / `busco` / `miro` / `escribo`), instead of always in English.
+
 ## [1.10.2] - 2026-07-02
 
 A completed turn is never rendered as a failure, raw exit codes are never shown, and each tool

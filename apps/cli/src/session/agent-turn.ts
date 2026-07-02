@@ -366,6 +366,7 @@ async function driveLoop(
         safety: turn.config.safety?.preset ?? 'standard-safe',
         model: turn.providerName,
         push: false,
+        t: deps.t,
       },
       labels: {
         push: deps.t('rail.push'),

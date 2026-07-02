@@ -188,6 +188,46 @@ function defaultLevelForStyle(style: ExecutionStyle): AutonomyLevel {
   return style === 'careful' ? 4 : 3;
 }
 
+/**
+ * RUN-FIX-27 (non-TTY parity with the TTY rail): ONE informative line per tool call — a verb +
+ * the REAL argument (the command for run_command, the file for a read, the query for a search),
+ * localized via the shared `tool.*` keys — instead of a bare, uninformative "tool run_command".
+ * The `tool_call` event already carries `arguments`, so this line stands alone and the redundant
+ * typed follow-ups (file_read / command_completed) are suppressed. Returns null for write/edit so
+ * the richer `file_write` line (with its diffstat) is the one that shows.
+ */
+function describeToolCallLine(t: Translator, tool: string, rawArgs: unknown): string | null {
+  const a = (rawArgs ?? {}) as Record<string, unknown>;
+  const s = (k: string): string => (typeof a[k] === 'string' ? (a[k] as string) : '');
+  const clip = (text: string, max = 72): string => {
+    const flat = text.replace(/\s+/g, ' ').trim();
+    return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+  };
+  switch (tool) {
+    case 'read_file':
+      return pc.dim(t('tool.read', { arg: s('path') }));
+    case 'list_files':
+      return pc.dim(t('tool.list', { arg: s('path') || '.' }));
+    case 'search_code':
+    case 'search':
+      return pc.dim(t('tool.search', { arg: clip(s('query') || s('pattern')) }));
+    case 'write_file':
+    case 'edit':
+      return null; // the `file_write` line renders this with its diffstat
+    case 'run_command':
+    case 'run_tests': {
+      const cmd = s('command');
+      return pc.dim(t('tool.run', { arg: cmd.length > 0 ? clip(cmd) : tool }));
+    }
+    case 'preview':
+      return pc.dim(t('tool.preview'));
+    default: {
+      const name = tool.replace(/_/g, ' ').trim();
+      return pc.dim(t('tool.name', { arg: name.length > 0 ? name : 'tool' }));
+    }
+  }
+}
+
 /** Compact terminal line for one streamed run event (non-TTY/CI fallback). */
 export function describeEvent(t: Translator, event: ExcaliburEvent): string | null {
   const payload = event.payload;
@@ -223,22 +263,21 @@ export function describeEvent(t: Translator, event: ExcaliburEvent): string | nu
     case 'model_call':
       return pc.dim(t('event.model-call', { model: str('model') || 'mock' }));
     case 'tool_call':
-      return pc.dim(t('event.tool-call', { tool: str('tool') || str('name') }));
+      // ONE informative, localized verb + argument. Suppresses the redundant typed follow-ups.
+      return describeToolCallLine(t, str('tool') || str('name'), payload['arguments']);
     case 'file_read':
-      return pc.dim(t('event.file-read', { path: str('path') }));
+      // The paired `tool_call` (read_file) already rendered "read <path>" — don't duplicate it.
+      return null;
     case 'file_write':
       return pc.dim(t('event.file-write', { path: str('path'), sim }));
     case 'command_started':
       return pc.dim(t('event.command-started', { command: str('command'), sim }));
-    case 'command_completed': {
-      const exit = typeof payload['exitCode'] === 'number' ? (payload['exitCode'] as number) : null;
-      if (exit === null) {
-        return null;
-      }
-      return exit === 0
-        ? pc.dim(t('event.exit-ok', { sim }))
-        : pc.red(t('event.exit-fail', { exit, sim }));
-    }
+    case 'command_completed':
+      // Never surface exit codes to the user (RUN-FIX-27). The command already showed via its
+      // `tool_call` (native path) or `command_started` (gated engine) line; a green/red "exit N"
+      // recap on a benign probe reads as a scary failure. Verification failures surface through
+      // the deterministic turn receipt, not a raw exit line.
+      return null;
     case 'test_result': {
       // Color by the ACTUAL status — a failed test must not render green.
       const status = str('status') || 'passed';
@@ -374,6 +413,7 @@ export async function mountConversationalRail(
     safety: config.safety?.preset ?? 'standard-safe',
     model: gatewayContext.providerName,
     push: false,
+    t: deps.t,
   };
   const railLabels = {
     push: deps.t('rail.push'),
@@ -805,6 +845,7 @@ export async function runTask(
     safety: config.safety?.preset ?? 'standard-safe',
     model: gatewayContext.providerName,
     push: options.sync === true,
+    t: deps.t,
   };
   const railLabels = {
     push: deps.t('rail.push'),
