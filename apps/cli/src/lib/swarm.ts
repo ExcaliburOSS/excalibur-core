@@ -38,6 +38,7 @@ import type { GatewayChatInput, ModelGateway } from '@excalibur/model-gateway';
 import type { AgentRole, AutonomyLevel, ExcaliburConfig, ExcaliburEvent } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
 import { loadInkUi } from '../ink/load';
+import { buildManagementToolset } from './management-tools';
 import { runConfiguredCommandCheck } from './verify-command';
 import { runProportionalMesh } from './verify-mesh';
 import {
@@ -342,7 +343,7 @@ function hasTestCommand(config: ExcaliburConfig): boolean {
  * `orchestration.verifyMerge`/`verifyWaves` in config still wins; with no test command it
  * stays off (nothing to run). A red verdict reverts the merge/wave as before.
  */
-function verifyMergeEnabled(config: ExcaliburConfig): boolean {
+export function verifyMergeEnabled(config: ExcaliburConfig): boolean {
   return config.orchestration?.verifyMerge ?? hasTestCommand(config);
 }
 function verifyWavesEnabled(config: ExcaliburConfig): boolean {
@@ -645,6 +646,13 @@ export async function executeSwarm(
       role: byId.get(lane.id)?.role ?? 'implementer',
       config: context.config,
       gateway: context.gateway,
+      // F1 — lanes get the same management awareness every other host wires
+      // (project status, work-items, plans, `remember`, `investigate`): the
+      // sub-agents doing the parallel work were the only ones flying blind.
+      // Store reads/writes stay on the SHARED repoRoot (.excalibur is canonical
+      // there); diff-based self-checks read the lane's own worktree. Bounded:
+      // investigate caps its explorer fan-out per call and lanes are capped at 8.
+      management: buildManagementToolset(deps, repoRoot, { workdir: worktreePath }),
       confirm: () => Promise.resolve(context.autonomyAutoApprove),
       ...(options.signal !== undefined ? { signal: options.signal } : {}),
     } as Parameters<NativeAgentAdapter['run']>[0])) {
@@ -704,8 +712,10 @@ export async function executeSwarm(
   // AO5-5 — SELF-HEAL: when a lane exhausts its attempts, re-instruct it ONCE with
   // the failure context. Routed through runLane so the budget gate + pause + child
   // run events apply for free; bounded to a single heal (the core never re-enters).
+  // F1 — DEFAULT ON: it is single-shot + budget-capped, and a healed lane is the
+  // difference between a landed workstream and a silently dropped one. `false` opts out.
   const healOptions: { heal?: SwarmLaneHealer<SwarmLaneSummary> } =
-    context.config.orchestration?.selfHeal === true
+    context.config.orchestration?.selfHeal !== false
       ? {
           heal: async ({
             lane,
@@ -885,6 +895,19 @@ export interface SwarmFlowOptions {
   /** Internal: suppress the proactive "retry failed lanes?" offer (set on the
    * retry run itself, so a failed retry never loops the offer). */
   noResumeOffer?: boolean;
+  /** F1 — best-effort observer of the flow's FINAL per-lane outcomes and whether
+   * the merged diff actually LANDED on the tree (applied + survived the verify
+   * gate). Invoked at most once per flow, never on the retry sub-flow, and a
+   * throwing observer never perturbs the flow. The auto-orchestrator uses it to
+   * settle the build's board/plan state truthfully. */
+  onOutcome?: (outcome: SwarmFlowOutcome) => void;
+}
+
+/** The flow's final shape for observers (mirrors the lanes panel's states). */
+export interface SwarmFlowOutcome {
+  lanes: ReadonlyArray<{ id: string; state: 'done' | 'failed' | 'conflict' | 'empty' }>;
+  /** True when the merged diff was applied to the tree and survived verification. */
+  applied: boolean;
 }
 
 /**
@@ -1054,6 +1077,21 @@ export async function runSwarmFlow(
       ...(options.onEscape !== undefined ? { onEscape: options.onEscape } : {}),
     });
   }
+  // F1 — the outcome observer fires EXACTLY once with the final lane states +
+  // whether the merged diff landed; a throwing observer never perturbs the flow.
+  let laneStates: SwarmFlowOutcome['lanes'] = [];
+  let outcomeEmitted = false;
+  const emitOutcome = (applied: boolean): void => {
+    if (outcomeEmitted) {
+      return;
+    }
+    outcomeEmitted = true;
+    try {
+      options.onOutcome?.({ lanes: laneStates, applied });
+    } catch {
+      /* observer faults are the observer's problem, never the swarm's */
+    }
+  };
   let result;
   try {
     // Grading enables the revise-until-it-passes loop; default to 2 attempts when
@@ -1127,6 +1165,11 @@ export async function runSwarmFlow(
     });
     const applied = laneModels.filter((l) => l.state === 'done').length;
     const finalModel = { lanes: laneModels, applied, conflicts: result.conflicts.length };
+    laneStates = laneModels.map((l) => ({
+      id: l.id,
+      state:
+        l.state === 'failed' || l.state === 'conflict' || l.state === 'empty' ? l.state : 'done',
+    }));
 
     if (inkLanes !== null) {
       // Render the final detailed panel (per-lane diffstat/cost + merge counts)
@@ -1163,8 +1206,11 @@ export async function runSwarmFlow(
       defaultYes: true,
     });
     if (retry) {
+      // The outer flow already reported its outcome — the retry sub-flow must not
+      // re-emit over it (onOutcome is per-flow, not per-attempt).
+      const { onOutcome: _onOutcome, ...retryOptions } = options;
       await runSwarmFlow(deps, repoRoot, task, ctx, {
-        ...options,
+        ...retryOptions,
         subtasks: failedSubtasks,
         noResumeOffer: true,
       });
@@ -1173,6 +1219,7 @@ export async function runSwarmFlow(
 
   if (result.mergedDiff.trim().length === 0) {
     deps.ui.info(deps.t('swarm.noChanges'));
+    emitOutcome(false);
     await offerRetryFailed();
     return;
   }
@@ -1190,6 +1237,7 @@ export async function runSwarmFlow(
     (await deps.ui.confirm(deps.t('swarm.confirmApply'), { defaultYes: false }));
   if (!apply) {
     deps.ui.info(deps.t('swarm.leftUnapplied'));
+    emitOutcome(false);
     return;
   }
   try {
@@ -1200,6 +1248,7 @@ export async function runSwarmFlow(
         error: error instanceof Error ? error.message : String(error),
       }),
     );
+    emitOutcome(false);
     return;
   }
   // AO4b — VERIFIED FAN-IN: run the configured test command on the MERGED tree
@@ -1223,6 +1272,7 @@ export async function runSwarmFlow(
       if (!verdict.passed) {
         revertMerge();
         deps.ui.error(deps.t('swarm.verifyFailed', { detail: verdict.detail }));
+        emitOutcome(false);
         return;
       }
       deps.ui.success(deps.t('swarm.verified', { detail: verdict.detail }));
@@ -1232,9 +1282,11 @@ export async function runSwarmFlow(
     if (await runMergeMesh(deps, ctx, result.mergedDiff)) {
       revertMerge();
       deps.ui.error(deps.t('swarm.mesh-blocked'));
+      emitOutcome(false);
       return;
     }
   }
   deps.ui.success(deps.t('swarm.applied'));
+  emitOutcome(true);
   await offerRetryFailed();
 }

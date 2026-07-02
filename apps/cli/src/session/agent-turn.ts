@@ -58,7 +58,6 @@ import {
 } from '@excalibur/tui';
 import type { RunViewHandle } from '@excalibur/tui/ink';
 import type { ChatMessage, ModelGateway } from '@excalibur/model-gateway';
-import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import pc from 'picocolors';
@@ -70,6 +69,7 @@ import { renderTurnReceipt } from '../lib/turn-receipt';
 import { ActionRenderer, activityFor } from '../lib/action-render';
 import { setAutoApprove } from '../lib/config-file';
 import { materializePlanIntoWorkItems, syncStepWorkItemLane } from '../lib/plan-work-items';
+import { changedFiles, pathsFromText } from '../lib/memory-priming';
 import { loadInkUi } from '../ink/load';
 
 /**
@@ -763,30 +763,9 @@ function createTurnRun(
   });
 }
 
-/** Path-like tokens named in a task (`src/x.ts`, `dir/file`, `foo.json`). */
-export function pathsFromText(text: string): string[] {
-  const matches = text.match(/[\w@.-]+\/[\w./-]+|[\w-]+\.[a-zA-Z][a-zA-Z0-9]+/g) ?? [];
-  return [...new Set(matches)].slice(0, 20);
-}
-
-/** Working-set files (`git diff --name-only HEAD`); [] on any failure. */
-function changedFiles(repoRoot: string): string[] {
-  try {
-    return execFileSync('git', ['diff', '--name-only', 'HEAD'], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      timeout: 2000,
-      // Discard the child's stderr — a commit-less repo makes `HEAD` invalid and
-      // git prints "fatal: ambiguous argument 'HEAD'" to the inherited terminal.
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-  } catch {
-    return [];
-  }
-}
+// F1 — moved to the lib layer (memory-priming.ts) so the gated build pipeline can
+// share the exact same query; re-exported here for compatibility (tests import it).
+export { pathsFromText };
 
 /**
  * Knowledge-compounding READ side: retrieve project memory relevant to the

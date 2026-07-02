@@ -157,7 +157,7 @@ describe('buildTurnSummary', () => {
     ]);
 
     expect(summary.tier).toBe('failed');
-    expect(summary.nextHint).toEqual({ kind: 'fix_failures' });
+    expect(summary.nextHint).toEqual({ kind: 'fix_failures', canRewind: true });
     expect(summary.checks.every((c) => c.label !== 'tests' || !c.ok)).toBe(true);
   });
 
@@ -329,7 +329,7 @@ describe('buildTurnSummary', () => {
     ]);
 
     expect(summary.tier).toBe('failed');
-    expect(summary.nextHint).toEqual({ kind: 'fix_failures' });
+    expect(summary.nextHint).toEqual({ kind: 'fix_failures', canRewind: true });
   });
 
   it('omits the "exit 0" detail on a passing command (a green ✓ already says it passed)', () => {

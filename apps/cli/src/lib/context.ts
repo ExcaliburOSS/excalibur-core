@@ -282,6 +282,10 @@ export async function buildEffectiveContext(
     autonomyLevel?: number;
     /** Retrieved repo-context sources injected at precedence 6 (M2). */
     additionalSources?: AdditionalContextSource[];
+    /** F1 — extra paths to query project memory with (the task's working set /
+     * named paths). Before this, builds were primed ONLY from typecheck-error
+     * paths, so a type-clean repo never received a single memory. */
+    memoryQueryPaths?: string[];
   } = {},
 ): Promise<EffectiveContext> {
   // Knowledge Compounding (M2.6): retrieve project memory relevant to the files
@@ -289,9 +293,9 @@ export async function buildEffectiveContext(
   // with prior decisions/rejections/risks for those paths. Best-effort + scoped
   // (no relevant memory → nothing injected).
   const repoSources = options.additionalSources ?? [];
-  const queryPaths = repoSources
-    .map((source) => source.path)
-    .filter((path) => !path.startsWith(EXCALIBUR_DIR) && !path.startsWith('.excalibur'));
+  const queryPaths = [
+    ...new Set([...repoSources.map((source) => source.path), ...(options.memoryQueryPaths ?? [])]),
+  ].filter((path) => !path.startsWith(EXCALIBUR_DIR) && !path.startsWith('.excalibur'));
   const memorySource = queryPaths.length > 0 ? buildMemoryContext(repoRoot, queryPaths) : null;
   const additionalSources: AdditionalContextSource[] = [
     ...repoSources,

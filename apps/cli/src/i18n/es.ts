@@ -39,7 +39,7 @@ export const ES: Catalog = {
   'new.next-steps': 'Ahora: cd {name} && excalibur — tu primer arranque conecta un modelo.',
 
   // Panel web acompañante, auto-arrancado con la shell interactiva.
-  'dashboard.up': '▸ Panel web en {url}',
+  'dashboard.up': '▸ Míralo en vivo: {url}',
 
   'init.detected': 'Detectado:',
   'init.detected.none': 'nada específico — se aplican los valores por defecto',
@@ -787,6 +787,8 @@ export const ES: Catalog = {
   'turn-receipt.hint-apply': 'revisa y luego  excalibur apply {runId}',
   'turn-receipt.hint-review': 'ya están aplicados en tu proyecto — revísalos con  /changes',
   'turn-receipt.hint-fix-failures': 'las verificaciones de arriba siguen en rojo',
+  'turn-receipt.hint-fix-failures-rewind':
+    'las verificaciones de arriba siguen en rojo — dime «deshaz esto» o usa /rewind para volver a antes del cambio',
   'turn-receipt.hint-branch': 'los cambios están en la rama {branch}',
   'turn-receipt.hint-resolve-block': 'resuelve el bloqueo para continuar',
   'turn-receipt.and-more': '…y {extra} más · /changes',
@@ -986,6 +988,13 @@ export const ES: Catalog = {
     'Auto-orquestando: {count} flujos de trabajo independientes → un swarm en paralelo.',
   'repl.auto-build-sequential':
     'Auto-orquestando: un solo flujo de trabajo → una ejecución enfocada.',
+  'repl.auto-build-board-epic':
+    'He dejado este build en el board: {epic} · {count} tareas{sprint}.',
+  'repl.auto-build-board-item': 'He dejado este build en el board: {item}{sprint}.',
+  'repl.auto-build-board-sprint': ' · sprint {sprint}',
+  'repl.history-rewind-hint':
+    'Para viajar a un momento exacto, /rewind recorre la sesión paso a paso y puede hacer fork desde cualquier punto.',
+  'repl.discovery-build-now': 'El gate dice que está listo — ¿lo construyo ya?',
   'plan-card.title': 'Plan',
   'plan-card.shape-swarm': 'swarm · {count} flujos en paralelo',
   'plan-card.shape-single': 'un solo flujo enfocado',

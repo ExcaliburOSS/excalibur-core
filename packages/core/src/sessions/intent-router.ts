@@ -83,6 +83,11 @@ export function parseStructuralInput(text: string): StructuralInput {
  * - `mission`: a BIG, multi-faceted goal that needs SEVERAL capabilities composed
  *   and driven autonomously to completion (understand → plan → build/parallelize →
  *   verify → ship) — the meta-orchestrator. The proactive route for large work.
+ * - `history`: wants to UNDO / ROLL BACK / REWIND work Excalibur already did —
+ *   time travel, reachable conversationally (F1: it was slash-only, never used).
+ * - `discovery`: FLOATS a product idea and wonders WHETHER it is worth building —
+ *   the discovery gate scores it build / validate / don't-build before any code
+ *   (F1: the gate had no route; only the explicit command/slash reached it).
  */
 export type TurnIntent =
   | 'chat'
@@ -96,7 +101,9 @@ export type TurnIntent =
   | 'preview'
   | 'orchestration'
   | 'schedule'
-  | 'mission';
+  | 'mission'
+  | 'history'
+  | 'discovery';
 
 const TURN_INTENTS: readonly TurnIntent[] = [
   'chat',
@@ -111,6 +118,8 @@ const TURN_INTENTS: readonly TurnIntent[] = [
   'orchestration',
   'schedule',
   'mission',
+  'history',
+  'discovery',
 ];
 
 export interface IntentContext {
@@ -147,7 +156,9 @@ export function buildIntentPrompt(text: string): string {
     '- orchestration: VIEW, PAUSE or RESUME an EXISTING parallel run — its swarm/orchestration/chronogram/timeline (not new work).',
     '- schedule: run a task on a RECURRING cadence ("every morning", "cada 2 horas", "nightly", "daily at 9", "each hour run X").',
     '- mission: a BIG, multi-faceted goal needing SEVERAL kinds of work composed and driven to completion autonomously — e.g. "build feature X end to end (design, implement across modules, test, verify, open a PR)", a large migration, "ship the whole thing". Choose this over plan/swarm/goal when the work needs MULTIPLE different phases, not just one.',
-    'Answer with ONLY the category word (chat, edit, plan, swarm, bg, research, goal, explore, preview, orchestration, schedule, or mission).',
+    '- history: wants to UNDO / ROLL BACK / REWIND work the agent ALREADY did — "deshaz esto", "undo that last change", "vuelve a como estaba antes", "revert what you just did", "ponlo como estaba". The target is the agent\'s OWN previous change, NOT a new edit.',
+    '- discovery: FLOATS a product IDEA and wonders WHETHER it is worth building — "¿y si la app pudiese X?", "would it make sense to add X?", "idea: X", "maybe we should X someday". They are NOT asking to build it yet; the idea gets scored build / validate / don\'t-build first. If the user plainly asks to BUILD X, choose edit/plan/mission instead.',
+    'Answer with ONLY the category word (chat, edit, plan, swarm, bg, research, goal, explore, preview, orchestration, schedule, mission, history, or discovery).',
     '',
     `Request: ${text}`,
   ].join('\n');
@@ -203,6 +214,8 @@ export function buildDecisionPrompt(text: string): string {
     '- orchestration: VIEW, PAUSE or RESUME an EXISTING parallel run — its swarm/orchestration/chronogram/timeline (not new work).',
     '- schedule: run a task on a RECURRING cadence ("every morning", "cada 2 horas", "nightly", "daily at 9", "each hour run X").',
     '- mission: a BIG, multi-faceted goal needing SEVERAL kinds of work composed and driven to completion autonomously (design + implement across modules + test + verify + ship, a large migration). Choose over plan/swarm/goal when the work needs MULTIPLE different phases.',
+    '- history: wants to UNDO / ROLL BACK / REWIND work the agent ALREADY did — "deshaz esto", "undo that last change", "vuelve a como estaba antes", "revert what you just did". The target is the agent\'s OWN previous change, NOT a new edit.',
+    '- discovery: FLOATS a product IDEA and wonders WHETHER it is worth building — "¿y si la app pudiese X?", "would it make sense to add X?", "idea: X". NOT asking to build it yet; it gets scored build / validate / don\'t-build first. If the user plainly asks to BUILD X, choose edit/plan/mission instead.',
     'Answer with EXACTLY two words: the category then the confidence (high, medium, or low).',
     'Example: "swarm high" or "mission high" or "chat low".',
     '',
@@ -258,16 +271,21 @@ export function riskOfShape(intent: TurnIntent): ShapeRisk {
     case 'research':
     case 'preview':
     case 'orchestration':
+    case 'discovery':
+      // discovery scores an idea and writes artifacts under .excalibur — it never
+      // touches code (Level 0/1 by design), so it routes as freely as chat.
       return 'low';
     case 'edit':
     case 'plan':
     case 'swarm':
     case 'bg':
     case 'schedule':
+    case 'history':
       // edit = one small direct code change (a real mutation, but reversible);
       // schedule = add a recurring job: a reversible config write (you can remove
       // it), but it commits to FUTURE autonomous runs → confirm unless autonomy is
-      // granted, like a build.
+      // granted, like a build. history = reverting Excalibur's own change: a real
+      // tree mutation (the undo flow's own confirm still gates the revert itself).
       return 'medium';
     case 'goal':
     case 'explore':

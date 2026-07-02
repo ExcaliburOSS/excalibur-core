@@ -429,8 +429,34 @@ function systemPromptFor(input: AgentRunInput): string {
     'mark exactly one item "in_progress", flip finished items to "completed", and',
     'send the whole list again each time. It is shown to the user as a live to-do',
     'list. Skip it only for trivial one-step tasks.',
+    // F1 — `investigate` + `remember` were description-only (zero organic calls,
+    // ever): a tool the base prompt never names does not exist in practice. Name
+    // them with the same protocol weight `update_tasks` gets. Gated on a wired
+    // ManagementToolset so we never advertise tools that answer "not available".
+    ...(input.management !== undefined
+      ? [
+          'Two more tools are first-class parts of how you work, not extras:',
+          '`investigate` — before non-trivial work that spans SEVERAL files or areas you',
+          'have not read yet, call it ONCE (it fans out parallel read-only explorers and',
+          'returns a synthesized map) INSTEAD of chaining sequential read_file /',
+          'search_code calls. `remember` — when you DECIDE something or LEARN a',
+          'non-obvious fact that outlives this task (an architecture choice, why an',
+          'approach was rejected, a gotcha, a convention), persist it with the paths it',
+          'concerns so future work on those files starts primed. One or two good',
+          'memories per task is plenty; never store secrets.',
+        ]
+      : []),
     ...engineeringGuidance(input.role),
     ...narrationGuidance(input.role),
+    // F1 — the discovery gate was promised by a repl comment ("the agent's prompts
+    // suggest it") but no prompt ever mentioned it. This keeps the promise without
+    // fighting the proactivity directive: it applies ONLY to speculative ideas,
+    // never to concrete requests.
+    'If the user floats a speculative product IDEA — its worth is genuinely unclear',
+    'and no concrete change was asked — suggest the discovery gate (`/discovery',
+    '<idea>` in the shell, `excalibur discovery` from the CLI), which scores it',
+    'build / validate / don’t-build BEFORE any code is written. Concrete requests:',
+    'just do them.',
     'When the task is complete, reply with a brief, warm summary — like updating a',
     'teammate on what you did and why — and no further tool calls.',
   ].join('\n');

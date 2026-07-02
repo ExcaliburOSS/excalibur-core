@@ -50,6 +50,7 @@ import {
 } from './context';
 import { diagnosticsContextSource, runDiagnostics } from './diagnostics';
 import { buildManagementToolset } from './management-tools';
+import { memoryQueryPaths } from './memory-priming';
 import { warnDirtyTree } from './run-safety';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { pushLatestRun } from '../commands/login';
@@ -784,6 +785,9 @@ export async function runTask(
     workflowId: choice.workflowId,
     autonomyLevel: choice.autonomyLevel,
     ...(diagnosticSources.length > 0 ? { additionalSources: diagnosticSources } : {}),
+    // F1 — prime the build with project memory keyed to the TASK's working set +
+    // named paths (the same query the chat seed uses), not just typecheck errors.
+    memoryQueryPaths: memoryQueryPaths(repoRoot, task),
   });
   for (const warning of effective.warnings) {
     deps.ui.warn(warning);

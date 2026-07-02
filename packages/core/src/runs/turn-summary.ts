@@ -63,7 +63,10 @@ export type NextHint =
   // conversational m-shell build produces, so it must NEVER be told to run an external
   // apply command (RUN-FIX-25).
   | { kind: 'review_changes' }
-  | { kind: 'fix_failures' }
+  // F1 — `canRewind`: the red turn MUTATED the tree, i.e. the exact moment time
+  // travel is worth offering ("I can rewind this: /rewind"). A red turn that
+  // changed nothing has nothing to rewind, so the renderer stays quiet.
+  | { kind: 'fix_failures'; canRewind: boolean }
   | { kind: 'branch'; branch: string }
   | { kind: 'resolve_block' };
 
@@ -356,7 +359,7 @@ function nextHintOf(
   checks: TurnCheck[],
 ): NextHint | null {
   if (checks.some((check) => !check.ok)) {
-    return { kind: 'fix_failures' };
+    return { kind: 'fix_failures', canRewind: changedFiles.length > 0 };
   }
   if (changedFiles.length === 0) {
     return null;

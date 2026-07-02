@@ -46,6 +46,7 @@ import {
   type IntentModel,
   type InterruptModel,
   type LocalSession,
+  type PlanStepStatus,
   type RoutePosture,
   type Subtask,
   type TurnDecision,
@@ -85,7 +86,13 @@ import {
 import { runDiscoveryFlow } from '../commands/discovery';
 import { runTask, mountConversationalRail } from '../lib/run-pipeline';
 import { renderTurnReceipt } from '../lib/turn-receipt';
-import { chooseBuildShape, decomposeTask, runSwarmFlow } from '../lib/swarm';
+import { chooseBuildShape, decomposeTask, runSwarmFlow, verifyMergeEnabled } from '../lib/swarm';
+import {
+  markAutoBuildStep,
+  materializeAutoBuild,
+  settleAutoBuild,
+  type AutoBuildBoard,
+} from '../lib/auto-build-board';
 import { renderChronogramView } from '../commands/orchestration';
 import { latestOrchestrationRunId, setOrchestrationPaused } from '../lib/orchestration-manifest';
 import { runExploreFlow } from '../lib/explore';
@@ -199,6 +206,10 @@ interface SessionRuntime {
   /** AO8-4 — set on REPL teardown so a late background callback (chain / supervisor)
    * never spawns a new thread into a closing session. */
   shuttingDown: boolean;
+  /** F1 — the session dashboard's tokenized URL (undefined/null when it didn't start).
+   * The startup banner scrolls away instantly; each build re-surfaces it as a deep
+   * link to its OWN live card, announced before execution. */
+  dashboardUrl?: string | null;
   /**
    * In-flight background auto-compaction (fired after a turn, awaited before the
    * next turn builds its seed). Lets compaction overlap with the user's typing so
@@ -490,6 +501,7 @@ export async function runInteractiveSession(
   // a browser without discovering `excalibur serve`. Torn down in the finally
   // below. No-op on a non-TTY, when disabled, or if every candidate port is busy.
   const dashboard = await startSessionDashboard(deps, repoRoot, config);
+  runtime.dashboardUrl = dashboard?.url ?? null;
 
   const history = store.loadPromptHistory().slice().reverse(); // readline wants newest-first
   // Has the user submitted anything yet this session? Drives the CONTEXTUAL
@@ -1290,6 +1302,33 @@ export async function runInteractiveSession(
                   }),
                 );
               }
+            }
+          } else if (intent === 'history') {
+            // F1 — TIME TRAVEL reachable conversationally (any language): "deshaz
+            // esto", "undo what you just did", "vuelve a como estaba antes" routes
+            // to the SAME machinery as /undo (whose own confirm still gates the
+            // revert — undoing user-visible work stays gated even at L4), then
+            // points at /rewind for step-level travel. It was slash-only → 0 uses.
+            await handleUndoCommand(deps);
+            deps.ui.info(deps.t('repl.history-rewind-hint'));
+          } else if (intent === 'discovery') {
+            // F1 — the DISCOVERY GATE, reachable conversationally: a floated idea
+            // ("¿y si pudiésemos X?", "would it make sense to add X?") gets scored
+            // build / validate / don't-build BEFORE any code. The router had no
+            // way to reach it (no intent; the slash was never typed). Low-risk:
+            // discovery never touches code. On a buildable verdict, offer to go.
+            const record = await runDiscoveryFlow(deps, {
+              input: text,
+              inputType: 'idea',
+              yes: !deps.ui.isInteractive(),
+            });
+            const rec = record.recommendation;
+            if (
+              (rec === 'build_now' || rec === 'agent_run_ready' || rec === 'patch_ready') &&
+              deps.ui.isInteractive() &&
+              (await deps.ui.confirm(deps.t('repl.discovery-build-now'), { defaultYes: true }))
+            ) {
+              await dispatchAutoBuild(deps, runtime, text, ctrl.signal, seed, () => ctrl.abort());
             }
           } else if (intent === 'preview' && decision.confidence !== 'low') {
             // RUN-FIX-26 — the user wants to SEE the running site ("enséñame la web",
@@ -2337,6 +2376,46 @@ async function dispatchAutoBuild(
   // Plan-shaping: co-create the scope (clarifying Qs + multi-select recommendations)
   // before decomposing/building; the choices refine the task that gets decomposed.
   text = await shapePlan(deps, runtime, text, signal);
+  // F1-KEYSTONE — the auto-build's decomposition is durable product state, not an
+  // ephemeral card: plan → board work items → rolling sprint, live-synced below.
+  // Best-effort by contract (a board fault must never gate the build).
+  let board: AutoBuildBoard | null = null;
+  const announceBoard = (): void => {
+    if (board === null) {
+      return;
+    }
+    const sprint =
+      board.sprintId !== null
+        ? deps.t('repl.auto-build-board-sprint', { sprint: board.sprintId })
+        : '';
+    if (board.epicWorkItemId !== null) {
+      deps.ui.info(
+        deps.t('repl.auto-build-board-epic', {
+          epic: board.epicWorkItemId,
+          count: board.stepBySubtask.size,
+          sprint,
+        }),
+      );
+    } else {
+      const item = [...board.stepBySubtask.values()][0]?.workItemId;
+      if (item !== undefined) {
+        deps.ui.info(deps.t('repl.auto-build-board-item', { item, sprint }));
+      }
+    }
+    // F1 — every build links straight to ITS OWN live card/epic in the dashboard,
+    // announced BEFORE execution so the user can watch the checklist + linked runs
+    // fill in live (the startup banner scrolls away instantly; a per-task deep
+    // link is the useful re-surface). Also un-orphans the `dashboard.up` string.
+    if (runtime.dashboardUrl != null) {
+      const target =
+        board.epicWorkItemId ?? [...board.stepBySubtask.values()][0]?.workItemId ?? null;
+      if (target !== null) {
+        deps.ui.info(
+          deps.t('dashboard.up', { url: `${runtime.dashboardUrl}#/work-items/${target}` }),
+        );
+      }
+    }
+  };
   const isRepo = getGitInfo(runtime.repoRoot).isRepo;
   if (isRepo) {
     try {
@@ -2388,8 +2467,18 @@ async function dispatchAutoBuild(
       // UX2-A — SHOW the plan before executing (it used to be sized silently). Non-blocking:
       // the user sees the workstreams, then the build proceeds (interruptible via Esc/typing).
       presentAutoBuildPlan(deps, runtime, subtasks, shape === 'swarm' ? 'swarm' : 'single');
+      board = materializeAutoBuild(runtime.repoRoot, text, subtasks, {
+        planRunId: generateId('turn'),
+      });
+      announceBoard();
       if (shape === 'swarm') {
         deps.ui.info(deps.t('repl.auto-build-parallel', { count: subtasks.length }));
+        if (board !== null) {
+          for (const id of board.stepBySubtask.keys()) {
+            markAutoBuildStep(runtime.repoRoot, board, id, 'active');
+          }
+        }
+        const swarmBoard = board;
         await runSwarmFlow(
           deps,
           runtime.repoRoot,
@@ -2399,7 +2488,39 @@ async function dispatchAutoBuild(
             providerName: gateway.providerName,
             config: runtime.config,
           },
-          { subtasks, yes: true, signal },
+          {
+            subtasks,
+            yes: true,
+            // F1 — the auto path grades every lane's diff against its subtask and
+            // REVISES failing lanes (one retry), same as `swarm --grade`. "Verified"
+            // must be the default, not a flag.
+            grade: true,
+            signal,
+            ...(swarmBoard !== null
+              ? {
+                  onOutcome: (outcome): void => {
+                    // Settle the board truthfully: a lane's work counts as DONE only
+                    // when the merged diff LANDED; produced-but-unlanded → blocked
+                    // (review lane), an empty lane → skipped, never-ran → pending.
+                    const statusBySubtask = new Map<string, PlanStepStatus>();
+                    for (const lane of outcome.lanes) {
+                      statusBySubtask.set(
+                        lane.id,
+                        outcome.applied && lane.state === 'done'
+                          ? 'done'
+                          : lane.state === 'empty'
+                            ? 'skipped'
+                            : 'blocked',
+                      );
+                    }
+                    settleAutoBuild(runtime.repoRoot, swarmBoard, text, {
+                      statusBySubtask,
+                      fallback: 'pending',
+                    });
+                  },
+                }
+              : {}),
+          },
         );
         // AO6 Pillar 5 — proactively surface that this orchestration is now a
         // first-class, viewable + pausable object (NL or dashboard), no command.
@@ -2411,17 +2532,48 @@ async function dispatchAutoBuild(
     }
   }
   deps.ui.info(deps.t('repl.auto-build-sequential'));
+  // The no-repo / failed-decompose fallback still lands on the board: one plain
+  // card for the whole build (the board must reflect EVERY build, not just the
+  // decomposable ones).
+  if (board === null) {
+    board = materializeAutoBuild(
+      runtime.repoRoot,
+      text,
+      [{ id: 's1', title: text.replace(/\s+/g, ' ').trim().slice(0, 72), instruction: text }],
+      { planRunId: generateId('turn') },
+    );
+    announceBoard();
+  }
+  if (board !== null) {
+    for (const id of board.stepBySubtask.keys()) {
+      markAutoBuildStep(runtime.repoRoot, board, id, 'active');
+    }
+  }
   // RUN-FIX-10 — a single-workstream build runs the GATED workflow engine (the
   // same one `excalibur run` uses), not a bare agent loop: complexity-sized
   // phases + Verify/Review + verification mesh + claim ledger, under the warm rail.
-  await runConversationalBuild(deps, runtime, text, signal, onAbort);
+  try {
+    await runConversationalBuild(deps, runtime, text, signal, onAbort);
+  } catch (error) {
+    if (board !== null) {
+      settleAutoBuild(runtime.repoRoot, board, text, { fallback: 'blocked' });
+    }
+    throw error;
+  }
+  if (board !== null) {
+    // An interrupted build goes back to the todo lane (work not done ≠ blocked).
+    settleAutoBuild(runtime.repoRoot, board, text, {
+      fallback: signal.aborted ? 'pending' : 'done',
+    });
+  }
 
   // AO4f-2 — give the SEQUENTIAL auto-build the same adversarial review the swarm
   // path gets (AO4f-1). The turn already applied as it went (no merge gate to
   // revert), so this is a proportional, best-effort post-review that SURFACES
-  // high-severity findings rather than reverting. Opt-in via verifyMerge; never
-  // on the mock; never blocks.
-  if (runtime.config.orchestration?.verifyMerge === true && runtime.model !== 'mock') {
+  // high-severity findings rather than reverting. Never on the mock; never blocks.
+  // F1 — same default as the swarm gate (ON when a test command exists): the ORCH1
+  // default-on was applied asymmetrically and left this path strictly opt-in.
+  if (verifyMergeEnabled(runtime.config) && runtime.model !== 'mock') {
     try {
       const gateway = loadGatewayContext(runtime.repoRoot);
       const diff = getLocalDiff(runtime.repoRoot);

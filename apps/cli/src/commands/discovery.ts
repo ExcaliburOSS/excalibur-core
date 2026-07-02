@@ -121,7 +121,10 @@ async function tailorDiscovery(
  * `excalibur run` when it recommends Discovery first. Questions are
  * skippable with an empty answer; `--yes`/non-TTY records them unanswered.
  */
-export async function runDiscoveryFlow(deps: CliDeps, flow: DiscoveryFlowInput): Promise<void> {
+export async function runDiscoveryFlow(
+  deps: CliDeps,
+  flow: DiscoveryFlowInput,
+): Promise<DiscoveryRecord> {
   const repoRoot = deps.cwd();
   const title = flow.title ?? flow.input.split('\n')[0]?.slice(0, 120) ?? 'Discovery session';
 
@@ -234,6 +237,9 @@ export async function runDiscoveryFlow(deps: CliDeps, flow: DiscoveryFlowInput):
     }
   }
   deps.ui.info(deps.t('discovery.artifacts', { dir: session.dir }));
+  // F1 — return the scored record so conversational callers (the NL `discovery`
+  // intent) can branch on the recommendation (e.g. offer to build right away).
+  return record;
 }
 
 /**

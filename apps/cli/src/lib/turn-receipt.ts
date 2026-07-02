@@ -185,7 +185,11 @@ function renderNextHint(deps: CliDeps, hint: NextHint): string {
       // next step is an in-shell review, never an external `excalibur apply` (RUN-FIX-25).
       return deps.t('turn-receipt.hint-review');
     case 'fix_failures':
-      return deps.t('turn-receipt.hint-fix-failures');
+      // F1 — a red turn that mutated the tree offers the time machine right at the
+      // moment it is useful (rewind was never suggested anywhere → never used).
+      return hint.canRewind
+        ? deps.t('turn-receipt.hint-fix-failures-rewind')
+        : deps.t('turn-receipt.hint-fix-failures');
     case 'branch':
       return deps.t('turn-receipt.hint-branch', { branch: hint.branch });
     case 'resolve_block':

@@ -38,6 +38,9 @@ export interface PlanMemoryInput {
   blockedStepIds?: string[];
   /** Extra run ids whose files to fold in (e.g. a single-pass plan's one run). */
   extraRunIds?: string[];
+  /** F1 — extra repo-relative paths to fold into the subject paths directly
+   * (auto-builds know their touched files from the working tree, not run ids). */
+  extraPaths?: string[];
 }
 
 /**
@@ -78,7 +81,12 @@ export function buildPlanMemoryEntry(
   input: PlanMemoryInput,
 ): CaptureMemoryInput {
   const { total, done } = planProgress(plan);
-  const subjectPaths = planFilesTouched(repoRoot, plan, input.extraRunIds ?? []);
+  const subjectPaths = [
+    ...new Set([
+      ...planFilesTouched(repoRoot, plan, input.extraRunIds ?? []),
+      ...(input.extraPaths ?? []),
+    ]),
+  ].slice(0, MAX_PATHS);
   const blockedTitles = (input.blockedStepIds ?? [])
     .map((id) => findStep(plan, id)?.step.title)
     .filter((t): t is string => t !== undefined && t.length > 0);

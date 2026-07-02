@@ -161,8 +161,8 @@ const orchestrationSectionSchema = z.object({
   /**
    * AO5-5 — SELF-HEAL: when a swarm lane exhausts its attempts, fire ONE bounded
    * heal attempt that re-instructs the lane with the failure context (last error +
-   * grader feedback) before giving up. Opt-in (default off); bounded to a single
-   * heal per lane and subject to the same budget cap as a normal lane.
+   * grader feedback) before giving up. ON by default since F1 (it is single-shot
+   * and budget-capped); set `false` to opt out.
    */
   selfHeal: z.boolean().optional(),
   /**

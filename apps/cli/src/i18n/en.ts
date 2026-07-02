@@ -43,7 +43,7 @@ export const EN: Catalog = {
   'new.next-steps': 'Next: cd {name} && excalibur — your first run connects a model.',
 
   // Companion web dashboard auto-started with the interactive shell.
-  'dashboard.up': '▸ Web dashboard at {url}',
+  'dashboard.up': '▸ Watch it live: {url}',
 
   // `excalibur init` — the confidence-building final output (onboarding §12).
   'init.detected': 'Detected:',
@@ -732,6 +732,8 @@ export const EN: Catalog = {
   'turn-receipt.hint-apply': 'review, then  excalibur apply {runId}',
   'turn-receipt.hint-review': 'already applied to your project — review with  /changes',
   'turn-receipt.hint-fix-failures': 'the checks above are still red',
+  'turn-receipt.hint-fix-failures-rewind':
+    'the checks above are still red — say "undo this" or use /rewind to step back to before the change',
   'turn-receipt.hint-branch': 'changes are on branch {branch}',
   'turn-receipt.hint-resolve-block': 'resolve the block to continue',
   'turn-receipt.and-more': '…and {extra} more · /changes',
@@ -926,6 +928,12 @@ export const EN: Catalog = {
   'repl.auto-build-parallel':
     'Auto-orchestrating: {count} independent workstreams → a parallel swarm.',
   'repl.auto-build-sequential': 'Auto-orchestrating: a single workstream → one focused task.',
+  'repl.auto-build-board-epic': 'I put this build on the board: {epic} · {count} tasks{sprint}.',
+  'repl.auto-build-board-item': 'I put this build on the board: {item}{sprint}.',
+  'repl.auto-build-board-sprint': ' · sprint {sprint}',
+  'repl.history-rewind-hint':
+    'To travel to an exact moment instead, /rewind steps through the session and can fork from any point.',
+  'repl.discovery-build-now': 'The gate says this is ready — shall I build it now?',
   'plan-card.title': 'Plan',
   'plan-card.shape-swarm': 'swarm · {count} parallel workstreams',
   'plan-card.shape-single': 'a single focused workstream',

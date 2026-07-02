@@ -6,6 +6,51 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-07-02
+
+Every ordinary build now becomes durable product state — a persisted plan, a live board card,
+a rolling sprint and a decision memory — and the capabilities that were only reachable by
+command are now part of the default conversational path. Public Beta.
+
+### Added
+
+- **The backlog writes itself.** A natural-language build in the m-shell now persists its
+  decomposition as a structured plan (`.excalibur/plans/`), materializes it onto the kanban
+  (a multi-workstream build → an epic with sub-tasks and dependency edges; a small
+  single-workstream build → one plain card, no epic noise), attaches the items to an
+  auto-created rolling weekly sprint (the burndown gets data from day one), live-syncs each
+  workstream's card while the build runs, and settles truthfully at the end: verified-and-landed
+  work → done, produced-but-unlanded → blocked, and the plan stays approved (resumable) unless
+  everything landed.
+- **Watch it live.** Each build announces a deep link to its own live card in the session
+  dashboard (`…#/work-items/WI-n`) before executing, so the agent's checklist and linked runs
+  can be watched filling in from the browser while the terminal works.
+- **Time travel in conversation.** A new `history` intent routes "undo this" / "deshaz esto" /
+  "vuelve a como estaba antes" to the same machinery as `/undo` (its confirm still gates the
+  revert), and a red build that changed files now offers the rewind right in its receipt.
+- **The discovery gate has a route.** A new `discovery` intent recognizes floated ideas
+  ("would it make sense to X?", "¿y si pudiésemos X?") and scores them build / validate /
+  don't-build before any code is written; a buildable verdict offers to start the build on the
+  spot. `runDiscoveryFlow` now returns the scored record.
+- **Memory that actually compounds.** Every auto-build captures a decision memory keyed to the
+  files it touched, and gated builds are primed with memory matching the task's working set and
+  named paths — previously only typecheck-error paths ever triggered priming, so a type-clean
+  repo never received a single memory.
+- **`investigate` and `remember` are first-class.** The base agent prompt now names both with an
+  explicit protocol (they existed only as tool descriptions — and were never called), the prompt
+  suggests the discovery gate for speculative ideas, and swarm lanes now carry the management
+  toolset (project status, work items, plans, memory) instead of flying blind.
+- `scripts/verify-f1-activation.mjs` — clean-machine proof that one ordinary NL build leaves a
+  plan, a board card, an active sprint and a memory node on disk.
+
+### Changed
+
+- **Verified by default.** The auto-orchestrated swarm path now grades every lane against its
+  subtask and revises failures (previously `--grade` only), lane self-heal defaults ON
+  (single-shot and budget-capped; `orchestration.selfHeal: false` opts out), and the sequential
+  post-build adversarial review uses the same default as the swarm's merge gate (ON when a test
+  command is configured).
+
 ## [1.10.3] - 2026-07-02
 
 The 1.10.2 rail fixes now reach the non-TTY path, and every rail verb speaks the user's language.
