@@ -6,6 +6,25 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-07-02
+
+Excalibur is action-oriented by default: it no longer answers a request with a passive
+read-only analysis report. Public Beta.
+
+### Changed
+
+- **No passive analysis-as-the-answer.** Every request is now treated as an action to carry
+  out unless the answer must be purely informative (a question). The read-only "scope /
+  understand-first" NL route is retired: "analyze / understand / what's involved in X" is
+  answered as a normal informative turn — the agent reads the code itself and answers concisely
+  — instead of dumping a multi-section analysis map ending in questions directed back at you.
+  The scope engine still runs internally to ground a build and via the agent-callable
+  `investigate` tool, and the explicit `excalibur scope <task>` command is unchanged.
+- **Research is informative-only.** The `research` route now fires only when you explicitly
+  want information from external/current web sources as the answer; when web info is just a step
+  toward building or changing something, Excalibur does the action and researches internally as
+  a means rather than handing back a report.
+
 ## [1.10.0] - 2026-07-02
 
 Excalibur acts instead of asking. A new proactivity-above-all directive and a deterministic
