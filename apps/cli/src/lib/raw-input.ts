@@ -77,6 +77,14 @@ export interface RawInputState {
    * next message while the agent works. Empty whenever not mid-turn-typing.
    */
   queue: string;
+  /**
+   * D5 (F1.5) — TRUE between the terminal's bracketed-paste markers
+   * (`ESC[200~` … `ESC[201~`, decoded by Node as `paste-start`/`paste-end`).
+   * While pasting, every key is CONTENT: Enter becomes a literal newline (never
+   * a submit), Tab a literal tab — so a pasted stack trace lands as ONE
+   * multi-line message instead of N surprise submits.
+   */
+  pasting: boolean;
 }
 
 /** What a keystroke asks the shell to do. */
@@ -102,6 +110,7 @@ export function initialRawState(history: string[] = []): RawInputState {
     awaiting: false,
     escapePrimed: false,
     queue: '',
+    pasting: false,
   };
 }
 
@@ -129,6 +138,40 @@ function isPrintableSeq(seq: string | undefined): seq is string {
 /** Clamp helper. */
 function clamp(n: number, lo: number, hi: number): number {
   return n < lo ? lo : n > hi ? hi : n;
+}
+
+/**
+ * D5 (F1.5) — visual layout of a possibly MULTI-LINE input. Every logical line
+ * (split on `\n`) is prefixed by the prompt (first line) or an equal-width
+ * continuation indent, so wrapped-row counting and the cursor position reduce to
+ * one formula per line. Pure — the editor's repaint math and tests share it.
+ * (Width counts UTF-16 units — the pre-existing v1 limitation for wide glyphs.)
+ */
+export function layoutInput(
+  buffer: string,
+  cursor: number,
+  promptVis: number,
+  cols: number,
+): { rows: number; cursorRow: number; cursorCol: number } {
+  const lines = buffer.split('\n');
+  let rows = 0;
+  let cursorRow = 0;
+  let cursorCol = promptVis % Math.max(1, cols);
+  let index = 0; // chars consumed, counting the `\n` separators
+  let found = false;
+  for (const line of lines) {
+    const start = index;
+    const end = index + line.length;
+    if (!found && cursor >= start && cursor <= end) {
+      const abs = promptVis + (cursor - start);
+      cursorRow = rows + Math.floor(abs / Math.max(1, cols));
+      cursorCol = abs % Math.max(1, cols);
+      found = true;
+    }
+    rows += Math.max(1, Math.ceil(Math.max(1, promptVis + line.length) / Math.max(1, cols)));
+    index = end + 1;
+  }
+  return { rows: Math.max(1, rows), cursorRow, cursorCol };
 }
 
 /**
@@ -162,6 +205,39 @@ function reduceKeyInner(
     state: { ...state, ghost: '', ...next },
     action: NONE,
   });
+
+  // D5 — bracketed-paste markers toggle CONTENT mode. Checked before everything
+  // (including Ctrl-C): pasted control bytes must never fire shell actions; the
+  // terminal always closes the paste with `paste-end`, restoring normal keys.
+  if (key.name === 'paste-start') {
+    return { state: { ...state, pasting: true }, action: NONE };
+  }
+  if (key.name === 'paste-end') {
+    return { state: { ...state, pasting: false }, action: NONE };
+  }
+  if (state.pasting) {
+    const text =
+      key.name === 'return' || key.name === 'enter'
+        ? '\n'
+        : key.name === 'tab'
+          ? '\t'
+          : isPrintableSeq(key.sequence)
+            ? key.sequence
+            : '';
+    if (text.length === 0) {
+      return { state, action: NONE }; // pasted control bytes are dropped, never actions
+    }
+    if (!state.awaiting) {
+      // Mid-turn paste lands in the queue (flushed into the next prompt).
+      return state.mode === 'turn'
+        ? { state: { ...state, queue: state.queue + text }, action: NONE }
+        : { state, action: NONE };
+    }
+    return keep({
+      buffer: state.buffer.slice(0, state.cursor) + text + state.buffer.slice(state.cursor),
+      cursor: state.cursor + text.length,
+    });
+  }
 
   // Ctrl-C is the SIGINT path always (under raw mode it arrives as a key).
   if (key.ctrl === true && key.name === 'c') {
@@ -210,6 +286,21 @@ function reduceKeyInner(
   switch (key.name) {
     case 'return':
     case 'enter': {
+      // D5 — deliberate multi-line: Shift+Enter (CSI-u/kitty terminals report the
+      // modifier) inserts a newline at the cursor…
+      if (key.shift === true) {
+        return keep({
+          buffer: state.buffer.slice(0, state.cursor) + '\n' + state.buffer.slice(state.cursor),
+          cursor: state.cursor + 1,
+        });
+      }
+      // …and a trailing backslash continues the line (portable everywhere): the
+      // `\` is REPLACED by the newline. Only at the end of the buffer — a `\`
+      // mid-text is content.
+      if (state.buffer.endsWith('\\') && state.cursor === state.buffer.length) {
+        const buffer = `${state.buffer.slice(0, -1)}\n`;
+        return keep({ buffer, cursor: buffer.length });
+      }
       const line = state.buffer;
       const history =
         line.length > 0 && state.history[0] !== line ? [line, ...state.history] : state.history;

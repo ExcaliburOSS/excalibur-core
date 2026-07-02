@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   initialRawState,
   instantGhost,
+  layoutInput,
   reduceKey,
   renderInput,
   type ParsedKey,
@@ -214,6 +215,79 @@ describe('reduceKey (pure state machine)', () => {
     expect(emoji.cursor).toBe(2);
     // a sequence containing a control char (newline) is NOT inserted
     expect(reduceKey(prompt(), key({ sequence: 'a\nb' })).action).toEqual({ type: 'none' });
+  });
+});
+
+describe('reduceKey — D5 bracketed paste + multi-line', () => {
+  it('a pasted multi-line snippet lands as ONE buffer — Enter inside a paste is content', () => {
+    let s = prompt();
+    let submits = 0;
+    const feed = (k: Partial<ParsedKey>): void => {
+      const r = reduceKey(s, key(k));
+      s = r.state;
+      if (r.action.type === 'submit') submits += 1;
+    };
+    feed({ name: 'paste-start', sequence: '\u001b[200~' });
+    feed({ name: 'l', sequence: 'l' });
+    feed({ name: 'enter', sequence: '\n' });
+    feed({ name: 'l', sequence: 'l' });
+    feed({ name: '2', sequence: '2' });
+    feed({ name: 'paste-end', sequence: '\u001b[201~' });
+    expect(submits).toBe(0);
+    expect(s.buffer).toBe('l\nl2');
+    expect(s.pasting).toBe(false);
+    // Enter AFTER the paste submits the whole multi-line message.
+    const done = reduceKey(s, key({ name: 'return' }));
+    expect(done.action).toEqual({ type: 'submit', line: 'l\nl2' });
+  });
+
+  it('pasted control bytes are dropped and can never fire shell actions (Ctrl-C)', () => {
+    let s = prompt();
+    s = reduceKey(s, key({ name: 'paste-start' })).state;
+    const r = reduceKey(s, key({ name: 'c', ctrl: true, sequence: '\u0003' }));
+    expect(r.action.type).toBe('none');
+    expect(r.state.buffer).toBe('');
+  });
+
+  it('a mid-turn paste accumulates into the queue (with its newlines)', () => {
+    let s = turn({ pasting: true });
+    s = reduceKey(s, key({ name: 'a', sequence: 'a' })).state;
+    s = reduceKey(s, key({ name: 'enter', sequence: '\n' })).state;
+    s = reduceKey(s, key({ name: 'b', sequence: 'b' })).state;
+    expect(s.queue).toBe('a\nb');
+  });
+
+  it('Shift+Enter inserts a newline at the cursor instead of submitting', () => {
+    const s = prompt({ buffer: 'ab', cursor: 1 });
+    const r = reduceKey(s, key({ name: 'return', shift: true }));
+    expect(r.action.type).toBe('none');
+    expect(r.state.buffer).toBe('a\nb');
+    expect(r.state.cursor).toBe(2);
+  });
+
+  it('a trailing backslash + Enter continues the line (the \\ becomes the newline)', () => {
+    const s = prompt({ buffer: 'first\\', cursor: 6 });
+    const r = reduceKey(s, key({ name: 'return' }));
+    expect(r.action.type).toBe('none');
+    expect(r.state.buffer).toBe('first\n');
+    expect(r.state.cursor).toBe(6);
+  });
+});
+
+describe('layoutInput — D5 newline-aware editor layout', () => {
+  it('matches the old single-line math when there are no newlines', () => {
+    expect(layoutInput('hello', 3, 2, 80)).toEqual({ rows: 1, cursorRow: 0, cursorCol: 5 });
+  });
+  it('counts one visual block per logical line with the prompt-width indent', () => {
+    // prompt 2 + "ab" = 1 row; "cd" (indented 2) = 1 row.
+    expect(layoutInput('ab\ncd', 5, 2, 80)).toEqual({ rows: 2, cursorRow: 1, cursorCol: 4 });
+  });
+  it('wraps long logical lines within their block', () => {
+    // cols 10, prompt 2: line of 12 chars -> 2 rows; cursor at char 11 -> row 1 col 3.
+    const r = layoutInput('abcdefghijkl', 11, 2, 10);
+    expect(r.rows).toBe(2);
+    expect(r.cursorRow).toBe(1);
+    expect(r.cursorCol).toBe(3);
   });
 });
 

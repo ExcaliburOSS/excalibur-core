@@ -1,7 +1,13 @@
 import * as readline from 'node:readline';
 import pc from 'picocolors';
 import { Spinner, isTtyStream } from './lib/spinner';
-import { initialRawState, reduceKey, type ParsedKey, type RawInputState } from './lib/raw-input';
+import {
+  initialRawState,
+  layoutInput,
+  reduceKey,
+  type ParsedKey,
+  type RawInputState,
+} from './lib/raw-input';
 import {
   computeWindow,
   reduceSelectKey,
@@ -1211,10 +1217,20 @@ export class Ui {
       );
       const showPlaceholder =
         state.buffer.length === 0 && currentPlaceholder.length > 0 && !this.inSubPrompt;
-      const body = showPlaceholder ? pc.dim(currentPlaceholder) : state.buffer;
       const promptVis = stripAnsi(currentPrompt).length;
-      const bodyVis = showPlaceholder ? currentPlaceholder.length : state.buffer.length;
-      const inputRows = Math.max(1, Math.ceil(Math.max(1, promptVis + bodyVis) / cols));
+      // D5 (F1.5) — the buffer may hold real newlines (bracketed paste, Shift+
+      // Enter, trailing-`\`): continuation lines render under the prompt with an
+      // equal-width indent, so the row/cursor math is ONE formula per logical line.
+      const body = showPlaceholder
+        ? pc.dim(currentPlaceholder)
+        : state.buffer.split('\n').join(`\n${' '.repeat(promptVis)}`);
+      const layout = layoutInput(
+        showPlaceholder ? currentPlaceholder : state.buffer,
+        showPlaceholder ? 0 : state.cursor,
+        promptVis,
+        cols,
+      );
+      const inputRows = layout.rows;
 
       // The footer below the input: the slash-command MENU when it is open,
       // otherwise the persistent framed hint (RUN-FIX-11). Suppressed on a
@@ -1265,10 +1281,9 @@ export class Ui {
 
       // The cursor's row/column inside the input block (0-indexed from the FIRST
       // input row, i.e. below the header). With header + footer, the cursor steps
-      // back to it after the box is redrawn.
-      const cursorAbs = promptVis + (showPlaceholder ? 0 : state.cursor);
-      const cursorRowInInput = Math.floor(cursorAbs / cols);
-      const cursorCol = cursorAbs % cols;
+      // back to it after the box is redrawn. Newline-aware since D5 (layoutInput).
+      const cursorRowInInput = layout.cursorRow;
+      const cursorCol = layout.cursorCol;
 
       let seq = '';
       if (prevCursorRow > 0) {
@@ -1335,7 +1350,10 @@ export class Ui {
       }
       out.write(`${CR}${ESC}[0J`);
       if (line.length > 0) {
-        out.write(`${currentPrompt ?? ''}${line}\n`);
+        // D5 — a multi-line submit commits every logical line, continuation
+        // lines indented to align under the prompt (same as the live paint).
+        const indent = ' '.repeat(stripAnsi(currentPrompt ?? '').length);
+        out.write(`${currentPrompt ?? ''}${line.split('\n').join(`\n${indent}`)}\n`);
       }
       prevCursorRow = 0;
       lastInputRows = 1;
@@ -1460,6 +1478,13 @@ export class Ui {
 
     const restoreCooked = (): void => {
       try {
+        // D5 — always turn bracketed paste back off with raw mode: a shell left
+        // with ?2004h on would spray ESC[200~ markers into the user's terminal.
+        out.write(`${ESC}[?2004l`);
+      } catch {
+        // best-effort: never throw while restoring the terminal
+      }
+      try {
         if (input.isTTY === true && typeof input.setRawMode === 'function') {
           input.setRawMode(false);
         }
@@ -1494,6 +1519,14 @@ export class Ui {
       readline.emitKeypressEvents(input);
       if (typeof input.setRawMode === 'function') {
         input.setRawMode(true);
+      }
+      // D5 — BRACKETED PASTE: the terminal wraps pastes in ESC[200~ / ESC[201~,
+      // so a pasted multi-line snippet lands as ONE message (Enter inside a
+      // paste is content, not a submit). Disabled again on every release path.
+      try {
+        out.write(`${ESC}[?2004h`);
+      } catch {
+        /* a failed mode write must never block arming the editor */
       }
       input.resume();
       input.on('keypress', onKeypress);
