@@ -5,6 +5,8 @@ import type { Catalog } from '@excalibur/shared';
  * English via the translator, so partial coverage is safe during migration.
  */
 export const ES: Catalog = {
+  'welcome.greeting': 'Hola de nuevo, {name}',
+  'welcome.greeting-anonymous': 'Hola',
   'welcome.epigraph': 'La espada está desenvainada. ¿Qué construimos?',
 
   // Chrome interactivo compartido.
@@ -1188,8 +1190,6 @@ export const ES: Catalog = {
     'Tienes cambios sin confirmar — prueba “revisa el diff del árbol de trabajo”.',
   'repl.welcome-tip-default':
     'Describe lo que quieres en lenguaje natural — el modelo decide cómo actuar (preguntar, editar, ejecutar).',
-  'repl.welcome-whats-new':
-    'Bucle de agente con el modelo primero en la shell, aprobaciones en línea, modo plan.',
 
   // replay-scrubber
   'replay-scrubber.noLocalRuns':

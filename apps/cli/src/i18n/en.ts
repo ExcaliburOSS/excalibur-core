@@ -8,6 +8,8 @@ import type { Catalog } from '@excalibur/shared';
  */
 export const EN: Catalog = {
   // Welcome (arthurian flavor — plan §"Sabor artúrico"; on by default).
+  'welcome.greeting': 'Welcome back, {name}',
+  'welcome.greeting-anonymous': 'Welcome',
   'welcome.epigraph': 'The sword is drawn. What shall we build?',
 
   // Shared interactive chrome.
@@ -1119,7 +1121,6 @@ export const EN: Catalog = {
   'repl.welcome-tip-diff': 'You have uncommitted changes — try “review the working diff”.',
   'repl.welcome-tip-default':
     'Describe what you want in plain words — the model decides how to act (ask, edit, run).',
-  'repl.welcome-whats-new': 'Model-first agent loop in the shell, inline approvals, plan-mode.',
 
   // replay-scrubber
   'replay-scrubber.noLocalRuns': 'No local tasks yet. Start one with: excalibur run "<task>"',

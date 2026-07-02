@@ -497,7 +497,9 @@ function InterruptBox({
   placeholder?: string;
   spinnerFrame?: number;
 }): ReactElement {
-  // The SAME full-width accent rule the idle box uses to bracket the input.
+  // D9 (F1.5) — the SAME 3-row form as the idle box: input on top, ONE dim rule,
+  // then the posture row. (Two bracketing rules per box meant up to FOUR bright
+  // accent rules on screen mid-run — the loudest color spent on pure chrome.)
   const rule = glyph.boxH.repeat(Math.max(8, width));
   // A BLINKING accent caret — parity with the idle prompt's native (OSC-12) cursor, which
   // the terminal blinks in hardware (the user's "no parpadea" complaint). It toggles on/off
@@ -513,7 +515,6 @@ function InterruptBox({
       : autonomyLabel || safety;
   return (
     <Box flexDirection="column" marginTop={1}>
-      <Text color={colors.accent}>{rule}</Text>
       <Box>
         <Box flexShrink={0}>
           <Text color={colors.accent} bold>{` › `}</Text>
@@ -538,7 +539,7 @@ function InterruptBox({
           </Text>
         )}
       </Box>
-      <Text color={colors.accent}>{rule}</Text>
+      <Text color={colors.accentDim}>{rule}</Text>
       {left.length > 0 ? (
         <Box>
           <Text>{'  '}</Text>

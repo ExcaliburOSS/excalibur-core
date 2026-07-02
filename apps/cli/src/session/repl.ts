@@ -73,7 +73,14 @@ import {
   type PlanCardModel,
 } from '@excalibur/tui';
 import pc from 'picocolors';
-import { accent, resetCursorColor, setCursorAccent, shellPalette, shellTier } from '../lib/accent';
+import {
+  accent,
+  accentDim,
+  resetCursorColor,
+  setCursorAccent,
+  shellPalette,
+  shellTier,
+} from '../lib/accent';
 import type { CliDeps } from '../deps';
 import { CliUsageError, describeError } from '../errors';
 import {
@@ -517,11 +524,11 @@ export async function runInteractiveSession(
     // The `/` command menu (filters as you type) + a dim CONTEXTUAL placeholder.
     commands: slashCommands(deps.t),
     placeholder: () => deps.t(interacted ? 'repl.ph.next' : 'repl.ph.start'),
-    // The framed input box, drawn by the editor so the rules bracket ONLY the live
-    // input (never scrollback): a full-width accent rule ABOVE the prompt…
-    header: () => [inputHairline()],
-    // …and BELOW it the closing rule + a one-row indicator line (autonomy ·
-    // permissions · shortcuts — NOT the model/provider).
+    // D9 (F1.5) — the 3-ROW frame: input on top (no opening rule — the committed
+    // conversation above plus a blank line is the boundary; two full-width accent
+    // rules were the heaviest chrome on screen), then ONE dim rule + a status row
+    // with the shortcuts RIGHT-ALIGNED and width-fitted (the old 91-char hint
+    // always wrapped at 80 cols).
     footer: () => buildInputFooter(deps, runtime),
   });
   // LLM intent classifier (multi-language), resolved ONCE. undefined → no fast
@@ -3867,17 +3874,18 @@ function repoOwnerFromRemote(remoteUrl: string | null): string {
 function buildWelcomeContext(deps: CliDeps, repoRoot: string, model: string): WelcomeContext {
   const identity = getGitIdentity(repoRoot);
   const gitInfo = getGitInfo(repoRoot);
-  const name = (identity.name ?? '').split(/\s+/)[0] || 'there';
+  const name = (identity.name ?? '').split(/\s+/)[0] || '';
   const hasDiff = getLocalDiff(repoRoot).trim().length > 0;
   const tip = hasDiff ? deps.t('repl.welcome-tip-diff') : deps.t('repl.welcome-tip-default');
   return {
     version: CLI_VERSION,
-    name,
+    // D8 — the greeting arrives localized + formatted (the hero renders it as-is).
+    greeting:
+      name.length > 0 ? deps.t('welcome.greeting', { name }) : deps.t('welcome.greeting-anonymous'),
     model,
     org: repoOwnerFromRemote(gitInfo.remoteUrl),
     user: identity.email ?? '',
     tip,
-    whatsNew: deps.t('repl.welcome-whats-new'),
     epigraph: deps.t('welcome.epigraph'),
     width: process.stdout.columns || 80,
     unicode: deps.env['EXCALIBUR_ASCII'] === undefined,
@@ -3895,15 +3903,6 @@ export function renderRunRule(label: string, width: number): string {
   const text = label.length > max ? `${label.slice(0, max - 1)}…` : label;
   const dashes = Math.max(2, W - text.length - 5); // dashes + ' ▶ ' + text + ' ─'
   return `${accent('─'.repeat(dashes))} ${accent('▶')} ${pc.bold(text)} ${accent('─')}`;
-}
-
-/** The accent hairline that frames the input (RUN-FIX-11): a bright accent head
- * fading into a dim rule — the rail's divider language. Fixed width fits ≥ 80 cols. */
-/** A full-width accent rule that brackets the input box (top + bottom), spanning
- *  the WHOLE terminal in accent colour — drawn by the editor as part of the box. */
-function inputHairline(): string {
-  const cols = Math.max(8, process.stdout.columns ?? 80);
-  return accent('─'.repeat(cols));
 }
 
 /**
@@ -3953,31 +3952,35 @@ function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
  * visual row so the editor's cursor math stays exact.
  */
 function buildInputFooter(deps: CliDeps, runtime: SessionRuntime): string[] {
-  const status = buildStatusLineModel({
-    config: runtime.config,
-    model: runtime.model,
-    costCents: runtime.costCents,
-    autonomyLevel: runtime.autonomyLevel,
-  });
+  // `|| 80` (not ??): a pty can report columns=0, which must fall back too.
+  const cols = Math.max(20, process.stdout.columns || 80);
+  // (regex built from the char code — a literal ESC trips no-control-regex)
+  const strip = (s: string): string =>
+    s.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '');
   const counts = fleetCounts(runtime.fleet);
   const bg =
     counts.active > 0 ? ` · ${accent(deps.t('repl.bg-active', { n: counts.active }))}` : '';
   // INT-5 — surface paused (interrupted) work so it is never silently forgotten.
   const paused =
     counts.paused > 0 ? ` · ${pc.yellow(deps.t('repl.paused-count', { n: counts.paused }))}` : '';
-  // COMPACT permissions for the one-row hint (the full safetyLine is a sentence —
-  // far too long; it would wrap and throw off the editor's footer-row math): just
-  // the safety preset + an "auto" flag when auto-accept is on.
+  // D9 — a COMPACT posture: `L4` (universal), the safety preset ONLY when it is
+  // not the standard floor (the default preset on every prompt was noise), an
+  // `auto` chip, and the live ctx gauge. The model lives in the welcome, not here.
   const preset = runtime.config.safety?.preset ?? 'standard-safe';
-  const perms = `${preset}${runtime.approvals.auto ? ` · ${deps.t('repl.input-auto')}` : ''}`;
-  // The indicator row UNDER the box: autonomy + permissions (the live posture) on
-  // the left, the useful key SHORTCUTS on the right. Deliberately NO model/provider
-  // — the active model lives in the welcome + `/model`, not on every prompt.
-  const left = `${accent('◆')} ${status.autonomy} ${pc.dim('·')} ${pc.dim(perms)}${pc.dim(
+  const presetChip = preset === 'standard-safe' ? '' : ` ${pc.dim('·')} ${pc.dim(preset)}`;
+  const autoChip = runtime.approvals.auto
+    ? ` ${pc.dim('·')} ${pc.dim(deps.t('repl.input-auto'))}`
+    : '';
+  const left = `${accent('◆')} L${runtime.autonomyLevel}${presetChip}${autoChip}${pc.dim(
     contextUsageLabel(runtime),
   )}${bg}${paused}`;
-  const hint = `  ${left}   ${pc.dim(deps.t('repl.input-shortcuts'))}`;
-  return [inputHairline(), hint];
+  // Shortcuts RIGHT-ALIGNED and width-fitted: the row is padded to cols-1 so it
+  // can never wrap (the old fixed 91-char hint always wrapped at 80 cols). When
+  // the terminal is too narrow for both, the live posture wins.
+  const right = pc.dim(deps.t('repl.input-shortcuts'));
+  const gap = cols - 1 - strip(left).length - strip(right).length;
+  const row = gap >= 2 ? `${left}${' '.repeat(gap)}${right}` : left;
+  return [accentDim('─'.repeat(cols)), row];
 }
 
 /**

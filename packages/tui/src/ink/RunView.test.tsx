@@ -108,7 +108,7 @@ describe('<RunView>', () => {
     expect(frame).not.toContain('kimi');
   });
 
-  it('frames the mid-run input box like the idle prompt: accent rules + ◆ indicator + caret (RUN-FIX-19)', () => {
+  it('frames the mid-run input box like the idle prompt: ONE rule + ◆ indicator + caret (RUN-FIX-19/D9)', () => {
     const frame = frameOf({
       model: model(),
       spinnerFrame: 0,
@@ -117,9 +117,11 @@ describe('<RunView>', () => {
       width: 60,
       labels: { interruptHint: 'escribe para guiar' },
     });
-    // Two full-width accent rules bracket the box — the SAME divider the idle prompt uses.
+    // D9 (F1.5) — the SAME 3-row form as the idle box: input on top, then ONE
+    // rule + the posture row (two bracketing rules per box put four bright
+    // accent rules on screen mid-run — chrome eating the brand color).
     const ruleLines = frame.split('\n').filter((line) => /─{20,}/.test(line));
-    expect(ruleLines.length).toBeGreaterThanOrEqual(2);
+    expect(ruleLines.length).toBe(1);
     // The `›` caret + breathing cursor + the dim invitation (input never disappears).
     expect(frame).toContain('›');
     expect(frame).toContain('▌');

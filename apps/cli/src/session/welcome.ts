@@ -3,38 +3,36 @@ import {
   detectThemeSync,
   getColors,
   paint,
-  paintBg,
   type ColorTier,
   type Palette,
 } from '@excalibur/tui';
 
 /**
- * The M-Shell welcome screen.
+ * The M-Shell welcome screen — D8 (F1.5): a compact HERO, not a billboard.
  *
- * A full-width framed box with an ACCENT-coloured border and the mixed-case
- * `Excalibur` title (blue→cyan gradient) + dim version breaking out of the top
- * border (legend style). Two columns — left: "Welcome back, <name>", a crisp
- * half-block sword (background-filled cells so it never shows inter-row gaps: a
- * solid blue blade + gray crossguard with a symmetric stepped point), the brand
- * epigraph, then model/org/user;
- * right: a Tip and a What's-new. Width-adaptive (collapses to one column when
- * narrow), truecolor with graceful 256/16/none downsampling, pure-ASCII fallback
- * when `unicode` is false. Layout is alignment-verified at widths 80/72/64/50.
+ * The previous screen was 21 rows with a two-column layout whose dim paragraphs
+ * buried its own content (the audit: "no focal moment; the sword reads as a blue
+ * rectangle"). This keeps the two moments that genuinely worked — the mixed-case
+ * gradient `Excalibur` title cutting the top border and the amber `beta` chip —
+ * and compresses everything else into seven rows: a 2-row sword beside the
+ * greeting + one-line identity, the brand epigraph with a line of its own, and
+ * exactly ONE tip. Width-adaptive (the sword steps aside on narrow terminals),
+ * truecolor with graceful 256/16/none downsampling, pure-ASCII fallback when
+ * `unicode` is false. Nothing here ever wraps — long lines truncate with `…`.
  */
 
 export interface WelcomeContext {
   /** Excalibur CLI version (shown in the title), e.g. `1.0.1`. */
   version: string;
-  /** First name (from `git config user.name`); falls back to a neutral greeting. */
-  name: string;
+  /** The localized greeting, already formatted (e.g. `Welcome back, Rafael`). */
+  greeting: string;
   /** Active provider/model. */
   model: string;
-  /** Organisation (git remote owner, or Enterprise org); empty hides the row. */
+  /** Organisation (git remote owner, or Enterprise org); empty hides it. */
   org: string;
-  /** User identity (git email); empty hides the row. */
+  /** User identity (git email); empty hides it. */
   user: string;
   tip: string;
-  whatsNew: string;
   /** Brand epigraph line (i18n `welcome.epigraph`); empty hides it. */
   epigraph: string;
   /** Terminal columns (e.g. `process.stdout.columns`). */
@@ -80,19 +78,10 @@ function pad(s: string, w: number): string {
   return d > 0 ? s + ' '.repeat(d) : s;
 }
 
-function wrap(text: string, w: number): string[] {
-  const out: string[] = [];
-  let line = '';
-  for (const word of text.split(/\s+/)) {
-    if (line.length === 0) line = word;
-    else if (line.length + 1 + word.length <= w) line += ` ${word}`;
-    else {
-      out.push(line);
-      line = word;
-    }
-  }
-  if (line.length > 0) out.push(line);
-  return out;
+/** Truncates PLAIN text (no ANSI) to `w` visible cells with an ellipsis. */
+function cut(s: string, w: number): string {
+  const chars = [...s];
+  return chars.length <= w ? s : `${chars.slice(0, Math.max(0, w - 1)).join('')}…`;
 }
 
 const dim = (s: string, tier: ColorTier): string => paint(s, DIMHEX, tier);
@@ -119,97 +108,26 @@ function gradient(text: string, tier: ColorTier): string {
 }
 
 /**
- * Crisp horizontal sword: a solid blue blade + a taller gray crossguard, NO
- * fuller, with a symmetric stepped point. The blade length adapts to `availCells`
- * so it never overflows its column. Returns one coloured string per terminal row.
- *
- * Rendered with VERTICAL half-block sub-pixels (two stacked pixels per cell) and
- * painted FG+BG: a solid cell sets the cell BACKGROUND to its colour, which fills
- * the whole character cell — including the terminal's inter-line spacing — so a
- * stack of rows is seamless. (Foreground-only block glyphs leave that spacing
- * unpainted; that gap is what shows up as the "black lines" cutting across the
- * blade.) Every sword feature is cell-aligned horizontally, so a 1×2 cell carries
- * the same detail the old 2×2 quadrant grid did.
+ * The 2-row hero sword: a grey crossguard + grip, a gradient blade (deep blue at
+ * the guard, glowing at the point) and a bright tip. Row 2 is padded to row 1's
+ * width so text beside the sword stays column-aligned. ASCII: one plain line.
  */
-function swordBlock(tier: ColorTier, availCells: number): string[] {
-  const guardW = 8; // sub-cols (=4 cells)
-  const guardH = 18; // sub-rows (=9 cells)
-  // EVEN height + even bladeTop ((18-6)/2 = 6) keeps the blade BODY on whole cells
-  // (rows 6–11 → 3 full cells), so no half-block row cuts a black line across it.
-  // The tip still feathers via half-blocks — that's the point, not the body.
-  const bladeH = 6; // sub-rows (=3 cells)
-  const stepLen = 2; // sub-cols per taper step
-  const tipCells = 2; // the taper below spans 4 sub-cols = 2 cells
-  const maxBladeCells = Math.max(6, availCells - guardW / 2 - tipCells);
-  const bladeLen = maxBladeCells * 2; // sub-cols
-
-  const grid = new Map<string, string>();
-  const set = (r: number, c: number, col: string): void => {
-    grid.set(`${r},${c}`, col);
-  };
-
-  for (let c = 0; c < guardW; c++) for (let r = 0; r < guardH; r++) set(r, c, GUARD);
-  const bladeTop = Math.floor((guardH - bladeH) / 2);
-  const x0 = guardW;
-  for (let c = x0; c < x0 + bladeLen; c++)
-    for (let r = bladeTop; r < bladeTop + bladeH; r++) set(r, c, BLADE);
-  let c = x0 + bladeLen;
-  let shrink = 1;
-  while (bladeH - 2 * shrink >= 1) {
-    for (let k = 0; k < stepLen; k++) {
-      for (let r = bladeTop + shrink; r < bladeTop + bladeH - shrink; r++) set(r, c, BLADE);
-      c += 1;
-    }
-    shrink += 1;
+function heroSword(tier: ColorTier, bladeCells: number, unicode: boolean): [string, string] {
+  if (!unicode) {
+    const line = `=[#]${'='.repeat(Math.max(4, bladeCells - 2))}>`;
+    return [line, ' '.repeat(vlen(line))];
   }
-
-  let maxC = 0;
-  for (const key of grid.keys()) {
-    const col = Number(key.split(',')[1]);
-    if (col > maxC) maxC = col;
-  }
-  const cellCols = Math.ceil((maxC + 1) / 2);
-  const cellRows = Math.ceil(guardH / 2);
-  const lines: string[] = [];
-  for (let cr = 0; cr < cellRows; cr++) {
-    let line = '';
-    for (let cc = 0; cc < cellCols; cc++) {
-      // Collapse each cell's two horizontal sub-columns (always equal-or-empty,
-      // since the sword is cell-aligned) into one top + one bottom sub-pixel.
-      const top = grid.get(`${cr * 2},${cc * 2}`) ?? grid.get(`${cr * 2},${cc * 2 + 1}`);
-      const bottom = grid.get(`${cr * 2 + 1},${cc * 2}`) ?? grid.get(`${cr * 2 + 1},${cc * 2 + 1}`);
-      if (top !== undefined && bottom !== undefined) {
-        // Both halves live → fill the WHOLE cell via the background (no inter-row
-        // gap); `█` keeps it visible on the no-colour tier where bg is dropped.
-        line += top === bottom ? paintBg('█', top, tier, top) : paintBg('▀', bottom, tier, top);
-      } else if (top !== undefined) {
-        line += paint('▀', top, tier); // top-half edge (feathered tip / blade base)
-      } else if (bottom !== undefined) {
-        line += paint('▄', bottom, tier); // bottom-half edge
-      } else {
-        line += ' ';
-      }
-    }
-    lines.push(line);
-  }
-  return lines;
-}
-
-/** Pure-ASCII sword fallback (no block/box glyphs) for `unicode === false`. */
-function swordAscii(maxW: number): string[] {
-  const hilt = '>=[#]=';
-  const tip = '=- - .';
-  const blade = '='.repeat(Math.max(2, maxW - hilt.length - tip.length));
-  const line = `${hilt}${blade}${tip}`;
-  return [line, line];
-}
-
-function identityRow(label: string, value: string, tier: ColorTier): string {
-  return `${pad(dim(label, tier), 8)}${value}`;
+  const row1 = `${paint('▄▄', GUARD, tier)}${gradient('█'.repeat(bladeCells), tier)}${paint(
+    '▶',
+    PALETTE.accentBright,
+    tier,
+  )}`;
+  const row2 = pad(`${paint('▀▀', GUARD, tier)}${paint('██', GUARD, tier)}`, vlen(row1));
+  return [row1, row2];
 }
 
 export function renderWelcome(ctx: WelcomeContext): string {
-  const { version, name, model, org, user, tip, whatsNew, epigraph, unicode } = ctx;
+  const { version, greeting, model, org, user, tip, epigraph, unicode } = ctx;
   const tier = detectColorTier(process.env, process.stdout?.isTTY === true);
   const B = unicode
     ? { tl: '╭', tr: '╮', bl: '╰', br: '╯', h: '─', v: '│' }
@@ -234,65 +152,30 @@ export function renderWelcome(ctx: WelcomeContext): string {
     ' ' +
     paint(`${B.h.repeat(dashes)}${B.tr}`, ACCENT, tier);
 
-  const leftMargin = 3;
-  const rightMargin = 2;
+  const margin = 3;
+  const usable = inner - margin - 2;
   const gap = 3;
-  const single = inner < 58;
-  const usable = inner - leftMargin - rightMargin;
-  const leftW = single ? usable : Math.floor((usable - gap) * 0.5);
-  const rightW = single ? usable : usable - gap - leftW;
 
-  const sword = unicode ? swordBlock(tier, leftW - 3) : swordAscii(leftW - 3);
-  const swordRows = sword.map((l) => `   ${l}`);
+  // The sword steps aside on narrow terminals rather than squeezing the text.
+  const withSword = usable >= 44;
+  const bladeCells = Math.max(8, Math.min(20, usable - 34));
+  const [swordA, swordB] = withSword ? heroSword(tier, bladeCells, unicode) : ['', ''];
+  const swordW = withSword ? vlen(swordA) : 0;
+  const textW = usable - (withSword ? swordW + gap : 0);
+  const beside = (sword: string, text: string): string =>
+    withSword ? `${sword}${' '.repeat(gap)}${text}` : text;
 
-  const identity: string[] = [identityRow('model', model, tier)];
-  if (org.length > 0) identity.push(identityRow('org', org, tier));
-  if (user.length > 0) identity.push(identityRow('user', user, tier));
+  const identity = [model, user, org].filter((v) => v.length > 0).join(' · ');
+  const lineA = beside(swordA, paint(cut(greeting, textW), WHITEHEX, tier));
+  const lineB = beside(swordB, dim(cut(identity, textW), tier));
+  const epiLine = epigraph.trim().length > 0 ? paint(cut(epigraph, usable), WHITEHEX, tier) : null;
+  const tipMark = unicode ? '▸ ' : '> ';
+  const tipLine = `${accentText(tipMark, tier)}${dim(cut(tip, usable - tipMark.length), tier)}`;
 
-  const epiLines =
-    epigraph.trim().length > 0
-      ? wrap(epigraph, Math.max(8, leftW - 3)).map((l) => `   ${dim(l, tier)}`)
-      : [];
-
-  const displayName = name.trim().length > 0 ? name : 'there';
-  const left = [
-    '',
-    `Welcome back, ${paint(displayName, WHITEHEX, tier)}`,
-    '',
-    ...swordRows,
-    '',
-    ...epiLines,
-    ...(epiLines.length > 0 ? [''] : []),
-    ...identity,
-    '',
-  ];
-
-  const tipLabel = unicode ? '▸ Tip' : '> Tip';
-  const newLabel = unicode ? '▸ What’s new' : '> What’s new';
-  const right = [
-    '',
-    accentText(tipLabel, tier),
-    ...wrap(tip, rightW - 2).map((l) => `  ${dim(l, tier)}`),
-    '',
-    accentText(newLabel, tier),
-    ...wrap(whatsNew, rightW - 2).map((l) => `  ${dim(l, tier)}`),
-    '',
-  ];
-
-  const rows = Math.max(left.length, right.length);
   const V = accentText(B.v, tier);
-  const body: string[] = [];
-  for (let i = 0; i < rows; i++) {
-    const l = pad(left[i] ?? '', leftW);
-    if (single) {
-      body.push(`${V}${' '.repeat(leftMargin)}${pad(l, usable)}${' '.repeat(rightMargin)}${V}`);
-    } else {
-      const r = pad(right[i] ?? '', rightW);
-      body.push(
-        `${V}${' '.repeat(leftMargin)}${l}${' '.repeat(gap)}${r}${' '.repeat(rightMargin)}${V}`,
-      );
-    }
-  }
+  const body = [lineA, lineB, '', ...(epiLine !== null ? [epiLine] : []), tipLine].map(
+    (l) => `${V}${' '.repeat(margin)}${pad(l, usable)}  ${V}`,
+  );
   const bottom = accentText(`${B.bl}${B.h.repeat(inner)}${B.br}`, tier);
   return [top, ...body, bottom].join('\n');
 }
