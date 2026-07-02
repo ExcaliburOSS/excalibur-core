@@ -6,6 +6,27 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.10.2] - 2026-07-02
+
+A completed turn is never rendered as a failure, raw exit codes are never shown, and each tool
+call is one informative line. Public Beta.
+
+### Fixed
+
+- **A successful turn never turns red over an exploratory probe.** A finished turn (files
+  written, tests green, site served) was being painted as a red failure — a ✗ and the whole
+  summary in red — because one exploratory command, like `ls -la src/public/css/`, returned a
+  non-zero exit (the directory did not exist). Only genuine verification commands (tests, lint,
+  typecheck, build) now count as a pass/fail verdict; an `ls` / `cat` / `grep` / `find` that
+  returns non-zero is treated as the probe it is and never flips a completed turn to failed.
+- **Raw exit codes are never shown.** Neither the receipt nor the live rail prints `exit 1` (or
+  any exit code). A real failure surfaces through the agent's own narration and recovery, not
+  scary technical jargon.
+- **Each tool call is one informative line.** A call now reads `run npm test`, `read
+package.json`, or `search «query»` — the action plus its real argument — instead of a bare,
+  uninformative `tool run_command`, and the old duplicated second line is gone. Commands finally
+  show what they run.
+
 ## [1.10.1] - 2026-07-02
 
 Excalibur is action-oriented by default: it no longer answers a request with a passive
