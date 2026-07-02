@@ -956,7 +956,7 @@ export async function runTask(
     if (inkHandle !== null) {
       // The approval renders inline in the Ink rail; y/Return/a → yes, n → no.
       return inkHandle
-        .requestApproval({ question, options: '[Y/n]' })
+        .requestApproval({ question, options: '[Y/n/a]' })
         .then((answer) => answer !== 'no');
     }
     return deps.ui.confirm(question, { defaultYes: true });

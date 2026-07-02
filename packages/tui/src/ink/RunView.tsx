@@ -717,11 +717,28 @@ function ApprovalRow({
   approval: ApprovalPrompt;
   colors: Palette;
 }): ReactElement {
+  // D13 (F1.5) — the gate is a DIALOG, not a bare amber line lost in the rail:
+  // a bordered box in the warn tone with the question and the explicit keys
+  // ([a]=always already worked in the store; it was simply never advertised —
+  // callers now include it in `options`).
   return (
-    <Box marginTop={1}>
-      <Text color={colors.warn}>{` ${glyph.waiting} `}</Text>
-      <Text color={colors.text}>{approval.question}</Text>
-      <Text color={colors.warn} bold>{`   ${approval.options}`}</Text>
+    <Box
+      marginTop={1}
+      borderStyle="round"
+      borderColor={colors.warn}
+      paddingX={1}
+      flexDirection="column"
+      width={72}
+    >
+      <Box>
+        <Text color={colors.warn}>{`${glyph.waiting} `}</Text>
+        <Text color={colors.text} wrap="wrap">
+          {approval.question}
+        </Text>
+      </Box>
+      <Text color={colors.warn} bold>
+        {approval.options}
+      </Text>
     </Box>
   );
 }

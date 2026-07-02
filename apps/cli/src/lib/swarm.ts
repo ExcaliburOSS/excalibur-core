@@ -31,6 +31,7 @@ import {
   detectThemeSync,
   paletteFor,
   parseDiffStat,
+  renderDiff,
   renderLanes,
   type LaneModel,
 } from '@excalibur/tui';
@@ -1010,13 +1011,16 @@ export async function runSwarmFlow(
   });
 
   deps.ui.write();
-  if (staged) {
+  // D12 — on the AUTO path (yes:true) the plan card already presented these
+  // exact workstreams; a second plain listing before the live panel was noise.
+  const announceLanes = options.yes !== true;
+  if (staged && announceLanes) {
     deps.ui.heading(deps.t('swarm.staged-heading', { count: lanes.length, waves: waves.length }));
     waves.forEach((wave, w) => {
       deps.ui.write(`  ${deps.t('swarm.wave', { n: w + 1 })}`);
       wave.forEach((s) => deps.ui.write(`    • ${s.title}`));
     });
-  } else {
+  } else if (announceLanes) {
     const allocation = planAgentAllocation({
       taskType: 'feature',
       sensitive: false,
@@ -1224,7 +1228,21 @@ export async function runSwarmFlow(
     return;
   }
   deps.ui.write();
-  deps.ui.write(result.mergedDiff);
+  // D12 (F1.5) — the merged diff renders through the SAME highlighted diff view
+  // the rail uses (capped), never a raw uncolored dump flooding the terminal.
+  const diffLines = renderDiff(result.mergedDiff, {
+    tier,
+    palette,
+    mode,
+    width: Math.max(60, process.stdout.columns || 80),
+  });
+  const MERGED_DIFF_MAX_LINES = 200; // a peek — the full patch lives in /changes
+  for (const line of diffLines.slice(0, MERGED_DIFF_MAX_LINES)) {
+    deps.ui.write(line);
+  }
+  if (diffLines.length > MERGED_DIFF_MAX_LINES) {
+    deps.ui.info(`  ⋯ ${diffLines.length - MERGED_DIFF_MAX_LINES}`);
+  }
 
   // `--apply` and `-y/--yes` both apply without prompting (consistent with
   // `run --yes`, which auto-approves + applies edits). Otherwise prompt — safe

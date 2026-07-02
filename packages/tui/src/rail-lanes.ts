@@ -1,6 +1,14 @@
 import { paint, type ColorTier } from './color.js';
 import { formatDiffStat, type DiffStat } from './diff-stat.js';
-import { eventGlyph, getColors, glyph, type Palette, type ThemeMode } from './theme.js';
+import {
+  eventGlyph,
+  getColors,
+  glyph,
+  type Palette,
+  type ThemeMode,
+  spinnerFrames,
+  pulseColor,
+} from './theme.js';
 
 /**
  * SWARM LANES (build STEP 9) — the visual payoff of the auto-sizing allocator.
@@ -46,9 +54,20 @@ export interface RenderLanesOptions {
    * pure form byte-identical; the CLI passes translated labels.
    */
   labels?: { swarm?: string; lanes?: string; merge?: string; applied?: string; conflict?: string };
+  /**
+   * D12 (F1.5) — live animation frame: running lanes spin + breathe on the same
+   * cadence as the conversational rail's node (parallel agents are the marquee
+   * feature and looked FROZEN behind a static glyph). Omitted → the static form
+   * (snapshots + the final committed panel stay byte-identical).
+   */
+  spinnerFrame?: number;
 }
 
-function laneGlyphHex(state: LaneState, palette: Palette): { g: string; hex: string } {
+function laneGlyphHex(
+  state: LaneState,
+  palette: Palette,
+  spinnerFrame?: number,
+): { g: string; hex: string } {
   switch (state) {
     case 'done':
       return { g: glyph.done, hex: palette.success };
@@ -57,7 +76,13 @@ function laneGlyphHex(state: LaneState, palette: Palette): { g: string; hex: str
     case 'conflict':
       return { g: glyph.waiting, hex: palette.warn };
     case 'running':
-      return { g: glyph.running, hex: palette.accent };
+      // D12 — a live frame makes the lane SPIN + BREATHE like the rail's node.
+      return spinnerFrame !== undefined
+        ? {
+            g: spinnerFrames[spinnerFrame % spinnerFrames.length] ?? glyph.running,
+            hex: pulseColor(palette, spinnerFrame),
+          }
+        : { g: glyph.running, hex: palette.accent };
     default:
       return { g: glyph.sub, hex: palette.muted };
   }
@@ -89,7 +114,7 @@ export function renderLanes(model: LanesModel, options: RenderLanesOptions = {})
   model.lanes.forEach((lane, index) => {
     const isLast = index === model.lanes.length - 1;
     const connector = c(`${isLast ? glyph.branch : glyph.branchMid}${glyph.boxH}`, palette.rail);
-    const lane0 = laneGlyphHex(lane.state, palette);
+    const lane0 = laneGlyphHex(lane.state, palette, options.spinnerFrame);
     const badge = c(glyph.logo, lane0.hex);
     const title = c(lane.title.padEnd(titleWidth), palette.text);
 

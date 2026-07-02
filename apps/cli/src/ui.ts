@@ -1305,7 +1305,11 @@ export class Ui {
         seq += `${ESC}[${cursorCol}C`;
       }
       try {
-        out.write(seq);
+        // D14 (F1.5) — SYNCHRONIZED OUTPUT (CSI ?2026): the whole erase+redraw
+        // lands as ONE atomic frame on terminals that support it (iTerm2, Ghostty,
+        // kitty, WezTerm…), killing the per-keystroke shimmer; others ignore the
+        // mode bytes harmlessly.
+        out.write(`${ESC}[?2026h${seq}${ESC}[?2026l`);
       } catch {
         // A write to a half-closed terminal (EPIPE) must not unwind out of the
         // prompt read and exit the shell (RUN-FIX-18) — drop this frame instead.

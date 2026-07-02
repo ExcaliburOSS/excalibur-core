@@ -1,5 +1,5 @@
 import { Box, render, Text, useInput, useStdin } from 'ink';
-import { useSyncExternalStore, type ReactElement } from 'react';
+import { useEffect, useState, useSyncExternalStore, type ReactElement } from 'react';
 import type { ColorTier } from '../color.js';
 import {
   renderLanes,
@@ -99,11 +99,25 @@ function LanesView(props: {
     props.store.getSnapshot,
     props.store.getSnapshot,
   );
+  // D12 (F1.5) — the ~120ms tick that lets RUNNING lanes spin + breathe (the
+  // store only emits on start/settle, so the panel looked frozen mid-work).
+  // The interval only runs while something IS running; the final/static panel
+  // renders without a frame so the committed scrollback stays deterministic.
+  const [frame, setFrame] = useState(0);
+  const anyRunning = snapshot.model.lanes.some((lane) => lane.state === 'running');
+  useEffect(() => {
+    if (!anyRunning) {
+      return undefined;
+    }
+    const timer = setInterval(() => setFrame((f) => (f + 1) % 3600), 120);
+    return (): void => clearInterval(timer);
+  }, [anyRunning]);
   const options: RenderLanesOptions = {
     tier: props.tier,
     palette: props.palette,
     ...(props.mode !== undefined ? { mode: props.mode } : {}),
     ...(props.labels !== undefined ? { labels: props.labels } : {}),
+    ...(anyRunning ? { spinnerFrame: frame } : {}),
   };
   const lines = renderLanes(snapshot.model, options);
   return (
