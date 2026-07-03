@@ -1119,6 +1119,8 @@ export const EN: Catalog = {
   'repl.closed': 'See you soon — session saved.',
   'repl.goodbye': 'Goodbye.',
   'repl.welcome-tip-diff': 'You have uncommitted changes — try “review the working diff”.',
+  'cmd.why': 'show the technical detail of the last error',
+  'repl.why-none': 'No error to explain — everything is fine so far.',
   'repl.welcome-tip-default':
     'Describe what you want in plain words — the model decides how to act (ask, edit, run).',
   'repl.welcome-whats-new': 'Model-first agent loop in the shell, inline approvals, plan-mode.',

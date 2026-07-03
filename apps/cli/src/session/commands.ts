@@ -23,6 +23,7 @@ const COMMAND_KEYS: { name: string; key: string }[] = [
   { name: 'replay', key: 'cmd.replay' },
   { name: 'fork', key: 'cmd.fork' },
   { name: 'undo', key: 'cmd.undo' },
+  { name: 'why', key: 'cmd.why' },
   { name: 'log', key: 'cmd.log' },
   { name: 'remember', key: 'cmd.remember' },
   { name: 'compact', key: 'cmd.compact' },

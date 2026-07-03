@@ -87,6 +87,7 @@ import {
 } from '../lib/accent';
 import type { CliDeps } from '../deps';
 import { CliUsageError, describeError } from '../errors';
+import { friendlyError, lastErrorDetail, reportFriendly } from '../lib/friendly-error';
 import {
   loadConfigContext,
   loadGatewayContext,
@@ -1524,12 +1525,15 @@ export async function runInteractiveSession(
           }
         } catch (error) {
           endTurn();
-          const reason = error instanceof Error ? error.message : String(error);
-          deps.ui.error(reason);
+          // P0-6 — a WARM, specific, actionable line (raw detail behind `/why`),
+          // not a red raw-exception dump. The transcript keeps a clean, de-jargoned
+          // status ("couldn't finish that") instead of `error: <stack>` that the
+          // user would re-read on /log and on resume.
+          reportFriendly(deps, error, { doing: 'working on that' });
           store.appendTurn(session.id, {
             role: 'system',
             kind: 'status',
-            text: `error: ${reason}`,
+            text: friendlyError(error, { doing: 'working on that' }).headline,
           });
           // A build that errored mid-way still records its work — as `blocked`, not
           // done (P0-5): the board must not show a half-finished turn as complete.
@@ -1560,6 +1564,7 @@ export async function runInteractiveSession(
         // we re-prompt. "Nunca es nunca." Genuine faults are still LOGGED (forensics +
         // error line + a system turn in the transcript), never silently swallowed.
         const reason = turnError instanceof Error ? turnError.message : String(turnError);
+        // Forensics keep the RAW detail (that's their job); the USER gets warm (P0-6).
         exitForensicsLog('per-turn backstop caught (shell stays alive): ' + reason);
         try {
           endTurn();
@@ -1567,7 +1572,7 @@ export async function runInteractiveSession(
           /* best-effort */
         }
         try {
-          deps.ui.error(reason);
+          reportFriendly(deps, turnError, { doing: 'working on that' });
         } catch {
           /* best-effort */
         }
@@ -1575,7 +1580,7 @@ export async function runInteractiveSession(
           store.appendTurn(session.id, {
             role: 'system',
             kind: 'status',
-            text: `error: ${reason}`,
+            text: friendlyError(turnError, { doing: 'working on that' }).headline,
           });
         } catch {
           /* best-effort */
@@ -3232,12 +3237,11 @@ async function handlePlanCommand(
   try {
     await dispatchPlan(deps, runtime, task, controller.signal, seed);
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    deps.ui.error(reason);
+    reportFriendly(deps, error);
     runtime.store.appendTurn(runtime.session.id, {
       role: 'system',
       kind: 'status',
-      text: `error: ${reason}`,
+      text: friendlyError(error).headline,
     });
   }
 }
@@ -3353,12 +3357,11 @@ async function handleGoalCommand(
   try {
     await executeGoalLoop(deps, runtime, objective, seed, ctrl.signal);
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    deps.ui.error(reason);
+    reportFriendly(deps, error);
     runtime.store.appendTurn(runtime.session.id, {
       role: 'system',
       kind: 'status',
-      text: `error: ${reason}`,
+      text: friendlyError(error).headline,
     });
   } finally {
     endTurn();
@@ -3441,12 +3444,11 @@ async function handleLoopCommand(
     deps.ui.info(summary);
     runtime.store.appendTurn(runtime.session.id, { role: 'system', kind: 'status', text: summary });
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    deps.ui.error(reason);
+    reportFriendly(deps, error);
     runtime.store.appendTurn(runtime.session.id, {
       role: 'system',
       kind: 'status',
-      text: `error: ${reason}`,
+      text: friendlyError(error).headline,
     });
   } finally {
     endTurn();
@@ -3752,6 +3754,18 @@ function handleSlashCommand(
           ? deps.t('repl.model-config', { path: gateway.providersPath })
           : pc.dim(deps.t('repl.model-mock')),
       );
+      return 'continue';
+    }
+    case 'why': {
+      // P0-6 — the pressure valve that lets error messages stay warm: reveal the
+      // RAW technical detail of the last failure on demand.
+      const last = lastErrorDetail();
+      if (last === null) {
+        deps.ui.info(deps.t('repl.why-none'));
+      } else {
+        deps.ui.write(last.headline);
+        deps.ui.write(pc.dim(last.detail));
+      }
       return 'continue';
     }
     case 'clear':

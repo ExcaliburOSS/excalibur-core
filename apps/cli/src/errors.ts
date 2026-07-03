@@ -6,6 +6,7 @@ import {
   WorkflowValidationError,
   isExcaliburError,
 } from '@excalibur/shared';
+import { friendlyError } from './lib/friendly-error';
 
 /**
  * CLI exit codes (Build Contract §4.9):
@@ -48,13 +49,13 @@ export function exitCodeForError(error: unknown): number {
   return EXIT_RUNTIME_ERROR;
 }
 
-/** Human-friendly message for a thrown value (never a raw stack by default). */
+/** Human-friendly message for a thrown value (never a raw stack by default).
+ * P0-6 — delegates to the friendly-error taxonomy so this is genuinely warm +
+ * de-jargoned, not a `.message` passthrough (an ExcaliburError keeps its own
+ * intended message, which is already user-facing). */
 export function describeError(error: unknown): string {
   if (isExcaliburError(error)) {
     return error.message;
   }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
+  return friendlyError(error).headline;
 }

@@ -1190,6 +1190,8 @@ export const ES: Catalog = {
   'repl.goodbye': 'Hasta luego.',
   'repl.welcome-tip-diff':
     'Tienes cambios sin confirmar — prueba “revisa el diff del árbol de trabajo”.',
+  'cmd.why': 'muestra el detalle técnico del último error',
+  'repl.why-none': 'No hay ningún error que explicar — todo bien por ahora.',
   'repl.welcome-tip-default':
     'Describe lo que quieres en lenguaje natural — el modelo decide cómo actuar (preguntar, editar, ejecutar).',
 
