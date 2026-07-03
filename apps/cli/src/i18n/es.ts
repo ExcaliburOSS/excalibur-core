@@ -1040,6 +1040,7 @@ export const ES: Catalog = {
   'repl.auto-build-review': 'Revisión adversarial del resultado ({lenses} lente(s))…',
   'repl.auto-build-review-high':
     'Sobrevivió un problema de severidad alta — revisa los cambios antes de fiarte de ellos.',
+  'repl.review-heal': 'Corrigiendo lo que marcó la revisión…',
   // investigación profunda (F7)
   'research.network-off':
     'La red está desactivada (permissions.network.mode = off). Actívala para investigar en la web.',

@@ -137,15 +137,37 @@ Phase G builds on real strengths. Auditors cited these with file:line:
 - **Proof.** Real-model harness: a step that introduces a deliberate bug is
   caught and fixed by the automatic review gate without the user asking.
 
-### G6 — Budget-aware fan-out sizing _(minor)_
+### G6 — Lift the fan-out ceilings: budget+machine governors, not fixed caps
 
-- **Problem.** The 8-agent cap is a fixed rail; the user waived the cost cap, so
-  there's no governor scaling wave width to budget/machine.
-- **Design.** Size concurrency from `budget.remaining()` + CPU headroom (the
-  `concurrency.ts` computation already reads CPU; add a budget term). Log what was
-  capped (no silent truncation).
-- **Proof.** Unit test: given a budget, the computed max concurrency scales; a
-  `log` line reports the cap.
+- **Problem.** Three limits throttle scale today, all conservative DEFAULTS
+  (nobody asked for them; they are the original runaway-DoS rails):
+  1. `SWARM_MAX_TOTAL_AGENTS = 8` (`concurrency.ts:23`) — the AUTO path's total
+     lanes-per-run ceiling. Overridable via `--max-agents`, but the auto path
+     (the one a large build actually uses) is stuck at 8.
+  2. concurrency-at-once = `cpus-1` (+ budget) (`concurrency.ts:46`) — a REAL
+     resource governor; keep it, but it should scale with the machine, not cap
+     total work.
+  3. nesting `depth ≤ 1` (`run-swarm.ts:454`) — a swarm may spawn ONE nested
+     level, never a grandchild. The hard rail (naive recursion is exponential).
+- **Design — governors, not removal (uncapping outright is the footgun the rails
+  prevent).**
+  - **Total lanes per run:** replace the fixed `8` with a budget+machine-aware
+    ceiling (`orchestration.maxAgents` config override; default scales with
+    `budget.remaining()` — the cost cap is waived, so this rises to "as many as
+    the work needs", executed in WAVES). A large app gets MANY lanes total.
+  - **Concurrency-at-once:** keep CPU-bound (`cpus-1`) so N total lanes run in
+    waves of ~cores at a time — this is what keeps a 200-lane build from melting
+    the laptop. Add the budget term. Log what was capped (no silent truncation).
+  - **Nesting depth:** turn `≤1` into a CONFIGURABLE depth BUDGET (`maxSwarmDepth`,
+    default 2–3), coupled with G2's recursive plan so hierarchy is bounded-but-
+    deeper, NOT unbounded recursion. Depth × width stays governed end-to-end.
+- **Choke point.** `capTotalAgents` / `chooseConcurrency` (`concurrency.ts`) and
+  the depth gate (`run-swarm.ts:454`), fed by one `orchestration` config block.
+- **Proof.** Unit tests: total-lane ceiling scales with budget; concurrency stays
+  CPU-bound; a depth-2 plan fans out two levels while depth-3 is refused at the
+  configured budget. Real-model: a large seeded plan runs >8 lanes total in waves.
+- **Priority.** NOT minor — this is a direct blocker to "any app, any size".
+  Pairs with G2 (recursive plan) and G3 (drive-to-done).
 
 ---
 

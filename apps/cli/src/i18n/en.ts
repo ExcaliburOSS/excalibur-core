@@ -976,6 +976,7 @@ export const EN: Catalog = {
   'repl.auto-build-review': 'Adversarial review of the result ({lenses} lens(es))…',
   'repl.auto-build-review-high':
     'A high-severity issue survived review — inspect the changes before relying on them.',
+  'repl.review-heal': 'Fixing what review flagged…',
   // deep research (F7)
   'research.network-off':
     'Network is disabled (permissions.network.mode = off). Enable it to research the web.',

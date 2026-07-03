@@ -97,7 +97,7 @@ import {
 import { runDiscoveryFlow } from '../commands/discovery';
 import { runTask, mountConversationalRail } from '../lib/run-pipeline';
 import { renderTurnReceipt } from '../lib/turn-receipt';
-import { chooseBuildShape, decomposeTask, runSwarmFlow, verifyMergeEnabled } from '../lib/swarm';
+import { chooseBuildShape, decomposeTask, runSwarmFlow } from '../lib/swarm';
 import {
   markAutoBuildStep,
   materializeAutoBuild,
@@ -2247,6 +2247,15 @@ async function dispatchAgentTurn(
     );
   }
   await recordAssistantTurn(deps, runtime, result);
+  // G5 — a CHAT turn that nonetheless mutated the tree (a misrouted edit, or the
+  // model reaching for write_file mid-answer) gets the SAME deterministic review +
+  // bounded fix as a build. Together with the build/edit path (runConversationalBuild)
+  // and the swarm's own verify mesh, NO mutating path escapes self-review — the
+  // guarantee lives at the choke point, not the model's discretion. No-op when the
+  // turn didn't touch the tree (the common pure-Q&A case).
+  if (result.mutated) {
+    await reviewAndHeal(deps, runtime, text, signal, null);
+  }
 }
 
 /**
@@ -2347,6 +2356,20 @@ async function runConversationalBuild(
       }
     }
 
+    // G5 — the DETERMINISTIC self-review backstop: adversarial review of the diff
+    // (ALWAYS, not gated on a test command) + ONE bounded fix pass. Runs after the
+    // check-based self-heal so tests are green first, then the review catches what
+    // the model's prompted self-review missed. Refresh the receipt from the result.
+    const reviewed = await reviewAndHeal(deps, runtime, text, signal, rail);
+    if (reviewed !== null) {
+      record = reviewed;
+      try {
+        summary = buildTurnSummary(loadReplay(runtime.repoRoot, record.id));
+      } catch {
+        /* keep the pre-review summary if the fix run's log is sparse */
+      }
+    }
+
     // Close the rail (input box) BEFORE the warm receipt so the receipt + the next idle
     // prompt render on a clean screen — from here on the idle editor IS the input.
     if (rail !== null) {
@@ -2403,6 +2426,107 @@ function buildHealPrompt(originalTask: string, failing: string): string {
     'Failing checks:',
     failing,
   ].join('\n');
+}
+
+/** The focused prompt for the G5 review-heal pass: fix exactly what an adversarial
+ * review flagged, at the root cause, without suppressing the finding. */
+function buildReviewFixPrompt(
+  originalTask: string,
+  issues: ReadonlyArray<{ severity: string; file?: string; problem: string }>,
+): string {
+  const list = issues
+    .map(
+      (i) =>
+        `- [${i.severity.toUpperCase()}] ${i.file !== undefined ? `${i.file}: ` : ''}${i.problem}`,
+    )
+    .join('\n');
+  return [
+    'An adversarial code review of your changes found issues that must be fixed.',
+    'Fix the ROOT CAUSE of each in the code — do NOT suppress, comment out, or',
+    'ignore the finding. Re-check your work when done.',
+    '',
+    `Original task: ${originalTask}`,
+    '',
+    'Review findings:',
+    list,
+  ].join('\n');
+}
+
+/**
+ * G5 — the DETERMINISTIC self-review backstop. After a mutating build, run an
+ * adversarial review (proportional mesh) over the working diff — ALWAYS, not only
+ * when a test command exists (that gate is exactly why review never fired on a
+ * repo without tests, and why the model's own prompted self-review was the whole
+ * safety net). A surviving HIGH issue drives ONE bounded fix pass, then a
+ * re-review, so Excalibur catches the bug before the user does — at the choke
+ * point, not at the model's discretion. Best-effort: a mock model, an empty diff,
+ * a docs-only change, or a flaky jury is a clean no-op. Returns the last fix run
+ * (so the caller can refresh the receipt), or null when nothing changed.
+ */
+async function reviewAndHeal(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  text: string,
+  signal: AbortSignal,
+  rail: Awaited<ReturnType<typeof mountConversationalRail>>,
+): Promise<Awaited<ReturnType<typeof runTask>>> {
+  if (runtime.model === 'mock' || signal.aborted) {
+    return null;
+  }
+  const MAX_REVIEW_HEAL = 1; // review → fix → review, then surface honestly
+  let lastFix: Awaited<ReturnType<typeof runTask>> = null;
+  const say = (line: string): void => {
+    if (rail !== null) {
+      rail.notice(line);
+    } else {
+      deps.ui.write();
+      deps.ui.info(line);
+    }
+  };
+  for (let attempt = 0; attempt <= MAX_REVIEW_HEAL && !signal.aborted; attempt += 1) {
+    const diff = getLocalDiff(runtime.repoRoot);
+    if (diff.trim().length === 0) {
+      return lastFix; // nothing to review
+    }
+    let review: Awaited<ReturnType<typeof runProportionalMesh>>;
+    try {
+      const gw = loadGatewayContext(runtime.repoRoot);
+      review = await runProportionalMesh(
+        { gateway: gw.gateway, providerName: gw.providerName, config: runtime.config },
+        diff,
+      );
+    } catch {
+      return lastFix; // best-effort — never fail the build on a flaky jury
+    }
+    if (review === null) {
+      return lastFix; // nothing warranted (docs-only / trivial)
+    }
+    say(deps.t('repl.auto-build-review', { lenses: String(review.lenses) }));
+    for (const issue of review.result.issues) {
+      const where = issue.file !== undefined ? `${issue.file} — ` : '';
+      say(`  [${issue.severity.toUpperCase()}] ${where}${issue.problem}`);
+    }
+    if (!review.result.blocked) {
+      return lastFix; // clean — no surviving high-severity issue
+    }
+    if (attempt === MAX_REVIEW_HEAL) {
+      say(deps.t('repl.auto-build-review-high')); // out of fix passes — honest state
+      return lastFix;
+    }
+    say(deps.t('repl.review-heal'));
+    const fix = await runTask(deps, buildReviewFixPrompt(text, review.result.issues), {
+      conversational: true,
+      level: runtime.autonomyLevel,
+      yes: runtime.approvals.auto,
+      signal,
+      ...(rail !== null ? { view: rail.view } : {}),
+    });
+    if (fix === null) {
+      return lastFix; // cancelled mid-fix
+    }
+    lastFix = fix;
+  }
+  return lastFix;
 }
 
 /** Dispatches an auto plan-mode turn (plan → gate → execute). */
@@ -2702,37 +2826,11 @@ async function dispatchAutoBuild(
       fallback: signal.aborted ? 'pending' : 'done',
     });
   }
-
-  // AO4f-2 — give the SEQUENTIAL auto-build the same adversarial review the swarm
-  // path gets (AO4f-1). The turn already applied as it went (no merge gate to
-  // revert), so this is a proportional, best-effort post-review that SURFACES
-  // high-severity findings rather than reverting. Never on the mock; never blocks.
-  // F1 — same default as the swarm gate (ON when a test command exists): the ORCH1
-  // default-on was applied asymmetrically and left this path strictly opt-in.
-  if (verifyMergeEnabled(runtime.config) && runtime.model !== 'mock') {
-    try {
-      const gateway = loadGatewayContext(runtime.repoRoot);
-      const diff = getLocalDiff(runtime.repoRoot);
-      if (diff.trim().length > 0) {
-        const out = await runProportionalMesh(
-          { gateway: gateway.gateway, providerName: gateway.providerName, config: runtime.config },
-          diff,
-        );
-        if (out !== null) {
-          deps.ui.info(deps.t('repl.auto-build-review', { lenses: out.lenses }));
-          for (const issue of out.result.issues) {
-            const where = issue.file !== undefined ? `${issue.file} — ` : '';
-            deps.ui.write(`  [${issue.severity.toUpperCase()}] ${where}${issue.problem}`);
-          }
-          if (out.result.blocked) {
-            deps.ui.warn(deps.t('repl.auto-build-review-high'));
-          }
-        }
-      }
-    } catch {
-      /* best-effort post-review — never fail the build on a flaky jury */
-    }
-  }
+  // NOTE (G5): the adversarial post-review + bounded fix now lives INSIDE
+  // `runConversationalBuild` (`reviewAndHeal`) so it fires on EVERY solo mutating
+  // build — the `edit` intent and this sequential auto-build alike — and is no
+  // longer gated on a configured test command (that gate is why review never ran
+  // on a repo without tests). The old surface-only block here was removed.
 }
 
 /**

@@ -31,12 +31,15 @@ import {
   setPlanStatus,
   turnSummaryToMarkdown,
   updatePlanStep,
+  type PlanPhaseExecutor,
   type PlanStepExecutor,
+  type PlanStepResult,
   type StoredPlan,
   type StructuredPlan,
   type StructuredPlanStep,
 } from '@excalibur/core';
 import { basename } from 'node:path';
+import { runSwarmFlow, type SwarmFlowContext, type SwarmSubtask } from '../lib/swarm';
 import {
   createEvent,
   generateId,
@@ -1174,8 +1177,61 @@ async function driveStructuredPlan(
     return { status: execResult.aborted ? 'blocked' : 'done', runId: execRun.id };
   };
 
+  // G1 — a phase whose ENTIRE not-done set is mutually independent fans out into a
+  // VERIFIED parallel swarm (each step a lane in its own worktree, graded + merged,
+  // the phase boundary its own verify gate) instead of running step-by-step. Gated
+  // to a real repo (worktrees), a real model, and an autonomy that already
+  // auto-approves the merge — otherwise plans stay sequential + interactive. The
+  // plan runner still owns ordering, resume (skip-done), abort and checkpointing.
+  const canFanOut =
+    getGitInfo(turn.repoRoot).isRepo &&
+    turn.providerName !== 'mock' &&
+    approvalDefaultYes(turn.autonomyLevel);
+  const swarmCtx: SwarmFlowContext = {
+    gateway: turn.gateway,
+    providerName: turn.providerName,
+    config: turn.config,
+  };
+  const phaseExecutor: PlanPhaseExecutor = async (steps, ctx) => {
+    const subtasks: SwarmSubtask[] = steps.map((s) => ({
+      id: s.id,
+      title: s.title,
+      instruction: stepPrompt(task, ctx.plan, ctx.phase, s),
+    }));
+    const verdict = new Map<string, PlanStepResult>();
+    await runSwarmFlow(turn.deps, turn.repoRoot, `${task} — ${ctx.phase.title}`, swarmCtx, {
+      subtasks,
+      // The plan was approved at the gate; parallelize its independent steps and
+      // auto-merge the verified result (grade = the AO4/AO5 rubric + verify gate).
+      yes: true,
+      grade: true,
+      ...(turn.signal !== undefined ? { signal: turn.signal } : {}),
+      onOutcome: (outcome) => {
+        if (outcome.applied) {
+          mutated = true;
+        }
+        for (const lane of outcome.lanes) {
+          // A lane is DONE only when the merged diff LANDED (applied + survived the
+          // verify gate); produced-but-unlanded / failed / conflict / empty →
+          // blocked (resumable — a re-run retries just that step).
+          verdict.set(lane.id, {
+            status: outcome.applied && lane.state === 'done' ? 'done' : 'blocked',
+          });
+        }
+      },
+    });
+    // A step with no lane outcome never ran → blocked (safe + resumable).
+    for (const s of steps) {
+      if (!verdict.has(s.id)) {
+        verdict.set(s.id, { status: 'blocked' });
+      }
+    }
+    return verdict;
+  };
+
   const result = await runStructuredPlan(plan, executor, {
     ...(turn.signal !== undefined ? { signal: turn.signal } : {}),
+    ...(canFanOut ? { phaseExecutor } : {}),
     onStep: (step) => {
       if (planId !== null) {
         try {

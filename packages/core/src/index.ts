@@ -88,6 +88,7 @@ export {
 export {
   runStructuredPlan,
   type PlanStepExecutor,
+  type PlanPhaseExecutor,
   type PlanStepResult,
   type RunStructuredPlanOptions,
   type RunStructuredPlanResult,
