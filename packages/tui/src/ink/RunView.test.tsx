@@ -155,15 +155,32 @@ describe('<RunView>', () => {
     );
   });
 
-  it('renders an interactive approval (question + options)', () => {
+  it('renders the D13 approval gate as a BOXED dialog with the question + keys', () => {
     const frame = frameOf({
       model: model(),
       spinnerFrame: 0,
       useStatic: false,
-      approval: { question: 'Approve write to escrow.service.ts?', options: '[y/N/always]' },
+      approval: { question: 'Approve write to escrow.service.ts?', options: '[y/N/a]' },
     });
     expect(frame).toContain('Approve write to escrow.service.ts?');
-    expect(frame).toContain('[y/N/always]');
+    // P0-9 — the gate is a DIALOG, not a bare line: assert the round box actually
+    // renders (top + bottom border rows) and the [a]=always key is advertised.
+    expect(frame).toMatch(/[╭┌].*[╮┐]/); // a top border row
+    expect(frame).toMatch(/[╰└].*[╯┘]/); // a bottom border row
+    expect(frame).toContain('[y/N/a]');
+  });
+
+  it('the approval gate resolves y / a / n to yes / auto / no (D13 keys)', async () => {
+    for (const [ch, expected] of [
+      ['y', 'yes'],
+      ['a', 'auto'],
+      ['n', 'no'],
+    ] as const) {
+      const store = createRunViewStore();
+      const answer = store.requestApproval({ question: 'Apply?', options: '[y/N/a]' });
+      applyRunViewKey(store, ch, {});
+      expect(await answer).toBe(expected);
+    }
   });
 
   it('persists a completed phase FULL tail — actions AND the approval — in scrollback (RUN-FIX-22 pt2)', () => {
