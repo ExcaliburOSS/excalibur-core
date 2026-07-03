@@ -334,6 +334,14 @@ function engineeringGuidance(role: AgentRole): string[] {
     'linters/formatters, and for anything runnable actually run it and confirm it',
     'behaves (for a service, start it, check it responds, then stop it). Do not just',
     'write files and walk away.',
+    // P1 (proactivity) — the `review`/`verify` TOOLS were description-only and fired
+    // almost never; name them with real protocol weight so the agent self-checks
+    // like a senior engineer instead of shipping the first draft.
+    'And before you tell the user a non-trivial change is DONE, call `review` on your',
+    'working-tree diff (or `verify` for a rigorous multi-lens correctness/security',
+    'check) and FIX whatever it surfaces. This self-review is a REQUIRED step, not',
+    'optional — it is how you catch the bug before the user does. Skip it only for a',
+    'truly trivial one-liner.',
     'To show, open, run, serve or preview a WEB app locally — whether you just built it OR',
     'the user simply asks to SEE it ("show me the web", "enséñame la web", "run the site",',
     '"open it") — ALWAYS call the `preview` tool. It starts the project on localhost and',
@@ -435,15 +443,22 @@ function systemPromptFor(input: AgentRunInput): string {
     // ManagementToolset so we never advertise tools that answer "not available".
     ...(input.management !== undefined
       ? [
-          'Two more tools are first-class parts of how you work, not extras:',
-          '`investigate` — before non-trivial work that spans SEVERAL files or areas you',
-          'have not read yet, call it ONCE (it fans out parallel read-only explorers and',
-          'returns a synthesized map) INSTEAD of chaining sequential read_file /',
-          'search_code calls. `remember` — when you DECIDE something or LEARN a',
-          'non-obvious fact that outlives this task (an architecture choice, why an',
-          'approach was rejected, a gotcha, a convention), persist it with the paths it',
-          'concerns so future work on those files starts primed. One or two good',
-          'memories per task is plenty; never store secrets.',
+          'These tools are first-class parts of how you work, not extras — use them by',
+          'default, not only when asked:',
+          '`investigate` — REQUIRED before non-trivial work that spans several files or',
+          'areas you have not read yet: call it ONCE (it fans out parallel read-only',
+          'explorers and returns a synthesized map) INSTEAD of chaining sequential',
+          'read_file / search_code. Rule of thumb: if you are about to do your 3rd read',
+          'across different directories, stop and `investigate` instead.',
+          '`remember` — when you DECIDE something or LEARN a non-obvious fact that',
+          'outlives this task (an architecture choice, why an approach was rejected, a',
+          'gotcha, a convention), persist it with the paths it concerns so future work',
+          'on those files starts primed. One or two good memories per task is plenty;',
+          'never store secrets.',
+          'When the user asks about STATE or PROGRESS — "what is left", "how is the',
+          'sprint going", "are we on track", "what should I do next" — consult',
+          '`project_status` / `work_items` / `sprint_status` / `plans` and answer from',
+          'the real board, never guess.',
         ]
       : []),
     ...engineeringGuidance(input.role),
@@ -458,7 +473,11 @@ function systemPromptFor(input: AgentRunInput): string {
     'build / validate / don’t-build BEFORE any code is written. Concrete requests:',
     'just do them.',
     'When the task is complete, reply with a brief, warm summary — like updating a',
-    'teammate on what you did and why — and no further tool calls.',
+    'teammate on what you did and why. Then, when there is genuinely useful follow-on',
+    'work, add a short "Next steps" line: 1–3 concrete things you would recommend as',
+    'the engineer who just did this (tests for a new path, a doc update, opening a PR,',
+    'a related fix or smell you noticed) — and offer to do them. Skip it when the task',
+    'is genuinely self-contained; never pad. Then no further tool calls.',
   ].join('\n');
 }
 
