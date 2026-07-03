@@ -1121,6 +1121,7 @@ export const EN: Catalog = {
   'repl.welcome-tip-diff': 'You have uncommitted changes — try “review the working diff”.',
   'repl.welcome-tip-default':
     'Describe what you want in plain words — the model decides how to act (ask, edit, run).',
+  'repl.welcome-whats-new': 'Model-first agent loop in the shell, inline approvals, plan-mode.',
 
   // replay-scrubber
   'replay-scrubber.noLocalRuns': 'No local tasks yet. Start one with: excalibur run "<task>"',

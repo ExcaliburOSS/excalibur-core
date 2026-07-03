@@ -1533,6 +1533,18 @@ export class Ui {
         /* a failed mode write must never block arming the editor */
       }
       input.resume();
+      // CRITICAL (solidity) — RE-REF the stdin handle. Every turn mounts an Ink
+      // rail whose unmount calls Ink 5's handleSetRawMode(false) → stdin.unref().
+      // `resume()` restores the FLOWING state but NOT the libuv HANDLE ref (they're
+      // independent in Node), so after a turn stdin stays unref'd. With the session
+      // dashboard server also unref'd, stdin is the ONLY thing keeping the event
+      // loop alive at the idle prompt — so `beforeExit` fires, the child exits
+      // code 0 while `question()` is still pending, and the supervisor reads code 0
+      // as a deliberate `/exit` and stops the shell: the "sale tras acabar bien una
+      // tarea, sin mensaje" bug. With a real model, lingering keep-alive sockets
+      // mask the drain for seconds (hence intermittent); the mock drains instantly.
+      // Re-ref'ing here after every re-arm removes the cause.
+      (input as { ref?: () => void }).ref?.();
       input.on('keypress', onKeypress);
       (out as NodeJS.WriteStream).on?.('resize', onResize);
       // `exit` covers normal/crash exits; the signal hooks cover SIGTERM/SIGHUP.
