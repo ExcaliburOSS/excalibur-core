@@ -360,7 +360,9 @@ export function materializeTurnCard(
   repoRoot: string,
   task: string,
   newPaths: ReadonlyArray<string>,
-  options: { planRunId: string; now?: Date } = { planRunId: '' },
+  options: { planRunId: string; now?: Date; outcome?: 'done' | 'blocked' | 'aborted' } = {
+    planRunId: '',
+  },
 ): AutoBuildBoard | null {
   if (newPaths.length === 0) {
     return null;
@@ -369,6 +371,14 @@ export function materializeTurnCard(
     const now = options.now ?? new Date();
     const files = [...newPaths].slice(0, 40);
     const acceptance = `Files: ${files.join(', ')}`;
+    // P0-5 — record the TRUTH, not always `done`: a turn that errored mid-way is
+    // `blocked` (visible on the review lane), an interrupted one is `pending`
+    // (back to todo), else `done`. The board/burndown must not show half-finished
+    // work as complete.
+    const outcome = options.outcome ?? 'done';
+    const stepStatus: PlanStepStatus =
+      outcome === 'done' ? 'done' : outcome === 'aborted' ? 'pending' : 'blocked';
+    const laneStatus = outcome === 'done' ? 'done' : outcome === 'aborted' ? 'todo' : 'review';
     const plan: StructuredPlan = {
       version: 1,
       phases: [
@@ -396,12 +406,16 @@ export function materializeTurnCard(
       title: step.title,
       description: acceptance,
       labels: ['build'],
-      status: 'done', // the work already happened — this is a retroactive record
+      status: laneStatus,
     });
     step.workItemId = item.key;
-    step.status = 'done';
+    step.status = stepStatus;
     writePlanSidecar(repoRoot, planId, plan);
-    setPlanStatus(repoRoot, planId, 'executed');
+    // Only a fully-done turn promotes the plan to `executed`; otherwise it stays
+    // `approved` (resumable) so the unfinished work can be picked up.
+    if (outcome === 'done') {
+      setPlanStatus(repoRoot, planId, 'executed');
+    }
 
     let sprintId: string | null = null;
     try {
@@ -417,7 +431,7 @@ export function materializeTurnCard(
         buildPlanMemoryEntry(repoRoot, plan, {
           task,
           planRunId: planId,
-          completed: true,
+          completed: outcome === 'done',
           extraPaths: files,
         }),
       );

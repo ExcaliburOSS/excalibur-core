@@ -489,7 +489,18 @@ export async function runInteractiveSession(
   // D6 (F1.5) — discard anything typed while the welcome painted: those bytes
   // used to answer the resume/auto-setup confirms the user had not even SEEN
   // yet (captured: an immediate `/exit` was eaten as the resume answer).
-  await flushPendingStdin();
+  // P0-2 (solidity) — the pre-loop SETUP runs BEFORE the loop's try/finally, so a
+  // rejection here (a stdin glitch on a confirm, a dashboard bind reject, a resume
+  // fault) would escape → main.ts `.catch` → exitCode 0 → the supervisor reads it
+  // as a clean `/exit` → the shell dies SILENTLY at launch. Each awaited setup step
+  // is individually recover-and-continue: a failed nicety must never stop the shell
+  // from reaching its prompt. The editor + classifier below stay outside (they are
+  // structural — the loop can't run without them — and are synchronous).
+  try {
+    await flushPendingStdin();
+  } catch {
+    /* a stdin drain glitch must not abort launch */
+  }
   if (
     options.resume === undefined &&
     options.continue !== true &&
@@ -498,19 +509,23 @@ export async function runInteractiveSession(
     deps.ui.isInteractive() &&
     deps.ui.isOutputTty()
   ) {
-    const turns = store
-      .readTranscript(startup.latest.id)
-      .filter((turn) => turn.kind === 'message').length;
-    const resume = await deps.ui.confirm(
-      turns === 1 ? deps.t('repl.resume-offer-one') : deps.t('repl.resume-offer', { turns }),
-      { defaultYes: true },
-    );
-    if (resume) {
-      runtime.session =
-        startup.latest.metadata.status === 'closed'
-          ? store.updateMetadata(startup.latest.id, { status: 'active' })
-          : startup.latest;
-      replayTranscript(deps, store, runtime.session);
+    try {
+      const turns = store
+        .readTranscript(startup.latest.id)
+        .filter((turn) => turn.kind === 'message').length;
+      const resume = await deps.ui.confirm(
+        turns === 1 ? deps.t('repl.resume-offer-one') : deps.t('repl.resume-offer', { turns }),
+        { defaultYes: true },
+      );
+      if (resume) {
+        runtime.session =
+          startup.latest.metadata.status === 'closed'
+            ? store.updateMetadata(startup.latest.id, { status: 'active' })
+            : startup.latest;
+        replayTranscript(deps, store, runtime.session);
+      }
+    } catch {
+      /* the resume offer is best-effort — never block launch on it */
     }
   }
 
@@ -518,15 +533,19 @@ export async function runInteractiveSession(
   // may edit/run without prompting, then PERSIST the answer so it never asks
   // again — in this session or future ones. Blocked paths stay hard-denied.
   if (config.approvals?.auto === undefined && deps.ui.isInteractive() && deps.ui.isOutputTty()) {
-    const allow = await deps.ui.confirm(deps.t('repl.auto-setup-prompt'), { defaultYes: true });
-    runtime.approvals.auto = allow;
     try {
-      setAutoApprove(repoRoot, allow);
+      const allow = await deps.ui.confirm(deps.t('repl.auto-setup-prompt'), { defaultYes: true });
+      runtime.approvals.auto = allow;
+      try {
+        setAutoApprove(repoRoot, allow);
+      } catch {
+        // Persisting the preference is best-effort; the session still honours it.
+      }
+      deps.ui.info(deps.t(allow ? 'repl.auto-enabled' : 'repl.auto-disabled'));
+      deps.ui.write();
     } catch {
-      // Persisting the preference is best-effort; the session still honours it.
+      /* the one-time auto-accept prompt is best-effort — never block launch */
     }
-    deps.ui.info(deps.t(allow ? 'repl.auto-enabled' : 'repl.auto-disabled'));
-    deps.ui.write();
   }
 
   printStatusLine(deps, runtime);
@@ -535,7 +554,12 @@ export async function runInteractiveSession(
   // the local server comes up in the background so runs/events are watchable in
   // a browser without discovering `excalibur serve`. Torn down in the finally
   // below. No-op on a non-TTY, when disabled, or if every candidate port is busy.
-  const dashboard = await startSessionDashboard(deps, repoRoot, config);
+  let dashboard: Awaited<ReturnType<typeof startSessionDashboard>> = null;
+  try {
+    dashboard = await startSessionDashboard(deps, repoRoot, config);
+  } catch {
+    /* the companion dashboard is optional — a bind/port fault must not abort launch */
+  }
   runtime.dashboardUrl = dashboard?.url ?? null;
 
   const history = store.loadPromptHistory().slice().reverse(); // readline wants newest-first
@@ -547,7 +571,7 @@ export async function runInteractiveSession(
     history,
     // The `/` command menu (filters as you type) + a dim CONTEXTUAL placeholder.
     commands: slashCommands(deps.t),
-    placeholder: () => deps.t(interacted ? 'repl.ph.next' : 'repl.ph.start'),
+    placeholder: () => foldChromeAscii(deps, deps.t(interacted ? 'repl.ph.next' : 'repl.ph.start')),
     // D9 (F1.5) — the 3-ROW frame: input on top (no opening rule — the committed
     // conversation above plus a blank line is the boundary; two full-width accent
     // rules were the heaviest chrome on screen), then ONE dim rule + a status row
@@ -855,7 +879,22 @@ export async function runInteractiveSession(
     }
   };
 
-  await offerResumePlan();
+  // P0-2 — `offerResumePlan` wraps only the resume EXECUTION internally; its
+  // findResumablePlan read + the offer confirm are unguarded and run pre-loop.
+  try {
+    await offerResumePlan();
+  } catch {
+    /* the plan-resume offer is best-effort — never block launch on it */
+  }
+
+  // P0-1 (solidity) — a REF'd session keep-alive: a no-op interval whose libuv
+  // ref keeps the event loop alive for the WHOLE interactive session. This is the
+  // structural guarantee behind the stdin-ref fix: even if some future handle is
+  // left unref'd (an Ink unmount, an unref'd server), the loop can NEVER drain to
+  // `beforeExit` mid-session. It also makes a code-0 child exit mean ONLY a
+  // deliberate `/exit` (the loop `break` + this clear), so the supervisor can no
+  // longer mistake a silent drain for the user leaving. Cleared in the finally.
+  const sessionKeepAlive = setInterval(() => {}, 1 << 30);
 
   try {
     for (;;) {
@@ -897,7 +936,7 @@ export async function runInteractiveSession(
       // catches the synchronous read path the net can't.
       let line: string | null;
       try {
-        line = await editor.question(accent('› '));
+        line = await editor.question(accent(foldChromeAscii(deps, '› ')));
       } catch (error) {
         deps.ui.write();
         deps.ui.warn(
@@ -1296,7 +1335,7 @@ export async function runInteractiveSession(
           ? mutationSnapshot(repoRoot)
           : new Set<string>();
         const plansBefore = planCount(repoRoot);
-        const settleTurnMaterialization = (): void => {
+        const settleTurnMaterialization = (outcome: 'done' | 'blocked' | 'aborted'): void => {
           try {
             if (!getGitInfo(repoRoot).isRepo || planCount(repoRoot) > plansBefore) {
               return; // not a repo, or the turn already left its own durable plan
@@ -1308,6 +1347,7 @@ export async function runInteractiveSession(
             }
             const board = materializeTurnCard(repoRoot, text, newPaths, {
               planRunId: generateId('turn'),
+              outcome,
             });
             const item =
               board !== null ? [...board.stepBySubtask.values()][0]?.workItemId : undefined;
@@ -1491,7 +1531,9 @@ export async function runInteractiveSession(
             kind: 'status',
             text: `error: ${reason}`,
           });
-          settleTurnMaterialization(); // a build that errored mid-way still recorded its work
+          // A build that errored mid-way still records its work — as `blocked`, not
+          // done (P0-5): the board must not show a half-finished turn as complete.
+          settleTurnMaterialization('blocked');
           await settleInterruptAftermath(); // a steer/switch queued before the error still runs
           printStatusLine(deps, runtime);
           continue;
@@ -1501,7 +1543,9 @@ export async function runInteractiveSession(
         // comes back (RUN-FIX-15: nunca es nunca).
         try {
           endTurn();
-          settleTurnMaterialization(); // F1-UNIVERSAL — board any turn that mutated the tree
+          // F1-UNIVERSAL — board any turn that mutated the tree. An ESC-aborted turn
+          // is recorded as `aborted` (back to todo), a clean one as `done` (P0-5).
+          settleTurnMaterialization(ctrl.signal.aborted ? 'aborted' : 'done');
           // INT-1/INT-5 — run any foreground interrupt (folded steer / pause+switch)
           // queued while this turn streamed, then offer to resume the paused work.
           await settleInterruptAftermath();
@@ -1546,6 +1590,9 @@ export async function runInteractiveSession(
     }
   } finally {
     exitForensicsLog('repl loop FINALLY reached (teardown) — the for(;;) loop ended');
+    // P0-1 — release the session keep-alive so the process can now exit cleanly
+    // (the loop ended = a deliberate /exit; nothing should keep it alive anymore).
+    clearInterval(sessionKeepAlive);
     // AO8-4 — stop any late background callback (chain / supervisor) from spawning
     // a NEW thread into the closing session, then cancel the in-flight ones.
     runtime.shuttingDown = true;
@@ -3060,11 +3107,33 @@ function launchBgThread(
   deps.ui.info(deps.t('repl.bg-started', { title }));
 
   const bgDeps: AgentTurnDeps = { ...base, quiet: true, approvals: { auto: true } };
+  // P0-4 (solidity/materialization) — a BACKGROUND build writes files but runs
+  // OUTSIDE the REPL loop's universal hook, so "build X in the background" left the
+  // board EMPTY. Guarantee at the launch choke point: snapshot the tree here, and
+  // materialize the delta when the thread settles (same helper, idempotent).
+  const bgRepo = runtime.repoRoot;
+  const bgMutBefore = getGitInfo(bgRepo).isRepo ? mutationSnapshot(bgRepo) : new Set<string>();
+  const bgPlansBefore = planCount(bgRepo);
+  const settleBgMaterialization = (outcome: 'done' | 'blocked'): void => {
+    try {
+      if (!getGitInfo(bgRepo).isRepo || planCount(bgRepo) > bgPlansBefore) {
+        return;
+      }
+      const newPaths = [...mutationSnapshot(bgRepo)].filter((p) => !bgMutBefore.has(p));
+      if (newPaths.length === 0) {
+        return;
+      }
+      materializeTurnCard(bgRepo, task, newPaths, { planRunId: generateId('turn'), outcome });
+    } catch {
+      /* best-effort — a board write must never perturb the background thread */
+    }
+  };
   void runAgentTurn(bgDeps, task)
     .then((result) => {
       if (result.costCents !== null) {
         runtime.costCents += result.costCents;
       }
+      settleBgMaterialization('done');
       const pendingFollowUp = runtime.fleet.threads.find((t) => t.id === id)?.followUp;
       runtime.fleet = settleThread(runtime.fleet, id, 'done', deps.t('repl.bg-done', { title }));
       // AO8-1 — REACTION ON COMPLETION: the finished thread auto-dispatches its
@@ -3086,6 +3155,7 @@ function launchBgThread(
     })
     .catch((error: unknown) => {
       const reason = error instanceof Error ? error.message : String(error);
+      settleBgMaterialization('blocked'); // a bg build that errored still records its work
       runtime.fleet = settleThread(
         runtime.fleet,
         id,
@@ -4019,6 +4089,26 @@ function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
  * paused ·) shortcuts. Re-evaluated each paint so it reflects live state. Kept to one
  * visual row so the editor's cursor math stays exact.
  */
+/**
+ * P0-8 (solidity/UX) — fold the persistent SHELL CHROME glyphs to ASCII under
+ * `EXCALIBUR_ASCII` (and truly non-Unicode terminals). The welcome already
+ * degrades, but the always-on prompt `›`, footer rule `─`, `◆`, `·`, `⇥`, `↓`
+ * stayed Unicode → mojibake on a non-Unicode terminal. Operates on the literal
+ * glyphs (ANSI colour codes never contain them, so folding is colour-safe).
+ */
+function foldChromeAscii(deps: CliDeps, s: string): string {
+  if (deps.env['EXCALIBUR_ASCII'] === undefined) {
+    return s;
+  }
+  return s
+    .replace(/─/g, '-')
+    .replace(/[▶▸›]/g, '>')
+    .replace(/◆/g, '*')
+    .replace(/·/g, '-')
+    .replace(/⇥/g, 'tab')
+    .replace(/↓/g, 'v');
+}
+
 function buildInputFooter(deps: CliDeps, runtime: SessionRuntime): string[] {
   // `|| 80` (not ??): a pty can report columns=0, which must fall back too.
   const cols = Math.max(20, process.stdout.columns || 80);
@@ -4045,10 +4135,13 @@ function buildInputFooter(deps: CliDeps, runtime: SessionRuntime): string[] {
   // Shortcuts RIGHT-ALIGNED and width-fitted: the row is padded to cols-1 so it
   // can never wrap (the old fixed 91-char hint always wrapped at 80 cols). When
   // the terminal is too narrow for both, the live posture wins.
-  const right = pc.dim(deps.t('repl.input-shortcuts'));
+  const right = pc.dim(foldChromeAscii(deps, deps.t('repl.input-shortcuts')));
   const gap = cols - 1 - strip(left).length - strip(right).length;
-  const row = gap >= 2 ? `${left}${' '.repeat(gap)}${right}` : left;
-  return [accentDim('─'.repeat(cols)), row];
+  const row =
+    gap >= 2
+      ? `${foldChromeAscii(deps, left)}${' '.repeat(gap)}${right}`
+      : foldChromeAscii(deps, left);
+  return [foldChromeAscii(deps, accentDim('─'.repeat(cols))), row];
 }
 
 /**

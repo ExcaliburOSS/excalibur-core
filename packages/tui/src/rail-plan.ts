@@ -74,10 +74,14 @@ export function renderPlanCard(
   );
   lines.push(row(c(`${model.autonomyLabel} · ${model.workflowId}`, palette.muted)));
 
-  // Phases as pending nodes.
+  // Phases as pending nodes. P0-7 — a name at/over the pad width fused into its
+  // description ("Context Discoverywrites it up"); truncate long names and keep a
+  // guaranteed ≥2-space gutter before the type so the two columns never collide.
   for (const phase of model.phases) {
     const optional = phase.optional === true ? c('  (optional)', palette.muted) : '';
-    const name = c(phase.name.padEnd(NAME_WIDTH), palette.text);
+    const label =
+      phase.name.length > NAME_WIDTH - 1 ? `${phase.name.slice(0, NAME_WIDTH - 2)}…` : phase.name;
+    const name = c(label.padEnd(NAME_WIDTH), palette.text);
     const type = c(phase.type, palette.muted);
     lines.push(row(`${c(glyph.pending, palette.muted)} ${name}${type}${optional}`));
   }

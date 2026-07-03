@@ -463,6 +463,14 @@ function runProcess(
     };
     child.stdout?.on('data', capture);
     child.stderr?.on('data', capture);
+    // P0-3 (solidity) — attach the stream 'error' handlers AT SPAWN, not only in
+    // finish(): a pipe that breaks MID-command (the server dies, a `head`-style
+    // early close, an abort mid-write) would otherwise raise an unhandled stream
+    // 'error' → uncaughtException → a scary generic "recovered from a fault" line.
+    // A no-op keeps the EPIPE contained for the child's whole life (idempotent with
+    // the re-attach in finish()).
+    child.stdout?.on('error', () => {});
+    child.stderr?.on('error', () => {});
 
     const timer = setTimeout(() => {
       timedOut = true;
@@ -1740,6 +1748,13 @@ async function execPreview(
   } catch (error) {
     return fail(`could not start the preview (${label}): ${(error as Error).message}`);
   }
+  // P0-3 (solidity) — a detached preview server outlives the URL-detection promise
+  // (finish() below removes only the 'data' listeners). When it is later killed
+  // (stopAllPreviews) or crashes, its pipes EPIPE — with no persistent 'error'
+  // listener that becomes an uncaughtException → a scary generic fault line. Attach
+  // no-op 'error' handlers for the child's WHOLE life, right after spawn.
+  child.stdout?.on('error', () => {});
+  child.stderr?.on('error', () => {});
   trackPreview(child);
 
   // Parse the URL the server prints (Vite "Local:", Next "started server on", a bare

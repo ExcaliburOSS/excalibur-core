@@ -186,6 +186,26 @@ describe('F1-UNIVERSAL — the mutating-turn safety net', () => {
     }
   });
 
+  it('materializeTurnCard records TRUTHFUL status on error/abort (P0-5)', async () => {
+    const dir = gitRepo();
+    try {
+      const blocked = materializeTurnCard(dir, 'a failed build', ['x.js'], {
+        planRunId: 't',
+        now: NOW,
+        outcome: 'blocked',
+      });
+      expect(blocked).not.toBeNull();
+      const provBlocked = await new LocalWorkItemProvider(dir).listWorkItems({
+        integrationId: 'local',
+      });
+      expect(provBlocked[0]?.status).toBe('review'); // blocked → review lane, not done
+      // an errored turn leaves the plan resumable, not executed
+      expect(readPlan(dir, blocked!.planId)?.status).toBe('approved');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('materializeTurnCard is a no-op with no new paths (a pure question boards nothing)', () => {
     const dir = gitRepo();
     try {
