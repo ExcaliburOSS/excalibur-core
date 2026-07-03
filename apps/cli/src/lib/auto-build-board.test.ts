@@ -4,7 +4,16 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { markAutoBuildStep, materializeAutoBuild, settleAutoBuild } from './auto-build-board';
+import {
+  markAutoBuildStep,
+  materializeAutoBuild,
+  materializeTurnCard,
+  mutationSnapshot,
+  planCount,
+  settleAutoBuild,
+} from './auto-build-board';
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 
 let repo: string;
 beforeEach(() => {
@@ -120,5 +129,83 @@ describe('markAutoBuildStep + settleAutoBuild', () => {
     });
     expect(readPlan(repo, board.planId)?.status).toBe('approved');
     expect(listPlans(repo)).toHaveLength(1);
+  });
+});
+
+describe('F1-UNIVERSAL — the mutating-turn safety net', () => {
+  const gitRepo = (): string => {
+    const dir = mkdtempSync(join(tmpdir(), 'exc-uni-'));
+    execFileSync('git', ['init', '-q'], { cwd: dir });
+    execFileSync('git', ['config', 'user.email', 't@t.t'], { cwd: dir });
+    execFileSync('git', ['config', 'user.name', 't'], { cwd: dir });
+    return dir;
+  };
+
+  it('mutationSnapshot sees created + modified files but never .excalibur', () => {
+    const dir = gitRepo();
+    try {
+      writeFileSync(join(dir, 'a.js'), 'export const a = 1;\n');
+      writeFileSync(join(dir, 'b.js'), 'export const b = 2;\n');
+      // .excalibur writes are product STATE, not product work — excluded.
+      execFileSync('git', ['add', '-A'], { cwd: dir }); // even staged shows in porcelain
+      const snap = mutationSnapshot(dir);
+      expect(snap.has('a.js')).toBe(true);
+      expect(snap.has('b.js')).toBe(true);
+      expect([...snap].some((p) => p.startsWith('.excalibur'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('materializeTurnCard records ONE done card with the touched files + sprint + memory', async () => {
+    const dir = gitRepo();
+    try {
+      const board = materializeTurnCard(
+        dir,
+        'crea tres archivos independientes',
+        ['a.js', 'b.js', 'c.js'],
+        {
+          planRunId: 'turn_x',
+          now: NOW,
+        },
+      );
+      expect(board).not.toBeNull();
+      if (board === null) return;
+      // exactly one work item, done, labelled build, listing the files
+      const items = await new LocalWorkItemProvider(dir).listWorkItems({ integrationId: 'local' });
+      expect(items).toHaveLength(1);
+      expect(items[0]?.status).toBe('done');
+      expect(items[0]?.labels).toContain('build');
+      expect(items[0]?.description).toContain('a.js');
+      // plan executed, sprint active, memory captured
+      expect(readPlan(dir, board.planId)?.status).toBe('executed');
+      expect(new SprintStore(dir).listSprints()[0]?.status).toBe('active');
+      expect(existsSync(join(dir, '.excalibur', 'memory', 'nodes.jsonl'))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('materializeTurnCard is a no-op with no new paths (a pure question boards nothing)', () => {
+    const dir = gitRepo();
+    try {
+      expect(
+        materializeTurnCard(dir, 'how does auth work?', [], { planRunId: 't', now: NOW }),
+      ).toBeNull();
+      expect(planCount(dir)).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('planCount rises after a materialization (the idempotence guard the REPL uses)', () => {
+    const dir = gitRepo();
+    try {
+      expect(planCount(dir)).toBe(0);
+      materializeTurnCard(dir, 'add a helper', ['helper.js'], { planRunId: 't1', now: NOW });
+      expect(planCount(dir)).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

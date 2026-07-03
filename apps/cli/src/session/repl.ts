@@ -100,6 +100,9 @@ import { chooseBuildShape, decomposeTask, runSwarmFlow, verifyMergeEnabled } fro
 import {
   markAutoBuildStep,
   materializeAutoBuild,
+  materializeTurnCard,
+  mutationSnapshot,
+  planCount,
   settleAutoBuild,
   type AutoBuildBoard,
 } from '../lib/auto-build-board';
@@ -1281,6 +1284,49 @@ export async function runInteractiveSession(
         const planActs = intent === 'plan' && posture('plan') !== 'ask';
 
         const ctrl = beginTurn();
+        // F1-UNIVERSAL — the guarantee: ANY turn that mutates the repo leaves durable
+        // product state, no matter which build path the router chose. The keystone only
+        // fires inside dispatchAutoBuild; a task routed to a conversational turn, a
+        // mission or the direct gated build wrote files and left the board EMPTY (the
+        // "most requests generate no work items" root cause). Snapshot the tree + plan
+        // count before the turn; settle AFTER, recording one card iff the tree grew and
+        // the turn didn't already materialize its own plan. Idempotent: materializing
+        // bumps the plan count, so a second settle (error + success paths) is a no-op.
+        const mutBefore = getGitInfo(repoRoot).isRepo
+          ? mutationSnapshot(repoRoot)
+          : new Set<string>();
+        const plansBefore = planCount(repoRoot);
+        const settleTurnMaterialization = (): void => {
+          try {
+            if (!getGitInfo(repoRoot).isRepo || planCount(repoRoot) > plansBefore) {
+              return; // not a repo, or the turn already left its own durable plan
+            }
+            const now = mutationSnapshot(repoRoot);
+            const newPaths = [...now].filter((p) => !mutBefore.has(p));
+            if (newPaths.length === 0) {
+              return; // a pure question / read-only turn — nothing to board
+            }
+            const board = materializeTurnCard(repoRoot, text, newPaths, {
+              planRunId: generateId('turn'),
+            });
+            const item =
+              board !== null ? [...board.stepBySubtask.values()][0]?.workItemId : undefined;
+            if (item !== undefined) {
+              const sprint =
+                board?.sprintId != null
+                  ? deps.t('repl.auto-build-board-sprint', { sprint: board.sprintId })
+                  : '';
+              deps.ui.info(deps.t('repl.auto-build-board-item', { item, sprint }));
+              if (runtime.dashboardUrl != null) {
+                deps.ui.info(
+                  deps.t('dashboard.up', { url: `${runtime.dashboardUrl}#/work-items/${item}` }),
+                );
+              }
+            }
+          } catch {
+            /* the safety-net materialization is best-effort — never perturb the turn */
+          }
+        };
         // One blank line ALWAYS sets the user's request apart from Excalibur's reply,
         // for EVERY turn shape — conversational, gated build, mission, plan, swarm —
         // since they mount different presenters (a build/mission goes through the
@@ -1445,6 +1491,7 @@ export async function runInteractiveSession(
             kind: 'status',
             text: `error: ${reason}`,
           });
+          settleTurnMaterialization(); // a build that errored mid-way still recorded its work
           await settleInterruptAftermath(); // a steer/switch queued before the error still runs
           printStatusLine(deps, runtime);
           continue;
@@ -1454,6 +1501,7 @@ export async function runInteractiveSession(
         // comes back (RUN-FIX-15: nunca es nunca).
         try {
           endTurn();
+          settleTurnMaterialization(); // F1-UNIVERSAL — board any turn that mutated the tree
           // INT-1/INT-5 — run any foreground interrupt (folded steer / pause+switch)
           // queued while this turn streamed, then offer to resume the paused work.
           await settleInterruptAftermath();

@@ -1,5 +1,8 @@
-import { basename } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readdirSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import {
+  EXCALIBUR_DIR,
   MemoryStore,
   SprintStore,
   buildPlanMemoryEntry,
@@ -281,5 +284,150 @@ export function settleAutoBuild(
     );
   } catch {
     /* memory promotion is best-effort */
+  }
+}
+
+/**
+ * F1-UNIVERSAL — the guarantee that made the differentiator real: ANY turn that
+ * mutated the repository leaves durable product state, no matter which build path
+ * it took. The keystone above only fires inside `dispatchAutoBuild`; a task the
+ * intent router sent to a conversational turn, a mission, or the direct gated
+ * build wrote files and left NOTHING on the board (the "most requests generate no
+ * work items" disaster). This is the safety net wired at the REPL turn level:
+ * snapshot the working tree before the turn, and if it grew AND the turn didn't
+ * already materialize its own plan, retroactively record one durable card.
+ */
+
+/**
+ * The set of `git status --porcelain` paths (tracked changes + untracked files),
+ * so a turn's mutation is detected even when it CREATES new files (which a plain
+ * `git diff HEAD` misses). Empty set when not a repo / git errors — a snapshot
+ * that can't be taken simply never reports a mutation.
+ */
+export function mutationSnapshot(repoRoot: string): Set<string> {
+  try {
+    const out = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      timeout: 3000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const paths = new Set<string>();
+    for (const line of out.split('\n')) {
+      // Porcelain: `XY <path>` (rename shows `orig -> new`; take the final path).
+      const path = line.slice(3).trim();
+      if (path.length === 0) {
+        continue;
+      }
+      const arrow = path.lastIndexOf(' -> ');
+      const clean = arrow === -1 ? path : path.slice(arrow + 4);
+      // Excalibur's own state is not "product work" — never board a `.excalibur` write.
+      if (!clean.startsWith(EXCALIBUR_DIR) && !clean.startsWith('.excalibur')) {
+        paths.add(clean);
+      }
+    }
+    return paths;
+  } catch {
+    return new Set();
+  }
+}
+
+/** Count of persisted plans — used to detect whether a turn materialized its own. */
+export function planCount(repoRoot: string): number {
+  try {
+    const dir = join(repoRoot, EXCALIBUR_DIR, 'plans');
+    return existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.plan.json')).length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** A concise work-item/plan title from a free-text task (first line, capped). */
+function turnTitle(task: string): string {
+  const first = (task.split('\n').find((l) => l.trim().length > 0) ?? task).trim();
+  return first.length > 72 ? `${first.slice(0, 71)}…` : first;
+}
+
+/**
+ * Retroactively records ONE durable card for a turn that mutated the tree without
+ * materializing its own plan: a single-step plan (executed), one `build` work item
+ * whose description lists the touched files, attached to the rolling sprint, plus a
+ * decision memory keyed to those files. Best-effort — returns null on any fault.
+ * `newPaths` is this turn's mutation delta (after − before), so a pre-existing
+ * dirty tree never gets re-boarded.
+ */
+export function materializeTurnCard(
+  repoRoot: string,
+  task: string,
+  newPaths: ReadonlyArray<string>,
+  options: { planRunId: string; now?: Date } = { planRunId: '' },
+): AutoBuildBoard | null {
+  if (newPaths.length === 0) {
+    return null;
+  }
+  try {
+    const now = options.now ?? new Date();
+    const files = [...newPaths].slice(0, 40);
+    const acceptance = `Files: ${files.join(', ')}`;
+    const plan: StructuredPlan = {
+      version: 1,
+      phases: [
+        {
+          id: 'p1',
+          title: 'Work',
+          steps: [{ id: 'p1.s1', title: turnTitle(task), status: 'pending', acceptance }],
+        },
+      ],
+    };
+    const file = savePlan(repoRoot, {
+      task,
+      planMarkdown: renderPlanMarkdown(plan),
+      plan,
+      status: 'approved',
+      planRunId: options.planRunId,
+      now,
+    });
+    const planId = basename(file).replace(/\.md$/, '');
+    const step = plan.phases[0]?.steps[0];
+    if (step === undefined) {
+      return null;
+    }
+    const item = new LocalWorkItemProvider(repoRoot).createWorkItem({
+      title: step.title,
+      description: acceptance,
+      labels: ['build'],
+      status: 'done', // the work already happened — this is a retroactive record
+    });
+    step.workItemId = item.key;
+    step.status = 'done';
+    writePlanSidecar(repoRoot, planId, plan);
+    setPlanStatus(repoRoot, planId, 'executed');
+
+    let sprintId: string | null = null;
+    try {
+      const sprint = ensureRollingSprint(repoRoot, now);
+      new LocalWorkItemProvider(repoRoot).updateWorkItem(item.key, { cycleOrSprint: sprint.id });
+      sprintId = sprint.id;
+    } catch {
+      /* sprint attach is best-effort */
+    }
+
+    try {
+      new MemoryStore(repoRoot).capture(
+        buildPlanMemoryEntry(repoRoot, plan, {
+          task,
+          planRunId: planId,
+          completed: true,
+          extraPaths: files,
+        }),
+      );
+    } catch {
+      /* memory promotion is best-effort */
+    }
+
+    const stepBySubtask = new Map<string, StructuredPlanStep>([['s1', step]]);
+    return { planId, plan, epicWorkItemId: null, stepBySubtask, sprintId };
+  } catch {
+    return null;
   }
 }
