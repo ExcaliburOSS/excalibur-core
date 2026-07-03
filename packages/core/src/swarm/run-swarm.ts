@@ -450,10 +450,9 @@ export async function runSwarm<T>(
   if (lanes.length === 0) {
     return { lanes: [], mergedDiff: '', conflicts: [] };
   }
-  // AO5-5 — ≤1-depth cap: a swarm may spawn ONE nested level, never a grandchild.
-  if ((options.depth ?? 0) > 1) {
-    return { lanes: [], mergedDiff: '', conflicts: [] };
-  }
+  // NO fixed depth cap (founder directive): nest as deep as the work's structure
+  // warrants. Termination is by ATOMICITY (a leaf lane never re-decomposes), not a
+  // number. `depth` only namespaces this level's worktrees/branches, below.
   const baseRef = revParse(repoRoot, options.baseRef ?? 'HEAD') ?? 'HEAD';
   // Depth-distinct namespace so a depth-1 child never collides with its parent's
   // worktrees/branches (both live in the same repo while the parent lane runs).
@@ -526,12 +525,13 @@ export async function runSwarmStaged<T>(
   if (nonEmptyWaves.length === 0) {
     return { lanes: [], mergedDiff: '', conflicts: [] };
   }
-  // AO5-5 — ≤1-depth cap (a swarm may spawn ONE nested level, never a grandchild).
-  if ((options.depth ?? 0) > 1) {
-    return { lanes: [], mergedDiff: '', conflicts: [] };
-  }
+  // NO fixed depth cap (founder directive): a swarm may nest as DEEP as the work's
+  // structure warrants. Termination is by ATOMICITY, not a number — a lane that
+  // can't be meaningfully split further is a leaf and never re-decomposes (the
+  // recursive planner owns that). `depth` is retained only to give each level a
+  // collision-free worktree/branch namespace, below.
   const baseRef = revParse(repoRoot, options.baseRef ?? 'HEAD') ?? 'HEAD';
-  // Depth-distinct namespace so a depth-1 child never collides with its parent.
+  // Depth-distinct namespace so a nested child never collides with its parent.
   const prefix = options.idPrefix ?? `swarm-d${options.depth ?? 0}`;
   excludePathFromGit(repoRoot, '.excalibur/worktrees/');
 

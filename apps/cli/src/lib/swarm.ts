@@ -4,7 +4,6 @@ import {
   applyPatch,
   BudgetLedger,
   budgetCapCentsFromUsd,
-  capTotalAgents,
   buildSchemaInstruction,
   chooseConcurrency,
   extractJsonValues,
@@ -14,7 +13,6 @@ import {
   runSwarm,
   runSwarmStaged,
   stageAll,
-  SWARM_MAX_TOTAL_AGENTS,
   topologicalWaves,
   validateAgainstSchema,
   type JsonSchema,
@@ -149,7 +147,11 @@ export async function decomposeTask(
     grounding?: string;
   } = {},
 ): Promise<SwarmSubtask[]> {
-  const max = options.maxSubtasks ?? 6;
+  // Split to the work's NATURAL granularity, not an arbitrary small number: the
+  // auto path never drops lanes, and load is wave-scheduled downstream, so a wide
+  // decomposition costs nothing but honesty about the real structure. (Deeper
+  // scale comes from recursive decomposition — a big lane decomposes again.)
+  const max = options.maxSubtasks ?? 12;
   const groundingBlock =
     options.grounding !== undefined && options.grounding.trim().length > 0
       ? `\n\nThe repo's relevant files and subsystems for this task (use them to split into ` +
@@ -991,11 +993,17 @@ export async function runSwarmFlow(
     });
   }
 
-  // Fail-closed total-agent backstop: the auto path never fans out beyond
-  // SWARM_MAX_TOTAL_AGENTS; a power-user `--max-agents N` opts into its own
-  // (possibly higher) ceiling. A runaway decomposition can never DoS the box.
-  const totalCap = capTotalAgents(options.maxAgents ?? SWARM_MAX_TOTAL_AGENTS, options.maxAgents);
-  const lanes = subtasks.slice(0, totalCap);
+  // NO fixed ceiling on the AUTO path (founder directive: the user never types an
+  // agent count — everything is auto). A build fans out to as many independent
+  // workstreams as the work GENUINELY has; the decomposition's own count is the
+  // bound, never an arbitrary number, and lanes are NEVER silently dropped.
+  // Instantaneous load is governed by WAVE SCHEDULING (`chooseConcurrency` below —
+  // CPU + budget), so N total lanes run in waves of ~cores at a time rather than
+  // all at once. An explicit `--max-agents N` (power-user escape hatch) still caps.
+  const lanes =
+    options.maxAgents !== undefined
+      ? subtasks.slice(0, Math.max(1, Math.floor(options.maxAgents)))
+      : subtasks;
   // Levelize into dependency WAVES (AO3c): a real graph (≥2 waves) runs STAGED —
   // each wave rebased on its predecessors' merged result; otherwise a single flat
   // parallel wave. A cycle (null) falls back to flat.
@@ -1025,7 +1033,7 @@ export async function runSwarmFlow(
       taskType: 'feature',
       sensitive: false,
       subtasks: asAllocationSubtasks(lanes),
-      maxAgents: totalCap,
+      maxAgents: lanes.length,
     });
     deps.ui.heading(deps.t('swarm.heading', { reason: allocation.reason }));
     lanes.forEach((subtask, index) => {

@@ -258,7 +258,39 @@ describe('runSwarm', () => {
     }
   });
 
-  it('AO5-5: refuses to fan out beyond depth 1 (the ≤1-depth recursion cap)', async () => {
+  it('fans out to MORE than the old 8-lane ceiling — no fixed total-agent cap', async () => {
+    // Founder directive: the auto path is never sliced to a fixed number. Ten
+    // independent lanes all run and all merge (before G6 the CLI sliced the
+    // decomposition to SWARM_MAX_TOTAL_AGENTS = 8, silently dropping lanes 9-10).
+    const repo = initRepo();
+    try {
+      const ids = Array.from({ length: 10 }, (_, i) => `u${i}`);
+      const result = await runSwarm(
+        repo,
+        ids.map((id) => lane(id)),
+        ({ lane: l, worktreePath }) => {
+          writeFileSync(join(worktreePath, `${l.id}.ts`), `// ${l.id}\n`, 'utf8');
+          return Promise.resolve(null);
+        },
+        // Bound peak lane processes (as the real auto path does via chooseConcurrency)
+        // so this 10-lane test stays a good CI citizen under full-suite parallelism.
+        { maxConcurrency: 4 },
+      );
+      // All ten ran, none dropped, none failed — the merged diff carries every file.
+      expect(result.lanes.map((l) => l.id).sort()).toEqual([...ids].sort());
+      expect(result.lanes.filter((l) => l.failed)).toHaveLength(0);
+      for (const id of ids) {
+        expect(result.mergedDiff).toContain(`${id}.ts`);
+      }
+    } finally {
+      removeDir(repo);
+    }
+  }, 30000); // ten real git worktrees take longer than the 5s default
+
+  it('nests to ANY depth — no fixed recursion cap (a depth-2 swarm still fans out)', async () => {
+    // The old AO5-5 ≤1-depth cap returned empty here. Founder directive: no fixed
+    // depth cap — a nested swarm runs normally (termination is by atomicity, not a
+    // number). `depth` only namespaces the worktrees (`swarm-d2-*`).
     const repo = initRepo();
     try {
       const result = await runSwarm(
@@ -270,7 +302,10 @@ describe('runSwarm', () => {
         },
         { depth: 2 },
       );
-      expect(result).toEqual({ lanes: [], mergedDiff: '', conflicts: [] });
+      expect(result.lanes.map((l) => l.id).sort()).toEqual(['a', 'b']);
+      expect(result.lanes.every((l) => !l.failed)).toBe(true);
+      expect(result.mergedDiff).toContain('a.ts');
+      expect(result.mergedDiff).toContain('b.ts');
     } finally {
       removeDir(repo);
     }
@@ -329,7 +364,8 @@ describe('runSwarm', () => {
     }
   });
 
-  it('AO5-5: runSwarmStaged ALSO refuses to fan out beyond depth 1 (the cap holds when staged)', async () => {
+  it('nests to ANY depth when staged — no fixed recursion cap', async () => {
+    // The old AO5-5 cap returned empty for a depth-2 staged swarm; now it runs.
     const repo = initRepo();
     try {
       const result = await runSwarmStaged(
@@ -341,7 +377,10 @@ describe('runSwarm', () => {
         },
         { depth: 2 },
       );
-      expect(result).toEqual({ lanes: [], mergedDiff: '', conflicts: [] });
+      expect(result.lanes.map((l) => l.id).sort()).toEqual(['a', 'b']);
+      expect(result.lanes.every((l) => !l.failed)).toBe(true);
+      expect(result.mergedDiff).toContain('a.ts');
+      expect(result.mergedDiff).toContain('b.ts');
     } finally {
       removeDir(repo);
     }

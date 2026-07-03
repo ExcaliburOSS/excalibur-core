@@ -168,6 +168,19 @@ Phase G builds on real strengths. Auditors cited these with file:line:
   configured budget. Real-model: a large seeded plan runs >8 lanes total in waves.
 - **Priority.** NOT minor — this is a direct blocker to "any app, any size".
   Pairs with G2 (recursive plan) and G3 (drive-to-done).
+- **STATUS (done this pass).** The FIXED build ceilings are removed: the auto path
+  no longer slices the decomposition to 8 (`swarm.ts` — `lanes = subtasks`, no
+  drop), `decomposeTask` splits to the work's natural granularity (default
+  6 → 12), and the `depth ≤ 1` hard block is gone (`run-swarm.ts` — nests to any
+  depth, termination by atomicity). `chooseConcurrency` (CPU-bound wave governor)
+  stays — it schedules N lanes in waves, it does NOT drop them. `planAgentAllocation`
+  is display-only (never limited execution). `SWARM_MAX_TOTAL_AGENTS` is retired
+  from the auto path. Remaining refinements: add the budget term to wave sizing;
+  lazy per-wave worktree creation only matters at extreme (100s of lanes) scale,
+  which the recursive plan (G2) keeps per-level width modest anyway.
+- **NOTE — separate subsystem.** Read-only EXPLORATION breadth
+  (`EXPLORE_MAX_FILES`, scope angles) is a distinct grounding knob, not a build
+  agent/depth cap; left bounded (it is for fast context-gathering, not building).
 
 ---
 
