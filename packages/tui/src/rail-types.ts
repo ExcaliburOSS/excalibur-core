@@ -50,6 +50,15 @@ export interface PhaseEvent {
    * and shows only the diffstat `note`, so non-TTY output stays unchanged.
    */
   diff?: string;
+  /**
+   * Live tool-call timeline (#2): the wall-clock start of this action (ms epoch)
+   * and its live status. The reducer stamps `startedAtMs` from the event and marks
+   * the LAST action of a RUNNING phase `running` (the rest `done`); the renderer
+   * shows a per-action status glyph + a live elapsed timer on the running one.
+   * Absent on narration and in the pure-string renderer (non-TTY unchanged).
+   */
+  startedAtMs?: number;
+  status?: 'running' | 'done' | 'failed';
 }
 
 export interface Phase {

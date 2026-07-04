@@ -236,12 +236,17 @@ function EventRow({
   colors,
   shimmer = false,
   spinnerFrame = 0,
+  nowMs,
 }: {
   event: PhaseEvent;
   colors: Palette;
   /** Sweep a live accent crest across the text — the in-progress action (RUN-FIX-2). */
   shimmer?: boolean;
   spinnerFrame?: number;
+  /** #2 live timeline — the current wall-clock (derived from the run's live
+   * elapsed, so it ticks each frame) used to draw a per-action elapsed timer on
+   * the in-progress action. Absent → no timer (committed/static rows). */
+  nowMs?: number;
 }): ReactElement {
   // Narration is the agent TALKING to the user — flowing, wrapped prose in the
   // foreground colour (italic), led by Excalibur's signature accent ● so each
@@ -272,9 +277,18 @@ function EventRow({
   }
   const tone = toneColor(event.tone, colors);
   const g = event.kind !== undefined ? eventGlyph[event.kind] : glyph.branch;
+  // #2 live timeline — a running action shows a live elapsed timer; a finished one
+  // reads as done via a subtle ✓ ahead of its glyph. This turns the flat action log
+  // into a timeline without any new event type (status is inferred by the reducer).
+  const liveMs =
+    event.status === 'running' && event.startedAtMs !== undefined && nowMs !== undefined
+      ? Math.max(0, nowMs - event.startedAtMs)
+      : undefined;
+  const doneMark = event.status === 'done' ? `${glyph.done} ` : '';
   return (
     <Box>
       <Text color={colors.rail}>{` ${glyph.railV}   `}</Text>
+      {doneMark.length > 0 ? <Text color={colors.success}>{doneMark}</Text> : null}
       <Text color={tone}>{`${g} `}</Text>
       {shimmer ? (
         // Nested <Text> spans keep the line one wrapping run while each segment
@@ -292,6 +306,9 @@ function EventRow({
       {event.note !== undefined && event.note.length > 0 ? (
         <Text color={colors.muted}>{`  ${event.note}`}</Text>
       ) : null}
+      {liveMs !== undefined ? (
+        <Text color={colors.muted}>{`  · ${formatElapsed(liveMs)}`}</Text>
+      ) : null}
     </Box>
   );
 }
@@ -307,6 +324,7 @@ function PhaseNode({
   width,
   diffBudget,
   earlierLabel,
+  nowMs,
 }: {
   phase: Phase;
   active: boolean;
@@ -316,6 +334,8 @@ function PhaseNode({
   tier?: ColorTier;
   mode?: ThemeMode;
   width: number;
+  /** #2 live timeline — current wall-clock for the in-progress action's timer. */
+  nowMs?: number;
   /** Max lines the most-recent diff may occupy — rows-aware so the live region
    * never exceeds the viewport (RUN-FIX-7); 0 falls back to the one-line stub. */
   diffBudget: number;
@@ -392,6 +412,7 @@ function PhaseNode({
                   colors={colors}
                   shimmer={shimmer}
                   spinnerFrame={spinnerFrame}
+                  {...(nowMs !== undefined ? { nowMs } : {})}
                 />
                 {isLatestDiff ? (
                   <DiffView
@@ -826,6 +847,13 @@ export function RunView(props: RunViewProps): ReactElement {
     2; // headroom (above-rail ribbon / safety)
   const diffBudget = Math.max(0, rows - liveChrome);
 
+  // #2 live timeline — derive the current wall-clock from the run's LIVE elapsed
+  // (which the mount overlay ticks each frame), so the per-action timer breathes
+  // without re-folding the event log. Undefined for a finished run (no live timer).
+  const nowMs =
+    !model.done && model.status.startedAtMs !== undefined
+      ? model.status.startedAtMs + model.status.elapsedMs
+      : undefined;
   const renderPhase = (phase: Phase): ReactElement => (
     <PhaseNode
       key={phase.id}
@@ -839,6 +867,7 @@ export function RunView(props: RunViewProps): ReactElement {
       {...(tier !== undefined ? { tier } : {})}
       {...(mode !== undefined ? { mode } : {})}
       {...(labels?.earlier !== undefined ? { earlierLabel: labels.earlier } : {})}
+      {...(nowMs !== undefined ? { nowMs } : {})}
     />
   );
 

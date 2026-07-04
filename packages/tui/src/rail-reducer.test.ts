@@ -331,4 +331,41 @@ describe('reduceRail', () => {
     const evs = (rail.phases[0]?.events ?? []).map((e) => `${e.kind}:${e.text}`);
     expect(evs).toEqual(['command:run npm test', 'read:read package.json', 'read:search «escrow»']);
   });
+
+  it('#2 timeline: marks the LAST action of a running phase `running`, earlier ones `done`', () => {
+    const rail = reduceRail(
+      [
+        ev('run_started', { title: 'x' }),
+        ev('phase_started', { name: 'Implement' }, 'p'),
+        ev('tool_call', { tool: 'read_file', arguments: { path: 'a.ts' } }, 'p'),
+        ev('file_write', { path: 'a.ts' }, 'p'),
+        // no phase_completed, no run_completed → the phase is still running.
+      ],
+      {},
+    );
+    expect(rail.done).toBe(false);
+    const actions = (rail.phases[0]?.events ?? []).filter((e) => e.kind !== 'narration');
+    expect(actions).toHaveLength(2);
+    expect(actions[0]?.status).toBe('done'); // the read finished when the write began
+    expect(actions[1]?.status).toBe('running'); // the write is the in-progress action
+    expect(actions[1]?.startedAtMs).toBeGreaterThan(0); // stamped for the live timer
+  });
+
+  it('#2 timeline: a COMPLETED run marks every action `done` (none left running)', () => {
+    const rail = reduceRail(
+      [
+        ev('run_started', { title: 'x' }),
+        ev('phase_started', { name: 'Implement' }, 'p'),
+        ev('file_write', { path: 'a.ts' }, 'p'),
+        ev('command_started', { command: 'pnpm test' }, 'p'),
+        ev('phase_completed', {}, 'p'),
+        ev('run_completed', { status: 'completed' }),
+      ],
+      {},
+    );
+    expect(rail.done).toBe(true);
+    const actions = (rail.phases[0]?.events ?? []).filter((e) => e.kind !== 'narration');
+    expect(actions.length).toBeGreaterThan(0);
+    expect(actions.every((e) => e.status === 'done')).toBe(true);
+  });
 });

@@ -212,6 +212,11 @@ export function reduceRail(
   };
   const pushEvent = (phase: Phase | undefined, ev: PhaseEvent): void => {
     if (phase === undefined) return;
+    // #2 live timeline — stamp each action's wall-clock start so the renderer can
+    // show a per-action elapsed timer. `lastTs` is the CURRENT event's timestamp.
+    if (ev.startedAtMs === undefined && lastTs !== undefined) {
+      ev.startedAtMs = lastTs;
+    }
     (phase.events ??= []).push(ev);
   };
   // Stamps a phase's wall-clock duration from its start to the current event.
@@ -390,6 +395,26 @@ export function reduceRail(
         const ev = railEventFor(event, options.t);
         if (ev !== null) pushEvent(phaseFor(event), ev);
       }
+    }
+  }
+
+  // #2 live tool-call timeline — mark each phase's ACTION events with a status:
+  // the LAST action of a still-running phase is `running` (the renderer paints a
+  // live elapsed timer + spinner on it); every earlier action is `done`. Narration
+  // lines carry no status. This is what turns the flat action log into a timeline.
+  for (const phase of phases) {
+    const evs = phase.events;
+    if (evs === undefined || evs.length === 0) continue;
+    let lastActionIdx = -1;
+    for (let i = 0; i < evs.length; i += 1) {
+      if (evs[i]!.kind !== 'narration') lastActionIdx = i;
+    }
+    if (lastActionIdx === -1) continue;
+    const liveRunning = phase.state === 'running' && !done;
+    for (let i = 0; i < evs.length; i += 1) {
+      const e = evs[i]!;
+      if (e.kind === 'narration') continue;
+      e.status = i === lastActionIdx && liveRunning ? 'running' : 'done';
     }
   }
 
