@@ -70,6 +70,21 @@ export function setAutoApprove(repoRoot: string, value: boolean): void {
   writeRawConfig(repoRoot, config);
 }
 
+/**
+ * Persists the UI theme to `.excalibur/config.yaml` (`ui.theme`) so a `/theme`
+ * choice survives the session. Unknown keys are preserved.
+ */
+export function setUiTheme(repoRoot: string, theme: string): void {
+  const config = readRawConfig(repoRoot);
+  const ui =
+    typeof config['ui'] === 'object' && config['ui'] !== null
+      ? (config['ui'] as Record<string, unknown>)
+      : {};
+  ui['theme'] = theme;
+  config['ui'] = ui;
+  writeRawConfig(repoRoot, config);
+}
+
 export interface SourceRef extends Record<string, unknown> {
   path: string;
 }

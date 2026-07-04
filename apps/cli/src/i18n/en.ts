@@ -1029,6 +1029,7 @@ export const EN: Catalog = {
     '`{cmd}` is a long-lived daemon — run it in its own terminal so it does not freeze the shell.',
   'cmd.auto': 'Toggle full autonomy',
   'cmd.model': 'Switch the model',
+  'cmd.theme': 'Show or switch the colour theme',
   'cmd.work-items': 'Manage work items (list/add/move/show)',
   'cmd.sprints': 'Manage sprints + burndown',
   'cmd.plans': 'Browse, resume or diff plans',
@@ -1109,6 +1110,10 @@ export const EN: Catalog = {
   'repl.model-mock':
     'Using the built-in mock provider (no providers.yaml — the zero-config default).',
   'repl.unknown-command': 'Unknown command: /{name}. Try /help.',
+  'repl.theme-current': 'Theme: {theme}.',
+  'repl.theme-available': 'Available: {list} — use /theme <name>.',
+  'repl.theme-unknown': 'Unknown theme “{name}”. Choose one of: {list}.',
+  'repl.theme-set': 'Theme set to {theme} — it applies from your next message.',
   'repl.discovery-usage': 'Usage: /discovery <idea>. Describe the idea to clarify before building.',
   'repl.changes-heading': 'Changes · {runId}',
   'repl.changes-none': '  No file changes recorded for this task.',

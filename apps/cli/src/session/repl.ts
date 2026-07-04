@@ -73,7 +73,9 @@ import {
   renderPlanCard,
   resolveThemeMode,
   detectThemeSync,
+  THEME_NAMES,
   type ThemeMode,
+  type ThemeName,
   type PlanCardModel,
 } from '@excalibur/tui';
 import pc from 'picocolors';
@@ -120,7 +122,7 @@ import { slashCommands } from './commands';
 import { resolveRun, runScrubber } from '../lib/replay-scrubber';
 import { buildSessionLog, formatSessionLog } from '../lib/session-log';
 import { buildStartupContext } from '../lib/startup-context';
-import { setAutoApprove } from '../lib/config-file';
+import { setAutoApprove, setUiTheme } from '../lib/config-file';
 import { repoSelectKeymap, writeProvidersFile } from '../lib/provider-setup';
 import { isContextOverflowError } from '../lib/context-overflow';
 import { listSwitchableProviders, providerHint } from '../lib/model-switch';
@@ -1202,6 +1204,11 @@ export async function runInteractiveSession(
           }
           if (input.name === 'agent') {
             handleAgentCommand(deps, runtime, input.argv);
+            printStatusLine(deps, runtime);
+            continue;
+          }
+          if (input.name === 'theme') {
+            handleThemeCommand(deps, runtime, input.argv);
             printStatusLine(deps, runtime);
             continue;
           }
@@ -3668,6 +3675,36 @@ async function runShellPassthrough(
  * (the engine already supports the overrides via P1.7). No arg lists the
  * available agents + the active one; `off`/`none`/`clear` returns to default.
  */
+/**
+ * `/theme [name]` (#4) — with no argument, show the current theme + the choices;
+ * with a name, switch it (persisted to `.excalibur/config.yaml` and applied to the
+ * live session so the next turn's rail, diffs and syntax highlighting re-colour).
+ */
+function handleThemeCommand(deps: CliDeps, runtime: SessionRuntime, argv: string[]): void {
+  const current = runtime.config.ui?.theme ?? 'auto';
+  const arg = (argv[0] ?? '').trim().toLowerCase();
+  if (arg.length === 0) {
+    deps.ui.info(deps.t('repl.theme-current', { theme: current }));
+    deps.ui.write(pc.dim(deps.t('repl.theme-available', { list: THEME_NAMES.join(', ') })));
+    return;
+  }
+  if (!THEME_NAMES.includes(arg as ThemeName)) {
+    deps.ui.warn(deps.t('repl.theme-unknown', { name: arg, list: THEME_NAMES.join(', ') }));
+    return;
+  }
+  const theme = arg as ThemeName;
+  try {
+    setUiTheme(runtime.repoRoot, theme);
+  } catch {
+    /* best-effort persist — the live switch below still applies this session */
+  }
+  // Apply live: mutate the shared config the next turn's deps read, so the rail,
+  // diffs and syntax highlighting re-colour from the user's very next message.
+  const cfg = runtime.config as { ui?: Record<string, unknown> };
+  cfg.ui = { ...(cfg.ui ?? {}), theme };
+  deps.ui.info(deps.t('repl.theme-set', { theme }));
+}
+
 function handleAgentCommand(deps: CliDeps, runtime: SessionRuntime, argv: string[]): void {
   const arg = (argv[0] ?? '').trim();
   const opts = {

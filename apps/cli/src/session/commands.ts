@@ -29,6 +29,7 @@ const COMMAND_KEYS: { name: string; key: string }[] = [
   { name: 'compact', key: 'cmd.compact' },
   { name: 'auto', key: 'cmd.auto' },
   { name: 'model', key: 'cmd.model' },
+  { name: 'theme', key: 'cmd.theme' },
   // Direct-CLI management commands, reachable in the shell as slash commands
   // (m-shell↔CLI parity) — each runs the SAME command as `excalibur <name>`.
   { name: 'work-items', key: 'cmd.work-items' },
