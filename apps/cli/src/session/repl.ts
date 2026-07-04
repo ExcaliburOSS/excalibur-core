@@ -1405,6 +1405,22 @@ export async function runInteractiveSession(
             if (newPaths.length === 0) {
               return; // a pure question / read-only turn — nothing to board
             }
+            // #9 — UNIVERSAL memory capture: a mutating conversational/edit/chat turn
+            // (one that did NOT materialize its own plan — plan + swarm builds capture
+            // their own richer memory) still leaves a lightweight `decision` memory
+            // keyed on the FILES it touched, so future work on those files is primed.
+            // Only on a clean finish; reinforced/deduped by the store; best-effort.
+            if (outcome === 'done') {
+              try {
+                new MemoryStore(repoRoot).capture({
+                  type: 'decision',
+                  statement: text.replace(/\s+/g, ' ').trim().slice(0, 200),
+                  subjectPaths: newPaths,
+                });
+              } catch {
+                /* knowledge-compounding is additive — never perturb the turn */
+              }
+            }
             const board = materializeTurnCard(repoRoot, text, newPaths, {
               planRunId: generateId('turn'),
               outcome,
