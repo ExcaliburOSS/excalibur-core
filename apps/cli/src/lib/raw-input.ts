@@ -140,6 +140,24 @@ function clamp(n: number, lo: number, hi: number): number {
   return n < lo ? lo : n > hi ? hi : n;
 }
 
+const WS = /\s/;
+/** #5 — the start of the word before `cursor`: skip trailing whitespace, then the
+ * run of non-whitespace. Whitespace-delimited (predictable across languages/paths). */
+function wordLeft(buffer: string, cursor: number): number {
+  let i = clamp(cursor, 0, buffer.length);
+  while (i > 0 && WS.test(buffer[i - 1]!)) i -= 1;
+  while (i > 0 && !WS.test(buffer[i - 1]!)) i -= 1;
+  return i;
+}
+/** #5 — the end of the word after `cursor`: skip leading whitespace, then the run
+ * of non-whitespace. */
+function wordRight(buffer: string, cursor: number): number {
+  let i = clamp(cursor, 0, buffer.length);
+  while (i < buffer.length && WS.test(buffer[i]!)) i += 1;
+  while (i < buffer.length && !WS.test(buffer[i]!)) i += 1;
+  return i;
+}
+
 /**
  * D5 (F1.5) — visual layout of a possibly MULTI-LINE input. Every logical line
  * (split on `\n`) is prefixed by the prompt (first line) or an equal-width
@@ -271,6 +289,16 @@ function reduceKeyInner(
         return keep({ cursor: state.buffer.length });
       case 'u': // kill to line start
         return keep({ buffer: state.buffer.slice(state.cursor), cursor: 0 });
+      case 'k': // #5 — kill to line END (the Ctrl-U counterpart)
+        return keep({ buffer: state.buffer.slice(0, state.cursor) });
+      case 'w': {
+        // #5 — delete the WORD before the cursor
+        const start = wordLeft(state.buffer, state.cursor);
+        return keep({
+          buffer: state.buffer.slice(0, start) + state.buffer.slice(state.cursor),
+          cursor: start,
+        });
+      }
       case 'd':
         return state.buffer.length === 0
           ? { state, action: { type: 'eof' } }
@@ -280,7 +308,30 @@ function reduceKeyInner(
     }
   }
   if (key.meta === true) {
-    return { state, action: NONE }; // Alt-combos: no-op in Slice 1
+    // #5 — Alt/Meta word editing (emacs/readline parity), the standard muscle memory.
+    switch (key.name) {
+      case 'left':
+      case 'b': // Alt-b — word left
+        return keep({ cursor: wordLeft(state.buffer, state.cursor) });
+      case 'right':
+      case 'f': // Alt-f — word right
+        return keep({ cursor: wordRight(state.buffer, state.cursor) });
+      case 'backspace': {
+        // Alt-Backspace — delete the word before the cursor (same as Ctrl-W).
+        const start = wordLeft(state.buffer, state.cursor);
+        return keep({
+          buffer: state.buffer.slice(0, start) + state.buffer.slice(state.cursor),
+          cursor: start,
+        });
+      }
+      case 'd': {
+        // Alt-d — delete the word AFTER the cursor.
+        const end = wordRight(state.buffer, state.cursor);
+        return keep({ buffer: state.buffer.slice(0, state.cursor) + state.buffer.slice(end) });
+      }
+      default:
+        return { state, action: NONE };
+    }
   }
 
   switch (key.name) {

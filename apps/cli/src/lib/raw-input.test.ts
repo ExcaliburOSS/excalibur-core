@@ -541,3 +541,44 @@ describe('raw editor shell (fake TTY)', () => {
     expect(escaped).toBe(true);
   });
 });
+
+describe('reduceKey — #5 word editing (readline/emacs parity)', () => {
+  it('Ctrl-W deletes the word before the cursor', () => {
+    const s = prompt({ buffer: 'foo bar baz', cursor: 11 });
+    const out = reduceKey(s, key({ name: 'w', ctrl: true })).state;
+    expect(out.buffer).toBe('foo bar ');
+    expect(out.cursor).toBe(8);
+  });
+
+  it('Ctrl-K kills to the end of the line', () => {
+    const s = prompt({ buffer: 'keep this drop that', cursor: 9 });
+    const out = reduceKey(s, key({ name: 'k', ctrl: true })).state;
+    expect(out.buffer).toBe('keep this');
+    expect(out.cursor).toBe(9);
+  });
+
+  it('Alt-left / Alt-right move by whole words', () => {
+    let s = prompt({ buffer: 'foo bar baz', cursor: 11 });
+    s = reduceKey(s, key({ name: 'left', meta: true })).state; // start of "baz"
+    expect(s.cursor).toBe(8);
+    s = reduceKey(s, key({ name: 'left', meta: true })).state; // start of "bar"
+    expect(s.cursor).toBe(4);
+    s = reduceKey(s, key({ name: 'right', meta: true })).state; // end of "bar"
+    expect(s.cursor).toBe(7);
+  });
+
+  it('Alt-d deletes the word AFTER the cursor; Alt-Backspace the word before', () => {
+    const fwd = reduceKey(
+      prompt({ buffer: 'foo bar baz', cursor: 4 }),
+      key({ name: 'd', meta: true }),
+    ).state;
+    expect(fwd.buffer).toBe('foo  baz'); // "bar" removed, cursor stays
+    expect(fwd.cursor).toBe(4);
+    const back = reduceKey(
+      prompt({ buffer: 'foo bar baz', cursor: 7 }),
+      key({ name: 'backspace', meta: true }),
+    ).state;
+    expect(back.buffer).toBe('foo  baz'); // "bar" removed from the left
+    expect(back.cursor).toBe(4);
+  });
+});
