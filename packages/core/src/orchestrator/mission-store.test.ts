@@ -74,7 +74,7 @@ describe('mission-store (M5 checkpoint/resume)', () => {
     const olderPaused = initMissionState(mission, plan, 'm_20260201');
     olderPaused.outcome = 'paused';
     const newerInterrupted = initMissionState(mission, plan, 'm_20260301');
-    newerInterrupted.outcome = 'running'; // crashed mid-drive → not done → resumable
+    newerInterrupted.outcome = 'pending'; // crashed mid-drive (never finished) → not done → resumable
     saveMission(repo, finished);
     saveMission(repo, olderPaused);
     saveMission(repo, newerInterrupted);
