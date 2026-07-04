@@ -12,6 +12,7 @@ import {
 import { generateId } from '@excalibur/shared';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
+import { reportFriendly } from '../lib/friendly-error';
 import { loadConfigContext, loadGatewayContext, requireConfiguredModel } from '../lib/context';
 import { buildManagementToolset } from '../lib/management-tools';
 
@@ -131,7 +132,7 @@ export function registerScheduleCommand(program: Command, deps: CliDeps): void {
               });
               deps.ui.write(deps.t('schedule.fired', { runId: handle.runId }));
             } catch (error) {
-              deps.ui.error(error instanceof Error ? error.message : String(error));
+              reportFriendly(deps, error, { doing: 'running the scheduled task' });
             }
             store.update(advanceJob(job, now)); // reschedule even on a failed fire
           }

@@ -806,7 +806,7 @@ export async function runInteractiveSession(
           await sessionSeedSettled(runtime),
         );
       } catch (error) {
-        deps.ui.error(error instanceof Error ? error.message : String(error));
+        reportFriendly(deps, error);
       } finally {
         endTurn();
       }
@@ -829,7 +829,7 @@ export async function runInteractiveSession(
         await drainForegroundInterrupts();
       }
     } catch (error) {
-      deps.ui.error(error instanceof Error ? error.message : String(error));
+      reportFriendly(deps, error);
     }
   };
 
@@ -877,7 +877,7 @@ export async function runInteractiveSession(
         await recordAssistantTurn(deps, runtime, outcome.execution);
       }
     } catch (error) {
-      deps.ui.error(error instanceof Error ? error.message : String(error));
+      reportFriendly(deps, error);
     } finally {
       endTurn();
     }
@@ -926,7 +926,7 @@ export async function runInteractiveSession(
         ...(runtime.onInterrupt !== undefined ? { onInterrupt: runtime.onInterrupt } : {}),
       });
     } catch (error) {
-      deps.ui.error(error instanceof Error ? error.message : String(error));
+      reportFriendly(deps, error);
     } finally {
       endTurn();
     }
@@ -1061,7 +1061,7 @@ export async function runInteractiveSession(
         try {
           await handleReplayCommand(deps, runtime, undefined, (prompt) => editor.question(prompt));
         } catch (error) {
-          deps.ui.error(error instanceof Error ? error.message : String(error));
+          reportFriendly(deps, error);
         }
         printStatusLine(deps, runtime);
         continue;
@@ -1255,7 +1255,7 @@ export async function runInteractiveSession(
           continue;
         } catch (error) {
           endTurn();
-          deps.ui.error(error instanceof Error ? error.message : String(error));
+          reportFriendly(deps, error);
           printStatusLine(deps, runtime);
           continue;
         }
@@ -1614,7 +1614,7 @@ export async function runInteractiveSession(
           await settleInterruptAftermath();
           printStatusLine(deps, runtime);
         } catch (error) {
-          deps.ui.error(error instanceof Error ? error.message : String(error));
+          reportFriendly(deps, error);
         }
       } catch (turnError) {
         // The PER-TURN BACKSTOP catch (RUN-FIX-22): NOTHING in the turn body — classify,
@@ -3083,7 +3083,7 @@ async function dispatchSchedule(
   try {
     store.add(job);
   } catch (error) {
-    deps.ui.error(error instanceof Error ? error.message : String(error));
+    reportFriendly(deps, error);
     return true;
   }
   deps.ui.success(
@@ -3264,7 +3264,7 @@ function launchBgThread(
   try {
     base = agentTurnDeps(deps, runtime, ctrl.signal);
   } catch (error) {
-    deps.ui.error(error instanceof Error ? error.message : String(error));
+    reportFriendly(deps, error);
     return;
   }
   const id = generateId('bg');
@@ -4026,7 +4026,7 @@ async function handleReplayCommand(
   try {
     await runScrubber(deps, runId, { question });
   } catch (error) {
-    deps.ui.error(error instanceof Error ? error.message : String(error));
+    reportFriendly(deps, error);
   }
 }
 
@@ -4068,7 +4068,7 @@ async function handleLogCommand(
     try {
       await runScrubber(deps, entry.runId, { question }); // drop into that run's time-machine
     } catch (error) {
-      deps.ui.error(error instanceof Error ? error.message : String(error));
+      reportFriendly(deps, error);
     }
     // loop back → re-render the index after returning from the scrubber
   }
@@ -4154,7 +4154,7 @@ async function handleForkCommand(
     });
     return result.execution;
   } catch (error) {
-    deps.ui.error(error instanceof Error ? error.message : String(error));
+    reportFriendly(deps, error);
     return null;
   }
 }

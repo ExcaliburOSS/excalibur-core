@@ -16,6 +16,7 @@ import type { AutonomyLevel } from '@excalibur/shared';
 import pc from 'picocolors';
 import type { CliDeps } from '../deps';
 import { CliUsageError } from '../errors';
+import { reportFriendly } from './friendly-error';
 import {
   chatWithGuidance,
   loadConfigContext,
@@ -224,7 +225,7 @@ async function forkFromCursor(
     const result = await runForkTurn(turn, { sourceRunId: runId, atStep: cursor, instruction });
     deps.ui.info(deps.t('replay-scrubber.forkCreated', { id: result.forkRunId }));
   } catch (error) {
-    deps.ui.error(error instanceof Error ? error.message : String(error));
+    reportFriendly(deps, error, { doing: 'forking that run' });
   }
 }
 
