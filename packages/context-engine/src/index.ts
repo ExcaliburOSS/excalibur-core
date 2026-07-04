@@ -20,6 +20,14 @@ export {
   type CodeSnippet,
   type CodeSearchResult,
 } from './search/code-search';
+export {
+  buildSymbolIndex,
+  extractSymbols,
+  searchSymbols,
+  type SymbolDef,
+  type SymbolIndex,
+  type SymbolHit,
+} from './search/symbol-index';
 export { isSecretPath, SECRET_DIR_NAMES } from './search/secret-paths';
 export { SENSITIVE_DIR_NAMES } from './patterns';
 export type {

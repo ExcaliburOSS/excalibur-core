@@ -1,5 +1,6 @@
 import { globFiles, readTextFile, toPosixPath } from '../internal/fs-utils';
 import { isSecretPath } from './secret-paths';
+import { extractSymbols } from './symbol-index';
 
 /**
  * Deterministic, dependency-free lexical code retrieval (M2, Slice 2).
@@ -276,6 +277,23 @@ function scoreFile(
   if (pathHits > 0) {
     score += pathHits * 3;
     reasons.push(`path matches ${pathHits} term(s)`);
+  }
+
+  // (a2) SYMBOL-DEFINITION boost (G4): a term this file DEFINES (a function /
+  // class / type / const of that exact name) is a FAR stronger signal than an
+  // incidental mention — it jumps the DEFINING file up the ranking, which is what
+  // makes retrieval hold up on a large repo where lexical frequency alone dilutes.
+  const definedNames = new Set(extractSymbols(relPath, content).map((d) => d.name.toLowerCase()));
+  let defHits = 0;
+  for (const term of terms) {
+    if (definedNames.has(term)) {
+      defHits += 1;
+      termsPresent.add(term);
+    }
+  }
+  if (defHits > 0) {
+    score += defHits * 4;
+    reasons.push(`defines ${defHits} query symbol(s)`);
   }
 
   // (b) content term frequency ×1 (cap 5/term) + exact-case identifier +0.5,

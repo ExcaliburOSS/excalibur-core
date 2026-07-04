@@ -144,6 +144,18 @@ Phase G builds on real strengths. Auditors cited these with file:line:
 - **Choke point.** `computeScope` / `investigate` retrieval, transparently.
 - **Proof.** On a large fixture repo, assert investigate surfaces the correct
   target files that pure lexical search misses.
+- **STATUS (done this pass).** Implemented as `symbol-index.ts` (context-engine):
+  language-aware regex extraction of DEFINITIONS (functions/classes/types/
+  interfaces/top-level consts for JS·TS·Py·Go·Rust·JVM) — dependency-free, offline,
+  byte-stable. `searchCode`'s `scoreFile` now folds a strong `defines <symbol>`
+  boost (×4, above path ×3 and content ×1) so a query naming a definition jumps its
+  DEFINING file up the ranking instead of drowning in incidental mentions — which
+  is exactly where lexical-only retrieval degrades at scale. The lexical pass still
+  runs (complement, not replacement); this flows into every retrieval consumer
+  (context injection, `investigate`, scope explorers). Also exported
+  `buildSymbolIndex`/`searchSymbols` for a direct "where is X defined" lookup.
+  Verified deterministically: extraction skips methods + comments; searchSymbols
+  finds the DEFINING file, not the using one. context-engine 100 green.
 
 ### G5 — Deterministic self-review backstop _(pairs with G1)_
 
