@@ -134,17 +134,36 @@ function mdLineText(
   c: (text: string, hex: string) => string,
   tier: ColorTier,
 ): string {
+  // #3 — a syntax token class → its palette colour (null = not a syntax token).
+  const synHex = (style: string): string | null => {
+    switch (style) {
+      case 'kw':
+        return palette.accent;
+      case 'str':
+        return palette.success;
+      case 'com':
+        return palette.muted;
+      case 'num':
+        return palette.warn;
+      case 'ty':
+        return palette.accentBright;
+      default:
+        return null;
+    }
+  };
   const spans = (base: string): string =>
     line.spans
-      .map((s) =>
-        s.style === 'code'
+      .map((s) => {
+        const syn = synHex(s.style);
+        if (syn !== null) return c(s.text, syn);
+        return s.style === 'code'
           ? c(s.text, palette.accentBright)
           : s.style === 'bold'
             ? sgr(c(s.text, base), '1', '22', tier)
             : s.style === 'italic'
               ? sgr(c(s.text, base), '3', '23', tier)
-              : c(s.text, base),
-      )
+              : c(s.text, base);
+      })
       .join('');
   switch (line.kind) {
     case 'blank':
@@ -156,7 +175,9 @@ function mdLineText(
     case 'bullet':
       return `${c(line.marker ?? '•', palette.accentDim)} ${spans(palette.text)}`;
     case 'code':
-      return `${c('│', palette.rail)} ${c(line.spans[0]?.text ?? '', palette.muted)}`;
+      // #3 — render ALL syntax spans (was `spans[0]` only, which truncated a
+      // highlighted code line to its first token).
+      return `${c('│', palette.rail)} ${spans(palette.text)}`;
     case 'code-add':
       return `${c('│', palette.rail)} ${c(line.spans[0]?.text ?? '', palette.diffAddFg)}`;
     case 'code-del':

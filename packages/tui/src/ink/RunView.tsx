@@ -153,6 +153,24 @@ function SpanText({ span, colors, base }: { span: MdSpan; colors: Palette; base:
   );
 }
 
+/** #3 — a syntax token class → its palette colour (inside a fenced code snippet). */
+function syntaxColor(style: MdSpan['style'], colors: Palette): string {
+  switch (style) {
+    case 'kw':
+      return colors.accent;
+    case 'str':
+      return colors.success;
+    case 'com':
+      return colors.muted;
+    case 'num':
+      return colors.warn;
+    case 'ty':
+      return colors.accentBright;
+    default:
+      return colors.text;
+  }
+}
+
 /** One parsed markdown line → its styled Ink row (D2). */
 function MarkdownLine({ line, colors }: { line: MdLine; colors: Palette }): ReactElement {
   switch (line.kind) {
@@ -214,9 +232,20 @@ function MarkdownLine({ line, colors }: { line: MdLine; colors: Palette }): Reac
           <Box flexShrink={0}>
             <Text color={colors.rail}>{`${glyph.railV} `}</Text>
           </Box>
-          <Text color={fg} wrap="truncate-end">
-            {line.spans[0]?.text ?? ''}
-          </Text>
+          {line.kind === 'code' && line.spans.length > 1 ? (
+            // #3 — a syntax-highlighted snippet: each token span in its own colour.
+            <Text wrap="truncate-end">
+              {line.spans.map((s, i) => (
+                <Text key={i} color={syntaxColor(s.style, colors)}>
+                  {s.text}
+                </Text>
+              ))}
+            </Text>
+          ) : (
+            <Text color={fg} wrap="truncate-end">
+              {line.spans[0]?.text ?? ''}
+            </Text>
+          )}
         </Box>
       );
     }
