@@ -1022,6 +1022,8 @@ export const ES: Catalog = {
   'repl.auto-build-board-sprint': ' · sprint {sprint}',
   'repl.history-rewind-hint':
     'Para viajar a un momento exacto, /rewind recorre la sesión paso a paso y puede hacer fork desde cualquier punto.',
+  'repl.rewind-offer':
+    'Eso no quedó limpio — di «deshaz» (o /undo) para revertir esos cambios, o /rewind para retroceder.',
   'repl.discovery-build-now': 'El gate dice que está listo — ¿lo construyo ya?',
   'plan-card.title': 'Plan',
   'plan-card.shape-swarm': 'swarm · {count} flujos en paralelo',

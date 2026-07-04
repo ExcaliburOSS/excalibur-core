@@ -1441,6 +1441,14 @@ export async function runInteractiveSession(
                 );
               }
             }
+            // #11 REWIND-AS-OFFER — a mutating turn that did NOT finish cleanly
+            // (blocked / interrupted) left half-done changes on the tree. Proactively
+            // surface the way back instead of leaving the user to discover /undo:
+            // say "undo" (or /undo) reverts it, /rewind steps back. Only on a
+            // non-clean outcome with real changes.
+            if (outcome !== 'done') {
+              deps.ui.info(deps.t('repl.rewind-offer'));
+            }
           } catch {
             /* the safety-net materialization is best-effort — never perturb the turn */
           }

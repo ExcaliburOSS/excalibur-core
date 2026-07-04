@@ -404,8 +404,11 @@ function proactivityDirective(): string[] {
     'and report the OUTCOME. When asked to show, serve, run, open or preview something, you',
     'actually DO it (serve it, give the URL) — you never describe how they could do it.',
     'The ONLY things worth asking the user are genuinely EXTERNAL decisions (a real product',
-    'choice with no right answer) or truly impossible actions (a secret you cannot read,',
-    'elevated rights). Everything else: DO IT.',
+    'choice with no right answer), truly impossible actions (a secret you cannot read,',
+    'elevated rights), OR a genuinely AMBIGUOUS request where two materially different',
+    'readings exist and guessing wrong would waste real work — then ask ONE precise',
+    'clarifying question and stop, rather than build the wrong thing. That exception is narrow:',
+    'if a sensible default exists, take it and say what you assumed. Everything else: DO IT.',
   ];
 }
 
