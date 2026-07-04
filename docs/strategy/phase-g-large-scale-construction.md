@@ -84,6 +84,17 @@ Phase G builds on real strengths. Auditors cited these with file:line:
 - **Proof.** Give it "build a multi-tenant SaaS with billing, auth, admin, and a
   public API" → assert a ≥3-level plan tree materializes into nested work items
   with correct `blockedBy` edges, and it renders in the dashboard tree.
+- **STATUS (done this pass).** Implemented as `decomposeDeep` (`swarm.ts`): the
+  task decomposes, each STILL-BIG subtask re-decomposes (and so on), and the tree
+  is FLATTENED to leaf subtasks whose deps encode the hierarchy (namespaced ids
+  `t2_t1` resolve parent→leaves by prefix). The EXISTING staged executor runs them
+  as dependency WAVES, so hierarchy depth = wave depth — deep AND wide (with G6, no
+  caps), no worktree nesting, no model/plan-model change. Termination is by
+  atomicity + STRICT length decrease (every child shorter than its parent), so
+  there is NO fixed depth cap yet it always ends. Wired into the auto-build path
+  (`dispatchAutoBuild` now calls `decomposeDeep`). Verified deterministically: a
+  big subsystem re-decomposes into ordered leaves; an atomic task is untouched; a
+  no-progress split terminates (no explosion). cli 682 / core 596 green.
 
 ### G3 — Autonomous multi-phase drive + mission resume
 

@@ -222,6 +222,109 @@ export async function decomposeTask(
 }
 
 /**
+ * G2 (Phase-G) — RECURSIVE decomposition with NO fixed depth cap. Decomposes the
+ * task, then re-decomposes each subtask that is STILL big into its own children,
+ * and so on — building a hierarchy — then FLATTENS it to leaf subtasks whose
+ * `dependsOn` edges encode the whole tree (the existing staged executor runs them
+ * as dependency waves, so hierarchy depth = wave depth, no nesting of worktrees).
+ *
+ * Termination is by ATOMICITY + PROGRESS, never a number:
+ *  - a subtask the oracle can't split (`decomposeTask` returns 1) is a leaf;
+ *  - a split that doesn't STRICTLY shrink the work (every child shorter than its
+ *    parent) is rejected — so recursion depth is bounded by the instruction length
+ *    and always terminates, with no arbitrary cap.
+ *
+ * Ids are namespaced per level (`t2_t1`), so the hierarchy resolves by PREFIX: a
+ * dependency on an intermediate node `t2` becomes a dependency on every leaf under
+ * it (`t2_*`). The result feeds straight into {@link runSwarmFlow}'s `subtasks`.
+ */
+export async function decomposeDeep(
+  chat: { chat(input: GatewayChatInput): Promise<{ content: string }> },
+  task: string,
+  options: {
+    provider?: string;
+    maxSubtasks?: number;
+    signal?: AbortSignal;
+    grounding?: string;
+  } = {},
+): Promise<SwarmSubtask[]> {
+  const decOpts = {
+    ...(options.provider !== undefined ? { provider: options.provider } : {}),
+    ...(options.maxSubtasks !== undefined ? { maxSubtasks: options.maxSubtasks } : {}),
+    ...(options.signal !== undefined ? { signal: options.signal } : {}),
+  };
+  // Worth a re-decomposition probe only when the instruction is substantial —
+  // a short, single-file instruction is atomic; probing it wastes a model call.
+  const looksBig = (instruction: string): boolean =>
+    instruction.trim().length > 120 && !/\b(single|one)\b.{0,20}\bfile\b/i.test(instruction);
+  // A split must STRICTLY shrink the work (each child shorter than its parent),
+  // which bounds recursion depth by the instruction length → guaranteed to end.
+  const progresses = (children: ReadonlyArray<SwarmSubtask>, parent: SwarmSubtask): boolean =>
+    children.length >= 2 &&
+    children.every((c) => c.instruction.trim().length < parent.instruction.trim().length);
+
+  const leaves: SwarmSubtask[] = [];
+  const expand = async (node: SwarmSubtask): Promise<void> => {
+    if (!looksBig(node.instruction)) {
+      leaves.push(node);
+      return;
+    }
+    let children: SwarmSubtask[] = [];
+    try {
+      children = await decomposeTask(chat, node.instruction, {
+        ...decOpts,
+        ...(options.grounding !== undefined ? { grounding: options.grounding } : {}),
+      });
+    } catch {
+      children = [];
+    }
+    if (!progresses(children, node)) {
+      leaves.push(node); // the oracle says it's atomic (or a no-progress split) → a leaf
+      return;
+    }
+    // Namespace child ids under the parent; rewire internal child deps; each ROOT
+    // of the child graph inherits the parent's external deps (so the whole group
+    // starts only after the parent's prerequisites). Prefix ids let a later
+    // dependency on `node.id` resolve to all of node's leaves (post-pass below).
+    const childIds = new Set(children.map((c) => `${node.id}_${c.id}`));
+    for (const c of children) {
+      const internal = (c.dependsOn ?? [])
+        .map((d) => `${node.id}_${d}`)
+        .filter((d) => childIds.has(d));
+      const isRoot = internal.length === 0;
+      const dependsOn = isRoot ? [...internal, ...(node.dependsOn ?? [])] : internal;
+      await expand({
+        ...c,
+        id: `${node.id}_${c.id}`,
+        ...(dependsOn.length > 0 ? { dependsOn } : {}),
+      });
+    }
+  };
+
+  const top = await decomposeTask(chat, task, {
+    ...decOpts,
+    ...(options.grounding !== undefined ? { grounding: options.grounding } : {}),
+  });
+  for (const s of top) {
+    await expand(s);
+  }
+
+  // Post-pass — resolve every dependency to LEAF ids by prefix: a dep on an
+  // intermediate (now-expanded) node `d` means "after all of d's work", i.e. every
+  // leaf whose id is `d` or starts with `d_`. Self-deps are dropped.
+  const leafIds = leaves.map((l) => l.id);
+  const resolveDep = (d: string): string[] =>
+    leafIds.filter((l) => l === d || l.startsWith(`${d}_`));
+  return leaves.map((leaf) => {
+    const resolved = [
+      ...new Set((leaf.dependsOn ?? []).flatMap(resolveDep).filter((d) => d !== leaf.id)),
+    ];
+    const { dependsOn: _drop, ...rest } = leaf;
+    return resolved.length > 0 ? { ...rest, dependsOn: resolved } : rest;
+  });
+}
+
+/**
  * AO6 Pillar 3 — the pause HOLD loop (pure, testable). Returns immediately when
  * not paused (or already aborted). Otherwise fires `onPause` once, then polls
  * `isPaused` (sleeping `pollMs` between checks) until it clears or `isAborted`

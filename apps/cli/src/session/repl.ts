@@ -97,7 +97,7 @@ import {
 import { runDiscoveryFlow } from '../commands/discovery';
 import { runTask, mountConversationalRail } from '../lib/run-pipeline';
 import { renderTurnReceipt } from '../lib/turn-receipt';
-import { chooseBuildShape, decomposeTask, runSwarmFlow } from '../lib/swarm';
+import { chooseBuildShape, decomposeDeep, runSwarmFlow } from '../lib/swarm';
 import {
   markAutoBuildStep,
   materializeAutoBuild,
@@ -2716,8 +2716,13 @@ async function dispatchAutoBuild(
           grounding = scoped.markdown;
         }
       }
+      // G2 — RECURSIVE decomposition: a big workstream is re-decomposed into its
+      // own children (and so on), flattened to leaf subtasks whose deps encode the
+      // hierarchy. The staged executor runs them as dependency waves, so a large
+      // app fans out DEEP (waves) as well as WIDE (G6, no cap). Small tasks cost the
+      // same as before (the recursion probe skips short, atomic instructions).
       const subtasks = await withThinking(deps, decomposePhrases(deps.t), () =>
-        decomposeTask(gateway.gateway, text, {
+        decomposeDeep(gateway.gateway, text, {
           provider: gateway.providerName,
           signal,
           ...(grounding !== undefined ? { grounding } : {}),
