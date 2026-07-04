@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { PermissionEngine } from '@excalibur/agent-runtime';
 import {
@@ -19,10 +20,12 @@ import {
   ModelGateway,
   RESERVED_PROVIDER_KEYS,
   loadProvidersFile,
+  parsePricingOverrides,
   redactSecrets,
   type ChatInput,
   type ChatOutput,
   type ModelGatewayDeps,
+  type PricingOverride,
   type ProvidersFileConfig,
 } from '@excalibur/model-gateway';
 import {
@@ -103,15 +106,40 @@ export function cheapProviderName(config: ProvidersFileConfig): string | null {
 const GATEWAY_DEPS: ModelGatewayDeps = { factories: coreProviderFactories() };
 
 /**
+ * Loads local/org price OVERRIDES so a changing model price is fixed by editing a
+ * data file — NOT by shipping a code release. The repo file wins over the global
+ * one at equal specificity (repo entries first). Both are optional + best-effort;
+ * a malformed file is skipped, never fatal. Order of authority overall:
+ * provider-config rate > these overrides > the bundled table > unknown.
+ */
+export function loadPricingOverrides(repoRoot: string): PricingOverride[] {
+  const files = [
+    join(repoRoot, EXCALIBUR_DIR, 'pricing.json'), // repo (highest override priority)
+    join(homedir(), '.config', 'excalibur', 'pricing.json'), // user / org-wide
+  ];
+  const rows: PricingOverride[] = [];
+  for (const file of files) {
+    if (!existsSync(file)) continue;
+    try {
+      rows.push(...parsePricingOverrides(JSON.parse(readFileSync(file, 'utf8'))));
+    } catch {
+      /* a bad pricing.json must never break model calls — skip it */
+    }
+  }
+  return rows;
+}
+
+/**
  * Loads the model gateway for a repository: `providers.yaml` when present,
  * the built-in mock default otherwise (every command works without init).
  */
 export function loadGatewayContext(repoRoot: string): GatewayContext {
+  const pricingOverrides = loadPricingOverrides(repoRoot);
   const filePath = providersFilePath(repoRoot);
   if (existsSync(filePath)) {
     const providers = loadProvidersFile(filePath);
     return {
-      gateway: new ModelGateway(providers, GATEWAY_DEPS),
+      gateway: new ModelGateway(providers, GATEWAY_DEPS, { pricingOverrides }),
       providers,
       providersPath: filePath,
       providerName: defaultProviderName(providers),
@@ -124,7 +152,7 @@ export function loadGatewayContext(repoRoot: string): GatewayContext {
   // model command refuse via requireConfiguredModel — the mock is never a
   // silent runtime fallback.
   return {
-    gateway: new ModelGateway(DEFAULT_PROVIDERS_CONFIG, GATEWAY_DEPS),
+    gateway: new ModelGateway(DEFAULT_PROVIDERS_CONFIG, GATEWAY_DEPS, { pricingOverrides }),
     providers: DEFAULT_PROVIDERS_CONFIG,
     providersPath: null,
     providerName: defaultProviderName(DEFAULT_PROVIDERS_CONFIG),

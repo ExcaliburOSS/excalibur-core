@@ -1,6 +1,6 @@
 import type { ProviderConfig } from '../providers/providers-file';
 import type { ChatUsage } from '../types';
-import { resolvePricing } from './model-pricing';
+import { resolvePricing, type PricingOverride } from './model-pricing';
 
 /**
  * Token estimation and cost computation (Build Contract §4.3).
@@ -28,8 +28,9 @@ export function computeCostCents(
     'model' | 'inputCostPerMillionTokensCents' | 'outputCostPerMillionTokensCents'
   >,
   modelId?: string,
+  overrides?: readonly PricingOverride[],
 ): number | null {
-  const { rates } = resolvePricing(cfg, modelId);
+  const { rates } = resolvePricing(cfg, modelId, overrides);
   if (rates === null) {
     return null; // unknown price — never coerce to 0 (that hides real spend)
   }

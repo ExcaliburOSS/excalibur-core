@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveModelPricing, resolvePricing } from './model-pricing';
+import { parsePricingOverrides, resolveModelPricing, resolvePricing } from './model-pricing';
 
 describe('resolveModelPricing (#cost — built-in list-price table)', () => {
   it('matches by case-insensitive substring, longest pattern wins', () => {
@@ -54,5 +54,36 @@ describe('resolvePricing (config > table > unknown)', () => {
       source: 'unknown',
     });
     expect(resolvePricing({})).toEqual({ rates: null, source: 'unknown' });
+  });
+});
+
+describe('pricing overrides (#cost — fix a changed price WITHOUT a code release)', () => {
+  it('parsePricingOverrides reads the { models } map and skips malformed entries', () => {
+    const rows = parsePricingOverrides({
+      asOf: '2026-09',
+      models: {
+        'kimi-k2': { input: 99, output: 199 },
+        badType: { input: 'x', output: 1 }, // non-number → skipped
+        partial: { input: 5 }, // missing output → skipped
+      },
+    });
+    expect(rows).toEqual([{ match: 'kimi-k2', input: 99, output: 199 }]);
+    expect(parsePricingOverrides(null)).toEqual([]);
+    expect(parsePricingOverrides({ nothing: 1 })).toEqual([]);
+  });
+
+  it('an override BEATS the bundled table, but config still beats the override', () => {
+    const overrides = [{ match: 'kimi-k2', input: 99, output: 199 }];
+    // override wins over the stale bundled table for the same model
+    expect(resolveModelPricing('kimi-k2.7-code', overrides)).toEqual({ input: 99, output: 199 });
+    expect(resolvePricing({ model: 'kimi-k2' }, undefined, overrides)).toEqual({
+      rates: { input: 99, output: 199 },
+      source: 'table',
+    });
+    // a provider-config rate is STILL the source of truth over the override
+    expect(
+      resolvePricing({ model: 'kimi-k2', inputCostPerMillionTokensCents: 5 }, undefined, overrides)
+        .source,
+    ).toBe('config');
   });
 });

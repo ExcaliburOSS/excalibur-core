@@ -14,6 +14,14 @@ import type { ProviderConfig } from '../providers/providers-file';
  * `outputCostPerMillionTokensCents` on the provider config: an explicit config
  * rate ALWAYS overrides this table (see {@link resolvePricing}).
  */
+/**
+ * When the bundled table was last reviewed. Prices DRIFT, so this is stamped so
+ * the UI can warn "prices as of {PRICING_AS_OF} — may be stale; set your rate in
+ * config or drop a .excalibur/pricing.json". The bundled table is a convenience
+ * default, never the billing source of truth.
+ */
+export const PRICING_AS_OF = '2026-07';
+
 export interface ModelRates {
   /** Cents per million INPUT (prompt) tokens. */
   input: number;
@@ -21,10 +29,15 @@ export interface ModelRates {
   output: number;
 }
 
-interface PricingRow extends ModelRates {
-  /** Lower-cased substring matched against the model id. */
+/** A pricing entry: rates + the lower-cased substring matched against a model id.
+ * A local `.excalibur/pricing.json` (or org policy file) supplies these to OVERRIDE
+ * the bundled table WITHOUT a code release — the answer to prices changing. */
+export interface PricingOverride extends ModelRates {
+  /** Substring matched (case-insensitively) against the model id. */
   match: string;
 }
+
+type PricingRow = PricingOverride;
 
 // Ordered MOST-SPECIFIC first so `gpt-4o-mini` beats `gpt-4o`, etc. USD list prices
 // as cents/M: e.g. $3.00 /M input = 300 cents/M. Approximate — override in config.
@@ -80,18 +93,61 @@ export type PricingSource = 'config' | 'table' | 'unknown';
  * legitimately has no entry — it should carry explicit `0` rates in config to read
  * as $0 rather than "unknown".
  */
-export function resolveModelPricing(modelId: string | undefined): ModelRates | null {
+export function resolveModelPricing(
+  modelId: string | undefined,
+  overrides: readonly PricingOverride[] = [],
+): ModelRates | null {
   if (modelId === undefined || modelId.length === 0) {
     return null;
   }
   const id = modelId.toLowerCase();
-  let best: PricingRow | null = null;
-  for (const row of PRICING) {
-    if (id.includes(row.match) && (best === null || row.match.length > best.match.length)) {
-      best = row;
+  // Local/org OVERRIDES are checked first (they beat the bundled table at equal
+  // specificity), then the bundled list-price table. Longest match wins in each.
+  const best = (rows: readonly PricingRow[]): PricingRow | null => {
+    let winner: PricingRow | null = null;
+    for (const row of rows) {
+      if (
+        id.includes(row.match.toLowerCase()) &&
+        (winner === null || row.match.length > winner.match.length)
+      ) {
+        winner = row;
+      }
+    }
+    return winner;
+  };
+  const hit = best(overrides) ?? best(PRICING);
+  return hit === null ? null : { input: hit.input, output: hit.output };
+}
+
+/**
+ * Parses a `.excalibur/pricing.json` override file into {@link PricingOverride}s.
+ * Shape: `{ "asOf"?: string, "models": { "<match>": { "input": <cents/M>,
+ * "output": <cents/M> } } }`. Best-effort + total: a malformed file or entry is
+ * skipped, never thrown — a bad pricing file must not break model calls. Pure.
+ */
+export function parsePricingOverrides(raw: unknown): PricingOverride[] {
+  if (typeof raw !== 'object' || raw === null) {
+    return [];
+  }
+  const models = (raw as { models?: unknown }).models;
+  if (typeof models !== 'object' || models === null) {
+    return [];
+  }
+  const out: PricingOverride[] = [];
+  for (const [match, value] of Object.entries(models as Record<string, unknown>)) {
+    if (typeof value !== 'object' || value === null) continue;
+    const v = value as { input?: unknown; output?: unknown };
+    const input =
+      typeof v.input === 'number' && Number.isFinite(v.input) && v.input >= 0 ? v.input : undefined;
+    const output =
+      typeof v.output === 'number' && Number.isFinite(v.output) && v.output >= 0
+        ? v.output
+        : undefined;
+    if (match.trim().length > 0 && input !== undefined && output !== undefined) {
+      out.push({ match: match.trim(), input, output });
     }
   }
-  return best === null ? null : { input: best.input, output: best.output };
+  return out;
 }
 
 /**
@@ -108,6 +164,7 @@ export function resolvePricing(
     'model' | 'inputCostPerMillionTokensCents' | 'outputCostPerMillionTokensCents'
   >,
   modelId?: string,
+  overrides: readonly PricingOverride[] = [],
 ): { rates: ModelRates; source: PricingSource } | { rates: null; source: 'unknown' } {
   const hasConfig =
     cfg.inputCostPerMillionTokensCents !== undefined ||
@@ -121,7 +178,7 @@ export function resolvePricing(
       source: 'config',
     };
   }
-  const table = resolveModelPricing(modelId ?? cfg.model);
+  const table = resolveModelPricing(modelId ?? cfg.model, overrides);
   if (table !== null) {
     return { rates: table, source: 'table' };
   }

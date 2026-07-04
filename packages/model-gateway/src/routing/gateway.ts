@@ -1,5 +1,6 @@
 import { ProviderError } from '@excalibur/shared';
 import { computeCostCents, estimateTokens } from '../cost/cost';
+import type { PricingOverride } from '../cost/model-pricing';
 import { parseToolArguments } from '../errors/provider-errors';
 import { createProvider, type CreateProviderDeps } from '../providers/create-provider';
 import { RESERVED_PROVIDER_KEYS } from '../providers/providers-file';
@@ -39,10 +40,18 @@ export class ModelGateway {
   private readonly config: ProvidersFileConfig;
   private readonly deps: ModelGatewayDeps | undefined;
   private readonly adapters = new Map<string, ModelProviderAdapter>();
+  /** Local/org price overrides (`.excalibur/pricing.json`) that beat the bundled
+   * table WITHOUT a code release — the caller (CLI) loads + parses them. */
+  private readonly pricingOverrides: readonly PricingOverride[];
 
-  constructor(cfg: ProvidersFileConfig, deps?: ModelGatewayDeps) {
+  constructor(
+    cfg: ProvidersFileConfig,
+    deps?: ModelGatewayDeps,
+    options?: { pricingOverrides?: readonly PricingOverride[] },
+  ) {
     this.config = cfg;
     this.deps = deps;
+    this.pricingOverrides = options?.pricingOverrides ?? [];
   }
 
   /** Named provider entries (the `default`/`cheap` role pointers are not providers). */
@@ -159,7 +168,7 @@ export class ModelGateway {
   async chat(input: GatewayChatInput): Promise<ChatOutput> {
     const { cfg, adapter, chatInput } = this.prepare(input);
     const output = await adapter.chat(chatInput);
-    const computed = computeCostCents(output.usage, cfg, chatInput.model);
+    const computed = computeCostCents(output.usage, cfg, chatInput.model, this.pricingOverrides);
     return { ...output, costCents: computed ?? output.costCents };
   }
 
@@ -232,7 +241,7 @@ export class ModelGateway {
         estimateTokens(chatInput.messages.map((message) => message.content).join('\n')),
       outputTokens: reported.outputTokens ?? estimateTokens(content),
     };
-    const computed = computeCostCents(usage, cfg, chatInput.model);
+    const computed = computeCostCents(usage, cfg, chatInput.model, this.pricingOverrides);
     return {
       content,
       model: chatInput.model ?? cfg.model ?? 'unknown',
@@ -281,7 +290,7 @@ export class ModelGateway {
         estimateTokens(chatInput.messages.map((message) => message.content).join('\n')),
       outputTokens: reported.outputTokens ?? estimateTokens(content),
     };
-    const computed = computeCostCents(usage, cfg, chatInput.model);
+    const computed = computeCostCents(usage, cfg, chatInput.model, this.pricingOverrides);
     return {
       content,
       model: chatInput.model ?? cfg.model ?? 'unknown',
