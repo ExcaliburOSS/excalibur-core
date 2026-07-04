@@ -14,6 +14,7 @@ import {
   type CapabilityExecutor,
   type Mission,
   type MissionState,
+  type OrchestrationPlan,
   type PlanStep,
 } from '@excalibur/core';
 import { generateId, type AutonomyLevel, type ExcaliburConfig } from '@excalibur/shared';
@@ -178,6 +179,13 @@ export interface MissionRunOptions {
   /** Hard budget ceiling in cents — the mission PAUSES when reached (resumable). */
   budgetCents?: number;
   /**
+   * G3 — RESUME a checkpointed mission (paused on a budget/time ceiling, or
+   * interrupted by a crash/close) instead of interpreting + planning a fresh one.
+   * The saved {@link MissionState} carries the mission DAG and per-step progress,
+   * so the drive picks up at the first unfinished step, unattended.
+   */
+  resume?: MissionState;
+  /**
    * Open a real pull request at the `ship` step (M8 follow-up): branch off the
    * default, commit, push, and `gh pr create`. Opt-in — pushing to a remote is
    * outward-facing, so it is OFF unless the user asked for it (`mission --pr`).
@@ -211,19 +219,33 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
   warnDirtyTree(deps, repoRoot);
   const restorePoint = captureRestorePoint(repoRoot);
 
-  // 1) Interpret the need + auto-author the strategy (the brain).
-  deps.ui.info(deps.t('mission.interpreting'));
-  const mission = await interpretMission(goal, {
-    gateway: gateway.gateway,
-    ...(planProvider !== null ? { provider: planProvider } : {}),
-    signal,
-  });
-  const plan = await planStrategy(mission, {
-    gateway: gateway.gateway,
-    ...(planProvider !== null ? { provider: planProvider } : {}),
-    signal,
-  });
-  deps.ui.write(pc.dim(plan.rationale));
+  // 1) RESUME a checkpointed mission (G3) — reuse its saved DAG + progress, no
+  // re-interpretation (which could drift). Otherwise interpret the need + auto-
+  // author the strategy (the brain).
+  let mission: Mission;
+  let plan: OrchestrationPlan;
+  if (opts.resume !== undefined) {
+    mission = opts.resume.mission;
+    plan = {
+      goal: opts.resume.mission.goal,
+      steps: opts.resume.steps.map((s) => s.step),
+      rationale: '',
+    };
+    deps.ui.info(deps.t('mission.resuming', { goal: opts.resume.mission.goal }));
+  } else {
+    deps.ui.info(deps.t('mission.interpreting'));
+    mission = await interpretMission(goal, {
+      gateway: gateway.gateway,
+      ...(planProvider !== null ? { provider: planProvider } : {}),
+      signal,
+    });
+    plan = await planStrategy(mission, {
+      gateway: gateway.gateway,
+      ...(planProvider !== null ? { provider: planProvider } : {}),
+      signal,
+    });
+    deps.ui.write(pc.dim(plan.rationale));
+  }
 
   // 2) The capability executor — each step is a REAL agentic turn, rendered with
   // the mission plan ribbon pinned above its rail (M8 #43).
@@ -411,8 +433,11 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
   };
 
   // 3) Drive the DAG, adapting after each gate/failure; checkpoint every step.
-  const missionId = generateId('mission');
+  // On resume, keep the SAME id so checkpoints continue in the same dir and
+  // runMission bootstraps from the saved state (skips the fresh init).
+  const missionId = opts.resume?.id ?? generateId('mission');
   const state = await runMission(mission, plan, {
+    ...(opts.resume !== undefined ? { resumeFrom: opts.resume } : {}),
     id: missionId,
     executor,
     reassess: createReassessor({

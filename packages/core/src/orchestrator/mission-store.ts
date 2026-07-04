@@ -59,6 +59,23 @@ export function resumableMissions(repoRoot: string): string[] {
 }
 
 /**
+ * G3 — the newest UNFINISHED mission's full state (paused on a ceiling, OR
+ * interrupted by a crash/close — anything not `done`), for a proactive resume
+ * OFFER at launch. Ids are time-sortable (`mission_<stamp>_…`), so the max id is
+ * the most recent. Returns null when there is nothing to pick up.
+ */
+export function findResumableMission(repoRoot: string): MissionState | null {
+  const states = listMissions(repoRoot)
+    .map((id) => loadMission(repoRoot, id))
+    .filter((s): s is MissionState => s !== null && !s.done);
+  if (states.length === 0) {
+    return null;
+  }
+  states.sort((a, b) => (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+  return states[0] ?? null;
+}
+
+/**
  * A ready-to-use checkpoint sink for `runMission`'s `onEvent`: persists the state
  * after each event so the latest snapshot is always on disk.
  */

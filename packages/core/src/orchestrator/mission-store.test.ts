@@ -2,7 +2,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { listMissions, loadMission, resumableMissions, saveMission } from './mission-store';
+import {
+  findResumableMission,
+  listMissions,
+  loadMission,
+  resumableMissions,
+  saveMission,
+} from './mission-store';
 import { initMissionState } from './supervisor';
 import type { Mission, OrchestrationPlan } from './types';
 
@@ -57,5 +63,32 @@ describe('mission-store (M5 checkpoint/resume)', () => {
     saveMission(repo, b);
     expect(listMissions(repo).sort()).toEqual(['a', 'b']);
     expect(resumableMissions(repo)).toEqual(['b']); // only the paused one
+  });
+
+  it('findResumableMission returns the newest UNFINISHED mission state (G3 resume offer)', () => {
+    // A finished mission is never offered; an interrupted one (not done, not
+    // paused) IS — resume must cover a crash/close, not only a budget pause.
+    const finished = initMissionState(mission, plan, 'm_20260101');
+    finished.outcome = 'completed';
+    finished.done = true;
+    const olderPaused = initMissionState(mission, plan, 'm_20260201');
+    olderPaused.outcome = 'paused';
+    const newerInterrupted = initMissionState(mission, plan, 'm_20260301');
+    newerInterrupted.outcome = 'running'; // crashed mid-drive → not done → resumable
+    saveMission(repo, finished);
+    saveMission(repo, olderPaused);
+    saveMission(repo, newerInterrupted);
+
+    const found = findResumableMission(repo);
+    expect(found?.id).toBe('m_20260301'); // newest not-done wins (crash-resume, not just paused)
+    expect(found?.done).toBe(false);
+  });
+
+  it('findResumableMission returns null when every mission is finished', () => {
+    const done = initMissionState(mission, plan, 'done1');
+    done.done = true;
+    done.outcome = 'completed';
+    saveMission(repo, done);
+    expect(findResumableMission(repo)).toBeNull();
   });
 });

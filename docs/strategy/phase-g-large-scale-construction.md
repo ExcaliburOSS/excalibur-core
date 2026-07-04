@@ -113,6 +113,21 @@ Phase G builds on real strengths. Auditors cited these with file:line:
   entry paths); resume offer at REPL startup next to `offerResumePlan`.
 - **Proof.** Start a long build, `SIGKILL` mid-phase, relaunch → it offers to
   resume and finishes the remaining phases without re-prompting.
+- **STATUS (done this pass).** Two halves:
+  - **Auto-build resume was ALREADY enabled** by G1: `materializeAutoBuild` saves
+    the plan `status: 'approved'`, so an interrupted build leaves an approved plan
+    with pending steps that `offerResumePlan` finds at launch → `driveStructuredPlan`
+    re-runs ONLY the pending steps, fanning independent ones into a swarm (G1). A
+    large build survives a restart and continues, unattended.
+  - **Mission resume** (the genuine gap) is now wired: `findResumableMission`
+    (`mission-store.ts`) returns the newest NOT-done mission (paused OR crashed);
+    `offerResumeMission` (repl, symmetric to `offerResumePlan`) offers it at launch;
+    `runMissionTurn({resume})` skips re-interpretation and feeds the saved
+    `MissionState` to `runMission`'s `resumeFrom`, picking up at the first
+    unfinished capability step. The "drive to done" loop itself already exists
+    (`runSwarmFlow` staged waves for builds; `runMission` for missions). Verified
+    deterministically (findResumableMission: newest not-done wins, crash-resume not
+    just paused). core 598 / cli 682 green.
 
 ### G4 — Raise the retrieval ceiling for very large repos
 

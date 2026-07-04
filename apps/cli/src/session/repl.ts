@@ -37,6 +37,7 @@ import {
   getGitInfo,
   getLocalDiff,
   loadReplay,
+  findResumableMission,
   MemoryStore,
   nextPendingStep,
   parseStructuralInput,
@@ -880,12 +881,63 @@ export async function runInteractiveSession(
     }
   };
 
+  /** G3 — the mission counterpart of {@link offerResumePlan}: at launch, if a
+   * long autonomous mission was left unfinished (paused on a budget/time ceiling,
+   * or interrupted by a crash/close), OFFER to pick it up where it left off. */
+  const offerResumeMission = async (): Promise<void> => {
+    if (
+      options.resume !== undefined ||
+      options.continue === true ||
+      !deps.ui.isInteractive() ||
+      !deps.ui.isOutputTty()
+    ) {
+      return;
+    }
+    const mission = findResumableMission(repoRoot);
+    if (mission === null) {
+      return;
+    }
+    const done = mission.steps.filter((s) => s.status === 'done').length;
+    deps.ui.write();
+    const resume = await deps.ui.confirm(
+      deps.t('repl.resume-mission-offer', {
+        goal: mission.mission.goal,
+        done,
+        total: mission.steps.length,
+      }),
+      { defaultYes: true },
+    );
+    if (!resume) {
+      return;
+    }
+    const ctrl = beginTurn();
+    try {
+      await runMissionTurn(mission.mission.goal, {
+        deps,
+        repoRoot: runtime.repoRoot,
+        config: runtime.config,
+        autonomyLevel: runtime.autonomyLevel,
+        approvals: runtime.approvals,
+        signal: ctrl.signal,
+        resume: mission,
+        onEscape: () => ctrl.abort(),
+        ...(runtime.onInterrupt !== undefined ? { onInterrupt: runtime.onInterrupt } : {}),
+      });
+    } catch (error) {
+      deps.ui.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      endTurn();
+    }
+  };
+
   // P0-2 — `offerResumePlan` wraps only the resume EXECUTION internally; its
   // findResumablePlan read + the offer confirm are unguarded and run pre-loop.
   try {
     await offerResumePlan();
+    // A resumable MISSION is offered too (only one will usually exist); best-effort.
+    await offerResumeMission();
   } catch {
-    /* the plan-resume offer is best-effort — never block launch on it */
+    /* the plan/mission-resume offer is best-effort — never block launch on it */
   }
 
   // P0-1 (solidity) — a REF'd session keep-alive: a no-op interval whose libuv

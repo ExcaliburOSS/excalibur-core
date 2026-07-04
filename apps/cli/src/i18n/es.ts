@@ -945,6 +945,7 @@ export const ES: Catalog = {
   'repl.self-heal-exhausted':
     '◆ Lo intenté {max} veces pero no logré dejar todo en verde — aquí está cómo ha quedado; dime cómo quieres seguir.',
   'mission.interpreting': 'Interpretando tu objetivo y trazando la estrategia…',
+  'mission.resuming': 'Retomo tu misión — «{goal}» — donde se quedó…',
   'repl.ctrl-c-again': 'Pulsa Ctrl-C de nuevo para salir.',
   'repl.goal-offer':
     'Esto parece un objetivo a completar. ¿Perseguirlo a lo largo de varios turnos hasta que un evaluador diga que está hecho (máx. {max})?',
@@ -1319,6 +1320,8 @@ export const ES: Catalog = {
   'repl.resume-offer-one': '¿Retomar tu última sesión (1 turno)?',
   'repl.resume-plan-offer':
     'Tienes un plan sin terminar — «{task}» ({done}/{total} hechos). ¿Lo retomo en «{step}»?',
+  'repl.resume-mission-offer':
+    'Tienes una misión sin terminar — «{goal}» ({done}/{total} pasos hechos). ¿La retomo?',
   'repl.auto-setup-prompt':
     '¿Permitir que Excalibur edite ficheros y ejecute comandos automáticamente (sin pedir aprobación)?',
   'repl.auto-enabled':
