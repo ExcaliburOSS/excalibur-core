@@ -42,6 +42,7 @@ import {
   nextPendingStep,
   parseStructuralInput,
   planProgress,
+  topologicalWaves,
   decideInterrupt,
   type AsyncSummarizer,
   type IntentModel,
@@ -101,6 +102,7 @@ import { runDiscoveryFlow } from '../commands/discovery';
 import { runTask, mountConversationalRail } from '../lib/run-pipeline';
 import { renderTurnReceipt } from '../lib/turn-receipt';
 import { chooseBuildShape, decomposeDeep, runSwarmFlow } from '../lib/swarm';
+import { recordOrchestration } from '../lib/orchestration-telemetry';
 import {
   markAutoBuildStep,
   materializeAutoBuild,
@@ -2836,30 +2838,49 @@ async function dispatchAutoBuild(
             // must be the default, not a flag.
             grade: true,
             signal,
-            ...(swarmBoard !== null
-              ? {
-                  onOutcome: (outcome): void => {
-                    // Settle the board truthfully: a lane's work counts as DONE only
-                    // when the merged diff LANDED; produced-but-unlanded → blocked
-                    // (review lane), an empty lane → skipped, never-ran → pending.
-                    const statusBySubtask = new Map<string, PlanStepStatus>();
-                    for (const lane of outcome.lanes) {
-                      statusBySubtask.set(
-                        lane.id,
-                        outcome.applied && lane.state === 'done'
-                          ? 'done'
-                          : lane.state === 'empty'
-                            ? 'skipped'
-                            : 'blocked',
-                      );
-                    }
-                    settleAutoBuild(runtime.repoRoot, swarmBoard, text, {
-                      statusBySubtask,
-                      fallback: 'pending',
-                    });
-                  },
+            onOutcome: (outcome): void => {
+              // #10 — record the orchestration's shape + outcome ALWAYS (telemetry
+              // is independent of whether a board was materialized).
+              try {
+                const done = outcome.lanes.filter(
+                  (l) => l.state === 'done' && outcome.applied,
+                ).length;
+                const empty = outcome.lanes.filter((l) => l.state === 'empty').length;
+                recordOrchestration(runtime.repoRoot, {
+                  at: new Date().toISOString(),
+                  task: text,
+                  shape: 'swarm',
+                  lanes: outcome.lanes.length,
+                  waves: topologicalWaves(subtasks)?.length ?? 1,
+                  done,
+                  failed: outcome.lanes.length - done - empty,
+                  empty,
+                  applied: outcome.applied,
+                });
+              } catch {
+                /* telemetry is best-effort */
+              }
+              // Settle the board truthfully: a lane's work counts as DONE only when
+              // the merged diff LANDED; produced-but-unlanded → blocked (review
+              // lane), an empty lane → skipped, never-ran → pending.
+              if (swarmBoard !== null) {
+                const statusBySubtask = new Map<string, PlanStepStatus>();
+                for (const lane of outcome.lanes) {
+                  statusBySubtask.set(
+                    lane.id,
+                    outcome.applied && lane.state === 'done'
+                      ? 'done'
+                      : lane.state === 'empty'
+                        ? 'skipped'
+                        : 'blocked',
+                  );
                 }
-              : {}),
+                settleAutoBuild(runtime.repoRoot, swarmBoard, text, {
+                  statusBySubtask,
+                  fallback: 'pending',
+                });
+              }
+            },
           },
         );
         // AO6 Pillar 5 — proactively surface that this orchestration is now a
@@ -2905,6 +2926,24 @@ async function dispatchAutoBuild(
     settleAutoBuild(runtime.repoRoot, board, text, {
       fallback: signal.aborted ? 'pending' : 'done',
     });
+  }
+  // #10 — the sequential (single-workstream) build counts in the fan-out KPI too:
+  // one lane, applied unless the user aborted mid-way.
+  try {
+    const landed = !signal.aborted;
+    recordOrchestration(runtime.repoRoot, {
+      at: new Date().toISOString(),
+      task: text,
+      shape: 'sequential',
+      lanes: 1,
+      waves: 1,
+      done: landed ? 1 : 0,
+      failed: 0,
+      empty: 0,
+      applied: landed,
+    });
+  } catch {
+    /* telemetry is best-effort */
   }
   // NOTE (G5): the adversarial post-review + bounded fix now lives INSIDE
   // `runConversationalBuild` (`reviewAndHeal`) so it fires on EVERY solo mutating
