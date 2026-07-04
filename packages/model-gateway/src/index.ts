@@ -8,6 +8,7 @@ export * from './providers/providers-file';
 export * from './providers/mock-provider';
 export * from './providers/create-provider';
 export * from './cost/cost';
+export * from './cost/model-pricing';
 export * from './redaction/redaction';
 export * from './routing/gateway';
 

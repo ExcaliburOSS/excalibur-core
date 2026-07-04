@@ -159,7 +159,7 @@ export class ModelGateway {
   async chat(input: GatewayChatInput): Promise<ChatOutput> {
     const { cfg, adapter, chatInput } = this.prepare(input);
     const output = await adapter.chat(chatInput);
-    const computed = computeCostCents(output.usage, cfg);
+    const computed = computeCostCents(output.usage, cfg, chatInput.model);
     return { ...output, costCents: computed ?? output.costCents };
   }
 
@@ -232,7 +232,7 @@ export class ModelGateway {
         estimateTokens(chatInput.messages.map((message) => message.content).join('\n')),
       outputTokens: reported.outputTokens ?? estimateTokens(content),
     };
-    const computed = computeCostCents(usage, cfg);
+    const computed = computeCostCents(usage, cfg, chatInput.model);
     return {
       content,
       model: chatInput.model ?? cfg.model ?? 'unknown',
@@ -281,7 +281,7 @@ export class ModelGateway {
         estimateTokens(chatInput.messages.map((message) => message.content).join('\n')),
       outputTokens: reported.outputTokens ?? estimateTokens(content),
     };
-    const computed = computeCostCents(usage, cfg);
+    const computed = computeCostCents(usage, cfg, chatInput.model);
     return {
       content,
       model: chatInput.model ?? cfg.model ?? 'unknown',
