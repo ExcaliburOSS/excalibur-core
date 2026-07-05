@@ -139,7 +139,7 @@ function swordBlock(tier: ColorTier, availCells: number): string[] {
   // The tip still feathers via half-blocks — that's the point, not the body.
   const bladeH = 6; // sub-rows (=3 cells)
   const stepLen = 2; // sub-cols per taper step
-  const tipCells = 2; // the taper below spans 4 sub-cols = 2 cells
+  const tipCells = 3; // taper (6→4→2) + the finer half-pixel point below span 6 sub-cols = 3 cells
   const maxBladeCells = Math.max(6, availCells - guardW / 2 - tipCells);
   const bladeLen = maxBladeCells * 2; // sub-cols
 
@@ -162,6 +162,11 @@ function swordBlock(tier: ColorTier, availCells: number): string[] {
     }
     shrink += 1;
   }
+  // A FINER point (founder-approved): after the symmetric taper narrows the blade to its 2-sub-row
+  // centre cell, one more step of a SINGLE upper sub-row (▀) — so the tip ends in a crisp
+  // half-pixel point instead of a blunt full cell (and no lower sub-pixel is left dangling).
+  const pointRow = bladeTop + bladeH / 2 - 1; // the top half of the centre cell
+  for (let k = 0; k < stepLen; k++) set(pointRow, c++, BLADE);
 
   let maxC = 0;
   for (const key of grid.keys()) {

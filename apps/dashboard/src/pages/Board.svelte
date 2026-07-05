@@ -337,7 +337,7 @@
   </div>
   {#if writable}
     <div class="right">
-      <button class="new" onclick={() => (creating = true)} aria-haspopup="dialog"
+      <button class="btn btn--primary" onclick={() => (creating = true)} aria-haspopup="dialog"
         >+ {t('board.new')}</button
       >
     </div>
@@ -476,7 +476,9 @@
   <div class="state muted">
     {#if writable}
       <p>{t('board.emptyWrite')}</p>
-      <button class="primary" onclick={() => (creating = true)}>+ {t('board.newFirst')}</button>
+      <button class="btn btn--primary" onclick={() => (creating = true)}
+        >+ {t('board.newFirst')}</button
+      >
     {:else}
       {t('board.empty')}
     {/if}
@@ -892,18 +894,8 @@
     opacity: 0.3;
     cursor: default;
   }
-  .new {
-    background: linear-gradient(180deg, var(--accent), var(--accent-dim));
-    color: #04101e;
-    border: 1px solid transparent;
-    padding: 6px 14px;
-    border-radius: var(--radius-sm);
-    font-weight: 650;
-    box-shadow: 0 6px 18px -8px rgba(77, 163, 255, 0.7);
-  }
-  .new:hover {
-    filter: brightness(1.07);
-  }
+  /* The task-create buttons now reuse the shared flat `.btn .btn--primary` (identical to the
+     "New plan" button) — no local 3D gradient/shadow. Dead `.new`/`.primary` rules removed. */
   /* Create-work-item modal form. */
   .mform {
     display: flex;
@@ -944,21 +936,6 @@
     .row2 {
       grid-template-columns: 1fr;
     }
-  }
-  .primary {
-    /* FLAT — no depth: a solid accent fill, no gradient, no drop shadow (founder directive). */
-    background: var(--accent);
-    color: #04101e;
-    border: 1px solid transparent;
-    padding: 7px 16px;
-    border-radius: var(--radius-sm);
-    font-weight: 650;
-  }
-  .primary:hover {
-    filter: brightness(1.07);
-  }
-  .primary:disabled {
-    opacity: 0.5;
   }
   .quick input {
     width: 100%;
