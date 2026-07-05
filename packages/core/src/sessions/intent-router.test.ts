@@ -7,6 +7,8 @@ import {
   classifyOrchestrationAction,
   classifyScheduleExtraction,
   classifyTurnIntent,
+  intentClass,
+  INTENT_CLASSES,
   parseOrchestrationAction,
   parseScheduleExtraction,
   decidePosture,
@@ -15,7 +17,9 @@ import {
   parseTurnDecision,
   parseTurnIntent,
   riskOfShape,
+  type IntentClass,
   type IntentContext,
+  type TurnIntent,
 } from './intent-router';
 
 const live: IntentContext = { interactive: true, mock: false, level: 4 };
@@ -53,6 +57,61 @@ describe('classifyTurnIntent — LLM-based, multi-language (no keyword/regex)', 
   it('falls back to chat when the classifier throws/times out', async () => {
     const model = vi.fn().mockRejectedValue(new Error('timeout'));
     expect(await classifyTurnIntent('refactor the auth module', live, model)).toBe('chat');
+  });
+});
+
+describe('intentClass — 14 TurnIntents collapse onto 6 canonical classes (intent-simplification)', () => {
+  const ALL_INTENTS: TurnIntent[] = [
+    'chat',
+    'edit',
+    'plan',
+    'swarm',
+    'bg',
+    'research',
+    'goal',
+    'explore',
+    'preview',
+    'orchestration',
+    'schedule',
+    'mission',
+    'history',
+    'discovery',
+  ];
+
+  it('maps every TurnIntent onto a valid IntentClass', () => {
+    for (const intent of ALL_INTENTS) {
+      expect(INTENT_CLASSES).toContain(intentClass(intent));
+    }
+  });
+
+  it('there are exactly 6 classes', () => {
+    expect(INTENT_CLASSES).toHaveLength(6);
+    expect(new Set(INTENT_CLASSES).size).toBe(6);
+  });
+
+  it('research folds into chat (chat reaches for the web itself)', () => {
+    expect(intentClass('chat')).toBe('chat');
+    expect(intentClass('research')).toBe('chat');
+  });
+
+  it('edit/plan/swarm/mission/goal/explore all collapse into build (shape is auto-decided)', () => {
+    const build: TurnIntent[] = ['edit', 'plan', 'swarm', 'mission', 'goal', 'explore'];
+    for (const i of build) expect(intentClass(i)).toBe('build');
+  });
+
+  it('bg and schedule collapse into build (they are automatic modifiers, not intents)', () => {
+    expect(intentClass('bg')).toBe('build');
+    expect(intentClass('schedule')).toBe('build');
+  });
+
+  it('the standalone verbs keep their own class', () => {
+    const same: [TurnIntent, IntentClass][] = [
+      ['preview', 'preview'],
+      ['discovery', 'discovery'],
+      ['history', 'history'],
+      ['orchestration', 'orchestration'],
+    ];
+    for (const [intent, cls] of same) expect(intentClass(intent)).toBe(cls);
   });
 });
 

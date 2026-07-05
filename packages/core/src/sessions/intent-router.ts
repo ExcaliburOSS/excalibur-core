@@ -122,6 +122,63 @@ const TURN_INTENTS: readonly TurnIntent[] = [
   'discovery',
 ];
 
+/**
+ * The SIMPLIFIED, user-facing intent taxonomy (see docs/strategy/intent-simplification.md):
+ * what the user WANTS. The execution SHAPE (single run / parallel swarm / multi-phase mission),
+ * plus BACKGROUND and SCHEDULE, are decided AUTOMATICALLY downstream from the work itself —
+ * never selected by the user. Six classes; the finer {@link TurnIntent} the classifier emits
+ * today maps onto them via {@link intentClass} — the compatibility bridge while the dispatch is
+ * collapsed phase by phase (Phase 1: taxonomy + mapping; later phases flip the dispatch).
+ */
+export type IntentClass =
+  | 'chat' // wants information; nothing in the repo changes (absorbs `research`)
+  | 'build' // wants to create/change code — auto-scaled (absorbs edit/plan/swarm/mission/goal/explore)
+  | 'preview' // wants to SEE/run the existing app
+  | 'discovery' // floats an idea, wants a build/validate/don't verdict
+  | 'history' // undo/rewind Excalibur's own prior work
+  | 'orchestration'; // view/pause/resume an existing run
+
+export const INTENT_CLASSES: readonly IntentClass[] = [
+  'chat',
+  'build',
+  'preview',
+  'discovery',
+  'history',
+  'orchestration',
+];
+
+/**
+ * Collapse a fine-grained {@link TurnIntent} onto its canonical user-facing {@link IntentClass}.
+ * `research`→`chat` (a chat turn reaches for the web itself); edit/plan/swarm/mission/goal/explore
+ * →`build` (the shape is auto-decided); `bg`/`schedule`→`build` as their default class — they are
+ * execution MODIFIERS (background / recurrence), detected and applied automatically, not
+ * user-facing intents. Total + pure (a compile error here means a new TurnIntent needs a class).
+ */
+export function intentClass(intent: TurnIntent): IntentClass {
+  switch (intent) {
+    case 'chat':
+    case 'research':
+      return 'chat';
+    case 'edit':
+    case 'plan':
+    case 'swarm':
+    case 'mission':
+    case 'goal':
+    case 'explore':
+    case 'bg':
+    case 'schedule':
+      return 'build';
+    case 'preview':
+      return 'preview';
+    case 'discovery':
+      return 'discovery';
+    case 'history':
+      return 'history';
+    case 'orchestration':
+      return 'orchestration';
+  }
+}
+
 export interface IntentContext {
   /** A real human at a TTY who can answer prompts (plan/offers need this). */
   interactive: boolean;

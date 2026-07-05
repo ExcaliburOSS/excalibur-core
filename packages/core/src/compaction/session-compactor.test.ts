@@ -4,7 +4,12 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { SessionStore, type SessionTurn } from '../sessions/session-store';
 import { DEFAULT_COMPACTION_CONFIG, type CompactionConfig } from './types';
-import { buildSessionSeed, compactSession } from './session-compactor';
+import {
+  buildSessionSeed,
+  compactSession,
+  framePriorContext,
+  PRIOR_CONTEXT_BOUNDARY,
+} from './session-compactor';
 
 const T = (n: number): string => 'x'.repeat(n * 4); // estimateTokens = ceil(len/4)
 function turn(seq: number, role: SessionTurn['role'], tokens: number, text?: string): SessionTurn {
@@ -69,6 +74,26 @@ describe('buildSessionSeed (reinjection primitive)', () => {
     const seed = buildSessionSeed(convo, null);
     expect(seed.map((m) => m.role)).toEqual(['user', 'assistant', 'user']);
     expect(seed[1]).toEqual({ role: 'assistant', content: 'hello' });
+  });
+
+  describe('framePriorContext (contamination fix)', () => {
+    it('appends a FINISHED-background boundary so a past request is never re-executed', () => {
+      const seed = buildSessionSeed(convo, null);
+      const framed = framePriorContext(seed);
+      // The prior turns are preserved (continuity) …
+      expect(framed.slice(0, seed.length)).toEqual(seed);
+      // … followed by ONE system boundary that pins the live request to the next message.
+      const last = framed[framed.length - 1]!;
+      expect(last.role).toBe('system');
+      expect(last.content).toBe(PRIOR_CONTEXT_BOUNDARY);
+      expect(last.content).toMatch(/FINISHED/);
+      expect(last.content).toMatch(/next message/i);
+      expect(last.content).toMatch(/do not.*re-execute|do not.*resume/i);
+    });
+
+    it('leaves an empty seed untouched (a fresh session needs no boundary)', () => {
+      expect(framePriorContext([])).toEqual([]);
+    });
   });
 
   it('with a record leads with the summary, then the kept tail from firstKeptEntryId', () => {

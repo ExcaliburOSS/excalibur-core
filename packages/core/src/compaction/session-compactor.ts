@@ -93,3 +93,31 @@ export function buildSessionSeed(
   const preservedPrefix = entries.slice(0, start).filter((entry) => keptIds.has(entry.id));
   return reassembleContext(latestRecord, [...preservedPrefix, ...entries.slice(start)]);
 }
+
+/**
+ * The CONTEXT BOUNDARY appended after the reinjected prior conversation (contamination fix):
+ * a system instruction that marks every earlier turn as FINISHED background and pins the live
+ * request to the user's NEXT message. Without it, a resumed / accumulated session fed the model
+ * a PAST imperative request ("add retro subpages") as if it were current, and the agent
+ * re-executed already-done work the user never re-asked for. Continuity is preserved (the prior
+ * turns are still there as reference); only the licence to RE-EXECUTE them is removed.
+ */
+export const PRIOR_CONTEXT_BOUNDARY =
+  'CONTEXT BOUNDARY — everything above this line is EARLIER conversation from this project, kept ' +
+  'ONLY as background for continuity. Those requests were already handled and are FINISHED. Treat ' +
+  "ONLY the user's NEXT message as the current request. Do NOT resume, repeat, continue, or " +
+  're-execute any earlier request, task, plan or TODO from the prior context — not even if it looks ' +
+  'unfinished — unless the next message explicitly asks you to. Use the prior context solely as ' +
+  'reference for facts and decisions already made.';
+
+/**
+ * Appends the {@link PRIOR_CONTEXT_BOUNDARY} to a reinjected session seed so the model never
+ * mistakes a past request for the current one. Returns the seed unchanged when it is empty (a
+ * fresh session with no prior context needs no boundary). Pure — unit-testable.
+ */
+export function framePriorContext(seed: ReadonlyArray<ChatMessage>): ChatMessage[] {
+  if (seed.length === 0) {
+    return [...seed];
+  }
+  return [...seed, { role: 'system', content: PRIOR_CONTEXT_BOUNDARY }];
+}

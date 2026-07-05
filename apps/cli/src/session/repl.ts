@@ -1,6 +1,7 @@
 import {
   SessionStore,
   buildSessionSeed,
+  framePriorContext,
   buildStatusLineModel,
   buildTurnSummary,
   type TurnSummary,
@@ -1467,28 +1468,32 @@ export async function runInteractiveSession(
         deps.ui.write();
         try {
           if (asGoal) {
-            await executeGoalLoop(deps, runtime, text, seed, ctrl.signal);
+            // Iterate-until-done, folded into the unified build entry (Phase 2).
+            await dispatchBuild(deps, runtime, text, ctrl.signal, seed, () => ctrl.abort(), 'goal');
           } else if (asResearch) {
             // F7: the native multi-agent research pipeline (search → fetch →
-            // verify → cited synthesis).
+            // verify → cited synthesis). Research is CHAT-class (external info as the
+            // deliverable), so it stays outside dispatchBuild.
             await runResearchFlow(deps, text, {});
           } else if (asExplore) {
-            // AO5 best-of-N via NL: N candidate approaches in parallel → judge → apply winner.
-            const g = loadGatewayContext(runtime.repoRoot);
-            await runExploreFlow(
+            // AO5 best-of-N via NL, folded into the unified build entry (Phase 2).
+            await dispatchBuild(
               deps,
-              runtime.repoRoot,
+              runtime,
               text,
-              { gateway: g.gateway, providerName: g.providerName, config: runtime.config },
-              { signal: ctrl.signal },
+              ctrl.signal,
+              seed,
+              () => ctrl.abort(),
+              'explore',
             );
           } else if (asSwarm || planActs) {
             // AO2/AO3d-2 — an ACCEPTED build (swarm-intent accepted, or a plan the
             // posture runs) is AUTO-ORCHESTRATED: decompose → DERIVE the shape
             // (≥2 independent workstreams → an auto-sized parallel swarm, else one
             // focused run). The user already decided at the posture gate — no
-            // further prompts; the planner and parallelizer are fused.
-            await dispatchAutoBuild(deps, runtime, text, ctrl.signal, seed, () => ctrl.abort());
+            // further prompts; the planner and parallelizer are fused. (Phase 2:
+            // routed through the unified `dispatchBuild`.)
+            await dispatchBuild(deps, runtime, text, ctrl.signal, seed, () => ctrl.abort(), 'auto');
           } else if (intent === 'orchestration') {
             // AO6 Pillar 5 — NL control of an EXISTING orchestration (any language):
             // view the chronogram, or pause/resume it. No command needed; the
@@ -1568,22 +1573,19 @@ export async function runInteractiveSession(
             // The meta-orchestrator: interpret the goal, auto-author the capability
             // plan, and drive it autonomously (M8). The proactive route for big work —
             // only when the posture grants it (full autonomy); otherwise it asks below.
-            await runMissionTurn(text, {
+            // (Phase 2: routed through the unified `dispatchBuild`.)
+            await dispatchBuild(
               deps,
-              repoRoot: runtime.repoRoot,
-              config: runtime.config,
-              autonomyLevel: runtime.autonomyLevel,
-              approvals: runtime.approvals,
-              signal: ctrl.signal,
-              // ESC in any step's live view cancels the whole mission (the editor is
-              // suspended while a step's Ink view owns stdin, so route ESC here).
-              onEscape: () => ctrl.abort(),
-              // Typing-during-execution: type while the mission runs (RUN-FIX-16).
-              ...(runtime.onInterrupt !== undefined ? { onInterrupt: runtime.onInterrupt } : {}),
-            });
+              runtime,
+              text,
+              ctrl.signal,
+              seed,
+              () => ctrl.abort(),
+              'mission',
+            );
           } else if (intent === 'plan' || intent === 'mission') {
-            // Plan, posture ASK → the deliberate plan → approve → execute gate.
-            await dispatchPlan(deps, runtime, text, ctrl.signal, seed);
+            // Plan/mission, posture ASK → the deliberate plan → approve → execute gate.
+            await dispatchBuild(deps, runtime, text, ctrl.signal, seed, () => ctrl.abort(), 'gate');
           } else if (intent === 'edit' && decision.confidence !== 'low') {
             // RUN-FIX-10 — even ONE small direct code change runs the GATED workflow
             // engine (complexity-sized, typically fast-fix), so an m-shell edit gets
@@ -1605,7 +1607,15 @@ export async function runInteractiveSession(
             // lower autonomy (or a single-workstream task) it stays the sequential gated build,
             // with no new prompts.
             if (posture('swarm') !== 'ask') {
-              await dispatchAutoBuild(deps, runtime, text, ctrl.signal, seed, () => ctrl.abort());
+              await dispatchBuild(
+                deps,
+                runtime,
+                text,
+                ctrl.signal,
+                seed,
+                () => ctrl.abort(),
+                'auto',
+              );
             } else {
               await runConversationalBuild(deps, runtime, text, ctrl.signal, () => ctrl.abort());
             }
@@ -2268,7 +2278,12 @@ async function runCompaction(
 function sessionSeed(runtime: SessionRuntime): ChatMessage[] {
   try {
     const turns = runtime.store.readTranscript(runtime.session.id);
-    return buildSessionSeed(turns, runtime.store.latestCompaction(runtime.session.id));
+    const seed = buildSessionSeed(turns, runtime.store.latestCompaction(runtime.session.id));
+    // CONTAMINATION FIX: mark the prior conversation as FINISHED background so the model acts
+    // ONLY on the user's next message. Without this, an accumulated/resumed session let a PAST
+    // imperative request ("add retro subpages") bleed into an unrelated current one ("show me the
+    // web") and the agent re-executed already-done work. Continuity kept; re-execution removed.
+    return framePriorContext(seed);
   } catch {
     return []; // context memory is best-effort — never block a turn
   }
@@ -2970,6 +2985,64 @@ async function dispatchAutoBuild(
   // build — the `edit` intent and this sequential auto-build alike — and is no
   // longer gated on a configured test command (that gate is why review never ran
   // on a repo without tests). The old surface-only block here was removed.
+}
+
+/**
+ * Unified BUILD entry (intent-simplification Phase 2 — docs/strategy/intent-simplification.md).
+ * Every "create/change code" turn routes through here and the SHAPE is auto-selected — it is
+ * never a user-facing path:
+ *  - `mission` → the multi-phase capability DAG (understand → plan → build → verify → ship);
+ *  - `gate`    → the deliberate plan → approve → execute flow (when the posture asked);
+ *  - `auto`    → decompose, then a single focused run OR a parallel swarm (chosen by the
+ *                decomposition's own shape).
+ *  - `goal`    → iterate-until-done (keep working until an evaluator passes);
+ *  - `explore` → best-of-N (try several approaches in parallel, apply the winner).
+ * edit/plan/swarm/mission/goal/explore stop being distinct ROUTES: a misclassification among
+ * them now resolves to the SAME correct machinery, so the classifier's fine call can no longer
+ * misroute a build (the "mission vs plan" footgun). Background (fire-and-forget) and schedule
+ * (recurrence) are build-class too but keep their own lifecycles outside this entry.
+ */
+async function dispatchBuild(
+  deps: CliDeps,
+  runtime: SessionRuntime,
+  text: string,
+  signal: AbortSignal,
+  seed: ChatMessage[],
+  onAbort: () => void,
+  kind: 'auto' | 'mission' | 'gate' | 'goal' | 'explore',
+): Promise<void> {
+  if (kind === 'goal') {
+    // Iterate-until-done: keep working until an evaluator says the objective passes.
+    await executeGoalLoop(deps, runtime, text, seed, signal);
+  } else if (kind === 'explore') {
+    // Best-of-N: try several candidate approaches in parallel and apply the winner.
+    const g = loadGatewayContext(runtime.repoRoot);
+    await runExploreFlow(
+      deps,
+      runtime.repoRoot,
+      text,
+      { gateway: g.gateway, providerName: g.providerName, config: runtime.config },
+      { signal },
+    );
+  } else if (kind === 'gate') {
+    await dispatchPlan(deps, runtime, text, signal, seed);
+  } else if (kind === 'mission') {
+    await runMissionTurn(text, {
+      deps,
+      repoRoot: runtime.repoRoot,
+      config: runtime.config,
+      autonomyLevel: runtime.autonomyLevel,
+      approvals: runtime.approvals,
+      signal,
+      // ESC in any step's live view cancels the whole mission (the editor is suspended
+      // while a step's Ink view owns stdin, so route ESC here).
+      onEscape: onAbort,
+      // Typing-during-execution: type while the mission runs (RUN-FIX-16).
+      ...(runtime.onInterrupt !== undefined ? { onInterrupt: runtime.onInterrupt } : {}),
+    });
+  } else {
+    await dispatchAutoBuild(deps, runtime, text, signal, seed, onAbort);
+  }
 }
 
 /**
