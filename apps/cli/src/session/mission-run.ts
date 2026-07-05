@@ -16,8 +16,14 @@ import {
   type MissionState,
   type OrchestrationPlan,
   type PlanStep,
+  type StepResult,
 } from '@excalibur/core';
-import { generateId, type AutonomyLevel, type ExcaliburConfig } from '@excalibur/shared';
+import {
+  createEvent,
+  generateId,
+  type AutonomyLevel,
+  type ExcaliburConfig,
+} from '@excalibur/shared';
 import {
   detectColorTier,
   detectThemeSync,
@@ -29,6 +35,8 @@ import type { CliDeps } from '../deps';
 import { loadGatewayContext, requireConfiguredModel } from '../lib/context';
 import { runExploreFlow } from '../lib/explore';
 import { captureRestorePoint, printRecoveryHint, warnDirtyTree } from '../lib/run-safety';
+import { mountConversationalRail, type ConversationalRail } from '../lib/run-pipeline';
+import { showResult } from '../lib/show-result';
 import { runSwarmFlow } from '../lib/swarm';
 import { computeScope } from '../lib/scope';
 import { shipChange } from '../lib/ship-pr';
@@ -247,9 +255,32 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
     deps.ui.write(pc.dim(plan.rationale));
   }
 
-  // 2) The capability executor — each step is a REAL agentic turn, rendered with
-  // the mission plan ribbon pinned above its rail (M8 #43).
+  // 2) The capability executor. The WHOLE mission renders into ONE persistent rail
+  // (RUN-FIX-23): the input box stays put and there is constant motion across every step,
+  // instead of each step mounting + tearing down its own rail (which duplicated the ribbon in
+  // scrollback, flickered, and made the input box vanish between steps). The rail is closed
+  // ONLY around steps that mount their OWN Ink view (the swarm's Lanes / best-of-N) — two Ink
+  // live regions can't share the screen — then reopened for the next step.
   const isTty = deps.ui.isOutputTty();
+  const mountMissionRail = (): Promise<ConversationalRail | null> =>
+    mountConversationalRail(deps, {
+      currentWork: mission.goal,
+      autonomyLevel: opts.autonomyLevel,
+      onAbort: () => opts.onEscape?.(),
+      ...(opts.onInterrupt !== undefined ? { onInterrupt: opts.onInterrupt } : {}),
+    });
+  let rail: ConversationalRail | null = isTty ? await mountMissionRail() : null;
+  /** Keep the persistent rail OPEN (agentic/deterministic steps) or CLOSED (steps that mount
+   * their own Ink view). Idempotent. */
+  const ensureRail = async (wantOpen: boolean): Promise<void> => {
+    if (wantOpen && rail === null && isTty) {
+      rail = await mountMissionRail();
+    } else if (!wantOpen && rail !== null) {
+      await rail.close();
+      rail = null;
+    }
+  };
+
   const baseTurn = (level: AutonomyLevel, ribbonModel: MissionRibbonModel): AgentTurnDeps => ({
     deps,
     repoRoot,
@@ -261,8 +292,11 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
     signal,
     // ESC in any step's live view cancels the WHOLE mission, not just that step.
     ...(opts.onEscape !== undefined ? { onEscape: opts.onEscape } : {}),
-    // Typing-during-execution: each step's rail arms the interrupt channel (RUN-FIX-16).
+    // Typing-during-execution: the persistent rail arms the interrupt channel (RUN-FIX-16).
     ...(opts.onInterrupt !== undefined ? { onInterrupt: opts.onInterrupt } : {}),
+    // Render into the ONE persistent mission rail instead of a per-step rail; undefined off a
+    // TTY (or during a swarm step, when runAgentTurn mounts its own for a fall-through).
+    ...(rail !== null ? { view: rail.view } : {}),
     adapter,
     ribbon: ribbonModel,
   });
@@ -273,47 +307,111 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
   /** The step prompt, grounded in the accumulated understanding. */
   const taskFor = (step: PlanStep): string => capabilityTask(step, mission, { understanding });
 
+  /** Render a DETERMINISTIC engine step (understand/verify — no agentic loop) as a LIVE phase
+   * in the persistent rail: a pulsing header while the engine runs, then its result committed
+   * as a narration line. Motion + input box preserved, and NO raw stdout write to corrupt the
+   * Ink frame. Off a TTY (rail === null) it degrades to the old plain header + dim lines. `run`
+   * returns null to DECLINE (the caller falls through to a generic agentic turn). */
+  const runInRailPhase = async (
+    capability: string,
+    objective: string,
+    run: () => Promise<{ lines: string[]; result: StepResult } | null>,
+  ): Promise<StepResult | null> => {
+    if (rail === null) {
+      deps.ui.write();
+      deps.ui.write(pc.cyan(`▶ ${capability}: ${objective}`));
+      const out = await run();
+      if (out === null) return null;
+      for (const line of out.lines) deps.ui.write(pc.dim(`  ${line}`));
+      return out.result;
+    }
+    const phaseId = `mission-${capability}`;
+    const title = capability.charAt(0).toUpperCase() + capability.slice(1);
+    const view = rail.view;
+    view.push(
+      createEvent({
+        runId: null,
+        type: 'phase_started',
+        payload: { name: title, detail: objective },
+        phaseId,
+      }),
+    );
+    let out: { lines: string[]; result: StepResult } | null = null;
+    try {
+      out = await run();
+    } finally {
+      if (out !== null && out.lines.length > 0) {
+        view.push(
+          createEvent({
+            runId: null,
+            type: 'model_call',
+            payload: { content: out.lines.join('\n') },
+            phaseId,
+          }),
+        );
+      }
+      // Always close the synthetic node so it never spins forever.
+      view.push(createEvent({ runId: null, type: 'phase_completed', payload: {}, phaseId }));
+    }
+    return out?.result ?? null;
+  };
+
   const executor: CapabilityExecutor = async (step, state) => {
     const level = capabilityLevel(step.capability, opts.autonomyLevel);
-    const turn = baseTurn(level, toRibbon(state));
-    // A blank line before each step's header so the steps breathe apart instead of
-    // stacking line-on-line (RUN-FIX-14).
-    deps.ui.write();
-    deps.ui.write(pc.cyan(`▶ ${step.capability}: ${step.objective}`));
+    const ribbonModel = toRibbon(state);
+    // Steps that mount their OWN Ink view (swarm Lanes / best-of-N) need the mission rail
+    // CLOSED; every other step keeps it OPEN (persistent input box + motion). Then start a
+    // fresh live section for this step (the committed scrollback GROWS — RunView accumulator)
+    // and pin the updated ribbon.
+    const ownsView = step.capability === 'parallelize' || step.capability === 'explore';
+    await ensureRail(!ownsView);
+    if (rail !== null) {
+      rail.view.resetEvents();
+      rail.view.setRibbon(ribbonModel);
+    } else if (!ownsView) {
+      // Non-TTY fallback header for an agentic step (the rail-phase helper prints its own).
+      deps.ui.write();
+      deps.ui.write(pc.cyan(`▶ ${step.capability}: ${step.objective}`));
+    }
+    const turn = baseTurn(level, ribbonModel);
 
     // `understand` uses the REAL AO9 scope engine: decompose the objective, fan
     // out parallel READ-ONLY explorers, and synthesize a ScopeMap (subsystems ·
     // built-vs-missing · risks) — the proactive "understand-first" map that then
     // grounds every later step. Degrades to a generic read-only turn on failure.
     if (step.capability === 'understand') {
-      try {
-        const map = await computeScope(repoRoot, taskFor(step), gateway, { signal });
-        if (map !== null) {
+      const outcome = await runInRailPhase('understand', step.objective, async () => {
+        try {
+          const map = await computeScope(repoRoot, taskFor(step), gateway, { signal });
+          if (map === null) return null;
           understanding = scopeMapToMarkdown(map);
-          deps.ui.write(pc.dim(`  ${map.summary}`));
+          const lines = [map.summary];
           for (const s of map.subsystems.slice(0, 8)) {
             const gap = s.whatsMissing.trim().length > 0 ? ` — ${s.whatsMissing}` : '';
-            deps.ui.write(pc.dim(`  • ${s.subsystem}${gap}`));
+            lines.push(`• ${s.subsystem}${gap}`);
           }
           return {
-            ok: true,
-            summary: map.summary.slice(0, 600),
-            signals: {
-              engine: 'scope',
-              subsystems: map.subsystems.length,
-              risks: map.risks.length,
-              openQuestions: map.openQuestions.length,
+            lines,
+            result: {
+              ok: true,
+              summary: map.summary.slice(0, 600),
+              signals: {
+                engine: 'scope',
+                subsystems: map.subsystems.length,
+                risks: map.risks.length,
+                openQuestions: map.openQuestions.length,
+              },
             },
           };
+        } catch {
+          return null; // fall through to a generic read-only understand turn
         }
-      } catch {
-        /* fall through to a generic read-only understand turn */
-      }
+      });
+      if (outcome !== null) return outcome;
     } else if (step.capability === 'parallelize') {
       // `parallelize` and `explore` use their REAL dedicated engines (the swarm /
-      // best-of-N) when the step calls for them; on a setup failure (e.g. not a git
-      // repo) they degrade to a single agentic run. The subsequent test/verify gates
-      // ground overall correctness via runVerdict.
+      // best-of-N). The mission rail is already CLOSED (ensureRail above) so their own
+      // Ink view owns the screen. On a setup failure they degrade to a single agentic run.
       try {
         await runSwarmFlow(
           deps,
@@ -328,7 +426,7 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
           signals: { engine: 'swarm' },
         };
       } catch {
-        /* fall through to a single agentic run */
+        /* fall through to a single agentic run (runAgentTurn mounts its own rail) */
       }
     } else if (step.capability === 'explore') {
       try {
@@ -352,25 +450,28 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
       // lenses. A surviving HIGH issue BLOCKS → ok=false (the supervisor reassesses).
       const diff = getLocalDiff(repoRoot);
       if (diff.trim().length > 0) {
-        try {
-          const result = await runVerificationMesh({
-            diff,
-            lenses: Object.keys(MESH_LENSES) as (keyof typeof MESH_LENSES)[],
-            gateway: gateway.gateway,
-            ...(planProvider !== null ? { provider: planProvider } : {}),
-            signal,
-          });
-          deps.ui.write(
-            result.blocked ? pc.red(`  ⚖ ${result.summary}`) : pc.green(`  ⚖ ${result.summary}`),
-          );
-          return {
-            ok: !result.blocked,
-            summary: result.summary,
-            signals: { engine: 'mesh', blocked: result.blocked, issues: result.issues.length },
-          };
-        } catch {
-          /* fall through to a single agentic verify run */
-        }
+        const outcome = await runInRailPhase('verify', step.objective, async () => {
+          try {
+            const result = await runVerificationMesh({
+              diff,
+              lenses: Object.keys(MESH_LENSES) as (keyof typeof MESH_LENSES)[],
+              gateway: gateway.gateway,
+              ...(planProvider !== null ? { provider: planProvider } : {}),
+              signal,
+            });
+            return {
+              lines: [`⚖ ${result.summary}`],
+              result: {
+                ok: !result.blocked,
+                summary: result.summary,
+                signals: { engine: 'mesh', blocked: result.blocked, issues: result.issues.length },
+              },
+            };
+          } catch {
+            return null; // fall through to a single agentic verify run
+          }
+        });
+        if (outcome !== null) return outcome;
       }
     } else if (step.capability === 'ship') {
       // A real "ship": let the agentic turn WRITE the PR summary (read-only), then
@@ -396,9 +497,13 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
         openPr: opts.openPr === true,
         gitInfo: getGitInfo(repoRoot),
       });
-      deps.ui.write(
-        result.prUrl !== undefined ? pc.green(`  ⇪ ${result.note}`) : pc.dim(`  ⇪ ${result.note}`),
-      );
+      // Route the ship note through the rail (a raw stdout write corrupts the live frame).
+      const shipNote = `⇪ ${result.note}`;
+      if (rail !== null) rail.notice(shipNote);
+      else
+        deps.ui.write(
+          result.prUrl !== undefined ? pc.green(`  ${shipNote}`) : pc.dim(`  ${shipNote}`),
+        );
       return {
         ok: true,
         summary: result.note,
@@ -436,33 +541,57 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
   // On resume, keep the SAME id so checkpoints continue in the same dir and
   // runMission bootstraps from the saved state (skips the fresh init).
   const missionId = opts.resume?.id ?? generateId('mission');
-  const state = await runMission(mission, plan, {
-    ...(opts.resume !== undefined ? { resumeFrom: opts.resume } : {}),
-    id: missionId,
-    executor,
-    reassess: createReassessor({
-      gateway: gateway.gateway,
-      ...(planProvider !== null ? { provider: planProvider } : {}),
-    }),
-    onEvent: (event, s) => {
-      saveMission(repoRoot, s);
-      // On a TTY the ribbon is pinned above each capability's rail (via the turn's
-      // `ribbon`); on a pipe/CI, print it as a text header before each step.
-      if (event.kind === 'step_started' && !isTty) ribbon(s);
-      if (
-        event.kind === 'replan' ||
-        event.kind === 'step_escalated' ||
-        event.kind === 'step_retry'
-      ) {
-        deps.ui.write(pc.yellow(`  ↻ ${event.message}`));
+  let state: MissionState;
+  try {
+    state = await runMission(mission, plan, {
+      ...(opts.resume !== undefined ? { resumeFrom: opts.resume } : {}),
+      id: missionId,
+      executor,
+      reassess: createReassessor({
+        gateway: gateway.gateway,
+        ...(planProvider !== null ? { provider: planProvider } : {}),
+      }),
+      onEvent: (event, s) => {
+        saveMission(repoRoot, s);
+        // On a TTY the ribbon is pinned above the persistent rail (setRibbon per step); on a
+        // pipe/CI, print it as a text header before each step.
+        if (event.kind === 'step_started' && !isTty) ribbon(s);
+        if (
+          event.kind === 'replan' ||
+          event.kind === 'step_escalated' ||
+          event.kind === 'step_retry'
+        ) {
+          // Route through the rail — a raw stdout write while Ink owns the screen corrupts it.
+          if (rail !== null) rail.notice(`↻ ${event.message}`);
+          else deps.ui.write(pc.yellow(`  ↻ ${event.message}`));
+        }
+      },
+      signal,
+      ...(opts.budgetCents !== undefined ? { budgetCents: opts.budgetCents } : {}),
+    });
+  } catch (err) {
+    // Never leak the rail (and stdin) if the drive throws unexpectedly.
+    if (rail !== null) {
+      try {
+        await rail.close();
+      } catch {
+        /* best-effort */
       }
-    },
-    signal,
-    ...(opts.budgetCents !== undefined ? { budgetCents: opts.budgetCents } : {}),
-  });
+      rail = null;
+    }
+    throw err;
+  }
 
-  // 4) Final ribbon + outcome.
-  ribbon(state);
+  // 4) Close the persistent rail, then the final outcome. On a TTY the rail's pinned ribbon
+  // (set to the FINAL state here) commits to scrollback on close — so we do NOT also print the
+  // static ribbon (that was the duplication). Off a TTY, print it as text.
+  if (rail !== null) {
+    rail.view.setRibbon(toRibbon(state));
+    await rail.close();
+    rail = null;
+  } else {
+    ribbon(state);
+  }
   const label =
     state.outcome === 'completed'
       ? pc.green('✓ Mission complete.')
@@ -473,6 +602,12 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
   // On anything but a clean completion, show how to roll the mutations back.
   if (state.outcome !== 'completed') {
     printRecoveryHint(deps, restorePoint);
+  }
+  // SHOW THE RESULT (FIRM): a mission that finished cleanly ends by SERVING what it built and
+  // opening it for the user — never leaving them to discover how to run it. No-op when the
+  // project has nothing runnable to serve. Best-effort; a preview fault never fails the mission.
+  if (state.outcome === 'completed') {
+    await showResult(deps, repoRoot);
   }
   return state;
 }

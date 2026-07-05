@@ -1645,6 +1645,12 @@ async function execManagement(
  * nothing is orphaned after the m-shell closes.
  */
 const previewServers = new Set<ChildProcess>();
+/**
+ * Live preview servers keyed by project directory, so a SECOND preview of the same project
+ * reuses the running server instead of spawning another that fights it for the port (the
+ * "un par de puertos ocupados" failure when a build ends by showing the result every time).
+ */
+const previewByDir = new Map<string, { child: ChildProcess; url: string }>();
 let previewCleanupInstalled = false;
 function trackPreview(child: ChildProcess): void {
   previewServers.add(child);
@@ -1681,6 +1687,7 @@ export function stopAllPreviews(): void {
     }
   }
   previewServers.clear();
+  previewByDir.clear();
 }
 
 /** A tiny zero-dependency static file server (for a no-build site: an index.html). */
@@ -1695,17 +1702,47 @@ const STATIC_SERVER_SRC =
   "s.listen(port,()=>console.log('Local:   http://localhost:'+s.address().port+'/'));";
 
 /**
- * `preview` — start a LOCAL dev/preview server for the project and return its URL so
- * the user can open the web in a browser (RUN-FIX-21). Detects a package.json
- * dev/start/serve/preview script; falls back to a built-in static server for a bare
- * `index.html`. The server is detached and KEPT RUNNING for the session (not reaped
- * like a run_command), and its URL is parsed from the server's own output.
+ * The outcome of starting a project preview server: whether the project was
+ * previewable at all, the detected localhost URL (or null if none surfaced in
+ * time), how it was launched, a human sentence, and the recent server output.
  */
-async function execPreview(
-  _args: Record<string, unknown>,
-  ctx: ToolExecutionContext,
-): Promise<ToolResult> {
-  const dir = ctx.workdir;
+export interface PreviewOutcome {
+  /** The project had something runnable (a dev/start/serve/preview script or index.html). */
+  previewable: boolean;
+  /** The localhost URL the server printed, or null (not previewable / not detected in time). */
+  url: string | null;
+  /** How it was started: "npm run dev", "static server", or "" when not previewable. */
+  label: string;
+  /** A human sentence describing the outcome (surfaced to the agent / logs). */
+  note: string;
+  /** Recent (secret-redacted) server output — for diagnosis when no URL surfaced. */
+  output: string;
+}
+
+/**
+ * Start a LOCAL dev/preview server for the project at `dir` and resolve its URL —
+ * the SHARED engine behind both the agent-callable `preview` tool and the
+ * deterministic "show the result" finish step (so a build/mission always ends by
+ * serving what it made). Detects a package.json dev/start/serve/preview script;
+ * falls back to a built-in static server for a bare `index.html`. The server is
+ * detached and KEPT RUNNING for the session (tracked, not reaped like a
+ * run_command); its URL is parsed from the server's own output. Never throws.
+ */
+export async function previewProject(
+  dir: string,
+  opts: { timeoutMs?: number } = {},
+): Promise<PreviewOutcome> {
+  // Reuse a server already serving THIS project (don't spawn a second that fights for the port).
+  const live = previewByDir.get(dir);
+  if (live !== undefined && live.child.exitCode === null && !live.child.killed) {
+    return {
+      previewable: true,
+      url: live.url,
+      label: 'already running',
+      note: `The web app is already live at ${live.url} and stays up for this session. Tell the user to open ${live.url}.`,
+      output: '',
+    };
+  }
   let label: string;
   let cmd: string;
   let cmdArgs: string[];
@@ -1732,9 +1769,13 @@ async function execPreview(
     cmdArgs = ['-e', STATIC_SERVER_SRC];
     env.PORT = process.env.PORT ?? '0';
   } else {
-    return fail(
-      'no web app to preview — no package.json dev/start/serve/preview script and no index.html. Build the web first, then call preview.',
-    );
+    return {
+      previewable: false,
+      url: null,
+      label: '',
+      note: 'no web app to preview — no package.json dev/start/serve/preview script and no index.html. Build the web first, then call preview.',
+      output: '',
+    };
   }
 
   let child: ChildProcess;
@@ -1746,7 +1787,13 @@ async function execPreview(
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (error) {
-    return fail(`could not start the preview (${label}): ${(error as Error).message}`);
+    return {
+      previewable: true,
+      url: null,
+      label,
+      note: `could not start the preview (${label}): ${(error as Error).message}`,
+      output: '',
+    };
   }
   // P0-3 (solidity) — a detached preview server outlives the URL-detection promise
   // (finish() below removes only the 'data' listeners). When it is later killed
@@ -1759,6 +1806,7 @@ async function execPreview(
 
   // Parse the URL the server prints (Vite "Local:", Next "started server on", a bare
   // "http://localhost:PORT", etc.). Give it up to 25s — a first `dev` run can compile.
+  const timeoutMs = opts.timeoutMs ?? 25_000;
   let out = '';
   const url = await new Promise<string | null>((resolve) => {
     const onData = (chunk: Buffer): void => {
@@ -1768,7 +1816,7 @@ async function execPreview(
         finish(match[0].replace('0.0.0.0', 'localhost'));
       }
     };
-    const timer = setTimeout(() => finish(null), 25_000);
+    const timer = setTimeout(() => finish(null), timeoutMs);
     const finish = (value: string | null): void => {
       clearTimeout(timer);
       child.stdout?.off('data', onData);
@@ -1781,14 +1829,42 @@ async function execPreview(
     child.once('exit', () => finish(null));
   });
 
+  const output = redactSecrets(out.slice(-800));
   if (url === null) {
-    return ok(
-      `Started the preview (${label}) but could not detect its URL within 25s. It may still be compiling. Recent output:\n${redactSecrets(out.slice(-800))}`,
-    );
+    return {
+      previewable: true,
+      url: null,
+      label,
+      note: `Started the preview (${label}) but could not detect its URL within ${Math.round(
+        timeoutMs / 1000,
+      )}s. It may still be compiling. Recent output:\n${output}`,
+      output,
+    };
   }
-  return ok(
-    `The web app is live at ${url} (via ${label}) and stays up for this session. Tell the user to open ${url} in their browser.`,
-  );
+  // Register the running server for this project so a later "show the result" reuses it.
+  previewByDir.set(dir, { child, url });
+  child.once('exit', () => {
+    if (previewByDir.get(dir)?.child === child) previewByDir.delete(dir);
+  });
+  return {
+    previewable: true,
+    url,
+    label,
+    note: `The web app is live at ${url} (via ${label}) and stays up for this session. Tell the user to open ${url} in their browser.`,
+    output,
+  };
+}
+
+/**
+ * `preview` — the agent-callable tool wrapper around {@link previewProject}: serve
+ * the user's project on localhost and hand back its URL (RUN-FIX-21).
+ */
+async function execPreview(
+  _args: Record<string, unknown>,
+  ctx: ToolExecutionContext,
+): Promise<ToolResult> {
+  const outcome = await previewProject(ctx.workdir);
+  return outcome.previewable ? ok(outcome.note) : fail(outcome.note);
 }
 
 export async function executeNativeTool(

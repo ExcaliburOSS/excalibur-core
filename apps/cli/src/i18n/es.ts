@@ -948,6 +948,10 @@ export const ES: Catalog = {
     '◆ Lo intenté {max} veces pero no logré dejar todo en verde — aquí está cómo ha quedado; dime cómo quieres seguir.',
   'mission.interpreting': 'Interpretando tu objetivo y trazando la estrategia…',
   'mission.resuming': 'Retomo tu misión — «{goal}» — donde se quedó…',
+  // El paso final determinista de «enseñar el resultado» — cada build/misión termina
+  // sirviendo lo que ha construido y llevando al usuario hasta ello.
+  'show-result.live': '◆ Tu app está en marcha en {url} — te la abro en el navegador.',
+  'show-result.no-url': '◆ Tu app está arrancando ({label}) — estará en localhost en un momento.',
   'repl.ctrl-c-again': 'Pulsa Ctrl-C de nuevo para salir.',
   'repl.goal-offer':
     'Esto parece un objetivo a completar. ¿Perseguirlo a lo largo de varios turnos hasta que un evaluador diga que está hecho (máx. {max})?',

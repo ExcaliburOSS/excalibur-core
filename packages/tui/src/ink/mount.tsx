@@ -135,6 +135,7 @@ function RunViewApp({
       <RunView
         model={model}
         spinnerFrame={snapshot.frame}
+        generation={snapshot.railGeneration}
         approval={snapshot.approval}
         diffsExpanded={snapshot.diffsExpanded}
         streamingNarration={snapshot.streamingNarration}

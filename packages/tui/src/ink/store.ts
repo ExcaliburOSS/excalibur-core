@@ -22,6 +22,18 @@ export interface RunViewSnapshot {
   eventsRev: number;
   /** Spinner/clock tick — bumped to re-render the breathing indicator + elapsed. */
   frame: number;
+  /**
+   * The rail "generation" — bumped on every {@link resetEvents} (i.e. each sub-run of a
+   * multi-run turn: build → self-heal → review, or each mission step). The live event log is
+   * cleared per generation, but the COMMITTED (completed) phases are accumulated across
+   * generations by the view keyed on `${generation}:${phaseId}` — so Ink's append-only
+   * `<Static>` only ever GROWS. Resetting the completed set to empty between runs (the old
+   * behaviour) made `<Static items>`' length oscillate, which duplicated scrollback, lost
+   * history, and drove Ink's `setIndex(items.length)` effect into "Maximum update depth
+   * exceeded". The generation namespace makes the accumulator collision-proof even when two
+   * runs reuse the same phaseId (e.g. the synthetic `turn` node).
+   */
+  railGeneration: number;
   diffsExpanded: boolean;
   /** The pending interactive approval, or null. */
   approval: ApprovalPrompt | null;
@@ -200,6 +212,7 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
     events,
     eventsRev: 0,
     frame: 0,
+    railGeneration: 0,
     diffsExpanded: false,
     approval: null,
     streamingNarration: '',
@@ -257,9 +270,13 @@ export function createRunViewStore(initialEvents: ExcaliburEvent[] = []): RunVie
     },
     resetEvents() {
       events.length = 0; // a new capability starts its rail fresh below the ribbon
-      // A new run section starts live again, so clear the finished flag too.
+      // A new run section starts live again, so clear the finished flag too. Bump the
+      // generation so the view's committed-phase accumulator namespaces this run's phases
+      // apart from the previous run's — the completed scrollback GROWS across runs instead of
+      // being reset to empty (which duplicated history + looped Ink's <Static>).
       set({
         eventsRev: snapshot.eventsRev + 1,
+        railGeneration: snapshot.railGeneration + 1,
         streamingNarration: '',
         interruptNotice: '',
         finished: false,

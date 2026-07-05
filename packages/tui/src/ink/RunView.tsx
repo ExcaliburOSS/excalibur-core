@@ -1,5 +1,5 @@
 import { Box, Static, Text } from 'ink';
-import type { ReactElement } from 'react';
+import { useMemo, useRef, type ReactElement } from 'react';
 import type { ColorTier } from '../color.js';
 import {
   eventGlyph,
@@ -87,6 +87,14 @@ export interface RunViewLabels {
 export interface RunViewProps {
   model: RailModel;
   spinnerFrame: number;
+  /**
+   * The rail generation (store `railGeneration`), bumped on each `resetEvents` — i.e. every
+   * sub-run of a multi-run turn. The committed-phase accumulator namespaces completed phases
+   * by `${generation}:${phaseId}` so `<Static>` grows monotonically across sub-runs instead
+   * of being reset to empty (which duplicated scrollback + drove Ink's `<Static>` into
+   * "Maximum update depth exceeded"). Absent (0) → a single-run rail: identical to before.
+   */
+  generation?: number;
   /** The interactive approval to show (store-driven), else the model's own. */
   approval?: ApprovalPrompt | null;
   diffsExpanded?: boolean;
@@ -557,7 +565,11 @@ function InterruptBox({
   // shown, so it never looks a different blue from the two rules bracketing it — an on/off
   // blink is a different thing from the old colour-PULSE that RUN-FIX-22 removed.
   const caretOn = spinnerFrame === undefined || Math.floor(spinnerFrame / 4) % 2 === 0;
-  const cursor = <Text color={colors.accent}>{caretOn ? '▌' : ' '}</Text>;
+  // A FULL block (█) — the idle prompt's native (OSC-12) terminal cursor is a full-width
+  // block, so the mid-run caret must be the same WIDTH to be identical (the user's "el cursor
+  // es menos ancho" regression: the old ▌ half-block was visibly narrower). Same accent colour,
+  // blinks on/off on the calm ½s cadence.
+  const cursor = <Text color={colors.accent}>{caretOn ? '█' : ' '}</Text>;
   // The indicator row under the box: ◆ autonomy · permissions (mirrors buildInputFooter).
   const left =
     autonomyLabel.length > 0 && safety.length > 0
@@ -820,9 +832,36 @@ export function RunView(props: RunViewProps): ReactElement {
   const finished = props.finished ?? false;
 
   const done = (phase: Phase): boolean => phase.state === 'completed' || phase.state === 'failed';
-  const completed = model.phases.filter(done);
+  const generation = props.generation ?? 0;
   const liveTail = model.phases.filter((phase) => !done(phase));
   const active = activeId(model.phases);
+
+  // The APPEND-ONLY committed-phase accumulator (fixes duplication + history-loss + the
+  // "Maximum update depth exceeded" crash). Ink's `<Static>` renders `items.slice(index)`
+  // and runs `setIndex(items.length)` in a layout effect — so its `items` MUST only ever
+  // grow. Deriving it straight from `model.phases.filter(done)` violated that: every
+  // `resetEvents` (each self-heal / review / mission step) reset the completed set to empty,
+  // so the length oscillated → Ink re-committed old phases (duplicate scrollback) or looped
+  // the effect. Here we accumulate each completed phase ONCE, keyed by `${generation}:${id}`
+  // (generation-namespaced so two runs reusing the same phaseId never collide), in a ref that
+  // survives resets. The list only ever appends, so `<Static>` stays monotonic and correct.
+  // For a single-run rail (generation constant, no reset) this equals the old `completed`
+  // exactly — byte-identical to before, so the common path is untouched.
+  const committedRef = useRef<{ order: string[]; byKey: Map<string, Phase> }>({
+    order: [],
+    byKey: new Map(),
+  });
+  const completed = useMemo(() => {
+    const acc = committedRef.current;
+    for (const phase of model.phases) {
+      if (!done(phase)) continue;
+      const key = `${generation}:${phase.id}`;
+      if (!acc.byKey.has(key)) acc.order.push(key);
+      acc.byKey.set(key, phase); // keep the latest snapshot of this completed phase
+    }
+    return acc.order.map((key) => acc.byKey.get(key)!);
+    // Recompute whenever the fold or the generation changes; the append is idempotent.
+  }, [model, generation]);
 
   // Row count the live checklist band claims — header + windowed items (+ up to two
   // "⋯ N done"/"⋯ N more" collapse lines). WINDOWED (RUN-FIX-20) so a long todo list
@@ -841,14 +880,19 @@ export function RunView(props: RunViewProps): ReactElement {
   // "earlier" line, the status block, and any approval/interrupt rows — not a
   // constant, plus a small margin for an above-rail ribbon. Below a useful floor
   // the diff drops to its one-line stub rather than overflow.
-  // Streaming narration wraps + floats on a marginTop blank line. Clamp it to a TAIL
-  // of MAX_NARRATION_ROWS so a long streamed paragraph can't grow the live region
-  // unbounded and erase scrollback (RUN-FIX-20); the user always sees the latest prose.
+  // Streaming narration wraps + floats on a marginTop blank line. Bound it to
+  // MAX_NARRATION_ROWS so a long streamed paragraph can't grow the live region unbounded
+  // and erase scrollback (RUN-FIX-20). CRUCIALLY it is TOP-anchored (`slice(0, cap)…`), NOT a
+  // sliding tail: the old `…slice(-cap)` window slid as the summary streamed, so the top of
+  // the text "se borraba desapareciendo hacia la izquierda" and the whole block flickered.
+  // Top-anchored, the beginning stays put and the preview simply stops growing at the cap;
+  // the FULL prose still lands VERBATIM in scrollback the moment the turn commits it (a
+  // completed-phase narration line in <Static>, uncapped) — so nothing is lost.
   const narrationCols = Math.max(20, width - 6);
   const narrationCap = MAX_NARRATION_ROWS * narrationCols;
   const streamingNarration =
     streamingNarrationFull.length > narrationCap
-      ? `…${streamingNarrationFull.slice(-narrationCap)}`
+      ? `${streamingNarrationFull.slice(0, narrationCap)}…`
       : streamingNarrationFull;
   const narrationRows =
     streamingNarration.length > 0
@@ -883,9 +927,9 @@ export function RunView(props: RunViewProps): ReactElement {
     !model.done && model.status.startedAtMs !== undefined
       ? model.status.startedAtMs + model.status.elapsedMs
       : undefined;
-  const renderPhase = (phase: Phase): ReactElement => (
+  const renderPhase = (phase: Phase, key?: string): ReactElement => (
     <PhaseNode
-      key={phase.id}
+      key={key ?? phase.id}
       phase={phase}
       active={phase.id === active}
       spinnerFrame={spinnerFrame}
@@ -903,9 +947,11 @@ export function RunView(props: RunViewProps): ReactElement {
   return (
     <Box flexDirection="column">
       {useStatic ? (
-        <Static items={completed}>{(phase) => renderPhase(phase)}</Static>
+        // Ink passes a stable, unique global index — key on it so two runs that reuse the
+        // same phaseId across generations never collide (append-only committed scrollback).
+        <Static items={completed}>{(phase, index) => renderPhase(phase, `c${index}`)}</Static>
       ) : (
-        completed.map(renderPhase)
+        completed.map((phase, index) => renderPhase(phase, `c${index}`))
       )}
       {/* FINISHED (RUN-FIX-22 part 2): the run is done and the rail is about to unmount —
           render NONE of the live chrome (live tail, narration, todos, notice, approval,
@@ -913,7 +959,7 @@ export function RunView(props: RunViewProps): ReactElement {
           <Static> transcript above. No ghost input box / footer above the next prompt. */}
       {finished ? null : (
         <>
-          {liveTail.map(renderPhase)}
+          {liveTail.map((phase) => renderPhase(phase))}
           {streamingNarration.length > 0 ? (
             <StreamingNarration
               text={streamingNarration}

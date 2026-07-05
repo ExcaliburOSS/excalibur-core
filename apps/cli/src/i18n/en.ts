@@ -888,6 +888,10 @@ export const EN: Catalog = {
     '◆ I tried {max} times but couldn’t get every check green — here’s where it stands; tell me how you’d like to proceed.',
   'mission.interpreting': 'Interpreting your goal and planning the strategy…',
   'mission.resuming': 'Resuming your mission — “{goal}” — where it left off…',
+  // The deterministic "show the result" finish step — every build/mission ends by
+  // serving what it made and pointing the user at it.
+  'show-result.live': '◆ Your app is live at {url} — opening it in your browser now.',
+  'show-result.no-url': '◆ Your app is starting ({label}) — it should be on localhost in a moment.',
   'repl.ctrl-c-again': 'Press Ctrl-C again to exit.',
   'repl.goal-offer':
     "That reads as a goal to complete. Pursue it across turns until an evaluator says it's done (max {max})?",

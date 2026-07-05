@@ -123,8 +123,9 @@ describe('<RunView>', () => {
     const ruleLines = frame.split('\n').filter((line) => /─{20,}/.test(line));
     expect(ruleLines.length).toBe(1);
     // The `›` caret + breathing cursor + the dim invitation (input never disappears).
+    // The caret is a FULL block █ — same width as the idle prompt's native terminal cursor.
     expect(frame).toContain('›');
-    expect(frame).toContain('▌');
+    expect(frame).toContain('█');
     expect(frame).toContain('escribe para guiar');
     // The ◆ autonomy · permissions indicator row, mirroring the idle box footer.
     expect(frame).toContain('◆');
@@ -142,8 +143,8 @@ describe('<RunView>', () => {
       });
     // Calm ~½s cadence: 4 frames ON, 4 OFF. Frame 0 shows the caret; frame 4 hides it
     // (a real terminal cursor blink), while both keep the two accent rules identical.
-    expect(box(0)).toContain('▌');
-    expect(box(4)).not.toContain('▌');
+    expect(box(0)).toContain('█');
+    expect(box(4)).not.toContain('█');
     expect(
       box(0)
         .split('\n')
@@ -153,6 +154,48 @@ describe('<RunView>', () => {
         .split('\n')
         .filter((l) => /─{20,}/.test(l)).length,
     );
+  });
+
+  it('accumulates completed phases across generations — no dup, no history loss (Static crash fix)', () => {
+    // Generation 0: a finished sub-run whose synthetic phase id is `turn`.
+    const gen0 = model({ phases: [{ id: 'turn', name: 'AlphaDone', state: 'completed' }] });
+    const { lastFrame, rerender } = render(
+      <ThemeProvider colors={darkColors}>
+        <RunView model={gen0} spinnerFrame={0} generation={0} useStatic={false} />
+      </ThemeProvider>,
+    );
+    expect(stripAnsi(lastFrame() ?? '')).toContain('AlphaDone');
+
+    // resetEvents bumped the generation; the next sub-run REUSES phase id `turn`. The old
+    // behaviour reset the completed set to empty (duplication + Ink "Maximum update depth").
+    const gen1 = model({ phases: [{ id: 'turn', name: 'BetaDone', state: 'completed' }] });
+    rerender(
+      <ThemeProvider colors={darkColors}>
+        <RunView model={gen1} spinnerFrame={1} generation={1} useStatic={false} />
+      </ThemeProvider>,
+    );
+    const frame = stripAnsi(lastFrame() ?? '');
+    // History preserved (Alpha stays) AND the new run appended (Beta) — each exactly ONCE.
+    expect(frame).toContain('AlphaDone');
+    expect(frame).toContain('BetaDone');
+    expect(frame.match(/AlphaDone/g)?.length).toBe(1);
+    expect(frame.match(/BetaDone/g)?.length).toBe(1);
+  });
+
+  it('top-anchors a long streaming summary — no sliding tail that erases the top (flicker fix)', () => {
+    const long = `BEGIN_SUMMARY the agent explains what it did ${'x'.repeat(6000)} END_SUMMARY`;
+    const frame = frameOf({
+      model: model(),
+      spinnerFrame: 0,
+      useStatic: false,
+      streamingNarration: long,
+      width: 60,
+    });
+    // The START of the summary stays put (top-anchored) and the preview is capped with an
+    // ellipsis; the old `…slice(-cap)` sliding window showed the END and erased the START.
+    expect(frame).toContain('BEGIN_SUMMARY');
+    expect(frame).not.toContain('END_SUMMARY');
+    expect(frame).toContain('…');
   });
 
   it('renders the D13 approval gate as a BOXED dialog with the question + keys', () => {

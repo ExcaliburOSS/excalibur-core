@@ -243,4 +243,29 @@ describe('memoryContextSource / buildMemoryContext', () => {
       removeDir(repoRoot);
     }
   });
+
+  it('frames recalled memory as PAST reference, never as a current instruction (contamination fix)', () => {
+    const source = memoryContextSource([
+      {
+        id: 'm1',
+        type: 'decision',
+        statement: 'soften the scanline effect and fix the pricing',
+        subjectPaths: ['public/styles.css'],
+        confidence: 0.7,
+        evidenceCount: 1,
+        createdAt: '2026-07-01T00:00:00.000Z',
+        lastReinforcedAt: '2026-07-01T00:00:00.000Z',
+        status: 'active',
+        redacted: false,
+      },
+    ]);
+    expect(source).not.toBeNull();
+    const content = source!.content;
+    // The guard rails that stop the agent re-executing a recalled past request.
+    expect(content).toContain('REFERENCE ONLY');
+    expect(content).toMatch(/NOT.*instructions|do not act on them|do not re-do/i);
+    expect(content).toContain('CURRENT request');
+    // The old dangerous framing must be gone.
+    expect(content).not.toContain('Respect them');
+  });
 });

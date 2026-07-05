@@ -100,6 +100,7 @@ import {
 } from '../lib/context';
 import { runDiscoveryFlow } from '../commands/discovery';
 import { runTask, mountConversationalRail } from '../lib/run-pipeline';
+import { showResult } from '../lib/show-result';
 import { renderTurnReceipt } from '../lib/turn-receipt';
 import { chooseBuildShape, decomposeDeep, runSwarmFlow } from '../lib/swarm';
 import { recordOrchestration } from '../lib/orchestration-telemetry';
@@ -1414,9 +1415,14 @@ export async function runInteractiveSession(
             // Only on a clean finish; reinforced/deduped by the store; best-effort.
             if (outcome === 'done') {
               try {
+                // Record a NEUTRAL, PAST-TENSE FACT about what changed — never the raw
+                // imperative request. Storing the ask verbatim as a "decision" meant a later,
+                // unrelated turn recalled it and re-executed already-finished work the user
+                // never re-asked for (memory contamination — "gravísimo"). The files are what
+                // future work needs priming on; the request itself is not durable knowledge.
                 new MemoryStore(repoRoot).capture({
                   type: 'decision',
-                  statement: text.replace(/\s+/g, ' ').trim().slice(0, 200),
+                  statement: `Earlier work modified ${newPaths.slice(0, 6).join(', ')}.`,
                   subjectPaths: newPaths,
                 });
               } catch {
@@ -2472,6 +2478,12 @@ async function runConversationalBuild(
     // never silently dumps the problem back on the user with a "you fix it".
     if (!signal.aborted && summary.checks.some((c) => !c.ok)) {
       deps.ui.info(deps.t('repl.self-heal-exhausted', { max: String(MAX_HEAL_ATTEMPTS) }));
+    }
+    // SHOW THE RESULT (FIRM): a build that actually changed the project ends by SERVING what
+    // it made and opening it for the user — for a runnable (web) project; a silent no-op
+    // otherwise. Reuses a server already up for this repo (no port fights). Best-effort.
+    if (!signal.aborted && summary.changedFiles.length > 0) {
+      await showResult(deps, runtime.repoRoot);
     }
     // Record the build as an assistant turn so session history/memory continue.
     // NOTE: no `inputTokens` — those are this RUN's own ephemeral context, unrelated
