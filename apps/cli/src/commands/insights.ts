@@ -71,6 +71,15 @@ function render(deps: CliDeps, report: InsightsReport): void {
       t('insights.avg', { cost: formatCents(report.avgCostCentsPerRun) }),
     )}`,
   );
+  // E1a — spend is a LOWER BOUND when some calls had an unknown price: say so
+  // explicitly (never let unpriced calls read as free), and point the way to fix it.
+  if (report.totalUnknownCostCalls > 0) {
+    ui.write(
+      `  ${pc.dim('')}  ${pc.yellow(
+        t('insights.unpriced', { calls: report.totalUnknownCostCalls }),
+      )}`,
+    );
+  }
   ui.write(
     `  ${pc.dim(t('insights.tokens'))}  ${formatTokens(report.totalInputTokens)}↑ ${formatTokens(
       report.totalOutputTokens,

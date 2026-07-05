@@ -240,6 +240,8 @@ export const EN: Catalog = {
   'insights.completion': 'completed',
   'insights.blocked': 'blocked by verification',
   'insights.spend': 'spend    ',
+  'insights.unpriced':
+    '⚠ {calls} model call(s) at an UNKNOWN price — spend is a lower bound. Set a rate in your provider config or .excalibur/pricing.json.',
   'insights.avg': '(avg {cost}/run)',
   'insights.tokens': 'tokens   ',
   'insights.calls': 'model calls',

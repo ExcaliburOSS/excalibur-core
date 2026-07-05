@@ -249,6 +249,8 @@ export const ES: Catalog = {
   'insights.completion': 'completadas',
   'insights.blocked': 'bloqueadas por verificación',
   'insights.spend': 'gasto    ',
+  'insights.unpriced':
+    '⚠ {calls} llamada(s) a precio DESCONOCIDO — el gasto es una cota inferior. Fija una tarifa en tu config de provider o en .excalibur/pricing.json.',
   'insights.avg': '(media {cost}/ejecución)',
   'insights.tokens': 'tokens   ',
   'insights.calls': 'llamadas al modelo',

@@ -8,6 +8,7 @@ function run(partial: Partial<RunInsight> & Pick<RunInsight, 'id'>): RunInsight 
     workflow: 'fast-fix',
     startedAt: '2026-06-15T10:00:00.000Z',
     costCents: 0,
+    unknownCostCalls: 0,
     inputTokens: 0,
     outputTokens: 0,
     modelCalls: 0,
@@ -94,5 +95,14 @@ describe('aggregateInsights', () => {
     expect(report.completionRate).toBe(0);
     expect(report.avgCostCentsPerRun).toBe(0);
     expect(report.byModel).toEqual([]);
+  });
+
+  it('E1a — surfaces unknown-priced calls, never sums them as $0', () => {
+    const report = aggregateInsights([
+      run({ id: 'a', costCents: 100, unknownCostCalls: 0, modelCalls: 2 }),
+      run({ id: 'b', costCents: 0, unknownCostCalls: 3, modelCalls: 3 }), // all unpriced
+    ]);
+    expect(report.totalCostCents).toBe(100); // the KNOWN spend only
+    expect(report.totalUnknownCostCalls).toBe(3); // surfaced (a lower-bound signal), not hidden
   });
 });

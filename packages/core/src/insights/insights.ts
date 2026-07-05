@@ -22,6 +22,13 @@ export interface RunInsight {
   /** ISO-8601 start; the day bucket is its `YYYY-MM-DD` prefix. */
   startedAt: string;
   costCents: number;
+  /**
+   * E1a — model calls whose price was UNKNOWN (`costCents === null`: no config
+   * rate, no table match). Their spend is real but uncomputable, so it is COUNTED
+   * here, never summed as $0 — a paid model with an unknown price must not read as
+   * free. Surface as "$X + N calls unpriced" and prompt the user to set a rate.
+   */
+  unknownCostCalls: number;
   inputTokens: number;
   outputTokens: number;
   modelCalls: number;
@@ -54,6 +61,9 @@ export interface InsightsReport {
   /** completed / (completed + failed + cancelled); 0 when none terminal. */
   completionRate: number;
   totalCostCents: number;
+  /** E1a — model calls whose price was unknown (see {@link RunInsight.unknownCostCalls}).
+   * `totalCostCents` is a LOWER BOUND when this is > 0. */
+  totalUnknownCostCalls: number;
   totalInputTokens: number;
   totalOutputTokens: number;
   totalModelCalls: number;
@@ -74,6 +84,7 @@ export function aggregateInsights(runs: ReadonlyArray<RunInsight>): InsightsRepo
   const dayMap = new Map<string, DayBucket>();
 
   let totalCostCents = 0;
+  let totalUnknownCostCalls = 0;
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let totalModelCalls = 0;
@@ -99,6 +110,7 @@ export function aggregateInsights(runs: ReadonlyArray<RunInsight>): InsightsRepo
   for (const run of runs) {
     byStatus[run.status] = (byStatus[run.status] ?? 0) + 1;
     totalCostCents += run.costCents;
+    totalUnknownCostCalls += run.unknownCostCalls;
     totalInputTokens += run.inputTokens;
     totalOutputTokens += run.outputTokens;
     totalModelCalls += run.modelCalls;
@@ -129,6 +141,7 @@ export function aggregateInsights(runs: ReadonlyArray<RunInsight>): InsightsRepo
     byStatus,
     completionRate,
     totalCostCents,
+    totalUnknownCostCalls,
     totalInputTokens,
     totalOutputTokens,
     totalModelCalls,
@@ -153,10 +166,16 @@ function runInsightFrom(
   events: ReadonlyArray<ExcaliburEvent>,
 ): RunInsight {
   let costCents = 0;
+  let unknownCostCalls = 0;
   let inputTokens = 0;
   let outputTokens = 0;
   for (const call of calls) {
-    costCents += call.costCents ?? 0;
+    // E1a — a null cost is UNKNOWN, not zero: count it, never sum it as $0.
+    if (call.costCents === null) {
+      unknownCostCalls += 1;
+    } else {
+      costCents += call.costCents;
+    }
     inputTokens += call.inputTokens;
     outputTokens += call.outputTokens;
   }
@@ -186,6 +205,7 @@ function runInsightFrom(
     workflow,
     startedAt,
     costCents,
+    unknownCostCalls,
     inputTokens,
     outputTokens,
     modelCalls: calls.length,
