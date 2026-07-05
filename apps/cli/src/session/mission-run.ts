@@ -16,7 +16,9 @@ import {
   type MissionState,
   type OrchestrationPlan,
   type PlanStep,
+  type PlanStepStatus,
   type StepResult,
+  type StepStatus,
 } from '@excalibur/core';
 import {
   createEvent,
@@ -36,6 +38,12 @@ import { loadGatewayContext, requireConfiguredModel } from '../lib/context';
 import { runExploreFlow } from '../lib/explore';
 import { captureRestorePoint, printRecoveryHint, warnDirtyTree } from '../lib/run-safety';
 import { mountConversationalRail, type ConversationalRail } from '../lib/run-pipeline';
+import {
+  materializeAutoBuild,
+  markAutoBuildStep,
+  settleAutoBuild,
+  type AutoBuildBoard,
+} from '../lib/auto-build-board';
 import { showResult } from '../lib/show-result';
 import { runSwarmFlow } from '../lib/swarm';
 import { computeScope } from '../lib/scope';
@@ -173,6 +181,12 @@ export interface MissionRunOptions {
   approvals: ApprovalState;
   signal: AbortSignal;
   /**
+   * The live companion dashboard URL (`runtime.dashboardUrl`), so a mission — like every other
+   * build path — materializes its capability DAG into work items (epic = the goal, each step a
+   * sub-task) and surfaces a deep link the user can watch fill in. Null → no dashboard running.
+   */
+  dashboardUrl?: string | null;
+  /**
    * Cancels the WHOLE mission when the user presses ESC during any step's live
    * view (the step's ESC aborts only that step otherwise). The caller wires it to
    * the mission controller's `.abort()` so ESC and Ctrl-C cancel identically.
@@ -253,6 +267,56 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
       signal,
     });
     deps.ui.write(pc.dim(plan.rationale));
+  }
+
+  // 1b) MATERIALIZE the mission's capability DAG into the board — like EVERY other build path
+  // (edit / plan / swarm / auto-build) — so the work shows up as an EPIC + one work item per
+  // capability step, live-synced and DEEP-LINKED into the dashboard the user can watch fill in.
+  // This closed the gap where a mission left no work items and no dashboard link (its `ship`
+  // step commits, so the universal safety-net saw a clean tree and skipped it). Best-effort — a
+  // board fault never gates the mission — and announced BEFORE the rail mounts so the stdout
+  // writes never corrupt the Ink frame.
+  const MISSION_TO_BOARD_STATUS: Record<StepStatus, PlanStepStatus> = {
+    pending: 'pending',
+    running: 'active',
+    done: 'done',
+    failed: 'blocked',
+    skipped: 'skipped',
+  };
+  let board: AutoBuildBoard | null = null;
+  if (getGitInfo(repoRoot).isRepo) {
+    try {
+      const b = materializeAutoBuild(
+        repoRoot,
+        mission.goal,
+        plan.steps.map((s) => ({
+          id: s.id,
+          title: `${s.capability}: ${s.objective}`,
+          instruction: s.objective,
+          ...(s.dependsOn.length > 0 ? { dependsOn: s.dependsOn } : {}),
+        })),
+        { planRunId: generateId('turn') },
+      );
+      board = b;
+      if (b !== null && b.epicWorkItemId !== null) {
+        const sprint =
+          b.sprintId != null ? deps.t('repl.auto-build-board-sprint', { sprint: b.sprintId }) : '';
+        deps.ui.info(
+          deps.t('repl.auto-build-board-epic', {
+            epic: b.epicWorkItemId,
+            count: b.stepBySubtask.size,
+            sprint,
+          }),
+        );
+        if (opts.dashboardUrl != null) {
+          deps.ui.info(
+            deps.t('dashboard.up', { url: `${opts.dashboardUrl}#/work-items/${b.epicWorkItemId}` }),
+          );
+        }
+      }
+    } catch {
+      board = null; // the board is additive — never gate the mission on it
+    }
   }
 
   // 2) The capability executor. The WHOLE mission renders into ONE persistent rail
@@ -359,6 +423,14 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
   const executor: CapabilityExecutor = async (step, state) => {
     const level = capabilityLevel(step.capability, opts.autonomyLevel);
     const ribbonModel = toRibbon(state);
+    // Light this step's work item up as ACTIVE on the board (live dashboard sync).
+    if (board !== null) {
+      try {
+        markAutoBuildStep(repoRoot, board, step.id, 'active');
+      } catch {
+        /* board sync is best-effort */
+      }
+    }
     // Steps that mount their OWN Ink view (swarm Lanes / best-of-N) need the mission rail
     // CLOSED; every other step keeps it OPEN (persistent input box + motion). Then start a
     // fresh live section for this step (the committed scrollback GROWS — RunView accumulator)
@@ -591,6 +663,19 @@ export async function runMissionTurn(goal: string, opts: MissionRunOptions): Pro
     rail = null;
   } else {
     ribbon(state);
+  }
+  // SETTLE the board to the mission's final per-step outcome (done / blocked / skipped), so the
+  // dashboard work items reflect what actually happened — the money+status side of the mission.
+  if (board !== null) {
+    try {
+      const statusBySubtask = new Map<string, PlanStepStatus>();
+      for (const st of state.steps) {
+        statusBySubtask.set(st.step.id, MISSION_TO_BOARD_STATUS[st.status]);
+      }
+      settleAutoBuild(repoRoot, board, mission.goal, { statusBySubtask, fallback: 'pending' });
+    } catch {
+      /* board settle is best-effort */
+    }
   }
   const label =
     state.outcome === 'completed'

@@ -26,7 +26,9 @@ export interface DashboardHandle {
   stop: () => void;
 }
 
-const PORTS = [4319, 4320, 4321, 4322];
+// A generous candidate range so several concurrent sessions never starve it (all-busy →
+// silent no-dashboard, which read as "the live dashboard link never appeared at startup").
+const PORTS = [4319, 4320, 4321, 4322, 4323, 4324, 4325, 4326];
 
 export async function startSessionDashboard(
   deps: CliDeps,

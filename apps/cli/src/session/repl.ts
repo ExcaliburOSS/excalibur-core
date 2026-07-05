@@ -3039,6 +3039,8 @@ async function dispatchBuild(
       onEscape: onAbort,
       // Typing-during-execution: type while the mission runs (RUN-FIX-16).
       ...(runtime.onInterrupt !== undefined ? { onInterrupt: runtime.onInterrupt } : {}),
+      // Materialize the mission's DAG into dashboard work items + a deep link, like every path.
+      dashboardUrl: runtime.dashboardUrl,
     });
   } else {
     await dispatchAutoBuild(deps, runtime, text, signal, seed, onAbort);
