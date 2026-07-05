@@ -580,11 +580,12 @@ export async function runInteractiveSession(
     // The `/` command menu (filters as you type) + a dim CONTEXTUAL placeholder.
     commands: slashCommands(deps.t),
     placeholder: () => foldChromeAscii(deps, deps.t(interacted ? 'repl.ph.next' : 'repl.ph.start')),
-    // D9 (F1.5) — the 3-ROW frame: input on top (no opening rule — the committed
-    // conversation above plus a blank line is the boundary; two full-width accent
-    // rules were the heaviest chrome on screen), then ONE dim rule + a status row
-    // with the shortcuts RIGHT-ALIGNED and width-fitted (the old 91-char hint
-    // always wrapped at 80 cols).
+    // The framed input box: a blank line of separation + a TOP accent rule (header), the
+    // prompt, then the BOTTOM accent rule + the status row (footer). BOTH rules are always
+    // present, top and bottom, and IDENTICAL to the mid-run input box (InterruptBox) — the
+    // founder's firm directive (a prior refactor had dropped the top rule; restored here). The
+    // header owns the box's breathing room, so it never appears glued to the text above it.
+    header: () => buildInputHeader(deps),
     footer: () => buildInputFooter(deps, runtime),
   });
   // LLM intent classifier (multi-language), resolved ONCE. undefined → no fast
@@ -4432,11 +4433,9 @@ function printStatusLine(deps: CliDeps, runtime: SessionRuntime): void {
     deps.ui.info(buildDenseStatus(deps, runtime));
     return;
   }
-  // The framed box (top rule + prompt + bottom rule + hint) is drawn ENTIRELY by
-  // the editor now (header + footer), so the rules bracket ONLY the live input and
-  // never trap scrollback. Here we just leave a blank line of breathing room above
-  // the box; it stays as scrollback while the editor redraws the box below it.
-  deps.ui.write();
+  // On a TTY the framed box is drawn ENTIRELY by the editor (header = blank + TOP rule +
+  // prompt, footer = BOTTOM rule + status row), so the box owns its own breathing room and
+  // both rules. Nothing to print here — writing a blank would double the header's separation.
 }
 
 /**
@@ -4463,6 +4462,18 @@ function foldChromeAscii(deps: CliDeps, s: string): string {
     .replace(/·/g, '-')
     .replace(/⇥/g, 'tab')
     .replace(/↓/g, 'v');
+}
+
+/**
+ * The framed HEADER the editor draws ABOVE the input: a blank line of separation, then the TOP
+ * accent hairline — the MIRROR of {@link buildInputFooter}'s bottom rule. So the box is framed
+ * top AND bottom by two identical accent rules, always present and never glued to the text above
+ * (the founder's firm directive; a prior refactor had dropped the top rule). The mid-run input
+ * box (InterruptBox) draws the same blank + top rule + bottom rule, so idle and busy are identical.
+ */
+function buildInputHeader(deps: CliDeps): string[] {
+  const cols = Math.max(20, process.stdout.columns || 80);
+  return ['', foldChromeAscii(deps, accentDim('─'.repeat(cols)))];
 }
 
 function buildInputFooter(deps: CliDeps, runtime: SessionRuntime): string[] {

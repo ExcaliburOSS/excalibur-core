@@ -946,13 +946,13 @@
     }
   }
   .primary {
-    background: linear-gradient(180deg, var(--accent), var(--accent-dim));
+    /* FLAT — no depth: a solid accent fill, no gradient, no drop shadow (founder directive). */
+    background: var(--accent);
     color: #04101e;
     border: 1px solid transparent;
     padding: 7px 16px;
     border-radius: var(--radius-sm);
     font-weight: 650;
-    box-shadow: 0 6px 18px -8px rgba(77, 163, 255, 0.7);
   }
   .primary:hover {
     filter: brightness(1.07);

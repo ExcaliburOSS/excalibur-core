@@ -208,7 +208,7 @@
     flex-shrink: 0;
   }
   .logo {
-    height: 22px;
+    height: 30px;
     width: auto;
     color: var(--text);
     transition:

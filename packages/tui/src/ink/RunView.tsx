@@ -555,9 +555,10 @@ function InterruptBox({
   placeholder?: string;
   spinnerFrame?: number;
 }): ReactElement {
-  // D9 (F1.5) — the SAME 3-row form as the idle box: input on top, ONE dim rule,
-  // then the posture row. (Two bracketing rules per box meant up to FOUR bright
-  // accent rules on screen mid-run — the loudest color spent on pure chrome.)
+  // The SAME framed form as the idle box, EXACTLY: a blank line of separation (marginTop), a TOP
+  // accent rule, the prompt, a BOTTOM accent rule, then the posture row. Both rules always present,
+  // top and bottom, identical to the idle input box — the founder's firm directive that the input
+  // must be indistinguishable whether Excalibur is idle or working.
   const rule = glyph.boxH.repeat(Math.max(8, width));
   // A BLINKING accent caret — parity with the idle prompt's native (OSC-12) cursor, which
   // the terminal blinks in hardware (the user's "no parpadea" complaint). It toggles on/off
@@ -577,6 +578,7 @@ function InterruptBox({
       : autonomyLabel || safety;
   return (
     <Box flexDirection="column" marginTop={1}>
+      <Text color={colors.accentDim}>{rule}</Text>
       <Box>
         <Box flexShrink={0}>
           <Text color={colors.accent} bold>{` › `}</Text>
@@ -906,7 +908,8 @@ export function RunView(props: RunViewProps): ReactElement {
   // (width-aware) instead of a flat 5, or a long typed draft undercounts and overflows.
   const interruptShown = interruptEnabled || interruptDraft.length > 0;
   const interruptRows = interruptShown
-    ? 4 + Math.max(1, Math.ceil((interruptDraft.length + 1) / Math.max(8, width - 3)))
+    ? // blank + TOP rule + prompt(≥1, width-aware) + BOTTOM rule + ◆ indicator row.
+      5 + Math.max(1, Math.ceil((interruptDraft.length + 1) / Math.max(8, width - 3)))
     : 0;
   const liveChrome =
     1 + // the single metrics line (no hairline rule above it anymore)
