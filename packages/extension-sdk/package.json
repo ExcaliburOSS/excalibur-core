@@ -58,7 +58,7 @@
     "@excalibur/work-items": "workspace:*",
     "@excalibur/workflow-schema": "workspace:*",
     "tsup": "^8.3.5",
-    "typescript": "^5.8.3",
-    "vitest": "^3.0.5"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
   }
 }

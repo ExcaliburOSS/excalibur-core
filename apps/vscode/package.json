@@ -154,10 +154,10 @@
     "vscode:prepublish": "pnpm run build"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^26.1.0",
     "@types/vscode": "^1.85.0",
     "tsup": "^8.3.5",
-    "typescript": "^5.8.3",
-    "vitest": "^3.0.5"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
   }
 }
