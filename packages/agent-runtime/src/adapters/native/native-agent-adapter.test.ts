@@ -724,6 +724,42 @@ describe('NativeAgentAdapter — role-based tool exposure', () => {
     expect(system).toContain('You are Merlin, a wise refactoring sage.');
     expect(system).toContain('production-quality bar'); // appended body still applies
   });
+
+  // Language: the narration prompt must NOT bias the model toward any specific
+  // language. It once had Spanish examples/glosses baked in ("tarea", "fases",
+  // "Spanish → Spanish"), which pushed English users into Spanish narration.
+  it('does NOT bias the narration language toward Spanish (mirror-the-user only)', async () => {
+    const gateway = new FakeGateway([{ content: 'done' }]);
+    await collect(new NativeAgentAdapter().run(makeInput(gateway)));
+    const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
+    // The instruction to mirror the user is present and explicit…
+    expect(system).toContain('SAME language as the user');
+    expect(system).toContain('Do NOT default to Spanish');
+    // …and the old Spanish-example bias is gone.
+    expect(system).not.toContain('¡Buena idea!');
+    expect(system).not.toContain('Spanish → Spanish');
+    expect(system).not.toContain('"tarea"');
+    expect(system).not.toContain('"fases"');
+  });
+
+  it('emits NO hard language override when no language is pinned', async () => {
+    const gateway = new FakeGateway([{ content: 'done' }]);
+    await collect(new NativeAgentAdapter().run(makeInput(gateway)));
+    const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
+    expect(system).not.toContain('LANGUAGE OVERRIDE');
+  });
+
+  it('emits a HARD language override when the user pins a language in config', async () => {
+    const gateway = new FakeGateway([{ content: 'done' }]);
+    await collect(
+      new NativeAgentAdapter().run(
+        makeInput(gateway, { config: { ...permissiveConfig(), language: 'es' } }),
+      ),
+    );
+    const system = String(gateway.received[0]?.messages?.[0]?.content ?? '');
+    expect(system).toContain('LANGUAGE OVERRIDE');
+    expect(system).toContain('pinned their language to Spanish');
+  });
 });
 
 describe('NativeAgentAdapter — custom agent overrides (P1.7)', () => {

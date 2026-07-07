@@ -466,6 +466,7 @@ function systemPromptFor(input: AgentRunInput): string {
       : []),
     ...engineeringGuidance(input.role),
     ...narrationGuidance(input.role),
+    ...languageDirective(input.config.language),
     // F1 — the discovery gate was promised by a repl comment ("the agent's prompts
     // suggest it") but no prompt ever mentioned it. This keeps the promise without
     // fighting the proactivity directive: it applies ONLY to speculative ideas,
@@ -496,24 +497,66 @@ function systemPromptFor(input: AgentRunInput): string {
  * issue-list output for the FINAL answer; this only governs the interstitial
  * narration, so the two coexist.
  */
+/**
+ * Human-readable names for the language codes a user can pin in
+ * `.excalibur/config.yaml` (`language: es`). Only well-known codes are mapped;
+ * anything else falls through to the raw code, which the model still honors.
+ */
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: 'English',
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+  pt: 'Portuguese',
+  it: 'Italian',
+  nl: 'Dutch',
+  ja: 'Japanese',
+  zh: 'Chinese',
+  ko: 'Korean',
+  ru: 'Russian',
+};
+
+/**
+ * A HARD language override — emitted ONLY when the user has EXPLICITLY pinned a
+ * language in their config (`language: es`). That is an intentional "I want
+ * everything in X" signal, so it dominates the default "mirror the user's
+ * message" rule (which otherwise correctly handles every language). It is NOT
+ * driven by the auto-detected chrome locale, which only distinguishes en/es and
+ * would wrongly force English on e.g. a French or German user.
+ */
+function languageDirective(language: string | undefined): string[] {
+  const code = language?.trim().toLowerCase();
+  if (code === undefined || code.length === 0) {
+    return [];
+  }
+  const name = LANGUAGE_NAMES[code] ?? LANGUAGE_NAMES[code.split(/[-_]/)[0] ?? ''] ?? code;
+  return [
+    `LANGUAGE OVERRIDE: The user has pinned their language to ${name}. Write ALL`,
+    `narration, questions and summaries in ${name}, regardless of the language of any`,
+    'individual message. This overrides the "mirror the user" rule above.',
+  ];
+}
+
 function narrationGuidance(_role: AgentRole): string[] {
   return [
     'Narrate your work like a warm, engaged pair-programmer sitting next to the user —',
     'genuine, encouraging, human — so they are NEVER left watching a silent cursor.',
     'Open EVERY turn by briefly echoing back what they asked, IN YOUR OWN WORDS, so',
-    'they feel heard before anything happens (e.g. "¡Buena idea! Vamos a montar esa',
-    'landing — primero miro cómo está hecho el proyecto…" / "Got it — you want X; let',
-    'me start by understanding Y…"). Address the user directly and personally ("tú" /',
-    '"you"); a touch of warmth or light enthusiasm is welcome, never robotic.',
+    'they feel heard before anything happens (e.g. "Got it — you want X; let me start',
+    'by understanding Y…"). Address the user directly and personally; a touch of warmth',
+    'or light enthusiasm is welcome, never robotic.',
     'Before each meaningful action — reading or changing files, running a command,',
     'launching sub-agents — say in one short, plain-language sentence what you are about',
     'to do and why; after a key finding or decision, share what you learned and what it',
     'changes, the way you would tell a teammate. Keep each note to a sentence or two,',
     'free of internal jargon, and never restate raw tool output the user already sees.',
-    'Speak of the work warmly and plainly — call it a "task" (Spanish: "tarea") and',
-    'talk about "phases"/"fases" of the work. NEVER expose internal machinery: no "run"',
-    'or "ejecución", no run ids/paths, no role/level/autonomy labels.',
-    'Write this narration in the SAME language the user used (Spanish → Spanish).',
+    'Speak of the work warmly and plainly — call it a "task" and talk about the "phases"',
+    'of the work. NEVER expose internal machinery: no "run"/"execution", no run ids/paths,',
+    'no role/level/autonomy labels.',
+    "CRITICAL — LANGUAGE: Write this narration in the SAME language as the user's most",
+    'recent message. If they wrote in English, respond in English; if in Spanish, respond',
+    'in Spanish; match whatever language they used. Do NOT default to Spanish (or any',
+    'other language) — mirror the user. Never mix languages within a response.',
     'Output ONLY the user-facing narration prose. NEVER emit <thinking>, <antThinking>, ' +
       '<reasoning> or <think> tags, raw chain-of-thought, or a leading ✗/✘/× or status emoji — ' +
       'speak directly to the user in their language.',
