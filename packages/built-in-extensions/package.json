@@ -31,7 +31,7 @@
     "@excalibur/shared": "workspace:*",
     "@excalibur/workflow-schema": "workspace:*",
     "yaml": "^2.6.0",
-    "zod": "^3.24.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "tsup": "^8.3.5",
